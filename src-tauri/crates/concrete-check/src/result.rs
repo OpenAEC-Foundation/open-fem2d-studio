@@ -46,12 +46,51 @@ pub struct ConcreteBeamCheckResult {
     pub checks: Vec<NamedCheck>,
     pub uc_max: f64,
     pub status: CheckStatus,
+    /// De toetsen die NIET uitgevoerd konden worden, met de reden.
+    ///
+    /// Waarom dit veld bestaat (basisaudit ruw 55): `uc_of` geeft een toets met
+    /// [`CheckStatus::NotApplicable`] een uc van 0, en de staafstatus volgde
+    /// alleen uit `uc_max <= 1`. Een betonbalk zonder beugelafstand kreeg zo de
+    /// badge "Ok 0,60" terwijl de dwarskrachttoets van §6.2 helemaal niet was
+    /// afgerekend. De reden stond wel in de `notes` van die deeltoets, maar de
+    /// staafstatus, de UC op het canvas en de samenvattingstabel in het rapport
+    /// zeiden "Ok" — en dát is wat een lezer overneemt.
+    ///
+    /// Staat hier iets in wat GEEN detailleringseis is, dan is `status`
+    /// [`CheckStatus::NotApplicable`] in plaats van `Ok` (zie de aggregatie in
+    /// `orchestrator.rs`). `#[serde(default)]`: een antwoord van vóór dit veld
+    /// blijft leesbaar.
+    #[serde(default)]
+    pub niet_uitgevoerd: Vec<NietUitgevoerdeToets>,
     pub governing_check_id: String,
     /// M-κ-diagram bij de normaalkracht van het maatgevende M-N-punt.
     pub mn_kappa: Option<MnKappaDiagram>,
     /// N-M-interactiediagram (bezwijkomhullende) voor positief en negatief moment.
     pub interaction_positive: Vec<InteractionPoint>,
     pub interaction_negative: Vec<InteractionPoint>,
+}
+
+/// Eén toets die niet uitgevoerd kon worden.
+///
+/// De REDEN staat niet hier maar in de `notes` van die toets in `checks` — daar
+/// zet de kern hem neer, in de bewoording van de kern. Hem hier overschrijven
+/// zou een tweede versie van dezelfde tekst opleveren, en hem eruit raden
+/// (de eerste note? de laatste?) zou stil de verkeerde regel kunnen kiezen: de
+/// ene toets zet zijn reden als enige note neer, de dwarskrachttoets zet er
+/// eerst de vormaannamen en er achteraf de getoetste snede omheen. Deze lijst
+/// is dus een VERWIJZING: zoek `check_id` op in `checks` en toon zijn notes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct NietUitgevoerdeToets {
+    /// De `id` van de toets, bijvoorbeeld "6.2_shear".
+    pub check_id: String,
+    /// De titel van de toets, zoals het rapport hem toont ("Dwarskracht").
+    pub titel: String,
+    /// Is dit een detailleringseis (§8.2, §9.2, §9.5)? Die bepalen de
+    /// staafstatus niet: ze begrenzen de UITVOERING, niet de draagkracht, en
+    /// een eis die niet van toepassing is zegt niets over de draagkracht van
+    /// de staaf.
+    pub detaillering: bool,
 }
 
 /// Antwoord op [`crate::MnKappaRequest`].

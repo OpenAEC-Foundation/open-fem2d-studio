@@ -90,7 +90,8 @@ import type {
   MultiLcResult,
   SolverResult,
 } from "../components/fem/solver/types";
-import type { Beam, BeamCheckConfig } from "../components/fem/femTypes";
+import type { Beam, BeamCheckConfig, Analysetype } from "../components/fem/femTypes";
+import { ANALYSETYPEN } from "../components/fem/femTypes";
 import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import { version as PAKKET_VERSIE } from "../../package.json";
 import { beeldKernfoutAf } from "./fouten";
@@ -245,6 +246,18 @@ interface GelezenModel {
   combinatiesUitBestand: LoadCombination[] | null;
   /** Tweede-orde-vlag uit het projectbestand, of `null` bij een los model. */
   nonlinearUitBestand: boolean | null;
+  /**
+   * Het ANALYSETYPE uit het projectbestand, of `null` bij een los model (en
+   * bij een bestand van vóór het veld; dan telt de booleaan hierboven).
+   *
+   * Tot deze wijziging kende deze weg alleen `nonlinearEnabled`. Een bestand
+   * met "2e orde + fysisch" — de keuze van de constructeur — werd langs MCP
+   * dus stil als geometrische tweede orde gerekend, zonder de betonstijfheidslus
+   * van EN 1992-1-1 5.8.6, en het antwoord meldde `analysis_type` als
+   * "tweedeOrdeGeometrisch". Dat is een ANDERE berekening met een geruststellend
+   * etiket. Zie basisaudit §3.2 punt 2.
+   */
+  analysetypeUitBestand: Analysetype | null;
   formatVersion: number | null;
   /** Gevolgklasse uit de projectgegevens van het bestand, of `null`. */
   gevolgklasseUitBestand: Gevolgklasse | null;
@@ -356,6 +369,29 @@ function alsGevolgklasse(x: unknown): Gevolgklasse | null {
 }
 
 /**
+ * Het analysetype uit een projectbestand: de keuze van de constructeur, en de
+ * enige uitspraak over WÈLKE berekening bij de bewaarde uitkomsten hoort.
+ *
+ * ONTBREEKT het veld (elk bestand van vóór het analysetype), dan `null`: dan
+ * telt de oude booleaan `nonlinearEnabled`, precies zoals de app hem leest.
+ * Staat er een waarde die deze versie niet kent, dan wordt hij GEWEIGERD en
+ * niet stil op tweede orde gezet — raden welke van de drie bedoeld was levert
+ * een andere berekening op dan de gebruiker bewaarde, met een etiket dat het
+ * tegendeel beweert.
+ */
+function leesAnalysetype(waarde: unknown): Analysetype | null {
+  if (waarde === undefined || waarde === null) return null;
+  if (typeof waarde !== "string" || !(ANALYSETYPEN as readonly string[]).includes(waarde)) {
+    throw new InvoerFout(
+      `\`analysetype\` is ${JSON.stringify(waarde)}; bekend zijn ` +
+        ANALYSETYPEN.map((a) => `"${a}"`).join(", ") +
+        ". Een onbekend analysetype wordt geweigerd, niet stil als tweede orde gerekend.",
+    );
+  }
+  return waarde as Analysetype;
+}
+
+/**
  * Model uit een payload: ofwel `model` (store-eigen vorm), ofwel `project`
  * (de INHOUD van een `.ifcfem2d`-bestand). De sidecar leest zelf nooit van
  * schijf: Rust levert de bytes aan. Zo blijft alle bestandstoegang aan één
@@ -415,6 +451,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
       beams: bestand.beams ?? [],
       combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
       nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
+      analysetypeUitBestand: leesAnalysetype(bestand.analysetype),
       formatVersion: bestand.version,
       gevolgklasseUitBestand: alsGevolgklasse(
         (bestand.projectInfo as { uitgangspunten?: { gevolgklasse?: unknown } } | undefined)
@@ -474,6 +511,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     beams,
     combinatiesUitBestand: null,
     nonlinearUitBestand: null,
+    analysetypeUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
     idTellersUitBestand: undefined,
@@ -803,13 +841,32 @@ function rekenDoor(payload: Record<string, unknown>) {
   );
   const profileDb = leesProfielen(payload);
 
-  // Tweede orde: uit het projectbestand als dat er is — een projectbestand
+  // Het ANALYSETYPE: uit het projectbestand als dat er is — een projectbestand
   // draagt de keuze van de constructeur, en die mag een tool-vlag niet
-  // stilzwijgend overrulen.
-  const nonlinear =
-    gelezen.nonlinearUitBestand !== null
-      ? gelezen.nonlinearUitBestand
-      : payload.nonlinear === true;
+  // stilzwijgend overrulen. Het veld `analysetype` wint van de oude booleaan
+  // `nonlinearEnabled`, precies zoals `analysetypeUitBestand` in de app.
+  //
+  // De fysisch niet-lineaire stand wordt langs deze weg GEWEIGERD in plaats
+  // van als geometrische tweede orde gerekend: de secans-EI per segment komt
+  // uit de betonkern (EN 1992-1-1 5.8.6) en die lus draait in de app, niet in
+  // de sidecar. Stil terugvallen zou een andere krachtsverdeling opleveren
+  // dan het bestand bewaart, met "tweedeOrdeGeometrisch" als etiket erop.
+  const analysetype: Analysetype =
+    gelezen.analysetypeUitBestand !== null
+      ? gelezen.analysetypeUitBestand
+      : gelezen.nonlinearUitBestand !== null
+        ? (gelezen.nonlinearUitBestand ? "tweedeOrdeGeometrisch" : "eersteOrde")
+        : (payload.nonlinear === true ? "tweedeOrdeGeometrisch" : "eersteOrde");
+  if (analysetype === "tweedeOrdeFysisch") {
+    throw new InvoerFout(
+      "Het projectbestand staat op \"2e orde + fysisch\" (tweedeOrdeFysisch): de " +
+        "betonstaven krijgen daarbij per segment de secans-EI uit de betonkern " +
+        "(NEN-EN 1992-1-1 5.8.6). Die lus draait alleen in de app en niet langs " +
+        "deze weg. Er wordt NIET stil als geometrische tweede orde gerekend; zet " +
+        "het analysetype op \"tweedeOrdeGeometrisch\" als dat de bedoeling is.",
+    );
+  }
+  const nonlinear = analysetype !== "eersteOrde";
 
   const detail = payload.detail ?? "samenvatting";
   if (detail !== "samenvatting" && detail !== "stations") {
@@ -848,7 +905,6 @@ function rekenDoor(payload: Record<string, unknown>) {
   // eerste orde en α_cr < 10 komt er een FOUT in `warnings`: de norm staat de
   // berekening dan niet toe, en de toetsinvoer die hieronder wordt gebouwd is
   // dan geen toetsing.
-  const analysetype = nonlinear ? "tweedeOrdeGeometrisch" : "eersteOrde";
   const stabiliteit = bepaalAlphaCr(multiInput, combinaties, combinationResults);
   const stabiliteitMeldingen = stabiliteitsMeldingen(
     stabiliteit, analysetype, gelezen.model.scheefstandEnabled,
@@ -1239,6 +1295,9 @@ function opLoadProject(payload: Record<string, unknown>) {
     combinations_source: bron,
     gevolgklasse: klasse.klasse,
     nonlinear_enabled: gelezen.nonlinearUitBestand,
+    // Het analysetype zoals het bestand het draagt; `null` bij een bestand van
+    // vóór het veld (dan telt `nonlinear_enabled`) en bij een los model.
+    analysetype: gelezen.analysetypeUitBestand,
     counts: {
       nodes: m.nodes.length,
       beams: m.beams.length,

@@ -368,7 +368,83 @@ log("\n[6] Verwijzingen en lasten die niet meetellen");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[7] Geldige modellen blijven schoon");
+log("\n[6b] Velden die de APP zelf schrijft komen door de poort (basisaudit ruw 25)");
+// De poort is er om een tikfout tegen te houden. Tot september 2026 hield hij
+// ook vier velden tegen die de app zelf in het projectbestand schrijft en
+// waarmee de kern gewoon rekent: `veren` en `bedding` op de staaf,
+// `ltbSupportSpacing_m` en `betonZones` in `checkConfig`. Een staaf op bedding
+// - de referentie R26 - was langs de MCP-weg en de toetsbrug dus niet door te
+// rekenen, terwijl hij in de app gewoon rekent. Dat is de omgekeerde fout van
+// waar de lijst voor is: geen tikfout tegenhouden maar een geldig model
+// weigeren, waarna de drie wegen verschillende antwoorden geven.
+{
+  const metStaafveld = (extra) => {
+    const m = PORTAAL();
+    Object.assign(m.beams[1], extra);
+    return m;
+  };
+  const metCheckConfig = (cc) => {
+    const m = PORTAAL();
+    m.beams[1].checkConfig = cc;
+    return m;
+  };
+  const ZONES = {
+    longitudinal: [{
+      side: "Bottom", row: { count: 3, diameter_mm: 20 },
+      x_start_mm: 0, x_end_mm: 6000,
+      bar_shape: "Recht", casting_position: "Onderzijde",
+    }],
+    stirrups: [{ x_start_mm: 0, x_end_mm: 6000, spacing_mm: 150, legs: 2, diameter_mm: 8 }],
+  };
+  for (const [naam, model] of [
+    ["veren", metStaafveld({ veren: { endRy: 5000, startTx: 200 } })],
+    ["bedding", metStaafveld({ bedding: { k: 50000, b: 160 } })],
+    ["ltbSupportSpacing_m", metCheckConfig({ ltbSupportSpacing_m: 2.5 })],
+    ["betonZones", metCheckConfig({ betonZones: ZONES })],
+  ]) {
+    const u = valideerModel(model);
+    ok(`veld ${naam} wordt aanvaard`, u.ok && u.errors.length === 0,
+      u.errors.join(" | ") || "geen fouten");
+    const antw = verwerkVerzoek({ v: 1, id: 1, op: "solve", payload: { model } });
+    ok(`veld ${naam} komt ook door solve heen`, antw.ok === true,
+      antw.error?.melding ?? "");
+  }
+
+  // En wat er in die velden staat, wordt wel gekeurd - anders is de poort voor
+  // deze vier velden een gat in plaats van een controle.
+  const fout = (naam, model, fragment) => {
+    const u = valideerModel(model);
+    ok(naam, !u.ok && u.errors.some((e) => e.includes(fragment)),
+      u.errors.join(" | ") || "GEEN FOUT");
+  };
+  fout("veer met stijfheid nul is een scharnier en wordt geweigerd",
+    metStaafveld({ veren: { endRy: 0 } }), "veren.endRy");
+  fout("veer op een onbekende vrijheidsgraad",
+    metStaafveld({ veren: { endTorsie: 5 } }), "onbekend veld `endTorsie`");
+  fout("bedding zonder contactbreedte b",
+    metStaafveld({ bedding: { k: 50000 } }), "bedding.b ontbreekt");
+  fout("bedding met een negatieve beddingsconstante",
+    metStaafveld({ bedding: { k: -1, b: 160 } }), "bedding.k");
+  fout("betonZones met een onbekende zijde",
+    metCheckConfig({ betonZones: { ...ZONES, longitudinal: [{ ...ZONES.longitudinal[0], side: "Onder" }] } }),
+    "longitudinal[0].side");
+  fout("betonZones met een zone die niet voor zijn einde begint",
+    metCheckConfig({ betonZones: { ...ZONES, longitudinal: [{ ...ZONES.longitudinal[0], x_start_mm: 3000, x_end_mm: 1000 }] } }),
+    "x_start_mm 3000");
+  fout("betonZones met een beugelzone zonder diameter",
+    metCheckConfig({ betonZones: { longitudinal: [], stirrups: [{ x_start_mm: 0, x_end_mm: 6000, spacing_mm: 150, legs: 2 }] } }),
+    "stirrups[0].diameter_mm ontbreekt");
+
+  // De bedding rekent ook echt mee langs deze weg: zonder de poort was dit
+  // model niet eens aan de solver toegekomen.
+  const mi = bouwMultiInput(metStaafveld({ bedding: { k: 50000, b: 160 } }));
+  ok("de bedding komt in de solverinvoer terecht",
+    mi.beams.some((b) => b.bedding !== undefined && b.bedding.kLijn > 0),
+    JSON.stringify(mi.beams.map((b) => b.bedding)));
+}
+
+// ---------------------------------------------------------------------------
+log("[7] Geldige modellen blijven schoon");
 {
   const u = valideerModel(PORTAAL());
   ok("referentieportaal: ok", u.ok === true, u.errors.join(" | "));

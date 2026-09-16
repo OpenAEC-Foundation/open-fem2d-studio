@@ -185,7 +185,7 @@ use steel_check::{CheckKind, NamedCheck};
 
 use crate::input::{ConcreteBeamCheckInput, MnKappaRequest};
 use crate::kolom::kolomtoetsen;
-use crate::result::{ConcreteBeamCheckResult, MnKappaResponse};
+use crate::result::{ConcreteBeamCheckResult, MnKappaResponse, NietUitgevoerdeToets};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // De maatgevende snede — op de unity check, niet op de belasting
@@ -1170,6 +1170,70 @@ fn uc_of(c: &NamedCheck) -> f64 {
     }
 }
 
+/// De toetsen waarvan de uitkomst de DRAAGKRACHT van élke betonstaaf bepaalt.
+///
+/// Kan één hiervan niet worden afgerekend, dan is er over de staaf geen
+/// uitspraak te doen en wordt de status [`CheckStatus::NotApplicable`] in
+/// plaats van `Ok` (basisaudit ruw 55). De gemeten aanleiding: een balk zonder
+/// beugelafstand en zonder beugeldiameter. §6.2 komt dan als "niet uitgevoerd"
+/// terug, §6.1 geeft UC 0,60, en de staaf kreeg de groene badge "Ok 0,60"
+/// terwijl de dwarskracht ongetoetst was.
+///
+/// Waarom niet ELKE niet-detailleringstoets: er zijn toetsen die met recht
+/// niet van toepassing zijn. §5.8 (slankheid, kruip, tweede as) hoort bij een
+/// KOLOM en komt zonder `column` terug als N/A — een vrij opgelegde balk is
+/// geen kolom, en dat is geen ontbrekende toetsing. Hetzelfde geldt voor de
+/// BGT-toetsen §7.3 en §7.4.2 zonder frequente combinatie of constructievorm:
+/// die horen bij een bruikbaarheidsvraag die de aanroeper niet stelde.
+/// Ze staan wél alle in `niet_uitgevoerd`, mét reden, zodat het rapport ze kan
+/// tonen; ze veranderen alleen de staafstatus niet.
+const DRAAGKRACHTTOETSEN: [&str; 3] =
+    ["6.1_bending_stress_block", "6.1_mn_kappa", "6.2_shear"];
+
+/// Kon deze toets NIET worden uitgevoerd?
+///
+/// [`CheckStatus::NotApplicable`] dekt twee verschillende dingen, en het
+/// verschil zit in de unity check:
+///
+///  - N/A MÉT een unity check = "niet van toepassing". De toets is gedraaid en
+///    stelde vast dat er niets te toetsen viel — de dwarskrachttoets van een
+///    staaf zonder dwarskracht (`applicable = v_ed > 0` in `dwarskracht.rs`).
+///    Er ontbreekt niets.
+///  - N/A ZONDER unity check = "kon niet". Er ontbrak invoer (beugelafstand en
+///    -benen, frequente BGT-combinatie, milieuklasse, constructievorm,
+///    korrelafmeting) en er is met opzet niets aangenomen. Dít is wat een lezer
+///    moet weten voordat hij een staafstatus overneemt.
+///
+/// De invariant waar deze scheiding op rust — een N/A-toets noemt een reden in
+/// zijn notes, een toets met een andere status heeft een unity check — staat
+/// vast in de test `een_toets_die_niet_kon_zwijgt_niet_en_meldt_niet_groen`.
+fn kon_niet(c: &NamedCheck) -> bool {
+    if !matches!(status_of(c), CheckStatus::NotApplicable) {
+        return false;
+    }
+    match &c.kind {
+        CheckKind::Resistance(r) => r.uc.is_none(),
+        CheckKind::Stability(s) => s.uc.is_none(),
+    }
+}
+
+/// De status van een toets, ongeacht of hij een weerstands- of een
+/// stabiliteitstoets is.
+fn status_of(c: &NamedCheck) -> CheckStatus {
+    match &c.kind {
+        CheckKind::Resistance(r) => r.status.clone(),
+        CheckKind::Stability(s) => s.status.clone(),
+    }
+}
+
+/// De titel van een toets, zoals het rapport hem toont.
+fn titel_van(c: &NamedCheck) -> String {
+    match &c.kind {
+        CheckKind::Resistance(r) => r.title.clone(),
+        CheckKind::Stability(s) => s.title.clone(),
+    }
+}
+
 /// Faalt deze toets? Alleen [`CheckStatus::NotOk`] telt als falen; N/A is
 /// "niet uitgerekend" en Ok is "voldoet".
 fn faalt(c: &NamedCheck) -> bool {
@@ -1254,6 +1318,9 @@ fn error_result(input: &ConcreteBeamCheckInput, fout: String) -> ConcreteBeamChe
         checks: vec![],
         uc_max: 0.0,
         status: CheckStatus::NotApplicable,
+        // Er is geen enkele toets gedraaid; de reden staat in
+        // `governing_check_id` en hoort niet nog eens per toets herhaald.
+        niet_uitgevoerd: vec![],
         governing_check_id: format!("ERROR: {fout}"),
         mn_kappa: None,
         interaction_positive: vec![],
@@ -2343,7 +2410,42 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
             governing_check_id = c.id.clone();
         }
     }
-    let status = if uc_max <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk };
+    // De toetsen die NIET uitgevoerd konden worden, met hun reden (basisaudit
+    // ruw 55). Hier stond alleen `uc_max <= 1.0 -> Ok`, en omdat `uc_of` een
+    // N/A-toets een uc van 0 geeft, kreeg een balk waarvan de dwarskrachttoets
+    // niet kon worden afgerekend gewoon de groene badge van de buigtoets.
+    //
+    // De staafstatus volgt nu drie regels, in deze volgorde:
+    //   1. valt er iets om (NotOk), dan NotOk — een gemeten overschrijding
+    //      weegt zwaarder dan een toets die niet kon;
+    //   2. kon een toets die de DRAAGKRACHT bepaalt niet worden afgerekend,
+    //      dan NotApplicable: "niet getoetst" is geen geslaagde toets;
+    //   3. anders Ok.
+    //
+    // Detailleringseisen (§8.2, §9.2, §9.5) tellen voor regel 2 NIET mee, met
+    // dezelfde redenering als in `mag_maatgevend_zijn`: ze begrenzen de
+    // uitvoering en niet de draagkracht, en een eis die niet van toepassing is
+    // (geen beugels bij een plaatstrook, geen lassen in deze doorsnede) is geen
+    // ontbrekende toetsing. Ze staan wél in `niet_uitgevoerd`, zodat het
+    // rapport ze kan tonen.
+    let niet_uitgevoerd: Vec<NietUitgevoerdeToets> = checks
+        .iter()
+        .filter(|c| kon_niet(c))
+        .map(|c| NietUitgevoerdeToets {
+            check_id: c.id.clone(),
+            titel: titel_van(c),
+            detaillering: is_detailleringstoets(&c.id) || is_kolomdetailleringstoets(&c.id),
+        })
+        .collect();
+    let status = if checks.iter().any(faalt) {
+        CheckStatus::NotOk
+    } else if niet_uitgevoerd.iter().any(|n| DRAAGKRACHTTOETSEN.contains(&n.check_id.as_str())) {
+        CheckStatus::NotApplicable
+    } else if uc_max <= 1.0 {
+        CheckStatus::Ok
+    } else {
+        CheckStatus::NotOk
+    };
 
     ConcreteBeamCheckResult {
         beam_id: input.beam_id,
@@ -2362,6 +2464,7 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         checks,
         uc_max,
         status,
+        niet_uitgevoerd,
         governing_check_id,
         mn_kappa: Some(diagram),
         interaction_positive,

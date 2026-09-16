@@ -3,6 +3,7 @@ import type { CheckStatus } from "../steel/CheckStatus";
 import type { InteractionPoint } from "./InteractionPoint";
 import type { MnKappaDiagram } from "./MnKappaDiagram";
 import type { NamedCheck } from "../steel/NamedCheck";
+import type { NietUitgevoerdeToets } from "./NietUitgevoerdeToets";
 
 /**
  * Volledig toetsresultaat van één betonnen staaf.
@@ -49,7 +50,24 @@ d_mm: number,
 /**
  * Rekenwaarden waarmee is getoetst.
  */
-f_cd_mpa: number, f_yd_mpa: number, checks: Array<NamedCheck>, uc_max: number, status: CheckStatus, governing_check_id: string, 
+f_cd_mpa: number, f_yd_mpa: number, checks: Array<NamedCheck>, uc_max: number, status: CheckStatus, 
+/**
+ * De toetsen die NIET uitgevoerd konden worden, met de reden.
+ *
+ * Waarom dit veld bestaat (basisaudit ruw 55): `uc_of` geeft een toets met
+ * [`CheckStatus::NotApplicable`] een uc van 0, en de staafstatus volgde
+ * alleen uit `uc_max <= 1`. Een betonbalk zonder beugelafstand kreeg zo de
+ * badge "Ok 0,60" terwijl de dwarskrachttoets van §6.2 helemaal niet was
+ * afgerekend. De reden stond wel in de `notes` van die deeltoets, maar de
+ * staafstatus, de UC op het canvas en de samenvattingstabel in het rapport
+ * zeiden "Ok" — en dát is wat een lezer overneemt.
+ *
+ * Staat hier iets in wat GEEN detailleringseis is, dan is `status`
+ * [`CheckStatus::NotApplicable`] in plaats van `Ok` (zie de aggregatie in
+ * `orchestrator.rs`). `#[serde(default)]`: een antwoord van vóór dit veld
+ * blijft leesbaar.
+ */
+niet_uitgevoerd: Array<NietUitgevoerdeToets>, governing_check_id: string, 
 /**
  * M-κ-diagram bij de normaalkracht van het maatgevende M-N-punt.
  */

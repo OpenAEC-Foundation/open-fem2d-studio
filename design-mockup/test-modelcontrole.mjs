@@ -23,6 +23,7 @@ const {
 } = await import("./src/hooks/useFemStore.ts");
 const { bouwMultiInput } = await import("./src/lib/modelNaarSolverInput.ts");
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
+const { controleerVoorRekenen } = await import("./src/lib/rekenPoort.ts");
 
 let passed = 0, failed = 0;
 const log = (s) => process.stdout.write(s + "\n");
@@ -619,6 +620,109 @@ log("\n[11] Plaatlasten: randadres en positie; staafeinde op een plaatrand");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+log("\n[9] Lasten die stil wegvallen (basisaudit ruw 30)");
+// De if/else-keten van `bouwMultiInput` neemt een lijnlast alleen mee met `q`,
+// een thermische last alleen met `deltaT`, en herkent alleen exact gespelde
+// typen. Een verwijzing naar een staaf, knoop of geval dat niet bestaat gaat
+// er wel in, maar de engine laat hem vallen. In alle gevallen is nul niet te
+// onderscheiden van "niet meegenomen" - en dat is het verschil tussen een lege
+// en een onderbelaste constructie. De MCP-weg mat dit al; de app-openroute
+// niet. Gemeten op master: 5 lasten in het bestand, 2 lijnlasten in de invoer,
+// geen enkele melding.
+{
+  const LIGGER = {
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material: "S235", profile: "HEA 200" }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    plates: [],
+    loadCases: [{ id: 1, name: "G", type: "dead" }],
+  };
+  const met = (loads) => controleerModel({ ...LIGGER, loads })
+    .filter((b) => b.soort === "stilleLast");
+
+  const goed = met([{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -5 }]);
+  check("een gewone lijnlast geeft geen bevinding", goed.length === 0, JSON.stringify(goed));
+
+  const zonderQ = met([{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, qStart: -5, qEnd: -10 }]);
+  check("trapeziumlast zonder `q`: fout met de reden",
+    zonderQ.length === 1 && zonderQ[0].ernst === "fout" && /`q` nodig/.test(zonderQ[0].tekst),
+    JSON.stringify(zonderQ));
+
+  const tikfout = met([{ id: 2, type: "lineload", caseId: 1, beamId: 1, q: -5 }]);
+  check("tikfout in het lasttype: fout die het type noemt",
+    tikfout.length === 1 && /lineload/.test(tikfout[0].tekst), JSON.stringify(tikfout));
+
+  const zonderDeltaT = met([{ id: 3, type: "thermal", caseId: 1, beamId: 1 }]);
+  check("thermische last zonder deltaT: fout",
+    zonderDeltaT.length === 1 && /thermische last/.test(zonderDeltaT[0].tekst),
+    JSON.stringify(zonderDeltaT));
+
+  const geenStaaf = met([{ id: 4, type: "lineLoad", caseId: 1, beamId: 99, q: -5 }]);
+  check("verwijzing naar een staaf die niet bestaat: fout met het nummer",
+    geenStaaf.length === 1 && /staaf 99/.test(geenStaaf[0].tekst), JSON.stringify(geenStaaf));
+
+  const geenGeval = met([{ id: 5, type: "lineLoad", caseId: 7, beamId: 1, q: -5 }]);
+  check("verwijzing naar een belastinggeval dat niet bestaat: fout",
+    geenGeval.length === 1 && /belastinggeval 7/.test(geenGeval[0].tekst),
+    JSON.stringify(geenGeval));
+
+  const geenKnoop = met([{ id: 6, type: "pointForce", caseId: 1, nodeId: 42, fz: -10 }]);
+  check("puntlast op een knoop die niet bestaat: fout",
+    geenKnoop.length === 1 && /knoop 42/.test(geenKnoop[0].tekst), JSON.stringify(geenKnoop));
+
+  // ZONDER de gevallenlijst blijft die ene controle achterwege - oude
+  // aanroepers (het canvas kent de gevallen niet) zien de rest wel.
+  const zonderGevallen = controleerModel({
+    ...LIGGER, loadCases: undefined,
+    loads: [{ id: 5, type: "lineLoad", caseId: 7, beamId: 1, q: -5 }],
+  }).filter((b) => b.soort === "stilleLast");
+  check("zonder `loadCases` blijft de gevalcontrole achterwege",
+    zonderGevallen.length === 0, JSON.stringify(zonderGevallen));
+  const zonderGevallenWelStaaf = controleerModel({
+    ...LIGGER, loadCases: undefined,
+    loads: [{ id: 4, type: "lineLoad", caseId: 1, beamId: 99, q: -5 }],
+  }).filter((b) => b.soort === "stilleLast");
+  check("maar de staafverwijzing wordt dan nog steeds gemeld",
+    zonderGevallenWelStaaf.length === 1, JSON.stringify(zonderGevallenWelStaaf));
+
+  // BLOKKEREND: de rekenpoort van het multi-LC-pad laat dit model niet door.
+  const alleVijf = [
+    { id: 1, type: "lineLoad", caseId: 1, beamId: 1, qStart: -5, qEnd: -10 },
+    { id: 2, type: "lineload", caseId: 1, beamId: 1, q: -5 },
+    { id: 3, type: "lineLoad", caseId: 1, beamId: 99, q: -5 },
+    { id: 4, type: "lineLoad", caseId: 7, beamId: 1, q: -5 },
+    { id: 5, type: "thermal", caseId: 1, beamId: 1 },
+  ];
+  const bevindingen = met(alleVijf);
+  check("alle vijf de gemeten gevallen worden gemeld", bevindingen.length === 5,
+    `${bevindingen.length} bevinding(en)`);
+  check("en ze zijn blokkerend", heeftFouten(controleerModel({ ...LIGGER, loads: alleVijf })));
+  let geweigerd = null;
+  try {
+    controleerVoorRekenen({ ...LIGGER, loads: alleVijf });
+  } catch (e) { geweigerd = e; }
+  check("de rekenpoort weigert het model met de bevindingen in de melding",
+    geweigerd !== null && /Model niet doorgerekend/.test(geweigerd.message)
+      && /Last 1/.test(geweigerd.message),
+    geweigerd?.message?.slice(0, 160) ?? "GEEN WEIGERING");
+  // De meting waar de bevinding op rust: de mapping levert er inderdaad maar
+  // twee, en die twee horen bij staaf 99 en geval 7 - beide onbestaanbaar.
+  const mi = bouwMultiInput({
+    ...LIGGER, loads: alleVijf, selfWeightEnabled: false,
+    scheefstandEnabled: false, scheefstandNoemer: 200, scheefstandRichting: 1,
+  });
+  check("de mapping laat er inderdaad drie van de vijf vallen",
+    mi.loads.length === 2 && (mi.thermalLoads?.length ?? 0) === 0,
+    `${mi.loads.length} lijnlast(en)`);
+  check("een schone ligger gaat gewoon door de poort", (() => {
+    try {
+      controleerVoorRekenen({ ...LIGGER, loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -5 }] });
+      return true;
+    } catch { return false; }
+  })());
+}
+
+// ---------------------------------------------------------------------------
 log("");
 log(`${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);

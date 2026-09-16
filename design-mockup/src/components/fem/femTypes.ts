@@ -1361,22 +1361,45 @@ export const ANALYSETYPE_OMSCHRIJVING: Record<Analysetype, string> = {
 };
 
 /**
+ * Een `analysetype` in het bestand dat deze versie niet kent. Een eigen
+ * fouttype zodat de openroute hem van een JSON-fout kan onderscheiden en de
+ * melding ongewijzigd aan de gebruiker kan tonen.
+ */
+export class AnalysetypeOnbekendFout extends Error {
+  constructor(readonly gelezen: string) {
+    super(
+      `Het bestand noemt analysetype "${gelezen}"; deze versie kent ` +
+        ANALYSETYPEN.map((a) => `"${a}"`).join(", ") +
+        ". Er wordt niet geraden welke van de drie bedoeld is: dat zou een " +
+        "andere berekening opleveren dan er bewaard is, met het etiket van " +
+        "een berekening die niet gedraaid heeft.",
+    );
+    this.name = "AnalysetypeOnbekendFout";
+  }
+}
+
+/**
  * Terugleesbaarheid van het projectbestand: `analysetype` ontbreekt in elk
  * bestand van vóór deze wijziging, en dan telt de oude booleaan.
  * `true` → tweede orde (geometrisch), `false`/ontbrekend → eerste orde.
  *
  * Een ONBEKENDE waarde in het veld (een bestand uit een nieuwere versie, of
- * een tikfout) valt op dezelfde manier terug: raden welke van de drie bedoeld
- * was zou een andere berekening kunnen opleveren dan de gebruiker bewaarde.
+ * een tikfout) wordt GEWEIGERD met `AnalysetypeOnbekendFout`. Tot september
+ * 2026 viel hij hier stil terug op de booleaan, en daarmee meestal op
+ * "2e orde (P-Δ)" — een andere berekening dan er in het bestand stond, terwijl
+ * het rapport en de IFC het aangenomen type als keuze van de gebruiker
+ * vermeldden. Zie basisaudit ruw 28. `deserializeProject` roept deze functie
+ * aan de poort aan, zodat de weigering bij het OPENEN valt en niet halverwege
+ * het laden.
  */
 export function analysetypeUitBestand(
   analysetype: string | undefined,
   nonlinearEnabled: boolean | undefined,
 ): Analysetype {
-  if (
-    analysetype !== undefined &&
-    (ANALYSETYPEN as readonly string[]).includes(analysetype)
-  ) {
+  if (analysetype !== undefined && analysetype !== null && analysetype !== "") {
+    if (!(ANALYSETYPEN as readonly string[]).includes(analysetype)) {
+      throw new AnalysetypeOnbekendFout(analysetype);
+    }
     return analysetype as Analysetype;
   }
   return nonlinearEnabled ? "tweedeOrdeGeometrisch" : "eersteOrde";

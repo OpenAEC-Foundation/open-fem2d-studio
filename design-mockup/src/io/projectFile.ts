@@ -6,6 +6,7 @@
 import type {
   Node, Beam, Support, Plate, Load, LoadCase, StructuralGrid,
 } from "../components/fem/femTypes";
+import { analysetypeUitBestand } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import {
   GEVOLGKLASSEN, type CombinatieSoort, type Gevolgklasse,
@@ -152,27 +153,79 @@ function kenmerkUitBestand(raw: unknown): LoadCombination["standaard"] {
 }
 
 /**
+ * Een projectbestand dat niet gelezen KAN worden zonder te raden. Eigen
+ * fouttype zodat de openroute hem van een JSON-syntaxfout onderscheidt; de
+ * `redenen` staan ook in `message`, zodat de bestaande melding "Kan bestand
+ * niet openen" ze zonder verdere bewerking toont.
+ */
+export class ProjectBestandFout extends Error {
+  constructor(readonly redenen: string[]) {
+    super(redenen.join(" "));
+    this.name = "ProjectBestandFout";
+  }
+}
+
+/**
  * JSON-vorm → LoadCombination[] met Map-factoren (caseId weer numeriek).
  * `undefined` in → `undefined` uit, zodat de aanroeper bij v1-bestanden op
  * de bestaande defaults kan terugvallen.
+ *
+ * TWEE STILLE VERVORMINGEN zijn hier weggehaald (basisaudit ruw 29):
+ *
+ *  - `type: c.type === "sls" ? "sls" : "uls"` maakte van ELKE andere waarde
+ *    een UGT-combinatie. Een tikfout ("als") of een hoofdletterverschil
+ *    ("SLS") verplaatste een combinatie van de bruikbaarheids- naar de
+ *    uiterste grenstoestand, waarna de doorbuigingstoets zijn BGT-combinatie
+ *    kwijt was en de UGT-omhullende er een combinatie bij kreeg.
+ *  - `Number(f)` maakte van een factor met een DECIMALE KOMMA ("1,5") — de
+ *    voor de hand liggende handbewerking in een Nederlands bestand — stil
+ *    `NaN`, dat vervolgens de hele combinatie in gaat.
+ *
+ * Allebei worden ze nu geweigerd met de combinatienaam en het gelezen
+ * kenmerk erbij. Niets wordt hersteld of geraden: "1,5" zou ook 15 kunnen
+ * zijn, en welke grenstoestand "als" was is niet uit te maken.
  */
 export function combinationsFromFile(
   raw: ProjectFileCombination[] | undefined,
 ): LoadCombination[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  return raw.map((c) => {
+  const redenen: string[] = [];
+  const uit = raw.map((c, i) => {
     const standaard = kenmerkUitBestand(c.standaard);
+    const naam = `combinatie ${c.name ?? `#${i + 1}`} (id ${c.id})`;
+    if (c.type !== "uls" && c.type !== "sls") {
+      redenen.push(
+        `In ${naam} staat type ${JSON.stringify(c.type)}; alleen "uls" ` +
+          `(uiterste grenstoestand) en "sls" (bruikbaarheid) bestaan. Er wordt ` +
+          "niet geraden: het verschil bepaalt of de combinatie in de " +
+          "sterktetoets of in de doorbuigingstoets terechtkomt.",
+      );
+    }
+    const factors = new Map<number, number>();
+    for (const [caseId, f] of Object.entries(c.factors ?? {})) {
+      const getal = typeof f === "number" ? f : Number(f);
+      if (!Number.isFinite(getal)) {
+        redenen.push(
+          `In ${naam} is de factor van belastinggeval ${caseId} ` +
+            `${JSON.stringify(f)}; dat is geen getal. Een decimale KOMMA hoort ` +
+            "een punt te zijn (1.5, niet 1,5); anders zou er met NaN gerekend " +
+            "worden en zou de hele combinatie leeg uitkomen.",
+        );
+        continue;
+      }
+      factors.set(Number(caseId), getal);
+    }
     return {
       id: c.id,
       name: c.name,
-      type: c.type === "sls" ? "sls" : "uls",
+      type: (c.type === "sls" ? "sls" : "uls") as LoadCombination["type"],
       formula: c.formula ?? "",
-      factors: new Map(
-        Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)]),
-      ),
+      factors,
       ...(standaard ? { standaard } : {}),
     };
   });
+  if (redenen.length > 0) throw new ProjectBestandFout(redenen);
+  return uit;
 }
 
 export interface ProjectFile {
@@ -304,6 +357,49 @@ export function serializeProject(state: Omit<ProjectFile, "format" | "version" |
   return JSON.stringify(file, null, 2);
 }
 
+/**
+ * De lijsten die ELK projectbestand draagt. Ontbreekt er een, dan is het
+ * bestand niet leesbaar: `pasProjectToe` zet dan `undefined` in de store en de
+ * app valt pas veel later om, op een plek die niets meer met het bestand te
+ * maken heeft ("Cannot read properties of undefined"). Tot september 2026
+ * gebeurde dat zonder enige melding bij het openen (basisaudit ruw 27).
+ *
+ * Ze zijn alle zes al sinds v1 verplicht: geen van de 32 bestanden in de repo
+ * mist er een. Een lege lijst is gewoon goed — het gaat om het VELD.
+ */
+const VERPLICHTE_LIJSTEN = [
+  "nodes", "beams", "supports", "plates", "loads", "loadCases",
+] as const;
+
+/**
+ * Alle sleutels die deze versie op modelniveau van een projectbestand kent.
+ * Wat hier niet in staat, overleeft een rondje openen-en-opslaan niet: de
+ * opslaroute (`App.tsx`) bouwt een vaste veldlijst op. `toelichting` — de
+ * documentatie in de referentiebestanden — is daar het gemeten voorbeeld van.
+ */
+const BEKENDE_TOPVELDEN: readonly string[] = [
+  "format", "version", "savedAt",
+  ...VERPLICHTE_LIJSTEN,
+  "activeLoadCaseId", "selfWeightEnabled", "nonlinearEnabled", "analysetype",
+  "betonSegmentLengteMm", "combinations", "idTellers",
+  "combinatiesVervangenBijOpenen", "structuralGrid",
+  "scheefstandEnabled", "scheefstandNoemer", "scheefstandRichting",
+  "scheefstandBron", "scheefstandHoogteM", "scheefstandAantalElementen",
+  "eigenDoorsneden", "eigenCltOpbouwen", "projectInfo", "windInstellingen",
+  "rapport",
+];
+
+/**
+ * De top-level sleutels die deze versie NIET kent, in leesvolgorde. Niet
+ * blokkerend — een onbekend veld is meestal documentatie of een veld uit een
+ * latere versie — maar wel te melden, want bij het volgende opslaan is het weg.
+ */
+export function onbekendeTopVelden(parsed: unknown): string[] {
+  if (parsed === null || typeof parsed !== "object") return [];
+  return Object.keys(parsed as Record<string, unknown>)
+    .filter((k) => !BEKENDE_TOPVELDEN.includes(k));
+}
+
 export function deserializeProject(text: string): ProjectFile {
   const parsed = JSON.parse(text);
   if (parsed.format !== "open-fem2d-studio-v2") {
@@ -315,6 +411,29 @@ export function deserializeProject(text: string): ProjectFile {
   if (parsed.version > PROJECT_FORMAT_VERSION) {
     throw new Error(`Bestand is opgeslagen met nieuwere versie (${parsed.version}) — werk je app bij`);
   }
+  // Structuur. Hier stond `return parsed as ProjectFile` en verder niets: de
+  // drie poorten hierboven keken alleen naar de kaft van het bestand.
+  const redenen: string[] = [];
+  for (const veld of VERPLICHTE_LIJSTEN) {
+    if (!Array.isArray(parsed[veld])) {
+      redenen.push(
+        `Het bestand mist de lijst \`${veld}\`` +
+          (parsed[veld] === undefined ? "" : ` (er staat ${JSON.stringify(parsed[veld])})`) +
+          ". Elk projectbestand draagt nodes, beams, supports, plates, loads en " +
+          "loadCases; een lege lijst mag, het veld weglaten niet.",
+      );
+    }
+  }
+  if (redenen.length > 0) throw new ProjectBestandFout(redenen);
+  // Het analysetype aan de poort (basisaudit ruw 28): een waarde die deze
+  // versie niet kent viel stil terug op de booleaan — meestal op tweede orde.
+  // De weigering hoort hier te vallen, bij het openen, en niet halverwege het
+  // laden in de store.
+  analysetypeUitBestand(parsed.analysetype, parsed.nonlinearEnabled);
+  // Combinatietypen en factoren (basisaudit ruw 29): `combinationsFromFile`
+  // weigert een onbekend type en een niet-eindige factor. Hier alvast, zodat
+  // een bestand met een tikfout niet half geladen op het scherm komt.
+  combinationsFromFile(parsed.combinations);
   return parsed as ProjectFile;
 }
 

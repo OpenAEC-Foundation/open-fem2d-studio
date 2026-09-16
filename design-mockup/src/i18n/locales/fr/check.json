@@ -5,6 +5,7 @@
   "statusOk": "OK",
   "statusNotOk": "Non OK",
   "statusNa": "S. o.",
+  "nietUitgevoerd": "Non effectué",
   "total": "Barres",
   "run": "Lancer la vérification",
   "running": "Vérification en cours…",

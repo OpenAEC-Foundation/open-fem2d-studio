@@ -726,6 +726,41 @@ fn schema_releases() -> Value {
     })
 }
 
+/// Verende aansluiting per staafeinde (`BeamEindVeren`). De SPIEGEL van
+/// `VEER_VELDEN` in de veldpoort van de sidecar: nul wordt daar geweigerd,
+/// want een veer met stijfheid nul is een scharnier en hoort in `releases`.
+fn schema_veren() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Verende aansluiting per staafeinde: stijfheid in kN/mm (startTx/startTz/endTx/endTz) of kNm/rad (startRy/endRy). Ontbreekt het object, dan is de staaf star verbonden (op de scharnieren van `releases` na). Laat een veld WEG als er geen veer is; nul wordt geweigerd omdat dat een scharnier is.",
+        "properties": {
+            "startTx": { "type": "number", "exclusiveMinimum": 0 },
+            "startTz": { "type": "number", "exclusiveMinimum": 0 },
+            "startRy": { "type": "number", "exclusiveMinimum": 0 },
+            "endTx":   { "type": "number", "exclusiveMinimum": 0 },
+            "endTz":   { "type": "number", "exclusiveMinimum": 0 },
+            "endRy":   { "type": "number", "exclusiveMinimum": 0 }
+        }
+    })
+}
+
+/// Staaf op bedding (`BeamBedding`, Winkler). Beide getallen zijn verplicht:
+/// de adapter rekent de lijnstijfheid uit k·b, en met een nul valt de bedding
+/// stil weg.
+fn schema_bedding() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["k", "b"],
+        "description": "Staaf op bedding (Winkler): beddingsconstante k in kN/m³ en contactbreedte b in mm. De adapter rekent de lijnstijfheid k·b en knipt de staaf op de karakteristieke lengte (4EI/(k·b))^¼ op. Ontbreekt het object, dan ligt de staaf niet op een bedding.",
+        "properties": {
+            "k": { "type": "number", "exclusiveMinimum": 0, "description": "Beddingsconstante in kN/m³ (typisch 10 000 - 100 000 voor grond)." },
+            "b": { "type": "number", "exclusiveMinimum": 0, "description": "Contactbreedte in mm: de breedte van de staaf op de bedding." }
+        }
+    })
+}
+
 /// Het schema van `checkConfig`: de SPIEGEL van `CHECKCONFIG_VELDEN` in
 /// `design-mockup/src/mcp/valideerModel.ts`, de veldpoort van de sidecar. Een
 /// test hieronder leest die lijst uit het bronbestand en eist dat beide
@@ -778,7 +813,8 @@ fn schema_checkconfig() -> Value {
             "betonStaaltak": crate::concrete_tools::schema_steel_branch(),
             "betonKolom": crate::concrete_tools::schema_kolom(),
             "spanningSigmaZ": { "type": "number",
-                "description": "Dwarsspanning σ_z in N/mm² voor de vergelijkspanning van een vrij materiaal; weglaten = 0 (een staafelement kent alleen N, V en M)." }
+                "description": "Dwarsspanning σ_z in N/mm² voor de vergelijkspanning van een vrij materiaal; weglaten = 0 (een staafelement kent alleen N, V en M)." },
+            "betonZones": crate::concrete_tools::schema_wapeningszones()
         }
     })
 }
@@ -856,7 +892,9 @@ fn schema_beams() -> Value {
                 "checkConfig": schema_checkconfig(),
                 "loadRole": { "type": "string",
                     "enum": ["gevelLinks", "gevelRechts", "dakPlat", "dakHellend", "overstek", "vloer", "binnen"],
-                    "description": "Constructieve rol, alleen gebruikt door de belastinggeneratoren." }
+                    "description": "Constructieve rol, alleen gebruikt door de belastinggeneratoren." },
+                "veren": schema_veren(),
+                "bedding": schema_bedding()
             }
         }
     })

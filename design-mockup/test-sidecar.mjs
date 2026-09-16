@@ -442,7 +442,85 @@ if (existsSync(HOUTEN_RAAMWERK)) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[6] Bundel — dezelfde lus, dezelfde getallen");
+log("\n[5b] Het ANALYSETYPE uit het projectbestand (basisaudit 3.2 punt 2)");
+// De MCP-weg las alleen de oude booleaan `nonlinearEnabled`. Een bestand met
+// "2e orde + fysisch" - de keuze van de constructeur - werd langs deze weg dus
+// stil als GEOMETRISCHE tweede orde gerekend: zonder de betonstijfheidslus van
+// EN 1992-1-1 5.8.6, en met "tweedeOrdeGeometrisch" als etiket in het antwoord.
+// Een andere berekening met een geruststellend label.
+{
+  const bestand = (extra) => JSON.stringify({
+    format: "open-fem2d-studio-v2", version: 2, savedAt: "2026-09-16T00:00:00Z",
+    nodes: PORTAAL.nodes, beams: PORTAAL.beams, supports: PORTAAL.supports,
+    plates: [], loads: PORTAAL.loads, loadCases: PORTAAL.loadCases,
+    activeLoadCaseId: 1, selfWeightEnabled: false,
+    combinations: COMBI_12G_15Q,
+    ...extra,
+  });
+  const solve = async (extra) => (await roepAan([
+    verzoek(1, "solve", { project: { path: "proef.ifcfem2d", inhoud: bestand(extra) } }),
+  ])).antwoorden[0];
+
+  const eerste = await solve({ nonlinearEnabled: false, analysetype: "eersteOrde" });
+  ok("eersteOrde: het antwoord noemt eersteOrde",
+    eerste.ok === true && eerste.result?.stability?.analysis_type === "eersteOrde",
+    JSON.stringify(eerste.result?.stability ?? eerste.error));
+
+  const tweede = await solve({ nonlinearEnabled: true, analysetype: "tweedeOrdeGeometrisch" });
+  ok("tweedeOrdeGeometrisch: het antwoord noemt tweedeOrdeGeometrisch",
+    tweede.ok === true && tweede.result?.stability?.analysis_type === "tweedeOrdeGeometrisch",
+    tweede.result?.stability?.analysis_type ?? tweede.error?.melding);
+
+  // Het VELD wint van de booleaan: een bestand dat `nonlinearEnabled: true`
+  // draagt (de terugleesbaarheid voor oudere versies) maar analysetype
+  // "eersteOrde" zegt, hoort eerste orde te rekenen.
+  const veldWint = await solve({ nonlinearEnabled: true, analysetype: "eersteOrde" });
+  ok("het veld wint van de oude booleaan",
+    veldWint.ok === true && veldWint.result?.stability?.analysis_type === "eersteOrde",
+    veldWint.result?.stability?.analysis_type ?? veldWint.error?.melding);
+
+  // Zonder het veld telt de booleaan, precies zoals de app hem leest.
+  const oudBestand = await solve({ nonlinearEnabled: true });
+  ok("een bestand van voor het veld valt op de booleaan terug",
+    oudBestand.ok === true
+      && oudBestand.result?.stability?.analysis_type === "tweedeOrdeGeometrisch",
+    oudBestand.result?.stability?.analysis_type ?? oudBestand.error?.melding);
+
+  // FYSISCH wordt geweigerd: de secans-EI per segment komt uit de betonkern en
+  // die lus draait in de app. Stil als geometrische tweede orde rekenen zou een
+  // andere krachtsverdeling opleveren dan het bestand bewaart.
+  const fysisch = await solve({ nonlinearEnabled: true, analysetype: "tweedeOrdeFysisch" });
+  ok("tweedeOrdeFysisch wordt geweigerd, niet stil geometrisch gerekend",
+    fysisch.ok === false, JSON.stringify(fysisch.result?.stability ?? fysisch.error?.code));
+  ok("de weigering noemt het analysetype en de reden",
+    /tweedeOrdeFysisch/.test(fysisch.error?.melding ?? "")
+      && /5\.8\.6/.test(fysisch.error?.melding ?? ""),
+    fysisch.error?.melding ?? "");
+
+  // Een analysetype dat deze versie niet kent wordt aan de bestandspoort
+  // geweigerd - niet geraden.
+  const onbekend = await solve({ nonlinearEnabled: true, analysetype: "derdeOrde" });
+  ok("een onbekend analysetype wordt geweigerd", onbekend.ok === false,
+    onbekend.error?.code ?? "TOCH GEREKEND");
+  ok("de weigering noemt de gelezen waarde",
+    /derdeOrde/.test(JSON.stringify(onbekend.error ?? {})),
+    JSON.stringify(onbekend.error?.melding ?? onbekend.error));
+
+  // `load_project` geeft het analysetype terug, zodat een client kan zien welke
+  // berekening bij dit bestand hoort zonder te hoeven solven.
+  const geladen = (await roepAan([
+    verzoek(1, "load_project", {
+      path: "proef.ifcfem2d",
+      inhoud: bestand({ nonlinearEnabled: true, analysetype: "tweedeOrdeGeometrisch" }),
+    }),
+  ])).antwoorden[0];
+  ok("load_project meldt het analysetype uit het bestand",
+    geladen.ok === true && geladen.result?.analysetype === "tweedeOrdeGeometrisch",
+    String(geladen.result?.analysetype));
+}
+
+// ---------------------------------------------------------------------------
+log("[6] Bundel — dezelfde lus, dezelfde getallen");
 if (existsSync(BUNDEL)) {
   const bron = await roepAan([
     verzoek(1, "solve", { model: PORTAAL, combinations: COMBI_12G_15Q, detail: "stations" }),

@@ -288,6 +288,7 @@ fn kolomresultaat(kolom: &ConcreteColumnCheckResponse) -> ConcreteBeamCheckResul
         status: CheckStatus::NotOk,
         // De poort is hier de maatgevende toets, zodat de afleiding óók via het
         // gewone per-staaf-blok in beeld komt.
+        niet_uitgevoerd: Vec::new(),
         governing_check_id: concrete_check::SLANKHEIDSGRENS_ID.into(),
         mn_kappa: None,
         interaction_positive: Vec::new(),
@@ -348,6 +349,7 @@ fn liggerresultaat() -> ConcreteBeamCheckResult {
         }],
         uc_max: 0.63,
         status: CheckStatus::Ok,
+        niet_uitgevoerd: Vec::new(),
         governing_check_id: "6.1_bending_stress_block".into(),
         mn_kappa: None,
         interaction_positive: Vec::new(),

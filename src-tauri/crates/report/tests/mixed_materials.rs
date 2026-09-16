@@ -132,6 +132,7 @@ fn concrete_beam(beam_id: u32, uc: f64) -> ConcreteBeamCheckResult {
         checks: vec![dummy_check("6.1_mn_kappa", "Moment-normaalkracht (M-N-κ)", "art. 6.1 en 3.1.7(1) (3.17)", uc)],
         uc_max: uc,
         status: CheckStatus::Ok,
+        niet_uitgevoerd: Vec::new(),
         governing_check_id: "6.1_mn_kappa".into(),
         mn_kappa: None,
         interaction_positive: vec![],

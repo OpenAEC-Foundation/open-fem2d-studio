@@ -112,10 +112,36 @@ const BEAM_VELDEN = [
   // `profile` is dan het beginprofiel. Zelfde spiegel in `schema_beams`
   // (openaec-mcp-server/src/fem_tools.rs), bewaakt door een Rust-test.
   "profileEnd",
+  // Verende aansluiting (`BeamEindVeren`) en staaf op bedding (`BeamBedding`).
+  // Allebei schrijft de app ze in het projectbestand en rekent de kern ermee;
+  // ze stonden hier niet, dus een geldig model met een verende aansluiting of
+  // een staaf op bedding — de referentie R26 — werd langs de MCP-weg en de
+  // toetsbrug geweigerd met "onbekend veld". Dat is de omgekeerde fout van
+  // waar deze lijst voor is: niet een tikfout tegenhouden, maar een geldig
+  // model weigeren, waarna de drie wegen verschillende antwoorden geven.
+  "veren", "bedding",
 ] as const;
 
 const RELEASE_VELDEN = [
   "startTx", "startTz", "startRy", "endTx", "endTz", "endRy",
+] as const;
+
+/** De zes veerstijfheden van `BeamEindVeren` — zelfde namen als `releases`. */
+const VEER_VELDEN = [
+  "startTx", "startTz", "startRy", "endTx", "endTz", "endRy",
+] as const;
+
+/** Beddingsconstante k (kN/m³) en contactbreedte b (mm) — `BeamBedding`. */
+const BEDDING_VELDEN = ["k", "b"] as const;
+
+/** De velden van één langswapeningszone (`LongitudinalZone`). */
+const ZONE_LANGS_VELDEN = [
+  "side", "row", "x_start_mm", "x_end_mm", "bar_shape", "casting_position",
+] as const;
+
+/** De velden van één beugelzone (`StirrupZone`). */
+const ZONE_BEUGEL_VELDEN = [
+  "x_start_mm", "x_end_mm", "spacing_mm", "legs", "diameter_mm",
 ] as const;
 
 // De betonvelden stonden hier NIET, terwijl `BeamCheckConfig` ze al kende.
@@ -130,6 +156,10 @@ const CHECKCONFIG_VELDEN = [
   "deflectionAddLimitNumerator", "preCamber_mm", "serviceClass", "loadDuration",
   "betonKorf", "betonMilieuklasse", "betonConstructieklasse", "betonStaalsoort",
   "betonStroken", "betonStaaltak", "betonKolom", "spanningSigmaZ",
+  // De wapeningszones per stuk (`ReinforcementZones`, §9.2.1.3 en §9.2.2). De
+  // korfeditor schrijft ze en `betonCheckBuilder` leest ze; ze stonden hier
+  // niet, dus elke betonstaaf met zones werd langs de MCP-weg geweigerd.
+  "betonZones",
   // De kipsteunafstand van hout (EN 1995-1-1 art. 6.3.3). De UI schrijft hem
   // weg en `timberCheckBuilder` leest hem, maar hij stond hier niet: elk
   // houtmodel met een kipsteunafstand werd langs de MCP-weg geweigerd.
@@ -359,6 +389,136 @@ function keurGetal(
   }
   if (positief && waarde <= 0) {
     fouten.push(`${pad}: moet groter dan nul zijn, maar is ${waarde}.`);
+  }
+}
+
+/**
+ * Verende aansluiting (`BeamEindVeren`): per vrijheidsgraad een stijfheid in
+ * kN/mm (translatie) of kNm/rad (rotatie).
+ *
+ * NUL WORDT GEWEIGERD en niet als "geen veer" gelezen: een veer met stijfheid
+ * nul is een scharnier, en dat hoort in `releases` te staan. Zou de poort hem
+ * doorlaten, dan gaf hetzelfde bestand langs de ene weg een scharnier en langs
+ * de andere een starre aansluiting. Negatief bestaat niet.
+ */
+function keurVeren(waarde: unknown, pad: string, fouten: string[]): void {
+  if (waarde === undefined) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object met veerstijfheden per staafeinde zijn.`);
+    return;
+  }
+  keurVelden(waarde, VEER_VELDEN, pad, fouten);
+  for (const veld of VEER_VELDEN) {
+    const v = waarde[veld];
+    if (v === undefined || v === null) continue;
+    if (!isGetal(v) || v <= 0) {
+      fouten.push(
+        `${pad}.${veld}: moet een getal > 0 zijn (kN/mm, of kNm/rad bij een ` +
+          `rotatieveer), maar is ${JSON.stringify(v)}. Laat het veld WEG als er ` +
+          "geen veer is; een veer met stijfheid nul is een scharnier en hoort in `releases`.",
+      );
+    }
+  }
+}
+
+/**
+ * Staaf op bedding (`BeamBedding`, Winkler). De adapter rekent uit k·b de
+ * lijnstijfheid; allebei de getallen moeten dus groter dan nul zijn. Is een
+ * van beide nul, dan laat `bouwMultiInput` de bedding STIL weg — dat is
+ * precies het verschil dat deze poort hoort te melden.
+ */
+function keurBedding(waarde: unknown, pad: string, fouten: string[]): void {
+  if (waarde === undefined) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object met \`k\` (kN/m³) en \`b\` (mm) zijn.`);
+    return;
+  }
+  keurVelden(waarde, BEDDING_VELDEN, pad, fouten);
+  for (const veld of BEDDING_VELDEN) {
+    if (waarde[veld] === undefined) {
+      fouten.push(
+        `${pad}.${veld} ontbreekt; een bedding heeft zowel de beddingsconstante ` +
+          "`k` (kN/m³) als de contactbreedte `b` (mm) nodig.",
+      );
+      continue;
+    }
+    keurGetal(waarde[veld], `${pad}.${veld}`, fouten, { positief: true });
+  }
+}
+
+/**
+ * Wapeningszones per stuk (`ReinforcementZones`, §9.2.1.3 en §9.2.2).
+ *
+ * Een ONTBREKENDE lijst is hier geen fout maar "leeg": dat is de gedocumenteerde
+ * betekenis in de kern (`schema_wapeningszones`, "beide leeg = de korf uit
+ * `cage` geldt over de hele staaf") en de lezing van `betonCheckBuilder`. Wat
+ * er WEL staat moet kloppen — een zone die niet vóór zijn einde begint, of een
+ * onbekende zijde, zou anders stil een ander wapeningsplan opleveren.
+ */
+function keurZones(waarde: unknown, pad: string, fouten: string[]): void {
+  if (waarde === undefined) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object met \`longitudinal\` en \`stirrups\` zijn.`);
+    return;
+  }
+  keurVelden(waarde, ["longitudinal", "stirrups"] as const, pad, fouten);
+  for (const lijst of ["longitudinal", "stirrups"] as const) {
+    const zones = waarde[lijst];
+    if (zones === undefined) continue;
+    if (!Array.isArray(zones)) {
+      fouten.push(`${pad}.${lijst}: moet een array zijn.`);
+      continue;
+    }
+    zones.forEach((z, i) => {
+      const zpad = `${pad}.${lijst}[${i}]`;
+      if (!isObject(z)) return void fouten.push(`${zpad}: moet een object zijn.`);
+      keurVelden(
+        z,
+        lijst === "longitudinal" ? ZONE_LANGS_VELDEN : ZONE_BEUGEL_VELDEN,
+        zpad,
+        fouten,
+      );
+      for (const veld of ["x_start_mm", "x_end_mm"] as const) {
+        if (z[veld] === undefined) {
+          fouten.push(`${zpad}.${veld} ontbreekt; een zone heeft een begin en een einde.`);
+        } else {
+          keurGetal(z[veld], `${zpad}.${veld}`, fouten);
+        }
+      }
+      if (isGetal(z.x_start_mm) && isGetal(z.x_end_mm) && !(z.x_start_mm < z.x_end_mm)) {
+        fouten.push(
+          `${zpad}: de zone begint niet vóór zijn einde (x_start_mm ${z.x_start_mm}, ` +
+            `x_end_mm ${z.x_end_mm}). Een lege of omgekeerde zone is geen wapening.`,
+        );
+      }
+      if (lijst === "longitudinal") {
+        keurEnum(z.side, ["Bottom", "Top"] as const, `${zpad}.side`, fouten);
+        keurEnum(z.bar_shape, ["Recht", "AndersDanRecht"] as const, `${zpad}.bar_shape`, fouten);
+        keurEnum(
+          z.casting_position,
+          ["Onderzijde", "Bovenzijde", "Glijbekisting", "GoedAangetoond"] as const,
+          `${zpad}.casting_position`, fouten,
+        );
+        const rij = z.row;
+        if (rij === undefined) {
+          fouten.push(`${zpad}.row ontbreekt; een langswapeningszone heeft aantal en diameter nodig.`);
+        } else if (!isObject(rij)) {
+          fouten.push(`${zpad}.row: moet een object met \`count\` en \`diameter_mm\` zijn.`);
+        } else {
+          keurVelden(rij, ["count", "diameter_mm"] as const, `${zpad}.row`, fouten);
+          keurGetal(rij.count, `${zpad}.row.count`, fouten, { positief: true });
+          keurGetal(rij.diameter_mm, `${zpad}.row.diameter_mm`, fouten, { positief: true });
+        }
+      } else {
+        for (const veld of ["spacing_mm", "legs", "diameter_mm"] as const) {
+          if (z[veld] === undefined) {
+            fouten.push(`${zpad}.${veld} ontbreekt; een beugelzone heeft afstand, benen en diameter nodig.`);
+          } else {
+            keurGetal(z[veld], `${zpad}.${veld}`, fouten, { positief: true });
+          }
+        }
+      }
+    });
   }
 }
 
@@ -599,6 +759,7 @@ export function keurCheckConfig(waarde: unknown, cpad: string): string[] {
   keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
   keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
   keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
+  keurZones(cc.betonZones, `${cpad}.betonZones`, fouten);
   keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
   return fouten;
 }
@@ -689,6 +850,8 @@ export function controleerVelden(rauw: unknown): string[] {
         }
       }
     }
+    keurVeren(b.veren, `${pad}.veren`, fouten);
+    keurBedding(b.bedding, `${pad}.bedding`, fouten);
     if (b.checkConfig !== undefined) {
       fouten.push(...keurCheckConfig(b.checkConfig, `${pad}.checkConfig`));
     }

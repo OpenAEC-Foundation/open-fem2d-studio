@@ -1209,6 +1209,80 @@ function lastSignatuur(l: Omit<Load, "id">): string {
 }
 
 /**
+ * De GEOMETRISCHE identiteit van het aangrijpingspunt van een klembordlast.
+ *
+ * Waarom dit bestaat (basisaudit ruw 31): id's worden uitgedeeld als
+ * `Math.max(bestaande) + 1`. Verwijder de staaf met het hoogste nummer en
+ * teken een nieuwe, dan krijgt die hetzelfde nummer. Een last die op het
+ * klembord staat voor de OUDE staaf 6 landde daarna zonder één woord op de
+ * NIEUWE staaf 6 — in de meting een q van −15 en −10 kN/m van een betonbalk op
+ * een stalen staaf, geteld als "geplakt", met "verweesd = 0".
+ *
+ * De vingerafdruk is de plaats: de twee eindknopen van de staaf, de
+ * coördinaten van de knoop, of de hoeken van de plaat. Dat is precies wat een
+ * gebruiker "dezelfde staaf" noemt. Verschuift de staaf tussen kopiëren en
+ * plakken, dan is het óók een ander aangrijpingspunt en hoort de last niet
+ * blind mee te verhuizen.
+ */
+export interface Lastherkomst {
+  /** "staaf" | "knoop" | "plaat" — waar de last aan hing. */
+  soort: "staaf" | "knoop" | "plaat";
+  /** Het id ten tijde van het kopiëren; alleen voor de melding. */
+  id: number;
+  /** De coördinaten die de plek vastleggen, afgerond op 1/1000 mm. */
+  punten: number[];
+}
+
+/** Een last op het canvasklembord: de last zelf plus zijn herkomst. */
+export type KlembordLast = Omit<Load, "id"> & { herkomst?: Lastherkomst };
+
+/** Afronden op 1/1000 mm: de tekentolerantie is 1 mm, dit is ruim daaronder. */
+const rond = (v: number) => Math.round(v * 1000) / 1000;
+
+/** De vingerafdruk van het aangrijpingspunt van `last` in `model`, of `undefined`. */
+export function lastHerkomst(
+  last: Pick<Load, "beamId" | "nodeId" | "plateId">,
+  model: Pick<Snapshot, "nodes" | "beams" | "plates">,
+): Lastherkomst | undefined {
+  const knoop = (id: number) => model.nodes.find((n) => n.id === id);
+  if (last.beamId !== undefined) {
+    const b = model.beams.find((x) => x.id === last.beamId);
+    const a = b && knoop(b.from);
+    const c = b && knoop(b.to);
+    if (!a || !c) return undefined;
+    return { soort: "staaf", id: last.beamId, punten: [a.x, a.z, c.x, c.z].map(rond) };
+  }
+  if (last.nodeId !== undefined) {
+    const n = knoop(last.nodeId);
+    if (!n) return undefined;
+    return { soort: "knoop", id: last.nodeId, punten: [n.x, n.z].map(rond) };
+  }
+  if (last.plateId !== undefined) {
+    const p = model.plates.find((x) => x.id === last.plateId);
+    if (!p) return undefined;
+    const hoeken = p.nodeIds.map(knoop);
+    if (hoeken.some((h) => h === undefined)) return undefined;
+    return {
+      soort: "plaat", id: last.plateId,
+      punten: (hoeken as { x: number; z: number }[]).flatMap((h) => [rond(h.x), rond(h.z)]),
+    };
+  }
+  return undefined;
+}
+
+/** Ligt het aangrijpingspunt nog op dezelfde plek als bij het kopiëren? */
+function herkomstKlopt(
+  herkomst: Lastherkomst,
+  last: Pick<Load, "beamId" | "nodeId" | "plateId">,
+  model: Pick<Snapshot, "nodes" | "beams" | "plates">,
+): boolean {
+  const nu = lastHerkomst(last, model);
+  if (!nu || nu.soort !== herkomst.soort) return false;
+  if (nu.punten.length !== herkomst.punten.length) return false;
+  return nu.punten.every((v, i) => v === herkomst.punten[i]);
+}
+
+/**
  * Neem de geselecteerde lasten mee naar het klembord: de volledige lasten
  * ZONDER id (die wordt bij het plakken opnieuw uitgedeeld) en zonder
  * generatorherkomst.
@@ -1225,14 +1299,21 @@ function lastSignatuur(l: Omit<Load, "id">): string {
  */
 export function kopieerLastenNaarKlembord(
   loads: Load[], ids: number[],
-): Omit<Load, "id">[] {
+  /**
+   * Het model waaruit gekopieerd wordt. OPTIONEEL zodat bestaande aanroepers
+   * blijven werken; zonder dit argument draagt de klembordlast geen herkomst
+   * en gedraagt het plakken zich als voorheen.
+   */
+  model?: Pick<Snapshot, "nodes" | "beams" | "plates">,
+): KlembordLast[] {
   const gewild = new Set(ids);
   return loads
     .filter(l => gewild.has(l.id))
     .map(l => {
       const { id: _id, gegenereerdDoor: _bron, ...rest } = l;
       void _id; void _bron;
-      return rest as Omit<Load, "id">;
+      const herkomst = model ? lastHerkomst(l, model) : undefined;
+      return { ...rest, ...(herkomst ? { herkomst } : {}) } as KlembordLast;
     });
 }
 
@@ -1245,8 +1326,13 @@ export function kopieerLastenNaarKlembord(
  *    (zelfde soort, zelfde aangrijpingspunt, zelfde waarden). Zo verdubbelt
  *    een tweede Ctrl+V in hetzelfde geval de belasting niet stilzwijgend;
  *  - VERWEESD     — de staaf, knoop of plaat waar de last aan hing bestaat
- *    niet meer (tussen kopiëren en plakken verwijderd). Zo'n last plakken zou
- *    een last opleveren die nergens aangrijpt.
+ *    niet meer (tussen kopiëren en plakken verwijderd), OF hij bestaat wel
+ *    maar het is een ANDER onderdeel met hetzelfde nummer. Dat laatste is geen
+ *    gezochte randgeval: id's lopen als `Math.max + 1`, dus het nummer van een
+ *    verwijderde staaf wordt aan de eerstvolgende nieuwe staaf gegeven en de
+ *    klembordlast landde daar stilzwijgend op (basisaudit ruw 31). De
+ *    klembordlast draagt daarom de PLAATS van zijn aangrijpingspunt mee (zie
+ *    `lastHerkomst`); klopt die niet meer, dan wordt de last niet geplakt.
  *
  * Nieuwe id's lopen door op het hoogste bestaande id; de bestaande lasten
  * blijven ongemoeid. De aanroepende mutatie pusht het resultaat als één
@@ -1254,9 +1340,17 @@ export function kopieerLastenNaarKlembord(
  */
 export function computeLastenPlakken(
   cur: Pick<Snapshot, "loads" | "beams" | "nodes" | "plates">,
-  klembord: Omit<Load, "id">[],
+  klembord: KlembordLast[],
   doelCaseId: number,
-): { loads: Load[]; geplakt: number; overgeslagen: number; verweesd: number } {
+): {
+  loads: Load[]; geplakt: number; overgeslagen: number; verweesd: number;
+  /**
+   * Hoeveel van de verweesde lasten een onderdeel met hetzelfde nummer VONDEN
+   * dat op een andere plaats ligt. Aparte telling, want de melding luidt
+   * anders: niet "bestaat niet meer" maar "is niet meer dezelfde".
+   */
+  verplaatst: number;
+} {
   const beamIds = new Set(cur.beams.map(b => b.id));
   const nodeIds = new Set(cur.nodes.map(n => n.id));
   const plateIds = new Set(cur.plates.map(p => p.id));
@@ -1269,7 +1363,7 @@ export function computeLastenPlakken(
   let volgendId = cur.loads.length === 0
     ? 1 : Math.max(...cur.loads.map(l => l.id)) + 1;
   const nieuw: Load[] = [];
-  let overgeslagen = 0, verweesd = 0;
+  let overgeslagen = 0, verweesd = 0, verplaatst = 0;
 
   for (const bron of klembord) {
     const doelBestaat =
@@ -1278,7 +1372,15 @@ export function computeLastenPlakken(
       bron.plateId !== undefined ? plateIds.has(bron.plateId) :
       false;
     if (!doelBestaat) { verweesd++; continue; }
-    const kandidaat: Omit<Load, "id"> = { ...bron, caseId: doelCaseId };
+    // Het nummer bestaat — maar is het nog hetzelfde onderdeel? Draagt de
+    // klembordlast een herkomst (elke kopie sinds september 2026), dan moet de
+    // plaats kloppen. Zonder herkomst blijft het gedrag als voorheen, zodat
+    // een oude aanroeper niet stil anders gaat werken.
+    const { herkomst, ...zonderHerkomst } = bron;
+    if (herkomst && !herkomstKlopt(herkomst, bron, cur)) {
+      verweesd++; verplaatst++; continue;
+    }
+    const kandidaat: Omit<Load, "id"> = { ...zonderHerkomst, caseId: doelCaseId };
     const sig = lastSignatuur(kandidaat);
     if (aanwezig.has(sig)) { overgeslagen++; continue; }
     aanwezig.add(sig);
@@ -1290,6 +1392,7 @@ export function computeLastenPlakken(
     geplakt: nieuw.length,
     overgeslagen,
     verweesd,
+    verplaatst,
   };
 }
 
@@ -1465,8 +1568,11 @@ export interface FemStore {
    * belastinggeval, zodat de aanroeper precies kan melden wat er gebeurd is.
    * Zie `computeLastenPlakken` voor de regels.
    */
-  plakLasten: (klembord: Omit<Load, "id">[], doelCaseId: number) => {
-    geplakt: number; overgeslagen: number; verweesd: number; gevalNaam: string;
+  plakLasten: (klembord: KlembordLast[], doelCaseId: number) => {
+    geplakt: number; overgeslagen: number; verweesd: number;
+    /** Daarvan: een onderdeel met hetzelfde nummer, maar op een andere plaats. */
+    verplaatst: number;
+    gevalNaam: string;
   };
   /**
    * Nieuw belastinggeval met een id van de teller. Zonder type wordt het
@@ -2253,7 +2359,7 @@ export function useFemStore(opties?: {
    * terug. Verandert niets aan de geometrie.
    */
   const plakLasten = useCallback((
-    klembord: Omit<Load, "id">[], doelCaseId: number,
+    klembord: KlembordLast[], doelCaseId: number,
   ) => {
     const cur = latestRef.current;
     const gevalNaam = loadCases.find(c => c.id === doelCaseId)?.name
@@ -2265,7 +2371,7 @@ export function useFemStore(opties?: {
     }
     return {
       geplakt: r.geplakt, overgeslagen: r.overgeslagen, verweesd: r.verweesd,
-      gevalNaam,
+      verplaatst: r.verplaatst, gevalNaam,
     };
   }, [pushHistory, loadCases]);
 

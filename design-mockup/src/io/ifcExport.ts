@@ -259,7 +259,26 @@ export interface IfcRekenmodelInput {
   structuralGrid?: { enabled: boolean; xAxes: { id: string; label: string; position: number }[]; zAxes: { id: string; label: string; position: number }[] };
   /** Rekeninstellingen voor de set OpenFEM2D_Analyse op het analysemodel. */
   analysetype?: string;
-  scheefstand?: { enabled: boolean; noemer: number; richting: 1 | -1; bron?: string };
+  /**
+   * De scheefstand zoals hij in de berekening zit.
+   *
+   * `noemer` is de GEREKENDE noemer: bij een normkeuze (`bron` ≠ "vast") is
+   * dat de uitkomst van EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) of EN 1995-1-1
+   * (5.1), niet het getal dat de gebruiker intikte. Tot september 2026 stond
+   * hier de ingetikte noemer terwijl er met de normnoemer gerekend werd: een
+   * lezer die "ScheefstandNoemer 200" overnam, rekende met 29 % (en1993) tot
+   * 94 % (en1992) meer horizontale kracht dan het model (basisaudit ruw 26).
+   * De ingetikte waarde blijft beschikbaar als `noemerInvoer`, zodat de twee
+   * naast elkaar leesbaar zijn.
+   */
+  scheefstand?: {
+    enabled: boolean;
+    noemer: number;
+    richting: 1 | -1;
+    bron?: string;
+    /** Het getal dat de gebruiker intikte; alleen zinvol naast een normbron. */
+    noemerInvoer?: number;
+  };
   /**
    * De uitslag van de normtoetsing per staaf (checkStore.results), als die er
    * is. ONTBREEKT het veld of is de lijst leeg — er is nog niet getoetst, of
@@ -600,9 +619,23 @@ export function bouwIfcRekenmodel(
     if (model.scheefstand) {
       eig.push(eJaNee("Scheefstand", model.scheefstand.enabled));
       if (model.scheefstand.enabled) {
-        eig.push(eGeheel("ScheefstandNoemer", model.scheefstand.noemer));
+        // De GEREKENDE noemer, als reële waarde. Afronden op een geheel getal
+        // hoort hier niet: 1/258,2 werd zo 1/258, en bij een normbron stond er
+        // tot september 2026 zelfs de ingetikte 200 terwijl met 258,2 gerekend
+        // was (basisaudit ruw 26). φ zelf gaat er als verhouding bij, zodat een
+        // lezer die de noemer niet omrekent toch het juiste getal heeft.
+        eig.push(eMaat("ScheefstandNoemer", "IFCREAL", model.scheefstand.noemer));
+        eig.push(eMaat("ScheefstandPhi", "IFCRATIOMEASURE", 1 / model.scheefstand.noemer));
         eig.push(eLabel("ScheefstandRichting", model.scheefstand.richting > 0 ? "+x" : "-x"));
         if (model.scheefstand.bron) eig.push(eLabel("ScheefstandBron", model.scheefstand.bron));
+        // De ingetikte noemer alleen als hij van de gerekende verschilt: bij
+        // bron "vast" zijn ze gelijk en zou een tweede getal alleen verwarren.
+        if (
+          model.scheefstand.noemerInvoer !== undefined &&
+          Math.abs(model.scheefstand.noemerInvoer - model.scheefstand.noemer) > 1e-9
+        ) {
+          eig.push(eMaat("ScheefstandNoemerInvoer", "IFCREAL", model.scheefstand.noemerInvoer));
+        }
       }
     }
     schrijfEigenschappen(w, "OpenFEM2D_Analyse", "analyse", eig, [analyseModel]);

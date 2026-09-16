@@ -1581,7 +1581,40 @@ async fn de_uitkomst_zelf_staat_vast() {
     // binnen 2 % bij uit, dus uc_max ligt tussen 0,85 en 0,92.
     let uc = getal(&mcp, &["uc_max"]);
     assert!(uc > 0.85 && uc < 0.92, "uc_max = {uc}");
-    assert_eq!(mcp["status"], "Ok");
+    // De STAAFSTATUS is NotApplicable en niet "Ok". Deze regel eiste tot
+    // september 2026 "Ok", en dat was precies basisaudit ruw 55: `korf()` draagt
+    // GEEN beugelafstand en GEEN aantal beugelbenen, terwijl deze balk bij x = 0
+    // en x = 5000 een dwarskracht van 80 kN heeft. §6.2 kan dan niet worden
+    // afgerekend en komt terug als "niet uitgevoerd" met die reden. De oude
+    // statusregel keek alleen naar `uc_max <= 1`, en omdat een niet-uitgevoerde
+    // toets uc 0 krijgt, kreeg de staaf de groene badge van de BUIGtoets.
+    // De buigtoets zelf is ongewijzigd: uc_max staat hierboven nog op 0,882.
+    assert_eq!(mcp["status"], "NotApplicable");
+    let niet: Vec<&str> = mcp["niet_uitgevoerd"]
+        .as_array()
+        .expect("niet_uitgevoerd hoort in het antwoord te staan")
+        .iter()
+        .map(|n| n["check_id"].as_str().unwrap_or_default())
+        .collect();
+    assert!(
+        niet.contains(&"6.2_shear"),
+        "de dwarskrachttoets hoort als niet uitgevoerd gemeld te worden: {niet:?}"
+    );
+    // MÉT beugelgegevens rekent dezelfde balk wél helemaal door, en dan is de
+    // status gewoon Ok: de nieuwe regel hangt aan de toets die niet kon, niet
+    // aan een nieuwe drempel.
+    let mut met_beugels = invoer_balk();
+    met_beugels["cage"] = korf_met_beugels();
+    let heel = weg_mcp(&mut stdin, &mut reader, 401, "check_concrete_beam", met_beugels).await;
+    assert_eq!(heel["status"], "Ok", "met beugelgegevens hoort §6.2 te draaien");
+    assert!(
+        heel["niet_uitgevoerd"]
+            .as_array()
+            .map(|a| a.iter().all(|n| n["check_id"] != "6.2_shear"))
+            .unwrap_or(false),
+        "§6.2 staat nog steeds als niet uitgevoerd: {}",
+        heel["niet_uitgevoerd"]
+    );
     assert_eq!(mcp["section_name"], "300 x 500");
     assert_eq!(
         mcp["reinforcement_summary"],

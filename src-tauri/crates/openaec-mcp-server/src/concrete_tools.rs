@@ -443,7 +443,7 @@ fn schema_frequente_omhullende() -> Value {
 /// false` zou het anders wegfilteren voordat de kern het ziet, en dan zou een
 /// gebruiker die de wapening netjes per zone opgeeft langs deze weg
 /// stilzwijgend met één korf over de hele staaf worden doorgerekend.
-fn schema_wapeningszones() -> Value {
+pub(crate) fn schema_wapeningszones() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,

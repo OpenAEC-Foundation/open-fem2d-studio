@@ -245,6 +245,7 @@ fn betontoets(mk: &MnKappaResponse) -> ConcreteBeamCheckResult {
         }],
         uc_max: 0.7,
         status: CheckStatus::Ok,
+        niet_uitgevoerd: Vec::new(),
         governing_check_id: "6.1_mn_kappa".into(),
         mn_kappa: Some(mk.diagram.clone()),
         interaction_positive: mk.interaction_positive.clone(),

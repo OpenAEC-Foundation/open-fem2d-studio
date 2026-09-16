@@ -741,7 +741,14 @@ log("\n[10] Stramien als IfcGrid en rekeninstellingen op het analysemodel");
       zAxes: [{ id: "1", label: "1", position: 0 }, { id: "2", label: "2", position: 5000 }],
     },
     analysetype: "tweede-orde",
-    scheefstand: { enabled: true, noemer: 300, richting: -1, bron: "NEN-EN 1993-1-1 5.3.2" },
+    // `noemer` is de GEREKENDE noemer, `noemerInvoer` het getal dat de
+    // gebruiker intikte (basisaudit ruw 26): met een normbron lopen die twee
+    // uiteen, en tot september 2026 schreef het IFC de ingetikte waarde weg
+    // met de normbron ernaast.
+    scheefstand: {
+      enabled: true, noemer: 258.2, noemerInvoer: 200, richting: -1,
+      bron: "NEN-EN 1993-1-1 5.3.2",
+    },
   };
   const ifc = bouwIfcRekenmodel(model);
   checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
@@ -755,8 +762,22 @@ log("\n[10] Stramien als IfcGrid en rekeninstellingen op het analysemodel");
   checkTrue("as A loopt verticaal op x = 0 (twee punten met dezelfde x)", /IFCCARTESIANPOINT\(\(0\.,0\.,-1\.\)\)/.test(ifc) && /IFCCARTESIANPOINT\(\(0\.,0\.,6\.\)\)/.test(ifc));
   checkTrue("OpenFEM2D_Analyse met analysetype en scheefstand",
     ifc.includes("'OpenFEM2D_Analyse'") && /'Analysetype',\$,IFCLABEL\('tweede-orde'\)/.test(ifc)
-    && /'ScheefstandNoemer',\$,IFCINTEGER\(300\)/.test(ifc) && /'ScheefstandRichting',\$,IFCLABEL\('-x'\)/.test(ifc)
+    && /'ScheefstandRichting',\$,IFCLABEL\('-x'\)/.test(ifc)
     && /'ScheefstandBron',\$,IFCLABEL\('NEN-EN 1993-1-1 5\.3\.2'\)/.test(ifc));
+  // ruw 26: de GEREKENDE noemer staat erin, niet afgerond op een geheel getal,
+  // met de ingetikte waarde als aparte eigenschap ernaast. Een lezer die
+  // ScheefstandNoemer overneemt, rekent nu met dezelfde phi als het model.
+  checkTrue("ScheefstandNoemer is de gerekende noemer, als reeel getal",
+    /'ScheefstandNoemer',\$,IFCREAL\(258\.2\)/.test(ifc));
+  checkTrue("phi staat er als verhouding bij",
+    /'ScheefstandPhi',\$,IFCRATIOMEASURE\(0\.00387/.test(ifc));
+  checkTrue("de ingetikte noemer staat er apart bij",
+    /'ScheefstandNoemerInvoer',\$,IFCREAL\(200\.\)/.test(ifc));
+  checkTrue("bij de vaste noemer geen tweede getal",
+    !/'ScheefstandNoemerInvoer'/.test(bouwIfcRekenmodel({
+      ...model,
+      scheefstand: { enabled: true, noemer: 200, noemerInvoer: 200, richting: 1, bron: "vast" },
+    })));
   const uit = bouwIfcRekenmodel({ ...model, structuralGrid: { ...model.structuralGrid, enabled: false }, scheefstand: { enabled: false, noemer: 300, richting: 1 } });
   checkEq("stramien uit: geen IfcGrid", tel(uit, "IFCGRID"), 0);
   checkTrue("scheefstand uit: alleen de vlag, geen noemer", /'Scheefstand',\$,IFCBOOLEAN\(\.F\.\)/.test(uit) && !uit.includes("'ScheefstandNoemer'"));

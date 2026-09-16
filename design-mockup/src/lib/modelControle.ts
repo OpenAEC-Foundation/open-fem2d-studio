@@ -29,8 +29,12 @@
  * ontbinding zelf; die hoort in de solver. Zie ook de gelijkluidende
  * kanttekening in `mcp/valideerModel.ts`.
  */
-import type { Beam, Load, Node, Plate, Support } from "../components/fem/femTypes";
+import type { Beam, Load, LoadCase, Node, Plate, Support } from "../components/fem/femTypes";
 import { bepaalPlaatRand, valideerPlaatOpeningen } from "../components/fem/femTypes";
+// De lastmapping zelf is de enige waarheid over "telt deze last mee": de
+// controle MEET met `bouwMultiInput` in plaats van de if/else-keten na te
+// schrijven. Zie `teltLastMee` hieronder.
+import { bouwMultiInput } from "./modelNaarSolverInput";
 import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "./materiaalDubbelzinnig";
 import { keurPlaatMateriaal } from "./plaatMateriaal";
 
@@ -59,7 +63,9 @@ export type BevindingSoort =
   /** Plaatmateriaal dat niet herkend wordt. */
   | "plaatmateriaal"
   /** Materiaalnaam die hout én de korte naam van een betonklasse is ("C30"). */
-  | "dubbelzinnigMateriaal";
+  | "dubbelzinnigMateriaal"
+  /** Last die het bestand wél draagt maar die geen solverinvoer oplevert. */
+  | "stilleLast";
 
 /**
  * Bewerking die de bevinding opheft. De store voert hem uit; de controle
@@ -103,10 +109,17 @@ export interface ControleModel {
   supports?: Pick<Support, "nodeId">[];
   plates?: Pick<Plate, "id" | "nodeIds" | "openingen" | "materiaal">[];
   /**
-   * Optioneel: de lasten, voor de controle op plaatlasten. Ontbreekt het veld,
-   * dan blijft die controle achterwege en is de uitkomst gelijk aan vroeger.
+   * Optioneel: de lasten, voor de controle op plaatlasten en op lasten die
+   * stil wegvallen. Ontbreekt het veld, dan blijven die controles achterwege
+   * en is de uitkomst gelijk aan vroeger.
    */
-  loads?: Pick<Load, "id" | "type" | "plateId" | "edge" | "edgeIndex" | "posFrac">[];
+  loads?: Load[];
+  /**
+   * Optioneel: de belastinggevallen. Alleen nodig voor `zoekStilleLasten` —
+   * een last die naar een niet-bestaand geval verwijst, valt bij het rekenen
+   * weg. Ontbreekt het veld, dan wordt die ene controle overgeslagen.
+   */
+  loadCases?: LoadCase[];
 }
 
 /**
@@ -456,6 +469,116 @@ export function zoekDubbelzinnigMateriaal(model: ControleModel): Bevinding[] {
 }
 
 /**
+ * Levert deze last een invoerregel voor de solver op?
+ *
+ * GEMETEN met `bouwMultiInput` zelf, op een proefmodel dat alleen deze last
+ * bevat en waarin eigen gewicht en scheefstand uit staan: elke regel die er
+ * dan uit komt, komt gegarandeerd van deze last. Dezelfde meetwijze als
+ * `teltLastMee` in `mcp/valideerModel.ts` — de mapping blijft de enige
+ * waarheid over wat meetelt, en er ontstaat geen tweede lezing die ernaast
+ * kan gaan lopen.
+ */
+function teltLastMee(last: Load, loadCases: LoadCase[]): boolean {
+  const mi = bouwMultiInput({
+    nodes: [], beams: [], supports: [], plates: [],
+    loadCases,
+    loads: [last],
+    selfWeightEnabled: false,
+    scheefstandEnabled: false,
+    scheefstandNoemer: 200,
+    scheefstandRichting: 1,
+  });
+  return (
+    mi.loads.length +
+      (mi.pointLoads?.length ?? 0) +
+      (mi.beamPointLoads?.length ?? 0) +
+      (mi.thermalLoads?.length ?? 0) +
+      (mi.edgeLoads?.length ?? 0) +
+      (mi.edgePointLoads?.length ?? 0) >
+    0
+  );
+}
+
+/**
+ * Lasten die het projectbestand wél draagt maar die bij het rekenen STIL
+ * wegvallen (basisaudit ruw 30).
+ *
+ * Drie manieren waarop dat gebeurt, alle drie gemeten in de audit:
+ *
+ *  1. De if/else-keten van `bouwMultiInput` neemt een lijnlast alleen mee met
+ *     `q`, een thermische last alleen met `deltaT`, en herkent alleen exact
+ *     gespelde typen. Een trapeziumlast met alleen `qStart`/`qEnd`, of een
+ *     tikfout ("lineload"), levert nul regels op.
+ *  2. Een verwijzing naar een staaf, knoop of plaat die niet bestaat gaat wél
+ *     de mapping in, maar de engine laat hem vallen.
+ *  3. Een verwijzing naar een belastinggeval dat niet bestaat maakt het geval
+ *     "zonder werkzame last"; `solveAllCases` slaat het over.
+ *
+ * In alle drie de gevallen is nul niet te onderscheiden van "niet
+ * meegenomen", en dat is precies het verschil tussen een lege en een
+ * onderbelaste constructie. De MCP-weg meet dit al (`valideerModel`); de
+ * app-openroute deed het niet. Ernst "fout": doorrekenen geeft een antwoord
+ * bij een ánder model dan er op het scherm staat.
+ */
+export function zoekStilleLasten(model: ControleModel): Bevinding[] {
+  const loads = model.loads;
+  if (!loads) return [];
+  const uit: Bevinding[] = [];
+  const beamIds = new Set(model.beams.map((b) => b.id));
+  const nodeIds = new Set(model.nodes.map((n) => n.id));
+  const plateIds = new Set((model.plates ?? []).map((p) => p.id));
+  const caseIds = model.loadCases
+    ? new Set(model.loadCases.map((c) => c.id))
+    : undefined;
+  for (const l of loads) {
+    const verwijzingen: string[] = [];
+    if (l.beamId !== undefined && !beamIds.has(l.beamId)) {
+      verwijzingen.push(`staaf ${l.beamId}`);
+    }
+    if (l.nodeId !== undefined && !nodeIds.has(l.nodeId)) {
+      verwijzingen.push(`knoop ${l.nodeId}`);
+    }
+    if (l.plateId !== undefined && !plateIds.has(l.plateId)) {
+      verwijzingen.push(`plaat ${l.plateId}`);
+    }
+    if (caseIds !== undefined && !caseIds.has(l.caseId)) {
+      verwijzingen.push(`belastinggeval ${l.caseId}`);
+    }
+    if (verwijzingen.length > 0) {
+      uit.push({
+        soort: "stilleLast",
+        ernst: "fout",
+        tekst:
+          `Last ${l.id} verwijst naar ${verwijzingen.join(" en ")}, die niet ` +
+          "(meer) bestaat. Bij het rekenen valt deze last weg zonder melding: " +
+          "het resultaat hoort dan bij een model met minder belasting dan er is " +
+          "ingevoerd.",
+        nodeIds: l.nodeId !== undefined && nodeIds.has(l.nodeId) ? [l.nodeId] : [],
+        ...(l.beamId !== undefined && beamIds.has(l.beamId) ? { beamId: l.beamId } : {}),
+      });
+      continue;
+    }
+    if (!teltLastMee(l, model.loadCases ?? [{ id: l.caseId, name: "", type: "dead" }])) {
+      uit.push({
+        soort: "stilleLast",
+        ernst: "fout",
+        tekst:
+          `Last ${l.id} (type "${String(l.type)}") levert geen invoer voor de ` +
+          "solver op en telt dus niet mee. Controleer of alle velden voor dit " +
+          "lasttype ingevuld zijn: een lijnlast heeft `beamId` en `q` nodig (ook " +
+          "een trapeziumlast, naast `qStart` en `qEnd`), een puntlast `nodeId` of " +
+          "`beamId` — of op een plaatrand `plateId`, een rand en `posFrac` —, een " +
+          "thermische last `beamId` en `deltaT`, en een randlast `plateId`, een " +
+          "rand en `q`.",
+        nodeIds: l.nodeId !== undefined ? [l.nodeId] : [],
+        ...(l.beamId !== undefined ? { beamId: l.beamId } : {}),
+      });
+    }
+  }
+  return uit;
+}
+
+/**
  * De volledige controle: fouten eerst, dan waarschuwingen, binnen elke groep
  * op knoopnummer. Een vrij uiteinde dat óók al als fout is gemeld (de
  * kolomvoet die op een ligger ligt) wordt weggelaten — één oorzaak, één regel.
@@ -471,6 +594,7 @@ export function controleerModel(
     ...zoekPlaatlastFouten(model),
     ...zoekOpeningFouten(model),
     ...zoekPlaatMateriaalFouten(model),
+    ...zoekStilleLasten(model),
     ...materiaal.filter((m) => m.ernst === "fout"),
   ];
   const alGemeld = new Set<number>();

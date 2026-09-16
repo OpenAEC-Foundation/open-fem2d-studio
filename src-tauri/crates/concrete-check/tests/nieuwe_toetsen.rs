@@ -231,6 +231,73 @@ fn zonder_beugelgegevens_meldt_de_dwarskrachttoets_dat_hij_niet_kan() {
 
     // En hij is NIET stilzwijgend groen: de status is N/A, niet Ok.
     assert_ne!(rc.status, CheckStatus::Ok);
+
+    // BASISAUDIT ruw 55 — en de STAAF is dat evenmin.
+    //
+    // Hier zat de fout: `uc_of` geeft een N/A-toets een uc van 0, en de
+    // staafstatus volgde alleen uit `uc_max <= 1`. De buigtoets geeft hier een
+    // keurige UC, dus de staaf kreeg de groene badge "Ok" terwijl §6.2 helemaal
+    // niet was afgerekend. Op het canvas, in de samenvattingstabel van het
+    // rapport en in de MCP-antwoorden stond dan één woord: Ok.
+    //
+    // Nu: de status is NotApplicable, en `niet_uitgevoerd` noemt de toets met
+    // de reden uit de toets zelf. "Niet getoetst" is geen geslaagde toets.
+    assert_eq!(
+        r.status,
+        CheckStatus::NotApplicable,
+        "de dwarskracht kon niet worden afgerekend; de staaf mag dan geen Ok dragen"
+    );
+    let shear = r
+        .niet_uitgevoerd
+        .iter()
+        .find(|n| n.check_id == "6.2_shear")
+        .expect("de dwarskrachttoets hoort in niet_uitgevoerd te staan");
+    assert!(!shear.detaillering, "§6.2 is een draagkrachttoets, geen detailleringseis");
+    assert_eq!(shear.titel, "Dwarskracht");
+    // De reden staat waar de kern hem neerzet: in de notes van die toets. De
+    // verwijzing hierboven maakt hem vindbaar zonder hem te kopiëren.
+    assert!(
+        rc.notes.join(" ").contains("niet afgerekend"),
+        "de reden staat niet in de notes van de toets waar niet_uitgevoerd naar wijst"
+    );
+
+    // Dezelfde balk MET beugelgegevens wordt wél afgerekend, en dan is er niets
+    // aan de hand met de status: de scheiding zit in de toets, niet in een
+    // nieuwe drempel.
+    let mut goed = invoer(korf_met_beugels(150.0), ugt(99.0, 150.0));
+    goed.section = ConcreteSectionInput::rectangle(300.0, 600.0);
+    goed.cage.cover_mm = 20.0;
+    goed.cage.bottom = RebarRow { count: 4, diameter_mm: 20.0 };
+    let r2 = check_concrete_beam(goed);
+    assert!(
+        !r2.niet_uitgevoerd.iter().any(|n| n.check_id == "6.2_shear"),
+        "met beugelgegevens hoort §6.2 gewoon te draaien"
+    );
+    assert_ne!(r2.status, CheckStatus::NotApplicable);
+}
+
+/// **Niet van toepassing is iets anders dan niet uitgevoerd** (basisaudit
+/// ruw 55).
+///
+/// `CheckStatus::NotApplicable` dekt allebei, en het verschil zit in de unity
+/// check. Een balk zonder dwarskracht (V_Ed = 0) krijgt van §6.2 de status N/A
+/// mét een unity check: de toets is gedraaid en stelde vast dat er niets te
+/// toetsen viel. Zo'n toets hoort NIET in `niet_uitgevoerd` en mag de
+/// staafstatus dus niet op NotApplicable zetten — anders zou elke balk zonder
+/// dwarskracht plotseling "niet getoetst" heten, en zou de melding die er wél
+/// toe doet in de ruis verdwijnen.
+#[test]
+fn een_toets_zonder_iets_te_toetsen_telt_niet_als_niet_uitgevoerd() {
+    // Alleen een moment, geen dwarskracht: `ugt` zet V_Ed op 0.
+    let r = check_concrete_beam(invoer(korf_met_beugels(150.0), ugt(0.0, 60.0)));
+    let rc = toets(&r, "6.2_shear");
+    assert_eq!(rc.status, CheckStatus::NotApplicable, "zonder V_Ed is er niets te toetsen");
+    assert!(rc.uc.is_some(), "de toets is wél gedraaid en draagt een unity check");
+    assert!(
+        !r.niet_uitgevoerd.iter().any(|n| n.check_id == "6.2_shear"),
+        "een toets die gedraaid heeft is niet 'niet uitgevoerd'"
+    );
+    assert_eq!(r.status, CheckStatus::Ok);
 }
 
 /// Een korte, zwaar belaste balk: de DWARSKRACHT is maatgevend en niet de
@@ -759,6 +826,22 @@ fn een_vervulde_detailleringseis_wordt_niet_de_maatgevende_toets() {
         uc(beugel)
     );
     assert_eq!(r.status, CheckStatus::Ok);
+    // Ok MAG hier, want de drie draagkrachttoetsen (§6.1 tweemaal en §6.2) zijn
+    // alle drie gedraaid. Wat er niet kon — §7.3 en §7.4.2, want er is geen
+    // frequente BGT-combinatie en geen constructievorm — staat sinds september
+    // 2026 als `niet_uitgevoerd` in het resultaat, met de reden uit de toets
+    // zelf (basisaudit ruw 55). Zo is "Ok" een uitspraak over wat er getoetst
+    // is, en is zichtbaar wat er niet getoetst is.
+    let onuitgevoerd: Vec<&str> =
+        r.niet_uitgevoerd.iter().map(|n| n.check_id.as_str()).collect();
+    assert!(
+        onuitgevoerd.contains(&"7.4.2_slankheid"),
+        "de slankheidscontrole kon niet en hoort in niet_uitgevoerd: {onuitgevoerd:?}"
+    );
+    for n in &r.niet_uitgevoerd {
+        let c = toets(&r, &n.check_id);
+        assert!(!c.notes.is_empty(), "toets {} noemt geen reden", n.check_id);
+    }
 
     // Er verdwijnt niets: alle zestien toetsen staan er nog, mét hun unity
     // check. Alleen de RANGSCHIKKING is anders.

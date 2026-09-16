@@ -350,5 +350,86 @@ log("\n[9] Omschrijving: gaat mee bij kopiëren, telt niet mee in de signatuur")
 
 // ─────────────────────────────────────────────────────────────────────────
 log(`\n${"─".repeat(60)}`);
+log("\n[9] Id-hergebruik: geplakte lasten landen niet op een ANDERE staaf (basisaudit ruw 31)");
+// `addBeam` deelt id's uit als `Math.max(bestaande) + 1`. Verwijder de staaf
+// met het hoogste nummer en teken een nieuwe, dan krijgt die hetzelfde nummer
+// terug. Het klembord bewaarde alleen dat nummer, en `computeLastenPlakken`
+// keek alleen OF het bestond. Gemeten op het startmodel: de lasten van
+// betonbalk 6 kopieren, staaf 6 verwijderen, een nieuwe stalen staaf tekenen
+// (krijgt id 6), plakken -> q = -15 en -10 kN/m landen op de nieuwe staaf,
+// geteld als "geplakt", met "verweesd = 0". Geen woord erover.
+//
+// De klembordlast draagt daarom nu de PLAATS van zijn aangrijpingspunt mee.
+{
+  const loads = [
+    { id: 1, type: "lineLoad", caseId: 1, beamId: 3, q: -15 },
+    { id: 2, type: "lineLoad", caseId: 1, beamId: 3, q: -10, qDir: "x" },
+  ];
+  const cur = { nodes: NODES, beams: BEAMS, plates: [], supports: SUPPORTS, loads };
+  const klembord = kopieerLastenNaarKlembord(loads, [1, 2], cur);
+  checkTrue("het klembord draagt de herkomst van het aangrijpingspunt",
+    klembord.every((l) => l.herkomst?.soort === "staaf" && l.herkomst.id === 3
+      && l.herkomst.punten.length === 4),
+    JSON.stringify(klembord.map((l) => l.herkomst)));
+
+  // Staaf 3 (van knoop 3 naar 4) weg, een NIEUWE staaf met hetzelfde nummer
+  // tussen twee andere knopen erin: precies wat de app na verwijderen+tekenen
+  // oplevert.
+  const anders = {
+    ...cur,
+    beams: [BEAMS[0], BEAMS[1], { id: 3, from: 1, to: 2 }],
+    loads: [],
+  };
+  const geplakt = computeLastenPlakken(anders, klembord, 2);
+  checkExact("op een ANDERE staaf met hetzelfde nummer wordt niets geplakt", geplakt.geplakt, 0);
+  checkExact("beide lasten tellen als verweesd", geplakt.verweesd, 2);
+  checkExact("en wel als 'verplaatst', met een eigen melding", geplakt.verplaatst, 2);
+  checkTrue("de bestaande lasten blijven ongemoeid", geplakt.loads.length === 0);
+
+  // DEZELFDE staaf: gewoon plakken, precies zoals voorheen.
+  const zelfde = computeLastenPlakken({ ...cur, loads: [] }, klembord, 2);
+  checkExact("op dezelfde staaf wordt gewoon geplakt", zelfde.geplakt, 2);
+  checkExact("niets verweesd", zelfde.verweesd, 0);
+  checkExact("niets verplaatst", zelfde.verplaatst, 0);
+  checkTrue("de herkomst reist niet mee de store in",
+    zelfde.loads.every((l) => l.herkomst === undefined),
+    JSON.stringify(zelfde.loads));
+
+  // Een staaf die is VERSCHOVEN is ook een ander aangrijpingspunt.
+  const verschoven = {
+    ...cur,
+    nodes: NODES.map((n) => (n.id === 4 ? { ...n, x: 9000 } : n)),
+    loads: [],
+  };
+  checkExact("een verschoven staaf telt als verplaatst",
+    computeLastenPlakken(verschoven, klembord, 2).verplaatst, 2);
+
+  // Knopen volgen dezelfde regel.
+  const knooplast = [{ id: 9, type: "pointForce", caseId: 1, nodeId: 4, fz: -12 }];
+  const kb = kopieerLastenNaarKlembord(knooplast, [9], { ...cur, loads: knooplast });
+  checkTrue("een knooplast draagt de coordinaten van zijn knoop",
+    kb[0].herkomst?.soort === "knoop" && deepEq(kb[0].herkomst.punten, [6000, 4000]),
+    JSON.stringify(kb[0].herkomst));
+  checkExact("een knoop die verplaatst is: niet plakken",
+    computeLastenPlakken({ ...verschoven, loads: [] }, kb, 2).verplaatst, 1);
+
+  // ZONDER model (de oude aanroep) blijft alles zoals het was: geen herkomst,
+  // dus ook geen nieuwe weigering. Een bestaande aanroeper gaat niet stil
+  // anders werken.
+  const zonder = kopieerLastenNaarKlembord(loads, [1, 2]);
+  checkTrue("zonder model draagt het klembord geen herkomst",
+    zonder.every((l) => l.herkomst === undefined));
+  const oud = computeLastenPlakken(anders, zonder, 2);
+  checkExact("en dan gedraagt het plakken zich als voorheen", oud.geplakt, 2);
+  checkExact("met verplaatst = 0", oud.verplaatst, 0);
+
+  // Een staaf die helemaal weg is, blijft gewoon "verweesd" en telt niet als
+  // verplaatst: de melding luidt anders.
+  const weg = computeLastenPlakken(
+    { ...cur, beams: [BEAMS[0], BEAMS[1]], loads: [] }, klembord, 2);
+  checkExact("een verdwenen staaf: verweesd", weg.verweesd, 2);
+  checkExact("maar niet verplaatst", weg.verplaatst, 0);
+}
+
 log(`Resultaat: ${passed} geslaagd, ${failed} gefaald`);
 if (failed > 0) process.exit(1);

@@ -405,3 +405,14 @@
   line-height: 1.45;
   color: var(--theme-text-muted);
 }
+
+/* Toetsen die niet uitgevoerd konden worden (basisaudit ruw 55). Zichtbaar
+   zonder de kaart open te klappen: de badge zegt "n.v.t." en dan hoort er
+   direct bij te staan waaróver. */
+.cp-card-onuitgevoerd {
+  padding: 4px 10px 6px 26px;
+  font-size: 11px;
+  color: var(--cp-warn-text, #8a6d3b);
+  background: var(--cp-warn-bg, rgba(240, 173, 78, 0.10));
+  border-top: 1px solid var(--cp-border, rgba(0, 0, 0, 0.08));
+}
