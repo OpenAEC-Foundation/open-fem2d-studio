@@ -88,30 +88,56 @@ fn en_1990_doorbuigingsgrenzen_komen_uit_de_naad() {
 
 #[test]
 fn en_1992_ndp_komen_uit_de_naad() {
-    use nen_en_1992_1_1::factors::{eps_ud, gamma_c, gamma_s, DesignSituation};
+    use nen_en_1992_1_1::factors::{alpha_cc, eps_ud, gamma_c, gamma_ce, gamma_s, DesignSituation};
     let bron = Ndp1992::voor(B);
-    assert_eq!(gamma_c(DesignSituation::PersistentTransient), bron.gamma_c_blijvend);
-    assert_eq!(gamma_s(DesignSituation::PersistentTransient), bron.gamma_s_blijvend);
-    assert_eq!(gamma_c(DesignSituation::Accidental), bron.gamma_c_buitengewoon);
-    assert_eq!(gamma_s(DesignSituation::Accidental), bron.gamma_s_buitengewoon);
-    assert_eq!(nen_en_1992_1_1::ALPHA_CC, bron.alpha_cc);
-    assert_eq!(nen_en_1992_1_1::GAMMA_CE, bron.gamma_ce);
+    assert_eq!(gamma_c(B, DesignSituation::PersistentTransient), bron.gamma_c_blijvend);
+    assert_eq!(gamma_s(B, DesignSituation::PersistentTransient), bron.gamma_s_blijvend);
+    assert_eq!(gamma_c(B, DesignSituation::Accidental), bron.gamma_c_buitengewoon);
+    assert_eq!(gamma_s(B, DesignSituation::Accidental), bron.gamma_s_buitengewoon);
+    assert_eq!(alpha_cc(B), bron.alpha_cc);
+    assert_eq!(gamma_ce(B), bron.gamma_ce);
     // eps_ud = f * eps_uk: de factor terugrekenen uit de functie zelf.
-    assert_eq!(eps_ud(1.0), bron.eps_ud_factor);
+    assert_eq!(eps_ud(B, 1.0), bron.eps_ud_factor);
+
+    // Het MATERIAAL draagt de bijlage de rekengang in: dezelfde waarden, en de
+    // bijlage zelf reist mee.
+    let mat = nen_en_1992_1_1::DesignMaterial::new(
+        B,
+        nen_en_1992_1_1::concrete_class_by_name("C30/37").unwrap(),
+        nen_en_1992_1_1::reinforcement_grade_by_name("B500B").unwrap(),
+        DesignSituation::PersistentTransient,
+        nen_en_1992_1_1::SteelBranch::Horizontal,
+    );
+    assert_eq!(mat.bijlage, B);
+    assert_eq!((mat.gamma_c, mat.gamma_s, mat.alpha_cc), (bron.gamma_c_blijvend, bron.gamma_s_blijvend, bron.alpha_cc));
 
     use nen_en_1992_1_1::dekking::{
-        c_min_dur_mm, ExposureClass, StructuralClass, DEFAULT_STRUCTURAL_CLASS, DELTA_C_DEV_MM,
-        DELTA_C_DUR_ADD_MM, DELTA_C_DUR_GAMMA_MM, DELTA_C_DUR_ST_MM,
+        c_min_dur_mm, concrete_cover_request, standaard_constructieklasse, ConcreteCoverRequest,
+        ExposureClass, StructuralClass,
     };
-    assert_eq!(DELTA_C_DUR_GAMMA_MM, bron.delta_c_dur_gamma_mm);
-    assert_eq!(DELTA_C_DUR_ST_MM, bron.delta_c_dur_st_mm);
-    assert_eq!(DELTA_C_DUR_ADD_MM, bron.delta_c_dur_add_mm);
-    assert_eq!(DELTA_C_DEV_MM, bron.delta_c_dev_mm);
+    // De Δc-toeslagen zoals de dekkingstoets ze werkelijk gebruikt: uit zijn
+    // antwoord, bij een verzoek met deze bijlage.
+    let antwoord = concrete_cover_request(ConcreteCoverRequest {
+        bijlage: B,
+        beam_id: 0,
+        side: None,
+        exposure_class: ExposureClass::XC1,
+        structural_class: None,
+        cover_mm: 30.0,
+        stirrup_diameter_mm: 8.0,
+        max_bar_diameter_mm: 16.0,
+    })
+    .unwrap();
+    assert_eq!(antwoord.delta_c_dur_gamma_mm, bron.delta_c_dur_gamma_mm);
+    assert_eq!(antwoord.delta_c_dur_st_mm, bron.delta_c_dur_st_mm);
+    assert_eq!(antwoord.delta_c_dur_add_mm, bron.delta_c_dur_add_mm);
+    assert_eq!(antwoord.delta_c_dev_mm, bron.delta_c_dev_mm);
     assert_eq!(
-        Some(DEFAULT_STRUCTURAL_CLASS),
+        Some(standaard_constructieklasse(B)),
         StructuralClass::van_nummer(bron.constructieklasse_50_jaar),
         "NB bij 4.4.1.2(5)"
     );
+    assert_eq!(antwoord.structural_class, standaard_constructieklasse(B));
     // Tabel 4.4N: elke cel die de dekkingsmodule teruggeeft staat in de rij van
     // de bijlage die bij die constructieklasse hoort.
     let klassen = [
@@ -124,7 +150,7 @@ fn en_1992_ndp_komen_uit_de_naad() {
     ];
     for (r, klasse) in klassen.iter().enumerate() {
         for kolom in kolommen {
-            let waarde = c_min_dur_mm(kolom, *klasse).expect("tabel 4.4N geeft een waarde");
+            let waarde = c_min_dur_mm(B, kolom, *klasse).expect("tabel 4.4N geeft een waarde");
             assert!(
                 bron.c_min_dur_betonstaal[r].contains(&waarde),
                 "c_min,dur {waarde} staat niet in rij {r} van tabel 4.4N in de naad"
@@ -134,13 +160,14 @@ fn en_1992_ndp_komen_uit_de_naad() {
     // lambda_lim = coefficient * A * B * C / sqrt(n): met A = B = C = n = 1 is
     // de uitkomst de coefficient zelf.
     assert_eq!(
-        nen_en_1992_1_1::kolom::lambda_lim_5_13n(1.0, 1.0, 1.0, 1.0).unwrap(),
+        nen_en_1992_1_1::kolom::lambda_lim_5_13n(B, 1.0, 1.0, 1.0, 1.0).unwrap(),
         bron.lambda_lim_coefficient,
         "(5.13N) bij 5.8.3.1"
     );
     assert!(bron.lambda_lim_is_eis, "de NB stelt 5.8.3.1 als eis, niet als aanbeveling");
     assert_eq!(
         nen_en_1992_1_1::verankering::alpha_6(
+            B,
             50.0,
             nen_en_1992_1_1::verankering::Verankeringssoort::Druk
         ),

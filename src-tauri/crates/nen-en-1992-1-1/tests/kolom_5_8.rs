@@ -24,7 +24,7 @@
 use approx::assert_relative_eq;
 
 use mechanics::{ForceStateSnapshot, InternalForces};
-use nen_en_1992_1_1::factors::{f_cd, f_yd, gamma_c, gamma_s, ALPHA_CC};
+use nen_en_1992_1_1::factors::{alpha_cc, f_cd, f_yd, gamma_c, gamma_s};
 use nen_en_1992_1_1::kolom::{
     aantal_beugels_las_9_5_3, as_max_9_5_2_mm2, as_min_9_5_2_mm2, factor_a, factor_b, grondslag_c,
     hoekstaven_9_5_2, k_begrensd, kolom_deelstappen, kolomdetailleringstoetsen, kolomslankheid,
@@ -57,9 +57,9 @@ const L_MM: f64 = 4000.0;
 /// verandert. Verwacht: 1,0 · 30 / 1,5 = 20 N/mm².
 fn f_cd_c30() -> f64 {
     let beton = concrete_class_by_name("C30/37").unwrap();
-    let gamma_c = gamma_c(DesignSituation::PersistentTransient);
+    let gamma_c = gamma_c(nationale_bijlage::NationaleBijlage::NL, DesignSituation::PersistentTransient);
     assert_relative_eq!(gamma_c, 1.5, max_relative = 1e-12);
-    let waarde = f_cd(beton.f_ck, ALPHA_CC, gamma_c);
+    let waarde = f_cd(beton.f_ck, alpha_cc(nationale_bijlage::NationaleBijlage::NL), gamma_c);
     assert_relative_eq!(waarde, 20.0, max_relative = 1e-12);
     waarde
 }
@@ -67,7 +67,7 @@ fn f_cd_c30() -> f64 {
 /// f_yd uit de crate zelf. Verwacht: 500 / 1,15 = 434,782609 N/mm².
 fn f_yd_b500() -> f64 {
     let staal = reinforcement_grade_by_name("B500B").unwrap();
-    let gamma_s = gamma_s(DesignSituation::PersistentTransient);
+    let gamma_s = gamma_s(nationale_bijlage::NationaleBijlage::NL, DesignSituation::PersistentTransient);
     assert_relative_eq!(gamma_s, 1.15, max_relative = 1e-12);
     let waarde = f_yd(staal.f_yk, gamma_s);
     assert_relative_eq!(waarde, 434.782_608_695_652_2, max_relative = 1e-12);
@@ -81,6 +81,7 @@ fn a_s_4o20() -> f64 {
 
 fn kolom(schoring: Schoring, kniklengte: Kniklengtebepaling, n_ed_kn: f64) -> KolomInvoer {
     KolomInvoer {
+        bijlage: nationale_bijlage::NationaleBijlage::NL,
         l_mm: L_MM,
         kniklengte,
         l0_opgegeven_mm: None,
@@ -393,7 +394,7 @@ fn slankheid_handberekening() {
 /// geschoorde handberekening.
 #[test]
 fn lambda_lim_handberekening() {
-    let v = lambda_lim_5_13n(0.7, 1.267_703_058_358_676, 1.2, 0.5).unwrap();
+    let v = lambda_lim_5_13n(nationale_bijlage::NationaleBijlage::NL, 0.7, 1.267_703_058_358_676, 1.2, 0.5).unwrap();
     assert_relative_eq!(v, 30.119_088_017_6, max_relative = 1e-9);
 }
 

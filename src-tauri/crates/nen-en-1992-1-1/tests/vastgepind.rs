@@ -43,6 +43,7 @@ fn korf(boven: u32) -> ReinforcementCage {
 
 fn toetsmateriaal() -> DesignMaterial {
     DesignMaterial::new(
+        nationale_bijlage::NationaleBijlage::NL,
         concrete_class_by_name("C30/37").unwrap(),
         reinforcement_grade_by_name("B500B").unwrap(),
         DesignSituation::PersistentTransient,
@@ -52,6 +53,7 @@ fn toetsmateriaal() -> DesignMaterial {
 
 fn stijfheidsmateriaal(basis: NonlinearBasis) -> DesignMaterial {
     DesignMaterial::nonlinear(
+        nationale_bijlage::NationaleBijlage::NL,
         concrete_class_by_name("C30/37").unwrap(),
         reinforcement_grade_by_name("B500B").unwrap(),
         DesignSituation::PersistentTransient,

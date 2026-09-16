@@ -2,6 +2,7 @@
 import type { ConcreteSectionInput } from "./ConcreteSectionInput";
 import type { DesignSituation } from "./DesignSituation";
 import type { LoadDuration } from "./LoadDuration";
+import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { NonlinearBasis } from "./NonlinearBasis";
 import type { ReinforcementCage } from "./ReinforcementCage";
 import type { SegmentForces } from "./SegmentForces";
@@ -15,6 +16,20 @@ import type { SteelBranch } from "./SteelBranch";
  * standaard terugvallen — met een andere stijfheid als gevolg.
  */
 export type SegmentStiffnessRequest = { 
+/**
+ * De nationale bijlage waarmee gerekend wordt (normnaad).
+ *
+ * Zij bepaalt γ_C, γ_S, α_cc en ε_ud van het materiaal (via
+ * `DesignMaterial::new`). Een bijlage die deze uitgave niet kent, wordt bij
+ * het lezen van het verzoek GEWEIGERD met reden; er wordt nooit stil op de
+ * Nederlandse waarden teruggevallen.
+ *
+ * `#[serde(default)]` om dezelfde reden als bij `ConcreteBeamCheckInput`:
+ * er is één gevulde rij, dus weglaten kan niets anders betekenen. De test
+ * `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg` in
+ * `nationale-bijlage` valt om zodra dat niet meer waar is.
+ */
+bijlage: NationaleBijlage, 
 /**
  * Staafnummer; komt onveranderd terug in het antwoord.
  */

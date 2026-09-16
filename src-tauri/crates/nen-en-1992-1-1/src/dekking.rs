@@ -81,8 +81,9 @@
 //! ([`concrete_cover_request`]) die alle drie aanroepen.
 
 // Tabel 4.4N, de drie Δc_dur-toeslagen, Δc_dev en de constructieklasse bij 50
-// jaar zijn nationaal bepaalde parameters: ze komen uit de normnaad.
-use crate::NDP;
+// jaar zijn nationaal bepaalde parameters: ze komen uit de normnaad, uit de rij
+// van de bijlage in het verzoek (`ConcreteCoverRequest::bijlage`).
+use nationale_bijlage::{NationaleBijlage, Ndp1992};
 
 use nen_en_1993_1_1_section::CheckStatus;
 use serde::{Deserialize, Serialize};
@@ -526,17 +527,20 @@ impl StructuralClass {
     }
 }
 
-/// De constructieklasse bij een ontwerplevensduur van 50 jaar.
+/// De constructieklasse bij een ontwerplevensduur van 50 jaar onder `bijlage`.
 ///
-/// NB bij 4.4.1.2(5): "Als constructieklasse voor een ontwerplevensduur van 50
-/// jaar moet S4 zijn aangehouden."
-pub const DEFAULT_STRUCTURAL_CLASS: StructuralClass =
-    match StructuralClass::van_nummer(NDP.constructieklasse_50_jaar) {
+/// In de Nederlandse bijlage bij 4.4.1.2(5): "Als constructieklasse voor een
+/// ontwerplevensduur van 50 jaar moet S4 zijn aangehouden."
+pub fn standaard_constructieklasse(bijlage: NationaleBijlage) -> StructuralClass {
+    match StructuralClass::van_nummer(Ndp1992::voor(bijlage).constructieklasse_50_jaar) {
         Some(klasse) => klasse,
         // Een nummer buiten S1…S6 in de NDP-rij is een fout in de naad zelf;
-        // dan hoort de build te falen en niet S4 te worden.
-        None => panic!("de nationale bijlage geeft een constructieklasse die niet bestaat"),
-    };
+        // dan hoort dit te falen en niet stil S4 te worden. De test
+        // `elke_bijlage_heeft_een_bestaande_constructieklasse` vangt het vóór
+        // het ooit een gebruiker bereikt.
+        None => panic!("de nationale bijlage {bijlage} geeft een constructieklasse die niet bestaat"),
+    }
+}
 
 /// Tabel 4.4N — c_min,dur voor betonstaal volgens NEN-EN 10080, in mm, ZOALS
 /// DE NATIONALE BIJLAGE HEM VOORSCHRIJFT.
@@ -548,35 +552,33 @@ pub const DEFAULT_STRUCTURAL_CLASS: StructuralClass =
 /// de EN gaf daar 30/35/40/45/50/55, de NB geeft dezelfde waarden als de kolom
 /// XD2/XS2. Wie hier uit het geheugen de EN-waarden invult, rekent een balk in
 /// een getijdezone 5 mm te dun.
-const C_MIN_DUR_REINFORCING: [[f64; 7]; 6] = NDP.c_min_dur_betonstaal;
-
-/// Δc_dur,γ — aanvullende veiligheidsmarge, 4.4.1.2(6).
-/// NB: "De waarde van Δc dur,γ moet gelijk aan 0 mm zijn genomen."
-pub const DELTA_C_DUR_GAMMA_MM: f64 = NDP.delta_c_dur_gamma_mm;
-
-/// Δc_dur,st — reductie bij roestvast staal, 4.4.1.2(7).
-/// NB: "De waarde van Δc dur,st moet gelijk aan 0 mm zijn genomen."
-pub const DELTA_C_DUR_ST_MM: f64 = NDP.delta_c_dur_st_mm;
-
-/// Δc_dur,add — reductie bij aanvullende bescherming, 4.4.1.2(8).
-/// NB: "De waarde van Δc dur,add moet gelijk aan 0 mm zijn genomen."
-pub const DELTA_C_DUR_ADD_MM: f64 = NDP.delta_c_dur_add_mm;
-
-/// Δc_dev — toeslag voor uitvoeringstoleranties, 4.4.1.3(1)P.
 ///
-/// De EN beveelt 10 mm aan; de NB schrijft voor: "De waarde van Δc dev moet
-/// gelijk aan 5 mm zijn genomen." De reducties van 4.4.1.3(3) zijn in de NL
-/// bijlage aan voorwaarden gebonden en worden hier niet toegepast.
-pub const DELTA_C_DEV_MM: f64 = NDP.delta_c_dev_mm;
+/// De tabel staat in de rij van de bijlage (`Ndp1992::c_min_dur_betonstaal`);
+/// [`c_min_dur_mm`] leest hem daar.
+///
+/// De Δc-toeslagen staan in dezelfde rij, met het artikel erbij:
+/// * Δc_dur,γ — 4.4.1.2(6); NB: "De waarde van Δc dur,γ moet gelijk aan 0 mm
+///   zijn genomen."
+/// * Δc_dur,st — 4.4.1.2(7); NB: 0 mm.
+/// * Δc_dur,add — 4.4.1.2(8); NB: 0 mm.
+/// * Δc_dev — 4.4.1.3(1)P. De EN beveelt 10 mm aan; de NB schrijft voor: "De
+///   waarde van Δc dev moet gelijk aan 5 mm zijn genomen." De reducties van
+///   4.4.1.3(3) zijn in de NL bijlage aan voorwaarden gebonden en worden hier
+///   niet toegepast.
 
 /// De ondergrens uit vergelijking (4.2): c_min is nooit kleiner dan 10 mm.
 pub const C_MIN_FLOOR_MM: f64 = 10.0;
 
-/// c_min,dur uit tabel 4.4N (betonstaal). `None` voor XF en XA.
-pub fn c_min_dur_mm(exposure: ExposureClass, structural: StructuralClass) -> Option<f64> {
+/// c_min,dur uit tabel 4.4N (betonstaal) onder `bijlage`. `None` voor XF en XA.
+pub fn c_min_dur_mm(
+    bijlage: NationaleBijlage,
+    exposure: ExposureClass,
+    structural: StructuralClass,
+) -> Option<f64> {
+    let tabel = Ndp1992::voor(bijlage).c_min_dur_betonstaal;
     exposure
         .cover_column_index()
-        .map(|kolom| C_MIN_DUR_REINFORCING[structural.index()][kolom])
+        .map(|kolom| tabel[structural.index()][kolom])
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -638,7 +640,7 @@ pub struct ConcreteCoverRequest {
     /// van het element als er geen zijde is benoemd.
     pub exposure_class: ExposureClass,
     /// De constructieklasse. Blijft het veld weg, dan
-    /// [`DEFAULT_STRUCTURAL_CLASS`] — de NB-waarde voor 50 jaar.
+    /// [`standaard_constructieklasse`] van de bijlage — de NB-waarde voor 50 jaar.
     #[serde(default)]
     pub structural_class: Option<StructuralClass>,
     /// De opgegeven nominale dekking c_nom, in mm — het getal dat de
@@ -720,9 +722,15 @@ pub fn concrete_cover_request(
         return Err("De staafdiameter moet een eindig, niet-negatief getal zijn.".into());
     }
 
-    let structural = req.structural_class.unwrap_or(DEFAULT_STRUCTURAL_CLASS);
+    // De bijlage uit het verzoek bepaalt tabel 4.4N, de Δc-toeslagen en de
+    // constructieklasse bij 50 jaar. Een bijlage die deze uitgave niet kent,
+    // komt hier niet: het lezen van het verzoek weigert haar al (alle drie de
+    // wegen lezen `ConcreteCoverRequest`).
+    let ndp = Ndp1992::voor(req.bijlage);
+    let standaard_klasse = standaard_constructieklasse(req.bijlage);
+    let structural = req.structural_class.unwrap_or(standaard_klasse);
     let info = req.exposure_class.info();
-    let c_min_dur = c_min_dur_mm(req.exposure_class, structural);
+    let c_min_dur = c_min_dur_mm(req.bijlage, req.exposure_class, structural);
 
     // Tabel 4.2, afzonderlijke staven: c_min,b = de diameter van de staaf.
     // De buitenste wapening bepaalt de eis aan c_nom zelf; de binnenliggende
@@ -764,7 +772,7 @@ pub fn concrete_cover_request(
     };
 
     let durability_term = c_min_dur
-        .map(|c| c + DELTA_C_DUR_GAMMA_MM - DELTA_C_DUR_ST_MM - DELTA_C_DUR_ADD_MM);
+        .map(|c| c + ndp.delta_c_dur_gamma_mm - ndp.delta_c_dur_st_mm - ndp.delta_c_dur_add_mm);
 
     // Vergelijking (4.2): de grootste van de drie.
     let mut c_min = c_min_b.max(C_MIN_FLOOR_MM);
@@ -780,7 +788,7 @@ pub fn concrete_cover_request(
         }
     }
 
-    let c_nom_required = c_min + DELTA_C_DEV_MM;
+    let c_nom_required = c_min + ndp.delta_c_dev_mm;
     // De unity check is de verhouding vereist/aanwezig, zoals elke andere
     // toets in dit project: > 1 is afgekeurd. Bij c_nom = 0 is er geen
     // verhouding; dan is de toets zonder meer onvoldoende.
@@ -817,7 +825,7 @@ pub fn concrete_cover_request(
         format!(
             "Nationale bijlage: Δc_dur,γ = Δc_dur,st = Δc_dur,add = 0 mm (4.4.1.2(6)…(8)) en \
              Δc_dev = {:.0} mm (4.4.1.3(1)P; de EN beveelt 10 mm aan).",
-            DELTA_C_DEV_MM
+            ndp.delta_c_dev_mm
         ),
     ]);
     match c_min_dur {
@@ -841,7 +849,7 @@ pub fn concrete_cover_request(
             "Constructieklasse {} aangehouden — de nationale bijlage bij 4.4.1.2(5): \
              \"Als constructieklasse voor een ontwerplevensduur van 50 jaar moet S4 zijn \
              aangehouden.\"",
-            DEFAULT_STRUCTURAL_CLASS.name()
+            standaard_klasse.name()
         ));
     }
     notes.push(
@@ -875,13 +883,13 @@ pub fn concrete_cover_request(
         c_min_dur_mm: c_min_dur,
         c_min_b_mm: c_min_b,
         c_min_b_source: bron,
-        delta_c_dur_gamma_mm: DELTA_C_DUR_GAMMA_MM,
-        delta_c_dur_st_mm: DELTA_C_DUR_ST_MM,
-        delta_c_dur_add_mm: DELTA_C_DUR_ADD_MM,
+        delta_c_dur_gamma_mm: ndp.delta_c_dur_gamma_mm,
+        delta_c_dur_st_mm: ndp.delta_c_dur_st_mm,
+        delta_c_dur_add_mm: ndp.delta_c_dur_add_mm,
         durability_term_mm: durability_term,
         c_min_mm: c_min,
         governed_by,
-        delta_c_dev_mm: DELTA_C_DEV_MM,
+        delta_c_dev_mm: ndp.delta_c_dev_mm,
         c_nom_required_mm: c_nom_required,
         c_nom_provided_mm: req.cover_mm,
         unity_check,
@@ -911,19 +919,19 @@ mod tests {
     fn tabel_4_4n_hoeken() {
         // De vier hoeken van de NB-tabel plus de kolom die van de EN afwijkt.
         assert_eq!(
-            c_min_dur_mm(ExposureClass::X0, StructuralClass::S1),
+            c_min_dur_mm(NationaleBijlage::NL, ExposureClass::X0, StructuralClass::S1),
             Some(10.0)
         );
         assert_eq!(
-            c_min_dur_mm(ExposureClass::XD3, StructuralClass::S1),
+            c_min_dur_mm(NationaleBijlage::NL, ExposureClass::XD3, StructuralClass::S1),
             Some(25.0)
         );
         assert_eq!(
-            c_min_dur_mm(ExposureClass::X0, StructuralClass::S6),
+            c_min_dur_mm(NationaleBijlage::NL, ExposureClass::X0, StructuralClass::S6),
             Some(20.0)
         );
         assert_eq!(
-            c_min_dur_mm(ExposureClass::XS3, StructuralClass::S6),
+            c_min_dur_mm(NationaleBijlage::NL, ExposureClass::XS3, StructuralClass::S6),
             Some(50.0)
         );
         // XD3/XS3 is in de NB gelijk aan XD2/XS2 — in de EN was hij 5 mm hoger.
@@ -936,8 +944,8 @@ mod tests {
             StructuralClass::S6,
         ] {
             assert_eq!(
-                c_min_dur_mm(ExposureClass::XD3, s),
-                c_min_dur_mm(ExposureClass::XD2, s)
+                c_min_dur_mm(NationaleBijlage::NL, ExposureClass::XD3, s),
+                c_min_dur_mm(NationaleBijlage::NL, ExposureClass::XD2, s)
             );
         }
     }

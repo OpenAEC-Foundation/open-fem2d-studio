@@ -1944,6 +1944,7 @@ mod tests {
 
     fn c30() -> DesignMaterial {
         DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,

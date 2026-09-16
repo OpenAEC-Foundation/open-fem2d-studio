@@ -34,6 +34,7 @@ use nen_en_1992_1_1::{
 /// N/mm², λ = 0,8 en η = 1,0 (f_ck ≤ 50 N/mm²), ε_cu3 = 3,5 ‰.
 fn materiaal() -> DesignMaterial {
     DesignMaterial::new(
+        nationale_bijlage::NationaleBijlage::NL,
         concrete_class_by_name("C30/37").unwrap(),
         reinforcement_grade_by_name("B500B").unwrap(),
         DesignSituation::PersistentTransient,

@@ -716,7 +716,7 @@ pub fn dekkingslijn(verzoek: DekkingslijnVerzoek) -> Result<DekkingslijnAntwoord
         .ok_or_else(|| format!("wapeningsstaal {} onbekend", b.reinforcement_grade))?;
     b.cage.validate(&section)?;
 
-    let mat = DesignMaterial::new(beton, staal, b.design_situation, b.steel_branch);
+    let mat = DesignMaterial::new(b.bijlage, beton, staal, b.design_situation, b.steel_branch);
     let lengte_mm = b.length_m * 1000.0;
 
     // De keuzes van de aanroeper gaan ONVERANDERD door naar de dwarskrachttoets;

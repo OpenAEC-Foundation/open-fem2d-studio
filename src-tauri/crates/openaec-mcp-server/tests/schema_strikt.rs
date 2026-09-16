@@ -635,7 +635,7 @@ async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
 
     assert_eq!(schema["additionalProperties"], false);
     for veld in [
-        "section", "concrete_class", "reinforcement_grade",
+        "bijlage", "section", "concrete_class", "reinforcement_grade",
         "cage", "n_ed_kn", "moment_sign", "n_strips", "steel_branch",
         "design_situation", "interaction_points",
     ] {
@@ -646,7 +646,7 @@ async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        10,
+        11,
         "het schema kent een veld dat MnKappaRequest weigert"
     );
 

@@ -141,6 +141,7 @@ fn fouten_worden_gemeld() {
 #[test]
 fn mn_kappa_verzoek() {
     let req = MnKappaRequest {
+        bijlage: nationale_bijlage::NationaleBijlage::NL,
         section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".into(),
         reinforcement_grade: "B500B".into(),

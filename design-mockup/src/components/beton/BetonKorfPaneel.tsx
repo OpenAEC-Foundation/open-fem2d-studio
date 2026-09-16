@@ -26,6 +26,7 @@ import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassIn
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
 import type { MnKappaRequest } from "../../lib/types/concrete/MnKappaRequest";
 import type { MnKappaResponse } from "../../lib/types/concrete/MnKappaResponse";
+import { STANDAARD_BIJLAGE } from "../../lib/normAanduidingen";
 import DoorsnedeTekening from "./DoorsnedeTekening";
 import MNKappaGrafiek from "./MNKappaGrafiek";
 import WapeningskorfEditor from "./WapeningskorfEditor";
@@ -115,6 +116,11 @@ export default function BetonKorfPaneel({
     const timer = window.setTimeout(() => {
       setBezig(true);
       const verzoek: MnKappaRequest = {
+        // Het diagram in dit paneel is een voorvertoning terwijl de gebruiker
+        // de korf invult; het paneel kent de projectinstellingen niet en houdt
+        // de enige gevulde bijlage aan (zelfde afspraak als de dekkingstoets in
+        // KorfVelden). De TOETSING zelf krijgt de bijlage van het project.
+        bijlage: STANDAARD_BIJLAGE,
         section: korf.doorsnede,
         concrete_class: korf.betonklasse,
         reinforcement_grade: korf.staalsoort,

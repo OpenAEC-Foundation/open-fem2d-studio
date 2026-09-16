@@ -899,7 +899,11 @@ impl Default for VerankeringInvoer {
         Self {
             diameter_mm: 0.0,
             f_ctk_005_mpa: 0.0,
-            alpha_ct: crate::factors::ALPHA_CC, // α_ct = α_cc = 1,0 in de NB
+            // α_ct = α_cc = 1,0 in de Nederlandse bijlage. Een Default heeft
+            // geen verzoek om een bijlage uit te lezen; de materiaalgegevens
+            // staan hier toch op 0 en worden afgekeurd. Wie werkelijk rekent,
+            // vult α_ct uit zijn eigen materiaal (`DesignMaterial::alpha_cc`).
+            alpha_ct: crate::factors::alpha_cc(nationale_bijlage::NationaleBijlage::NL),
             gamma_c: 1.5,
             f_yd_mpa: 0.0,
             soort: Verankeringssoort::Trek,
@@ -1708,12 +1712,17 @@ pub fn min_verankering_tussensteunpunt_mm(
 /// `percentage` is ρ₁: "het percentage is van de wapening die binnen 0,65·l₀
 /// vanaf het midden van de beschouwde overlappingslengte is overlapt (zie
 /// figuur 8.8)" — dus 50 voor 50 %, niet 0,5.
-pub fn alpha_6(percentage_overlapt: f64, soort: Verankeringssoort) -> f64 {
+pub fn alpha_6(
+    bijlage: nationale_bijlage::NationaleBijlage,
+    percentage_overlapt: f64,
+    soort: Verankeringssoort,
+) -> f64 {
     match soort {
-        // Tabel NB 8.3, regel "Druk": 1 bij elk percentage. Uit de normnaad,
-        // want de EN-tabel 8.3 die hier is doorgehaald geeft voor druk andere
-        // waarden — een ander land kan dus een ander getal hebben.
-        Verankeringssoort::Druk => crate::NDP.alpha_6_druk,
+        // Tabel NB 8.3, regel "Druk": 1 bij elk percentage. Uit de rij van
+        // `bijlage` in de normnaad, want de EN-tabel 8.3 die hier is
+        // doorgehaald geeft voor druk andere waarden — een ander land kan dus
+        // een ander getal hebben.
+        Verankeringssoort::Druk => nationale_bijlage::Ndp1992::voor(bijlage).alpha_6_druk,
         Verankeringssoort::Trek => (percentage_overlapt / 25.0).sqrt().clamp(1.0, 1.5),
     }
 }
@@ -1752,6 +1761,7 @@ pub struct Overlapping {
 /// stilzwijgend mee zou rekenen, toont wapening die in de bak niet ligt.
 #[allow(clippy::too_many_arguments)]
 pub fn overlappingslengte(
+    bijlage: nationale_bijlage::NationaleBijlage,
     l_b_rqd_mm: f64,
     diameter_mm: f64,
     soort: Verankeringssoort,
@@ -1761,7 +1771,7 @@ pub fn overlappingslengte(
     alpha_5: f64,
     percentage_overlapt: f64,
 ) -> Overlapping {
-    let a6 = alpha_6(percentage_overlapt, soort);
+    let a6 = alpha_6(bijlage, percentage_overlapt, soort);
     let l0_berekend = alpha_1 * alpha_2 * alpha_3 * alpha_5 * a6 * l_b_rqd_mm;
     let kandidaten = [
         (0.3 * a6 * l_b_rqd_mm, OndergrensTerm::FractieVanLbRqd),
@@ -2074,17 +2084,17 @@ mod tests {
     /// Tabel NB 8.3: de drukregel die de EN-tekst niet heeft.
     #[test]
     fn alpha_6_is_voor_druk_altijd_1_volgens_de_nb() {
-        assert_relative_eq!(alpha_6(50.0, Verankeringssoort::Druk), 1.0);
-        assert_relative_eq!(alpha_6(100.0, Verankeringssoort::Druk), 1.0);
+        assert_relative_eq!(alpha_6(nationale_bijlage::NationaleBijlage::NL, 50.0, Verankeringssoort::Druk), 1.0);
+        assert_relative_eq!(alpha_6(nationale_bijlage::NationaleBijlage::NL, 100.0, Verankeringssoort::Druk), 1.0);
         // Trek: de formule (ρ₁/25)^0,5 met de grenzen 1,0 en 1,5.
-        assert_relative_eq!(alpha_6(20.0, Verankeringssoort::Trek), 1.0);
-        assert_relative_eq!(alpha_6(25.0, Verankeringssoort::Trek), 1.0);
+        assert_relative_eq!(alpha_6(nationale_bijlage::NationaleBijlage::NL, 20.0, Verankeringssoort::Trek), 1.0);
+        assert_relative_eq!(alpha_6(nationale_bijlage::NationaleBijlage::NL, 25.0, Verankeringssoort::Trek), 1.0);
         assert_relative_eq!(
-            alpha_6(50.0, Verankeringssoort::Trek),
+            alpha_6(nationale_bijlage::NationaleBijlage::NL, 50.0, Verankeringssoort::Trek),
             2.0_f64.sqrt(),
             max_relative = 1e-12
         );
-        assert_relative_eq!(alpha_6(100.0, Verankeringssoort::Trek), 1.5);
+        assert_relative_eq!(alpha_6(nationale_bijlage::NationaleBijlage::NL, 100.0, Verankeringssoort::Trek), 1.5);
     }
 
     #[test]

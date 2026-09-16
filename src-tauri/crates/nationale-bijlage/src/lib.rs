@@ -181,8 +181,9 @@ mod tests {
     /// stilzwijgende keuze, en moeten de `#[serde(default)]`-regels op
     /// `BeamCheckInput`, `TimberBeamCheckInput`, `CltBeamCheckInput`,
     /// `ConcreteBeamCheckInput`, `ConcreteColumnCheckRequest`,
-    /// `ConcreteCoverRequest` en `LasInput` weg. Deze test valt dan om en zegt
-    /// dat.
+    /// `ConcreteCoverRequest`, `MnKappaRequest`, `SegmentStiffnessRequest`,
+    /// `CreepCoefficientRequest`, `PlateCheckInput` en `LasInput` weg. Deze test
+    /// valt dan om en zegt dat.
     #[test]
     fn zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg() {
         assert_eq!(

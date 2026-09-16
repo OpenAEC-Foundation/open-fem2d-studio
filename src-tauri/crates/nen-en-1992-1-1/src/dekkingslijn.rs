@@ -1334,7 +1334,8 @@ fn bouw_bundels(
         let invoer = VerankeringInvoer {
             diameter_mm,
             f_ctk_005_mpa: inv.f_ctk_005_mpa,
-            alpha_ct: crate::factors::ALPHA_CC,
+            // α_ct = α_cc onder de bijlage van het materiaal (normnaad).
+            alpha_ct: inv.mat.alpha_cc,
             gamma_c: inv.mat.gamma_c,
             f_yd_mpa: inv.mat.f_yd(),
             // §9.2.1.3 heet "Inkorting van op TREK belaste langswapening"; de
@@ -2005,6 +2006,7 @@ mod tests {
 
     fn mat() -> DesignMaterial {
         DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,
