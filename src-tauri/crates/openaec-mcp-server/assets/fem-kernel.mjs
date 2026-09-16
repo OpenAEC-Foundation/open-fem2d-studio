@@ -20411,6 +20411,7 @@ var BEKENDE_TOPVELDEN = [
   "analysetype",
   "betonSegmentLengteMm",
   "betonKruipcoefficient",
+  "betonKruipInvoer",
   "combinations",
   "idTellers",
   "combinatiesVervangenBijOpenen",
