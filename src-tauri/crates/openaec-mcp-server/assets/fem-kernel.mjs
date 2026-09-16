@@ -17378,7 +17378,7 @@ function redenZuiverStaal(combo) {
   const frequent = soortVanCombinatie(combo) === "6.15b";
   const uitdrukking2 = frequent ? "6.15b" : "6.16b";
   const gebruiker = frequent ? "de scheurbeheersing van beton (EN 1992-1-1 \xA77.3; de nationale bijlage bij 7.3.1(5) schrijft juist deze combinatie voor)" : "de kruipvervorming van hout en de BGT-tak van beton";
-  return `"${combo.name}" (NEN-EN 1990 uitdrukking ${uitdrukking2}) is niet doorgerekend: elke staaf in dit model is staal. De doorbuigingstoets van staal gebruikt de karakteristieke BGT-combinatie (6.14); deze combinatie voedt ${gebruiker}. Voeg een houten of betonnen staaf toe \u2014 of wijzig de combinatie zelf \u2014 en hij wordt weer meegenomen.`;
+  return `"${combo.name}" (NEN-EN 1990 uitdrukking ${uitdrukking2}) is niet doorgerekend: elke staaf in dit model is staal en staat overwegend verticaal zonder gekozen doorbuigingsklasse. Zo'n staaf krijgt de zijdelingse eis van NEN-EN 1990 A1.4.3(7), bij de karakteristieke BGT-combinatie (6.14b); de vloer- en dakeisen van A1.4.3(3)/(4), die de frequente en de quasi-blijvende combinatie vragen, gelden hier nergens. Deze combinatie voedt verder ${gebruiker}. Voeg een ligger, een houten of betonnen staaf toe, kies bij een staaf een doorbuigingsklasse \u2014 of wijzig de combinatie zelf \u2014 en hij wordt weer meegenomen.`;
 }
 function isZuivereStaalconstructie(beams, plates = []) {
   if (beams.length === 0) return false;
@@ -17401,9 +17401,18 @@ function zelfdeFactoren(a, b) {
 function isOngewijzigd(combo, standaard) {
   return combo.name === standaard.name && combo.type === standaard.type && combo.formula === standaard.formula && zelfdeFactoren(combo.factors, standaard.factors);
 }
+function vraagtVloerDakEis(beams, nodes) {
+  if (!nodes) return true;
+  return beams.some(
+    (b) => b.checkConfig?.deflectionClass !== void 0 || !isOverwegendVerticaal(b, nodes)
+  );
+}
 function selecteerCombinaties(combinations, beams, plates = [], opties = {}) {
   const redenPerId = /* @__PURE__ */ new Map();
   if (!isZuivereStaalconstructie(beams, plates)) {
+    return { actief: combinations, overgeslagen: [], redenPerId };
+  }
+  if (vraagtVloerDakEis(beams, opties.nodes)) {
     return { actief: combinations, overgeslagen: [], redenPerId };
   }
   const gevallen = opties.loadCases ?? STANDAARD_BELASTINGGEVALLEN;
@@ -22489,7 +22498,7 @@ function rekenDoor(payload) {
     alleCombinaties,
     gelezen.beams,
     gelezen.model.plates,
-    { loadCases: gelezen.model.loadCases, gevolgklasse }
+    { loadCases: gelezen.model.loadCases, gevolgklasse, nodes: gelezen.model.nodes }
   );
   const combinatiesZonderEindtoestand = metScheefstandRichtingen(
     selectie.actief,
@@ -22774,7 +22783,8 @@ function opValidate(payload) {
   const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse);
   const actief2 = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
     loadCases: gelezen.model.loadCases,
-    gevolgklasse: klasse
+    gevolgklasse: klasse,
+    nodes: gelezen.model.nodes
   }).actief;
   const uitkomst = valideerModel(gelezen.rauw, {
     combinaties: actief2,
@@ -23221,6 +23231,7 @@ export {
   voegBelastinggevalToe,
   voegCombinatieToe,
   volgendVrijId,
+  vraagtVloerDakEis,
   vrijstaandDakUitgangspunten,
   wijzigBelastinggeval,
   wijzigCombinatie,
