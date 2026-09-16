@@ -14115,6 +14115,14 @@ function buildSteelCheckInputs(ruweData) {
       skipped.push({ beamId: beam.id, reason: verloop.reden });
       continue;
     }
+    const eigenEind = verloop.status === "verlopend" && isEigenProfiel(beam.profileEnd) ? zoekEigenDoorsnede(beam.profileEnd) : void 0;
+    if (verloop.status === "verlopend" && isEigenProfiel(beam.profileEnd) && !eigenEind) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `eigen doorsnede "${eigenNaamVan(beam.profileEnd)}" als eindprofiel is niet (meer) bewaard \u2014 open de profieleditor en bewaar hem opnieuw`
+      });
+      continue;
+    }
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
     let govComboId = forcesEnvelope[0].combination_id;
     let govAbsMy = 0;
@@ -14154,6 +14162,7 @@ function buildSteelCheckInputs(ruweData) {
       // `toetsdataInReferentierichting` heeft ze bij een gespiegelde staaf al
       // verwisseld.
       ...verloop.status === "verlopend" ? { profile_end: (beam.profileEnd ?? "").trim() } : {},
+      ...eigenEind ? { custom_section_end: naarCustomSection(eigenEind) } : {},
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1e3,
       forces_envelope: forcesEnvelope,
@@ -15234,6 +15243,42 @@ function doorsnedeOpPositie(v, t) {
   const g = v.soort === "rechthoek" ? rechthoekGrootheden(maten) : gelastIGrootheden(maten);
   return { ...g, maten };
 }
+function gelasteIMatenVanEigen(profile) {
+  const d = zoekEigenDoorsnede(profile);
+  if (!d) return null;
+  const o = d.ontwerp;
+  if (o.soort !== "samenstelling") return null;
+  if (o.catalogusdelen.length !== 0 || o.lamellen.length !== 3) return null;
+  const staand = o.lamellen.filter((l) => Math.abs(Math.abs(l.alphaGraden) - 90) < 1e-6);
+  const liggend = o.lamellen.filter((l) => Math.abs(l.alphaGraden) < 1e-6);
+  if (staand.length !== 1 || liggend.length !== 2) return null;
+  const lijf = staand[0];
+  const [f1, f2] = liggend;
+  if (Math.abs(f1.b_mm - f2.b_mm) > 1e-9 || Math.abs(f1.t_mm - f2.t_mm) > 1e-9) return null;
+  if (Math.abs(f1.y_mm) > 1e-9 || Math.abs(f2.y_mm) > 1e-9) return null;
+  if (Math.abs(lijf.y_mm) > 1e-9 || Math.abs(lijf.z_mm) > 1e-9) return null;
+  if (Math.abs(f1.z_mm + f2.z_mm) > 1e-9) return null;
+  const tf = f1.t_mm;
+  const tw = lijf.t_mm;
+  const b = f1.b_mm;
+  const h = lijf.b_mm + 2 * tf;
+  if (!(h > 0 && b > 0 && tw > 0 && tf > 0)) return null;
+  if (Math.abs(Math.abs(f1.z_mm) - (h - tf) / 2) > 1e-6) return null;
+  return { b, h, tw, tf };
+}
+function matenVanCatalogusI(naam) {
+  const d = STEEL_SECTION_DIMS[normaliseer(naam ?? "")];
+  if (!d) {
+    return `profiel "${naam}" is niet bekend in de staalcatalogus \u2014 een verlopende stalen staaf loopt van I/H-profiel naar I/H-profiel`;
+  }
+  if (d.kind !== "ISection") {
+    return `verlopend profiel wordt voor deze doorsnede niet ondersteund (${soortNaam(d.kind)} "${d.naam}") \u2014 alleen een I/H-profiel kan verlopen`;
+  }
+  if ((d.flensHelling ?? 0) > 0) {
+    return `verlopend profiel wordt voor deze doorsnede niet ondersteund (I-profiel met toelopende flenzen "${d.naam}") \u2014 het gelaste rekenmodel heeft evenwijdige flenzen`;
+  }
+  return { b: d.b, h: d.h, tw: d.tw, tf: d.tf };
+}
 function soortNaam(kind) {
   switch (kind) {
     case "Shs":
@@ -15266,8 +15311,19 @@ function bepaalVerloop(material, profile, profileEnd) {
     reden: `verlopend profiel wordt voor deze doorsnede niet ondersteund (${wat}) \u2014 alleen een rechthoek b\xD7h of een I/H-profiel uit de staalcatalogus kan verlopen`
   });
   if (soort === "beton") return nietOndersteund("beton");
-  if (isEigenProfiel(profile) || isEigenProfiel(eind)) return nietOndersteund("eigen doorsnede");
   if (isCltProfiel(profile) || isCltProfiel(eind)) return nietOndersteund("kruislaaghout");
+  const eigenMaten = (naam) => isEigenProfiel(naam) ? gelasteIMatenVanEigen(naam) ?? null : "geen";
+  const mEigenB = eigenMaten(profile);
+  const mEigenE = eigenMaten(eind);
+  if (mEigenB === null || mEigenE === null) {
+    const welke = mEigenB === null ? profile : eind;
+    return nietOndersteund(
+      `eigen doorsnede "${eigenNaamVan(welke) ?? welke}" \u2014 alleen een eigen doorsnede die een gelast, dubbelsymmetrisch I-profiel uit drie platen is (lijf plus twee gelijke flenzen), kan een uiteinde van een verloop zijn`
+    );
+  }
+  if (soort === "hout" && (mEigenB !== "geen" || mEigenE !== "geen")) {
+    return nietOndersteund("eigen doorsnede bij hout");
+  }
   const rB = parseRechthoek(profile);
   const rE = parseRechthoek(eind);
   if (rB && rE) {
@@ -15289,6 +15345,16 @@ function bepaalVerloop(material, profile, profileEnd) {
       status: "fout",
       reden: `beginprofiel "${profile}" en eindprofiel "${eind}" zijn niet van dezelfde doorsnedesoort \u2014 een verlopende staaf gaat van rechthoek naar rechthoek of van I/H-profiel naar I/H-profiel`
     };
+  }
+  if (mEigenB !== "geen" || mEigenE !== "geen") {
+    const beginM = mEigenB !== "geen" ? mEigenB : matenVanCatalogusI(profile);
+    const eindM = mEigenE !== "geen" ? mEigenE : matenVanCatalogusI(eind);
+    if (typeof beginM === "string") return { status: "fout", reden: beginM };
+    if (typeof eindM === "string") return { status: "fout", reden: eindM };
+    if (beginM.b === eindM.b && beginM.h === eindM.h && beginM.tw === eindM.tw && beginM.tf === eindM.tf) {
+      return { status: "prismatisch" };
+    }
+    return { status: "verlopend", verloop: { soort: "gelastI", E, begin: beginM, eind: eindM } };
   }
   const dB = STEEL_SECTION_DIMS[normaliseer(profile ?? "")];
   const dE = STEEL_SECTION_DIMS[normaliseer(eind)];
@@ -21860,6 +21926,7 @@ export {
   equivalentUdlFromMoments,
   extractFieldDeflectionMm,
   gIsotroop,
+  gelasteIMatenVanEigen,
   gelijkeCombinatie,
   gelijkeInhoud,
   genereerRasterMesh,
