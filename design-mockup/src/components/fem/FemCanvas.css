@@ -210,6 +210,19 @@
   stroke-width: 2;
   stroke-dasharray: none;
 }
+/* Openingen in een plaat: de omtrek van het gat (het vlak zelf is uitgespaard via evenodd) */
+.fem-plate-opening {
+  fill: none;
+  stroke: rgba(217, 119, 6, 0.7);
+  stroke-width: 1.2;
+}
+/* Opening in aanbouw (slepen met het openinggereedschap) */
+.fem-opening-preview {
+  fill: rgba(217, 119, 6, 0.08);
+  stroke: var(--theme-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
 
 /* Spring supports — drawn as zig-zag / circular */
 .fem-spring {

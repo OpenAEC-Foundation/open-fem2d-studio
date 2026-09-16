@@ -24,7 +24,8 @@ import type {
 } from "./femTypes";
 import {
   withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
-  plaatRandLabel, bepaalPlaatRand,
+  plaatRandLabel, bepaalPlaatRand, effectiefPlaatMeshType, plaatRekentAlsRaster,
+  PLAAT_MESH_TYPEN,
 } from "./femTypes";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -1647,6 +1648,34 @@ function PlateProperties({ plate, nodes, updatePlate }: {
     },
   };
 
+  // Elementkeuze (stap 2). "Standaard" = geen keuze opgeslagen: de plaat
+  // rekent dan zoals vóór stap 2 (rechthoekraster → vierhoeken, CDT →
+  // driehoeken), zodat een bestaand model geen ander getal krijgt.
+  const hoeken = plate.nodeIds.map((id) => nodes.find((nn) => nn.id === id));
+  const punten = hoeken.every((h) => !!h) ? hoeken.map((h) => ({ x: h!.x, z: h!.z })) : null;
+  const openingen = plate.openingen ?? [];
+  const raster = punten ? plaatRekentAlsRaster(punten, openingen.map((o) => o.punten)) : false;
+  const effectief = punten ? effectiefPlaatMeshType(plate, punten) : "driehoeken";
+  const meshTypeLabel: Record<string, string> = { driehoeken: "Driehoeken (CST)", vierhoeken: "Vierhoeken (Quad4)" };
+  const meshSoortTekst = (() => {
+    if (raster) return `${meshTypeLabel[effectief]} — gestructureerd raster`;
+    const c = plate.meshCache;
+    if (c?.meshSoort === "gemengd") return "Gemengd: vierhoeken waar de koppeling lukt, elders driehoeken";
+    return `${meshTypeLabel[effectief]} — randconforme CDT`;
+  })();
+  const verwijderOpening = (id: number) => {
+    if (!updatePlate) return;
+    const rest = openingen.filter((o) => o.id !== id);
+    updatePlate(plate.id, { openingen: rest.length > 0 ? rest : undefined });
+  };
+  const openingMaat = (p: { x: number; z: number }[]) => {
+    const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
+    const b = Math.max(...xs) - Math.min(...xs), h = Math.max(...zs) - Math.min(...zs);
+    return p.length === 4
+      ? `${b} × ${h} mm op (${Math.min(...xs)}, ${Math.min(...zs)})`
+      : `${p.length} hoeken`;
+  };
+
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
@@ -1712,13 +1741,60 @@ function PlateProperties({ plate, nodes, updatePlate }: {
               onChange={e => setMeshStr(e.target.value)}
               onBlur={() => commitVeld(meshStr, "meshSize",
                 v => v >= 10, () => setMeshStr(String(d.meshSize)))}
-              title="Gewenste elementgrootte van het quad-grid; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)"
+              title="Gewenste elementgrootte van het rekenmesh; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)"
             />
           </Row>
+          <Row label="Elementen">
+            <select
+              className="fem-prop-input"
+              value={plate.meshType ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                updatePlate?.(plate.id, {
+                  meshType: PLAAT_MESH_TYPEN.includes(v as never) ? (v as typeof PLAAT_MESH_TYPEN[number]) : undefined,
+                });
+              }}
+              title="Vierhoeken (Quad4, bilineair) zijn per vrijheidsgraad nauwkeuriger dan driehoeken (CST, constante rek); driehoeken vragen een fijner net. Standaard = de keuze van vóór september 2026 voor deze vorm."
+            >
+              <option value="">Standaard ({meshTypeLabel[raster ? "vierhoeken" : "driehoeken"]})</option>
+              <option value="vierhoeken">Vierhoeken (Quad4)</option>
+              <option value="driehoeken">Driehoeken (CST)</option>
+            </select>
+          </Row>
+          <Row label="Rekent als"><code style={{ whiteSpace: "normal" }}>{meshSoortTekst}</code></Row>
           <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
             Wijzigingen maken de resultaten ongeldig — klik <strong>Berekenen</strong> om
             opnieuw te rekenen.
           </div>
+        </Section>
+        <Section title={`Openingen (${openingen.length})`}>
+          {openingen.length === 0 && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
+              Geen openingen. Kies <strong>Opening</strong> in het lint en sleep een rechthoek
+              binnen de plaat.
+            </div>
+          )}
+          {openingen.map((o) => (
+            <Row key={`op${o.id}`} label={`Opening ${o.id}`}>
+              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <code style={{ whiteSpace: "normal" }}>{openingMaat(o.punten)}</code>
+                <button
+                  type="button"
+                  className="fem-prop-btn"
+                  onClick={() => verwijderOpening(o.id)}
+                  title="Deze opening verwijderen"
+                >
+                  Verwijder
+                </button>
+              </span>
+            </Row>
+          ))}
+          {openingen.length > 0 && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
+              Het rekenmesh laat de openingen vrij en legt knopen op de openingsrand.
+              {!raster && " Een niet-rechthoekige opening rekent via de CDT (meshcache)."}
+            </div>
+          )}
         </Section>
       </div>
     </div>

@@ -25,6 +25,7 @@ export type Tool =
   | "addBeam"
   | "addSubNode"
   | "addPlate"
+  | "addOpening"            // opening in een plaat: rechthoek slepen binnen de plaat
   | "addPinned"
   | "addFixed"
   | "addXRoller"

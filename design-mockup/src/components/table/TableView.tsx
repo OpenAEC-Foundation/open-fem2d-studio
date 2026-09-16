@@ -401,15 +401,15 @@ export default function TableView(props: TableViewProps) {
         }
       }
     }
-    // Meshcache op de plaat (polygonen-pad) — veldvorm defensief lezen zodat
-    // dit blijft werken ongeacht de exacte cache-structuur.
-    const cache = (p as unknown as Record<string, unknown>).meshCache;
-    if (cache && typeof cache === "object") {
-      const c = cache as Record<string, unknown>;
-      const nodes = Array.isArray(c.nodes) ? c.nodes.length : undefined;
-      const elems = Array.isArray(c.triangles) ? c.triangles.length
-        : Array.isArray(c.elements) ? c.elements.length : undefined;
-      if (nodes !== undefined || elems !== undefined) return { nodes, elems };
+    // Meshcache op de plaat (CDT-pad): de knopen heten `points` (niet
+    // `nodes` — die naam las tot september 2026 nooit iets), en de
+    // elementen zijn driehoeken plus, sinds de vierhoekmesher, vierhoeken.
+    const c = p.meshCache;
+    if (c) {
+      const nodes = Array.isArray(c.points) ? c.points.length : undefined;
+      const elems = (Array.isArray(c.triangles) ? c.triangles.length : 0)
+        + (Array.isArray(c.quads) ? c.quads.length : 0);
+      return { nodes, elems: elems > 0 ? elems : undefined };
     }
     return {};
   };

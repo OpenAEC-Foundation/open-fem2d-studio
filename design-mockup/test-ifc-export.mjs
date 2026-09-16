@@ -691,6 +691,46 @@ log("\n[9] Platen als IfcStructuralSurfaceMember, met randlasten");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+log("\n[9b] Openingen in een plaat: binnenlussen van het vlaklid (stap 2)");
+{
+  // IfcOpeningElement/IfcRelVoidsElement bestaat alleen voor IfcElement, niet
+  // voor een IfcStructuralItem; een opening in een vlaklid is daarom een
+  // BINNENLUS (IfcFaceBound) van hetzelfde IfcFaceSurface, met eigen punten
+  // (een opening hangt aan geen knoop), plus de Description en de
+  // eigenschappenset. Een plaat zónder openingen en zonder elementkeuze
+  // schrijft geen enkele extra entiteit of eigenschap (byte-gelijk).
+  const rect = (x0, z0, x1, z1) => [{ x: x0, z: z0 }, { x: x1, z: z0 }, { x: x1, z: z1 }, { x: x0, z: z1 }];
+  const basis = {
+    projectNaam: "Wand met opening",
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 4000, z: 0 }, { id: 3, x: 4000, z: 3000 }, { id: 4, x: 0, z: 3000 }],
+    beams: [], supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 2, type: "fixed" }],
+    plates: [{ id: 1, nodeIds: [1, 2, 3, 4], thickness: 200, E: 33000, nu: 0.2, rho: 2500, meshSize: 250 }],
+    loads: [], loadCases: [{ id: 1, name: "Permanent", type: "dead" }],
+  };
+  const met = {
+    ...basis,
+    plates: [{ ...basis.plates[0], meshType: "vierhoeken",
+      openingen: [{ id: 1, punten: rect(1000, 1000, 2000, 2000) }, { id: 2, punten: [{ x: 2500, z: 500 }, { x: 3500, z: 500 }, { x: 3000, z: 1500 }] }] }],
+  };
+  const ifc = bouwIfcRekenmodel(met);
+  checkEq("kapotte referenties", refIntegriteit(ifc).length, 0);
+  checkEq("validatie: geen fouten", valideerIfc(ifc).fouten.length, 0);
+  checkEq("twee binnenlussen (IfcFaceBound)", tel(ifc, "IFCFACEBOUND"), 2);
+  checkTrue("het vlak draagt buitenlus + twee binnenlussen", /IFCFACESURFACE\(\(#\d+,#\d+,#\d+\),#\d+,\.T\.\)/.test(ifc));
+  checkTrue("rechthoekige opening: polyloop van vier punten; driehoekige: drie",
+    /IFCPOLYLOOP\(\(#\d+,#\d+,#\d+,#\d+\)\)/.test(ifc) && /IFCPOLYLOOP\(\(#\d+,#\d+,#\d+\)\)/.test(ifc));
+  checkTrue("openingspunt (1, 0, 1) m in meters", /IFCCARTESIANPOINT\(\(1\.,0\.,1\.\)\)/.test(ifc));
+  checkTrue("Description noemt de openingen", /wandschijf t = 200 mm, 2 openingen/.test(ifc));
+  checkTrue("eigenschappenset: Openingen en Elementtype",
+    /'Openingen',\$,IFCLABEL\('1: \(1000, 1000\) \(2000, 1000\) \(2000, 2000\) \(1000, 2000\); 2: /.test(ifc)
+    && /'Elementtype',\$,IFCLABEL\('vierhoeken'\)/.test(ifc));
+  const zonder = bouwIfcRekenmodel(basis);
+  checkEq("plaat zonder openingen: geen binnenlus", tel(zonder, "IFCFACEBOUND"), 0);
+  checkTrue("plaat zonder openingen en keuze: geen extra eigenschappen", !/'Openingen'|'Elementtype'/.test(zonder));
+  checkEq("determinisme", bouwIfcRekenmodel(met), ifc);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 log("\n[10] Stramien als IfcGrid en rekeninstellingen op het analysemodel");
 {
   const model = {

@@ -1803,6 +1803,7 @@ function App() {
                 addBeam={fem.addBeam}
                 updateBeam={fem.updateBeam}
                 addPlate={fem.addPlate}
+                updatePlate={fem.updatePlate}
                 addSupport={fem.addSupport}
                 addLoad={fem.addLoad}
                 updateLoad={fem.updateLoad}

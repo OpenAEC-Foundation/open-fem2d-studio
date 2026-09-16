@@ -829,6 +829,26 @@ export function collectSelectionNodeIds(
 }
 
 /**
+ * Openingen zijn coördinaten en geen knopen; ze reizen mee met hun plaat
+ * wanneer ÁLLE hoekknopen van die plaat worden getransformeerd (dan
+ * verhuist de plaat als geheel). Verplaatst de gebruiker maar één hoek, dan
+ * vervormt de plaat en blijven de openingen staan; ligt een opening daarna
+ * buiten de omtrek, dan meldt de modelcontrole dat en weigert de engine.
+ * Bewust géén afronding hier: `f` rondt zelf waar de knopen ook afgerond
+ * worden (roteren, spiegelen), zodat opening en hoek dezelfde regel volgen.
+ */
+export function transformeerPlaatOpeningen(
+  plates: Plate[], bewogenKnopen: Set<number>,
+  f: (p: { x: number; z: number }) => { x: number; z: number },
+): Plate[] {
+  return plates.map(p => {
+    if (!p.openingen || p.openingen.length === 0) return p;
+    if (!p.nodeIds.every(id => bewogenKnopen.has(id))) return p;
+    return { ...p, openingen: p.openingen.map(o => ({ ...o, punten: o.punten.map(f) })) };
+  });
+}
+
+/**
  * Verplaats de selectie over (dx, dz). Retourneert null wanneer de selectie
  * geen knopen raakt (lege selectie / lastselectie) — de aanroeper toont dan
  * feedback in plaats van stilzwijgend niets te doen.
@@ -836,12 +856,13 @@ export function collectSelectionNodeIds(
 export function computeSelectionTranslate(
   cur: Pick<Snapshot, "nodes" | "beams" | "plates">,
   sel: Selection, dx: number, dz: number,
-): { nodes: Node[] } | null {
+): { nodes: Node[]; plates: Plate[] } | null {
   const ids = collectSelectionNodeIds(cur, sel);
   if (ids.size === 0) return null;
   const nodes = cur.nodes.map(n =>
     ids.has(n.id) ? { ...n, x: n.x + dx, z: n.z + dz } : n);
-  return { nodes };
+  const plates = transformeerPlaatOpeningen(cur.plates, ids, p => ({ x: p.x + dx, z: p.z + dz }));
+  return { nodes, plates };
 }
 
 /**
@@ -853,20 +874,17 @@ export function computeSelectionTranslate(
 export function computeSelectionRotate(
   cur: Pick<Snapshot, "nodes" | "beams" | "plates">,
   sel: Selection, cx: number, cz: number, angleRad: number,
-): { nodes: Node[] } | null {
+): { nodes: Node[]; plates: Plate[] } | null {
   const ids = collectSelectionNodeIds(cur, sel);
   if (ids.size === 0) return null;
   const cs = Math.cos(angleRad), sn = Math.sin(angleRad);
-  const nodes = cur.nodes.map(n => {
-    if (!ids.has(n.id)) return n;
-    const rx = n.x - cx, rz = n.z - cz;
-    return {
-      ...n,
-      x: Math.round(cx + rx * cs - rz * sn),
-      z: Math.round(cz + rx * sn + rz * cs),
-    };
-  });
-  return { nodes };
+  const roteer = (p: { x: number; z: number }) => {
+    const rx = p.x - cx, rz = p.z - cz;
+    return { x: Math.round(cx + rx * cs - rz * sn), z: Math.round(cz + rx * sn + rz * cs) };
+  };
+  const nodes = cur.nodes.map(n => ids.has(n.id) ? { ...n, ...roteer(n) } : n);
+  const plates = transformeerPlaatOpeningen(cur.plates, ids, roteer);
+  return { nodes, plates };
 }
 
 /**
@@ -877,19 +895,22 @@ export function computeSelectionRotate(
 export function computeSelectionMirror(
   cur: Pick<Snapshot, "nodes" | "beams" | "plates">,
   sel: Selection, x1: number, z1: number, x2: number, z2: number,
-): { nodes: Node[] } | null {
+): { nodes: Node[]; plates: Plate[] } | null {
   const ids = collectSelectionNodeIds(cur, sel);
   if (ids.size === 0) return null;
   const dx = x2 - x1, dz = z2 - z1;
   const denom = dx * dx + dz * dz;
   if (denom < 1e-6) return null;
-  const nodes = cur.nodes.map(n => {
-    if (!ids.has(n.id)) return n;
-    const t = ((n.x - x1) * dx + (n.z - z1) * dz) / denom;
+  const spiegel = (p: { x: number; z: number }) => {
+    const t = ((p.x - x1) * dx + (p.z - z1) * dz) / denom;
     const fx = x1 + t * dx, fz = z1 + t * dz;
-    return { ...n, x: Math.round(2 * fx - n.x), z: Math.round(2 * fz - n.z) };
-  });
-  return { nodes };
+    return { x: Math.round(2 * fx - p.x), z: Math.round(2 * fz - p.z) };
+  };
+  const nodes = cur.nodes.map(n => ids.has(n.id) ? { ...n, ...spiegel(n) } : n);
+  // Spiegelen keert de omloopzin van een opening om; dat mag (beide
+  // windingsrichtingen zijn toegestaan, zoals bij de plaatomtrek).
+  const plates = transformeerPlaatOpeningen(cur.plates, ids, spiegel);
+  return { nodes, plates };
 }
 
 /**
@@ -962,7 +983,16 @@ export function computeSelectionCopy(
     if (!copyPlateIds.has(p.id)) continue;
     const mapped = p.nodeIds.map(id => nodeIdMap.get(id));
     if (mapped.some(id => id === undefined)) continue;
-    const clone: Plate = { ...p, id: nextPlateId++, nodeIds: mapped as number[] };
+    // Openingen zijn coördinaten: verschuiven met dezelfde offset als de
+    // hoekknopen, anders zou de kopie een gat op de plek van het origineel
+    // hebben. De meshcache blijft geldig: de handtekening is
+    // positie-afhankelijk, dus het canvas regenereert hem voor de kopie.
+    const clone: Plate = {
+      ...p, id: nextPlateId++, nodeIds: mapped as number[],
+      ...(p.openingen && p.openingen.length > 0
+        ? { openingen: p.openingen.map(o => ({ ...o, punten: o.punten.map(q => ({ x: q.x + dx, z: q.z + dz })) })) }
+        : {}),
+    };
     plateIdMap.set(p.id, clone.id);
     newPlates.push(clone);
   }
@@ -2021,7 +2051,8 @@ export function useFemStore(opties?: {
     const r = computeSelectionTranslate(cur, sel, dx, dz);
     if (!r) return false;
     setNodes(r.nodes);
-    pushHistory({ ...cur, nodes: r.nodes });
+    setPlates(r.plates);
+    pushHistory({ ...cur, nodes: r.nodes, plates: r.plates });
     return true;
   }, [pushHistory]);
 
@@ -2052,7 +2083,8 @@ export function useFemStore(opties?: {
     const r = computeSelectionRotate(cur, sel, cx, cz, angleRad);
     if (!r) return false;
     setNodes(r.nodes);
-    pushHistory({ ...cur, nodes: r.nodes });
+    setPlates(r.plates);
+    pushHistory({ ...cur, nodes: r.nodes, plates: r.plates });
     return true;
   }, [pushHistory]);
 
@@ -2084,7 +2116,8 @@ export function useFemStore(opties?: {
     const r = computeSelectionMirror(cur, sel, x1, z1, x2, z2);
     if (!r) return false;
     setNodes(r.nodes);
-    pushHistory({ ...cur, nodes: r.nodes });
+    setPlates(r.plates);
+    pushHistory({ ...cur, nodes: r.nodes, plates: r.plates });
     return true;
   }, [pushHistory]);
 
@@ -2232,8 +2265,12 @@ export function useFemStore(opties?: {
     const idSet = new Set(nodeIds);
     const nextNodes = cur.nodes.map(n =>
       idSet.has(n.id) ? { ...n, x: n.x + dx, z: n.z + dz } : n);
+    // Slepen van een hele plaat: de openingen schuiven mee (zie
+    // transformeerPlaatOpeningen).
+    const nextPlates = transformeerPlaatOpeningen(cur.plates, idSet, p => ({ x: p.x + dx, z: p.z + dz }));
     setNodes(nextNodes);
-    pushHistory({ ...cur, nodes: nextNodes });
+    setPlates(nextPlates);
+    pushHistory({ ...cur, nodes: nextNodes, plates: nextPlates });
   }, [pushHistory]);
 
   const setStructuralGrid = useCallback((g: StructuralGrid | ((prev: StructuralGrid) => StructuralGrid)) => {
