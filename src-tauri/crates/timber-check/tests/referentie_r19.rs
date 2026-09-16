@@ -105,6 +105,7 @@ fn invoer(
     kip: bool,
 ) -> TimberBeamCheckInput {
     TimberBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         width_mm: B_MM,
         height_mm: H_MM,

@@ -12,6 +12,7 @@ import katex from "katex";
 import type { TFunction } from "i18next";
 import type { CheckSoort, MemberCheckResult } from "../../lib/checkTypes";
 import { checkSoort } from "../../lib/checkTypes";
+import { aanduidingen, STANDAARD_BIJLAGE } from "../../lib/normAanduidingen";
 import type { Deelstap } from "../../lib/types/steel/Deelstap";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
@@ -29,10 +30,20 @@ export function isStabilityCalc(c: CheckCalc): c is StabilityCalc {
   return "intermediate_values" in c;
 }
 
-/** Normaanduidingen zoals de Rust-kernen ze hanteren. */
-export const STEEL_NORM_FULL = "NEN-EN 1993-1-1+C2+A1/NB:2016";
-export const TIMBER_NORM_FULL = "NEN-EN 1995-1-1+C1+A1:2011/NB:2013";
-export const CONCRETE_NORM_FULL = "NEN-EN 1992-1-1+A1:2015/NB:2016";
+/**
+ * Normaanduidingen — uit de normnaad, niet meer als losse tekst hier.
+ *
+ * Ze horen bij de gekozen nationale bijlage: "NEN-EN 1993-1-1+C2+A1/NB:2016" is
+ * de Nederlandse uitgave MET bijlage. Tot september 2026 stonden ze hier als
+ * drie constanten naast drie andere in `report/src/lib.rs`, en hout en beton
+ * waren al uiteengelopen — hier stond nog de houtaanduiding van vóór A2:2014.
+ * `lib/normAanduidingen.ts` is nu de enige TS-plaats, en
+ * `test-rapportnormen.mjs` legt hem naast de Rust-rij.
+ */
+const AANDUIDINGEN = aanduidingen(STANDAARD_BIJLAGE);
+export const STEEL_NORM_FULL = AANDUIDINGEN.staalVol;
+export const TIMBER_NORM_FULL = AANDUIDINGEN.houtVol;
+export const CONCRETE_NORM_FULL = AANDUIDINGEN.betonVol;
 
 /** KaTeX → HTML-string; faalt zacht naar <code> zodat het rapport nooit breekt. */
 export function renderLatexHtml(latex: string, displayMode: boolean): string {
@@ -452,12 +463,21 @@ export function usedNorms(results: MemberCheckResult[]): GebruikteKaders {
 export function basisText(t: TFunction, results: MemberCheckResult[]): string | null {
   const { steel, timber, concrete } = usedNorms(results);
   const parts: string[] = [];
-  if (steel) parts.push(t("report.basisSteel", `staal: ${STEEL_NORM_FULL}`));
-  if (timber) parts.push(t("report.basisTimber", `hout: ${TIMBER_NORM_FULL}`));
-  if (concrete) parts.push(t("report.basisConcrete", `beton: ${CONCRETE_NORM_FULL}`));
+  // De aanduiding gaat als variabele de vertaling in. Tot september 2026 stond
+  // ze VOLUIT in alle vier de i18n-bestanden (nl/en/de/fr), en die vier
+  // kopieën droegen nog de houtaanduiding van vóór A2:2014. Wat vertaald moet
+  // worden is het woord "staal", niet het normnummer.
+  if (steel) parts.push(t("report.basisSteel", `staal: ${STEEL_NORM_FULL}`, { norm: STEEL_NORM_FULL }));
+  if (timber) parts.push(t("report.basisTimber", `hout: ${TIMBER_NORM_FULL}`, { norm: TIMBER_NORM_FULL }));
+  if (concrete) parts.push(t("report.basisConcrete", `beton: ${CONCRETE_NORM_FULL}`, { norm: CONCRETE_NORM_FULL }));
   if (parts.length === 0) return null;
   const label = t("report.basisLabel", "Toetsbasis");
-  const annex = t("report.basisAnnex", "inclusief Nederlandse nationale bijlage");
+  // De zin over de bijlage is PROZA en staat per taal in i18n; hij is niet
+  // uit de naad te halen zonder voor elke taal een vertaling van de
+  // bijlagenaam te verzinnen. Zolang er één bijlage gevuld is, klopt hij.
+  // Komt er een tweede rij bij, dan moet deze regel mee: `BIJLAGEN_GEVULD`
+  // in `lib/normAanduidingen.ts` is dan langer dan één.
+  const annex = t("report.basisAnnex", `inclusief ${AANDUIDINGEN.bijlageNaam}`);
   return `${label}: ${parts.join("; ")} — ${annex}.`;
 }
 

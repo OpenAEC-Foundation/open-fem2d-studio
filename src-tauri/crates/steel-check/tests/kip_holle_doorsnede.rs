@@ -38,6 +38,7 @@ fn koker(l_m: f64, q_n_per_mm: f64) -> BeamCheckResult {
         .collect();
 
     check_beam(BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: "HFRHS200X200X16".to_string(),
         steel_grade: "S235".to_string(),

@@ -132,6 +132,7 @@ fn cltstaaf() -> CltBeamCheckResult {
         ],
     );
     check_clt_beam(CltBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         layup,
         service_class: ServiceClass::Sc1,
@@ -170,6 +171,7 @@ fn geweigerde_cltstaaf() -> CltBeamCheckResult {
         ],
     );
     let r = check_clt_beam(CltBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 9,
         layup,
         service_class: ServiceClass::Sc1,

@@ -57,6 +57,7 @@ fn envelop(l_m: f64, q_n_per_mm: f64, combo: u32) -> Vec<ForcePoint> {
 
 fn invoer(profiel: &str, l_m: f64, q: f64, steunen: Vec<f64>, z_a_mm: f64) -> BeamCheckInput {
     BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: profiel.to_string(),
         steel_grade: "S235".to_string(),

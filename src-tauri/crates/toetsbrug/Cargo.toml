@@ -23,6 +23,10 @@ name = "toetsbrug"
 path = "src/main.rs"
 
 [dependencies]
+nationale-bijlage = { path = "../nationale-bijlage" }
+nen-en-1990 = { path = "../nen-en-1990" }
+nen-en-1993-1-1-ltb = { path = "../nen-en-1993-1-1-ltb" }
+report = { path = "../report" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 steel-check = { path = "../steel-check" }

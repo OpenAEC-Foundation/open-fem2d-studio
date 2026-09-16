@@ -153,6 +153,14 @@ const BUNDEL_TESTS = new Set([
   // `openCombinatieStaat`, en een bundel die nog "melden, niet overschrijven"
   // meedraagt, rekent een oud bestand stil met de oude factoren. Het slotblok
   // start de MCP-server als apart proces en faalt luid als die ontbreekt.
+  // De normnaad: de nationale bijlage van het project reist door naar elke
+  // toetsinvoer, en een bijlage die deze uitgave niet kent wordt geweigerd.
+  // Praat uitsluitend met `sidecar` en `lib/normAanduidingen` — precies wat de
+  // barrel ontsluit, dus hij hoort ÓÓK tegen de bundel te draaien: laat de
+  // bundel het veld `bijlage` vallen, dan rekent de MCP-weg met de
+  // standaardwaarde van de kern terwijl het project iets anders zegt, en dat
+  // is precies de stille fout die deze naad moet voorkomen.
+  "normnaad",
   "oude-projecten",
   "plaat-adapter",
   "plaat-combinatie",

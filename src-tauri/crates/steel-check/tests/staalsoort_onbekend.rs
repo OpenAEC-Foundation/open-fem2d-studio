@@ -28,6 +28,7 @@ use steel_check::*;
 /// Het referentieportaal, kolom HEB160 — dezelfde krachten als `portal_beam2.rs`.
 fn invoer(staalsoort: &str) -> BeamCheckInput {
     BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 2,
         profile_name: "HEB160".to_string(),
         steel_grade: staalsoort.to_string(),

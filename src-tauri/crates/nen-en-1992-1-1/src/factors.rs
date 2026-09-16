@@ -17,6 +17,11 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+// γ_C, γ_S, α_cc, γ_cE en de factor in ε_ud zijn nationaal bepaalde parameters
+// en komen daarom uit de normnaad (`crate::NDP`), niet uit losse constanten in
+// dit bestand. Zie de crate `nationale-bijlage` voor het artikel per waarde.
+use crate::NDP;
+
 /// Ontwerpsituatie voor tabel 2.1N.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
@@ -31,21 +36,21 @@ pub enum DesignSituation {
 /// Partiële factor voor beton γ_C (tabel 2.1N).
 pub fn gamma_c(situation: DesignSituation) -> f64 {
     match situation {
-        DesignSituation::PersistentTransient => 1.5,
-        DesignSituation::Accidental => 1.2,
+        DesignSituation::PersistentTransient => NDP.gamma_c_blijvend,
+        DesignSituation::Accidental => NDP.gamma_c_buitengewoon,
     }
 }
 
 /// Partiële factor voor betonstaal γ_S (tabel 2.1N).
 pub fn gamma_s(situation: DesignSituation) -> f64 {
     match situation {
-        DesignSituation::PersistentTransient => 1.15,
-        DesignSituation::Accidental => 1.0,
+        DesignSituation::PersistentTransient => NDP.gamma_s_blijvend,
+        DesignSituation::Accidental => NDP.gamma_s_buitengewoon,
     }
 }
 
 /// α_cc — Nederlandse nationale bijlage bij 3.1.6(1)P: 1,0.
-pub const ALPHA_CC: f64 = 1.0;
+pub const ALPHA_CC: f64 = NDP.alpha_cc;
 
 /// γ_cE — 5.8.6(3), vergelijking (5.20): E_cd = E_cm/γ_cE.
 ///
@@ -54,7 +59,7 @@ pub const ALPHA_CC: f64 = 1.0;
 /// aanbevolen waarde is 1,2." gevolgd door de NB-bepaling "De waarde van
 /// γ CE moet gelijk aan 1,2 zijn genomen." Geen keuze dus, en ook niet
 /// afhankelijk van de ontwerpsituatie: 1,2.
-pub const GAMMA_CE: f64 = 1.2;
+pub const GAMMA_CE: f64 = NDP.gamma_ce;
 
 /// Rekenwaarde van de elasticiteitsmodulus van beton voor de niet-lineaire
 /// constructieve berekening, 5.8.6(3), vergelijking (5.20): E_cd = E_cm/γ_cE.
@@ -77,7 +82,7 @@ pub fn f_yd(f_yk: f64, gamma_s: f64) -> f64 {
 
 /// Rekenwaarde van de grensrek van betonstaal — NB bij 3.2.7(2): ε_ud = 0,9·ε_uk.
 pub fn eps_ud(eps_uk: f64) -> f64 {
-    0.9 * eps_uk
+    NDP.eps_ud_factor * eps_uk
 }
 
 /// λ — hoogte van de drukzone in de rechthoekige spanningsverdeling,
@@ -106,6 +111,7 @@ pub fn eta(f_ck: f64) -> f64 {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+    use nationale_bijlage::{NationaleBijlage, Ndp1992};
 
     #[test]
     fn tabel_2_1n() {
@@ -129,6 +135,21 @@ mod tests {
         assert_relative_eq!(GAMMA_CE, 1.2);
         // C30/37: E_cm = 33 000 N/mm² → E_cd = 33 000/1,2 = 27 500 N/mm².
         assert_relative_eq!(e_cd(33_000.0), 27_500.0);
+    }
+
+    /// Elke NDP in dit bestand komt uit de naad en niet uit een losse
+    /// constante: de bron wordt naast de gebruikte waarde gelegd.
+    #[test]
+    fn elke_ndp_komt_uit_de_normnaad() {
+        let bron = Ndp1992::voor(NationaleBijlage::NL);
+        assert_eq!(gamma_c(DesignSituation::PersistentTransient), bron.gamma_c_blijvend);
+        assert_eq!(gamma_c(DesignSituation::Accidental), bron.gamma_c_buitengewoon);
+        assert_eq!(gamma_s(DesignSituation::PersistentTransient), bron.gamma_s_blijvend);
+        assert_eq!(gamma_s(DesignSituation::Accidental), bron.gamma_s_buitengewoon);
+        assert_eq!(ALPHA_CC, bron.alpha_cc);
+        assert_eq!(GAMMA_CE, bron.gamma_ce);
+        // ε_ud = f·ε_uk: de factor terugrekenen uit de functie zelf.
+        assert_eq!(eps_ud(1.0), bron.eps_ud_factor);
     }
 
     #[test]

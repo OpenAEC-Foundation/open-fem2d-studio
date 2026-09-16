@@ -209,7 +209,14 @@ fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> 
     let mat = k.mat;
 
     // Factoren en rekenwaarden.
-    let gamma = gamma_m(mat.timber_type);
+    // γ_M uit de rij van de bijlage die in DEZE invoer staat (2.4.1, tabel
+    // 2.3), niet uit een vaste constante: dit is de plek waar een tweede
+    // bijlage een andere materiaalfactor krijgt.
+    let ndp = nationale_bijlage::Ndp1995::voor(input.bijlage);
+    let gamma = match mat.timber_type {
+        nen_en_1995_1_1::TimberType::Solid => ndp.gamma_m_massief,
+        nen_en_1995_1_1::TimberType::Glulam => ndp.gamma_m_gelamineerd,
+    };
     let kmod = k_mod(mat.timber_type, input.service_class, duur);
     let ksys = k_sys(input.load_sharing);
     // k_h geldt volgens §3.2(3) en §3.3(3) uitdrukkelijk bij een RECHTHOEKIGE

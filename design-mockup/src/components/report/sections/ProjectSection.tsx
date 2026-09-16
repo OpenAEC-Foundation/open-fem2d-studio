@@ -29,8 +29,27 @@ import {
   LEVENSDUUR_OMSCHRIJVING,
 } from "../../project/ProjectSettingsDialog";
 import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
+import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE } from "../../../lib/normAanduidingen";
 
 /** yyyy-mm-dd → nl-notatie; alles wat niet parsebaar is blijft zoals het is. */
+/**
+ * Wat er bij "Nationale bijlage" in het rapport komt te staan.
+ *
+ * De naam van het land komt uit `lib/normAanduidingen.ts`, dezelfde rij die de
+ * normaanduidingen levert — zodat de vermelde bijlage en de vermelde uitgaven
+ * niet uit elkaar kunnen lopen. Een code die deze uitgave niet kent, wordt
+ * LETTERLIJK genoemd met de melding erbij; stil "Nederland" neerzetten zou het
+ * rapport onwaar maken.
+ */
+function bijlageTekst(code: string | undefined): string {
+  try {
+    const gekozen = bijlageUitBestand(code) ?? STANDAARD_BIJLAGE;
+    return aanduidingen(gekozen).land;
+  } catch (e) {
+    return `${String(code)} — niet gevuld in deze uitgave (${(e as Error).message})`;
+  }
+}
+
 function formatDate(raw: string): string {
   if (!raw) return "—";
   const d = new Date(raw);
@@ -190,7 +209,11 @@ export default function ProjectSection() {
           .replace(/^Klasse \d+ — /, "");
         const rijen: Array<[string, ReactNode]> = [
           [t("report.fieldNormen", "Toegepaste normen"), normen.length > 0 ? normen.join("; ") : "—"],
-          [t("report.fieldNationaleBijlage", "Nationale bijlage"), "Nederland"],
+          // Het land komt uit de normnaad en niet meer als los woord uit deze
+          // regel: de uitgave van elke norm in dit rapport hoort bij dezelfde
+          // bijlage. Een bijlage die deze uitgave niet kent, wordt hier
+          // benoemd in plaats van stil op Nederland uit te komen.
+          [t("report.fieldNationaleBijlage", "Nationale bijlage"), bijlageTekst(u.nationaleBijlage)],
           [t("report.fieldGevolgklasse", "Gevolgklasse"), gevolgklasseTekst],
           [t("report.fieldLevensduur", "Ontwerplevensduur"), levensduur],
         ];

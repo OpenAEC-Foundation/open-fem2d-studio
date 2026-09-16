@@ -8,73 +8,55 @@
 //! workspace gebruikt uit deze crate alleen `ConsequenceClass`, en die alleen
 //! ter vermelding (zie `steel-check/src/orchestrator.rs`).
 //!
-//! De tabellen hieronder staan er als naslag. Tot september 2026 weken ze af
-//! van de NB (categorie D ψ₀ = 0,6 in plaats van 0,4; categorie F "< 30 kN" met
-//! ψ₀ = 0,6 in plaats van "≤ 25 kN" met 0,7; EQU zonder γ_G,sup = 1,1) — een
-//! valkuil voor wie ze ooit als bron zou nemen. Ze zijn nu letterlijk gelijk
-//! aan de NB, en `design-mockup/test-belastingcombinaties.mjs` vergelijkt ze met
-//! de tabellen van de frontend.
+//! WAAR DE GETALLEN VANDAAN KOMEN — sinds de normnaad (september 2026) niet
+//! meer uit dit bestand. De tabellen NB.2, NB.3, NB.4 en NB.5 zijn nationaal
+//! bepaalde parameters en staan daarom in de crate `nationale-bijlage`, waar
+//! alle NDP's per bijlage bij elkaar staan. Deze crate vertaalt ze naar de
+//! vorm waarin de rest van de workspace ze gebruikt, en houdt haar publieke
+//! namen ongewijzigd. `design-mockup/test-belastingcombinaties.mjs` leest de
+//! rij van de naad als tekst en legt hem naast de tabellen van de frontend.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Partiële factoren voor één uitdrukking (STR/GEO of EQU).
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
-pub struct LoadFactors {
-    pub name: &'static str,
-    /// γ_G,sup — ongunstig werkende blijvende belasting.
-    pub gamma_g_sup: f64,
-    /// γ_G,inf — gunstig werkende blijvende belasting.
-    pub gamma_g_inf: f64,
-    /// γ_Q — belangrijkste én andere veranderlijke belastingen.
-    pub gamma_q: f64,
-}
+use nationale_bijlage::{NationaleBijlage, Ndp1990};
+
+// De twee tabeltypen horen bij de NDP-rij en worden hier alleen opnieuw
+// aangeboden, zodat aanroepers van deze crate niets hoeven te veranderen.
+pub use nationale_bijlage::{LoadFactors, PsiFactors};
+
+/// De Nederlandse rij, één keer opgehaald. Alles hieronder leest hieruit; er
+/// staat geen enkel NDP-getal meer los in dit bestand.
+const NDP: Ndp1990 = Ndp1990::voor(NationaleBijlage::NL);
 
 /// NB tabel NB.4–A1.2(B), uitdrukking 6.10a, gevolgklasse 2:
 /// 1,35 G_k,j,sup / 0,9 G_k,j,inf / 1,5 ψ₀,1 Q_k,1 / 1,5 ψ₀,i Q_k,i.
-pub const ULS_6_10A: LoadFactors = LoadFactors {
-    name: "6.10a", gamma_g_sup: 1.35, gamma_g_inf: 0.9, gamma_q: 1.5,
-};
+pub const ULS_6_10A: LoadFactors = NDP.uls_cc2.0;
 /// NB tabel NB.4–A1.2(B), uitdrukking 6.10b, gevolgklasse 2:
 /// 1,2 G_k,j,sup / 0,9 G_k,j,inf / 1,5 Q_k,1 / 1,5 ψ₀,i Q_k,i.
-pub const ULS_6_10B: LoadFactors = LoadFactors {
-    name: "6.10b", gamma_g_sup: 1.2, gamma_g_inf: 0.9, gamma_q: 1.5,
-};
+pub const ULS_6_10B: LoadFactors = NDP.uls_cc2.1;
 /// NB tabel NB.3–A1.2(A), EQU (groep A):
 /// 1,1 G_k,j,sup / 0,9 G_k,j,inf / 1,5 Q_k,1 / 1,5 ψ₀,i Q_k,i.
-pub const EQU: LoadFactors = LoadFactors {
-    name: "EQU", gamma_g_sup: 1.1, gamma_g_inf: 0.9, gamma_q: 1.5,
-};
+pub const EQU: LoadFactors = NDP.equ;
 
-/// ψ-factoren voor één rij van tabel NB.2–A1.1.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
-pub struct PsiFactors {
-    pub category: &'static str,
-    pub description: &'static str,
-    pub psi0: f64,
-    pub psi1: f64,
-    pub psi2: f64,
-}
-
-// NEN-EN 1990:2002/NB:2019 tabel NB.2–A1.1 "ψ-factoren voor gebouwen".
-pub const PSI_A: PsiFactors = PsiFactors { category: "A", description: "Woon- en verblijfsruimtes", psi0: 0.4, psi1: 0.5, psi2: 0.3 };
-pub const PSI_B: PsiFactors = PsiFactors { category: "B", description: "Kantoorruimtes", psi0: 0.5, psi1: 0.5, psi2: 0.3 };
+// NEN-EN 1990:2002/NB:2019 tabel NB.2–A1.1 "ψ-factoren voor gebouwen", in de
+// volgorde waarin de tabel ze geeft. De index is de rij van `Ndp1990::psi`.
+pub const PSI_A: PsiFactors = NDP.psi[0];
+pub const PSI_B: PsiFactors = NDP.psi[1];
 /// Voetnoot a: ψ₀ = 0,4 voor de overige delen van een bijeenkomstruimte.
-pub const PSI_C: PsiFactors = PsiFactors { category: "C", description: "Bijeenkomstruimtes, overige delen", psi0: 0.4, psi1: 0.7, psi2: 0.6 };
+pub const PSI_C: PsiFactors = NDP.psi[2];
 /// Voetnoot a: ψ₀ = 0,6 voor delen die bij een calamiteit zwaar door een
 /// mensenmenigte kunnen worden belast (vluchtroutes, trappen enz.).
-pub const PSI_C_MENIGTE: PsiFactors = PsiFactors { category: "C-menigte", description: "Bijeenkomstruimtes, delen die bij een calamiteit zwaar door een mensenmenigte belast kunnen worden", psi0: 0.6, psi1: 0.7, psi2: 0.6 };
-pub const PSI_D: PsiFactors = PsiFactors { category: "D", description: "Winkelruimtes", psi0: 0.4, psi1: 0.7, psi2: 0.6 };
-pub const PSI_E: PsiFactors = PsiFactors { category: "E", description: "Opslagruimtes", psi0: 1.0, psi1: 0.9, psi2: 0.8 };
-pub const PSI_F: PsiFactors = PsiFactors { category: "F", description: "Verkeersruimte, voertuiggewicht ≤ 25 kN", psi0: 0.7, psi1: 0.7, psi2: 0.6 };
-pub const PSI_G: PsiFactors = PsiFactors { category: "G", description: "Verkeersruimte, 25 kN < voertuiggewicht ≤ 160 kN", psi0: 0.7, psi1: 0.5, psi2: 0.3 };
-pub const PSI_H: PsiFactors = PsiFactors { category: "H", description: "Daken", psi0: 0.0, psi1: 0.0, psi2: 0.0 };
-pub const PSI_INDUSTRIE_KORT: PsiFactors = PsiFactors { category: "industrie-kort", description: "Industrieel gebruik, belasting niet langdurig aanwezig", psi0: 0.5, psi1: 0.5, psi2: 0.3 };
-pub const PSI_INDUSTRIE_LANG: PsiFactors = PsiFactors { category: "industrie-lang", description: "Industrieel gebruik, belasting langdurig aanwezig", psi0: 1.0, psi1: 0.9, psi2: 0.8 };
-pub const PSI_WIND: PsiFactors = PsiFactors { category: "Wind", description: "Windbelasting", psi0: 0.0, psi1: 0.2, psi2: 0.0 };
-pub const PSI_SNOW: PsiFactors = PsiFactors { category: "Sneeuw", description: "Sneeuwbelasting", psi0: 0.0, psi1: 0.2, psi2: 0.0 };
+pub const PSI_C_MENIGTE: PsiFactors = NDP.psi[3];
+pub const PSI_D: PsiFactors = NDP.psi[4];
+pub const PSI_E: PsiFactors = NDP.psi[5];
+pub const PSI_F: PsiFactors = NDP.psi[6];
+pub const PSI_G: PsiFactors = NDP.psi[7];
+pub const PSI_H: PsiFactors = NDP.psi[8];
+pub const PSI_INDUSTRIE_KORT: PsiFactors = NDP.psi[9];
+pub const PSI_INDUSTRIE_LANG: PsiFactors = NDP.psi[10];
+pub const PSI_WIND: PsiFactors = NDP.psi[11];
+pub const PSI_SNOW: PsiFactors = NDP.psi[12];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
@@ -84,7 +66,7 @@ impl ConsequenceClass {
     /// K_FI uit de opmerking bij NB tabel NB.4: 0,9 / 1,0 / 1,1. Ter
     /// vermelding — de factor zit al in `uls_factoren`.
     pub fn k_fi(self) -> f64 {
-        match self { Self::CC1 => 0.9, Self::CC2 => 1.0, Self::CC3 => 1.1 }
+        match self { Self::CC1 => NDP.k_fi.0, Self::CC2 => NDP.k_fi.1, Self::CC3 => NDP.k_fi.2 }
     }
     pub fn name(self) -> &'static str {
         match self { Self::CC1 => "CC1", Self::CC2 => "CC2", Self::CC3 => "CC3" }
@@ -93,15 +75,9 @@ impl ConsequenceClass {
     /// voor CC2 en NB tabel NB.5 voor CC1 en CC3 (STR/GEO, groep B).
     pub fn uls_factoren(self) -> (LoadFactors, LoadFactors) {
         match self {
-            Self::CC1 => (
-                LoadFactors { name: "6.10a", gamma_g_sup: 1.2, gamma_g_inf: 0.9, gamma_q: 1.35 },
-                LoadFactors { name: "6.10b", gamma_g_sup: 1.1, gamma_g_inf: 0.9, gamma_q: 1.35 },
-            ),
-            Self::CC2 => (ULS_6_10A, ULS_6_10B),
-            Self::CC3 => (
-                LoadFactors { name: "6.10a", gamma_g_sup: 1.5, gamma_g_inf: 0.9, gamma_q: 1.65 },
-                LoadFactors { name: "6.10b", gamma_g_sup: 1.3, gamma_g_inf: 0.9, gamma_q: 1.65 },
-            ),
+            Self::CC1 => NDP.uls_cc1,
+            Self::CC2 => NDP.uls_cc2,
+            Self::CC3 => NDP.uls_cc3,
         }
     }
 }
@@ -139,5 +115,27 @@ mod tests {
         assert_eq!((PSI_C.psi0, PSI_C_MENIGTE.psi0), (0.4, 0.6));
         assert_eq!((PSI_WIND.psi0, PSI_WIND.psi1, PSI_WIND.psi2), (0.0, 0.2, 0.0));
         assert_eq!((PSI_SNOW.psi0, PSI_SNOW.psi1, PSI_SNOW.psi2), (0.0, 0.2, 0.0));
+    }
+
+    /// Elke ψ-rij en elke γ-rij komt UIT DE NAAD en niet uit een losse
+    /// constante in dit bestand. De vergelijking gaat langs de bron zelf, zodat
+    /// een met de hand teruggezet getal hier rood wordt.
+    #[test]
+    fn elke_waarde_komt_uit_de_normnaad() {
+        let bron = Ndp1990::voor(NationaleBijlage::NL);
+        let rijen = [PSI_A, PSI_B, PSI_C, PSI_C_MENIGTE, PSI_D, PSI_E, PSI_F, PSI_G, PSI_H,
+                     PSI_INDUSTRIE_KORT, PSI_INDUSTRIE_LANG, PSI_WIND, PSI_SNOW];
+        assert_eq!(rijen.len(), bron.psi.len());
+        for (hier, daar) in rijen.iter().zip(bron.psi.iter()) {
+            assert_eq!(hier.category, daar.category);
+            assert_eq!((hier.psi0, hier.psi1, hier.psi2), (daar.psi0, daar.psi1, daar.psi2));
+        }
+        assert_eq!(ULS_6_10A.gamma_g_sup, bron.uls_cc2.0.gamma_g_sup);
+        assert_eq!(ULS_6_10B.gamma_g_sup, bron.uls_cc2.1.gamma_g_sup);
+        assert_eq!(EQU.gamma_g_sup, bron.equ.gamma_g_sup);
+        assert_eq!(
+            (ConsequenceClass::CC1.k_fi(), ConsequenceClass::CC2.k_fi(), ConsequenceClass::CC3.k_fi()),
+            bron.k_fi
+        );
     }
 }

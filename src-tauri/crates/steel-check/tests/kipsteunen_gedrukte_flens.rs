@@ -58,6 +58,7 @@ fn ligger(teken: f64, aan_de_bovenflens: bool) -> BeamCheckResult {
     };
 
     check_beam(BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: "IPE 400".to_string(),
         steel_grade: "S235".to_string(),
@@ -205,6 +206,7 @@ fn doorgaande_ligger_met(m_eind_knm: f64, top: Vec<f64>, bot: Vec<f64>) -> BeamC
         .collect();
 
     check_beam(BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: "IPE 330".to_string(),
         steel_grade: "S235".to_string(),
@@ -377,6 +379,7 @@ fn invoer_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamChe
         })
         .collect();
     BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: "IPE 400".to_string(),
         steel_grade: "S235".to_string(),

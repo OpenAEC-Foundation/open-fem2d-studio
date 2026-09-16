@@ -430,6 +430,9 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         // De waarschuwing bij een naar links hellende staaf dicht bij 75°, waar
         // de bovenwapening van het bovenvlak naar het ondervlak springt.
         "staafstand_notities",
+        // De nationale bijlage waarmee getoetst wordt (normnaad, september
+        // 2026): zij bepaalt gamma_C, gamma_S, alpha_cc en de dekkingseisen.
+        "bijlage",
     ] {
         assert!(
             props[veld].is_object(),
@@ -438,7 +441,7 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        22,
+        23,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
     );
 
@@ -804,10 +807,14 @@ async fn schema_van_de_houttools_is_strikt_op_elk_niveau() {
     // Met `additionalProperties: false` is een veld dat het schema niet noemt
     // voor een client niet meer op te geven — `custom_section` ontbrak.
     assert!(staaf["properties"]["custom_section"].is_object(), "custom_section ontbreekt");
+    // De nationale bijlage hoort erbij (normnaad, september 2026): zij bepaalt
+    // gamma_M, k_cr en de doorbuigingsnoemers van deze toetsing.
+    assert!(staaf["properties"]["bijlage"].is_object(), "bijlage ontbreekt");
     assert_eq!(
         staaf["properties"].as_object().unwrap().len(),
-        29,
-        "het schema van de houten staaf hoort precies de 29 velden van TimberBeamCheckInput te kennen \n         (25 + load_duration_per_combination + staaf_notities + width_end_mm + height_end_mm)"
+        30,
+        "het schema van de houten staaf hoort precies de 30 velden van TimberBeamCheckInput te kennen 
+         (25 + load_duration_per_combination + staaf_notities + width_end_mm + height_end_mm + bijlage)"
     );
 
     let clt = tooldefinitie(&mut stdin, &mut reader, 31, "check_clt_beams").await;

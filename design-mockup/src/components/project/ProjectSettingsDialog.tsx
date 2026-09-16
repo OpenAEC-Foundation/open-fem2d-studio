@@ -15,6 +15,7 @@ import {
   K_FI as K_FI_NB, PARTIELE_FACTOREN, type Gevolgklasse as NbGevolgklasse,
 } from "../fem/solver/normcombinaties";
 import "./ProjectSettingsDialog.css";
+import { aanduidingen, BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../../lib/normAanduidingen";
 
 interface ProjectSettingsDialogProps {
   open: boolean;
@@ -90,7 +91,7 @@ export interface Uitgangspunten {
   /** Ontwerplevensduurklasse volgens EN 1990 tabel 2.1. */
   levensduurklasse: Levensduurklasse;
   /** Nationale bijlage — vandaag alleen de Nederlandse. */
-  nationaleBijlage: "NL";
+  nationaleBijlage: NationaleBijlageCode;
   /**
    * Windgebied volgens NEN-EN 1991-1-4/NB tabel NB.1 — bepaalt v_b,0.
    * Ontbreekt bij projecten van vóór de windgenerator → default "II".
@@ -117,7 +118,7 @@ export const DEFAULT_UITGANGSPUNTEN: Uitgangspunten = {
   normenHandmatig: [],
   gevolgklasse: "CC2",
   levensduurklasse: "4",
-  nationaleBijlage: "NL",
+  nationaleBijlage: STANDAARD_BIJLAGE,
   windgebied: "II",
   terreincategorie: "II",
 };
@@ -488,8 +489,28 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                 </div>
                 <div className="proj-field">
                   <label>Nationale bijlage</label>
-                  <select value={uitgangspunten.nationaleBijlage} disabled>
-                    <option value="NL">Nederland (NB)</option>
+                  {/* De lijst komt uit de normnaad (`lib/normAanduidingen.ts`)
+                      en niet uit een vaste optie hier: zodra er een tweede rij
+                      met rekenwaarden is, staat hij vanzelf in de lijst en
+                      wordt de keuzelijst bruikbaar. Met één gevulde bijlage
+                      valt er niets te kiezen en blijft hij uit. */}
+                  <select
+                    value={uitgangspunten.nationaleBijlage}
+                    disabled={BIJLAGEN_GEVULD.length < 2}
+                    title={
+                      BIJLAGEN_GEVULD.length < 2
+                        ? "Deze uitgave heeft alleen rekenwaarden voor de Nederlandse nationale bijlage."
+                        : undefined
+                    }
+                    onChange={(e) =>
+                      updateUitgangspunt("nationaleBijlage", e.target.value as NationaleBijlageCode)
+                    }
+                  >
+                    {BIJLAGEN_GEVULD.map((code) => (
+                      <option key={code} value={code}>
+                        {aanduidingen(code).keuzelabel}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

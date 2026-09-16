@@ -3,6 +3,7 @@ import type { ConcreteColumnInput } from "./ConcreteColumnInput";
 import type { ConcreteSectionInput } from "./ConcreteSectionInput";
 import type { DesignSituation } from "./DesignSituation";
 import type { ForcePoint } from "../steel/ForcePoint";
+import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { ReinforcementCage } from "./ReinforcementCage";
 import type { SteelBranch } from "./SteelBranch";
 
@@ -14,6 +15,22 @@ import type { SteelBranch } from "./SteelBranch";
  * dekkingstoets van 4.4.1 dat al doet) en voor een client buiten de app.
  */
 export type ConcreteColumnCheckRequest = { 
+/**
+ * De nationale bijlage waarmee getoetst wordt.
+ *
+ * Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+ * crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+ * bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+ * de Nederlandse waarden teruggevallen.
+ *
+ * `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+ * precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+ * betekenen dan die rij. Het houdt oude projectbestanden en oude
+ * MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+ * regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+ * in `nationale-bijlage` valt dan om en zegt dat.
+ */
+bijlage: NationaleBijlage, 
 /**
  * Staafnummer; komt onveranderd terug.
  */

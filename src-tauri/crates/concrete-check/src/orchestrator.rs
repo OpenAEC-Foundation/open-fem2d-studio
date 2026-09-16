@@ -1588,6 +1588,22 @@ fn staafafstand_uit_korf_mm(
 }
 
 pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckResult {
+    // DE BIJLAGE UIT DE INVOER TEGEN DIE VAN DE KERN.
+    //
+    // De betonmodules dragen de bijlage (nog) niet als argument door hun
+    // rekengang: γ_C, γ_S, α_cc en γ_cE komen binnen langs
+    // `DesignMaterial::new`, en dat raakt tientallen aanroepen. Tot dat wél zo
+    // is, weigert deze toets een bijlage die niet die van de kern is, in plaats
+    // van hem stil met Nederlandse partiële factoren door te rekenen. Een
+    // stille uitkomst is erger dan een fout.
+    if input.bijlage != nen_en_1992_1_1::BIJLAGE_VAN_DE_KERN {
+        let melding = format!(
+            "de betontoetsing is gebouwd op nationale bijlage {} en kan niet met bijlage {}              rekenen; er is niet getoetst",
+            nen_en_1992_1_1::BIJLAGE_VAN_DE_KERN,
+            input.bijlage
+        );
+        return error_result(&input, melding);
+    }
     let (section, mat, beton, staal) = match setup(
         &input.section,
         &input.concrete_class,

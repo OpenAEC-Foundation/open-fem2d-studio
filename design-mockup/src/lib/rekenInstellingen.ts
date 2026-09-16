@@ -54,6 +54,15 @@ export interface RekenInstellingen {
    * `null` = niet ingesteld.
    */
   gevolgklasse: string | null;
+  /**
+   * Nationale bijlage, vandaag alleen "NL": de bijlage waarmee de rekenkernen
+   * toetsen. Zij bepaalt de nationaal bepaalde parameters — γ_M, k_cr, de
+   * doorbuigingsgrenzen, de dekkingseisen, de kipmethode — en gaat als
+   * `bijlage` mee in elke toetsinvoer. Een wijziging laat de resultaten dus
+   * vervallen, net als bij de gevolgklasse. `null` = niet ingesteld; de kern
+   * houdt dan de enige gevulde bijlage aan.
+   */
+  nationaleBijlage: string | null;
 }
 
 /** Elk veld van `RekenInstellingen` — zie de kop voor waarom dit een Record is. */
@@ -70,6 +79,7 @@ const VELDEN: Record<keyof RekenInstellingen, true> = {
   scheefstandHoogteM: true,
   scheefstandAantalElementen: true,
   gevolgklasse: true,
+  nationaleBijlage: true,
 };
 
 /** De veldnamen, voor tests die elk veld afzonderlijk willen wijzigen. */

@@ -60,6 +60,7 @@ fn staaf(
     punten: &[(f64, InternalForces)],
 ) -> BeamCheckInput {
     BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: profiel.to_string(),
         steel_grade: "S235".to_string(),

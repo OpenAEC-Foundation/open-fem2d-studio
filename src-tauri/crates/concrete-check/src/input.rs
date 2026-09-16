@@ -34,6 +34,21 @@ fn default_true() -> bool {
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct ConcreteBeamCheckInput {
+    /// De nationale bijlage waarmee getoetst wordt.
+    ///
+    /// Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+    /// crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+    /// bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+    /// de Nederlandse waarden teruggevallen.
+    ///
+    /// `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+    /// precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+    /// betekenen dan die rij. Het houdt oude projectbestanden en oude
+    /// MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+    /// regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+    /// in `nationale-bijlage` valt dan om en zegt dat.
+    #[serde(default)]
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     pub beam_id: u32,
     /// De doorsnede: rechthoek, T of L, met de maten die bij die vorm horen.
     pub section: ConcreteSectionInput,
@@ -273,6 +288,7 @@ impl ConcreteBeamCheckInput {
                     CoverSide::Sides => dikste,
                 };
                 Some(ConcreteCoverRequest {
+                    bijlage: Default::default(),
                     beam_id: self.beam_id,
                     side: Some(side),
                     exposure_class: klasse,

@@ -49,7 +49,8 @@ use crate::clt::{CltLayerOrientation, CltMechanics};
 /// Wie de aanduiding wijzigt, wijzigt hem hier — de test
 /// `de_houtnorm_heet_op_het_omslag_hetzelfde_als_in_de_notitie` in de
 /// `report`-crate legt deze constante naast `report::NORM_TIMBER_FULL`.
-pub const NORM_HOUT_AANDUIDING: &str = "NEN-EN 1995-1-1:2005+A2:2014+NB:2013";
+pub const NORM_HOUT_AANDUIDING: &str =
+    nationale_bijlage::Aanduidingen::voor(nationale_bijlage::NationaleBijlage::NL).norm_hout_vol;
 
 fn laagnaam(mech: &CltMechanics, idx: usize) -> String {
     let l = &mech.layers[idx];

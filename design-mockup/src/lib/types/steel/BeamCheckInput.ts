@@ -4,6 +4,7 @@ import type { CustomSection } from "./CustomSection";
 import type { DeflectionClass } from "./DeflectionClass";
 import type { ForcePoint } from "./ForcePoint";
 import type { LateralBracing } from "./LateralBracing";
+import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { Staafeinden } from "./Staafeinden";
 import type { Staafstand } from "./Staafstand";
 
@@ -16,7 +17,23 @@ import type { Staafstand } from "./Staafstand";
  * `z_a_mm` valt de kiptoets daarmee *gunstiger* uit dan hij hoort te zijn —
  * onveilig aan de verkeerde kant, en onzichtbaar in het resultaat.
  */
-export type BeamCheckInput = { beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, 
+export type BeamCheckInput = { 
+/**
+ * De nationale bijlage waarmee getoetst wordt.
+ *
+ * Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+ * crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+ * bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+ * de Nederlandse waarden teruggevallen.
+ *
+ * `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+ * precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+ * betekenen dan die rij. Het houdt oude projectbestanden en oude
+ * MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+ * regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+ * in `nationale-bijlage` valt dan om en zegt dat.
+ */
+bijlage: NationaleBijlage, beam_id: number, profile_name: string, steel_grade: string, length_m: number, forces_envelope: Array<ForcePoint>, lateral_bracing: LateralBracing, 
 /**
  * Kniklengte om de sterke y-as, in m — knik IN het vlak van het model.
  *

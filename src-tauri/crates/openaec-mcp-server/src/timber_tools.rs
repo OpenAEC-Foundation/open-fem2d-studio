@@ -192,6 +192,7 @@ fn schema_houten_staaf() -> Value {
         "additionalProperties": false,
         "description": "Eén houten staaf met een rechthoekige doorsnede b x h, of een samengestelde doorsnede via 'custom_section'. Een onbekende veldnaam wordt geweigerd (ook een tikfout in een optioneel veld): de toetsing loopt dan niet stil door met een standaardwaarde.",
         "properties": {
+            "bijlage": crate::schema_bijlage(),
             "beam_id": { "type": "integer", "minimum": 0,
                 "description": "Staafnummer; komt onveranderd terug in het resultaat." },
             "width_mm": { "type": "number", "exclusiveMinimum": 0,
@@ -317,6 +318,7 @@ fn schema_clt_staaf() -> Value {
         "additionalProperties": false,
         "description": "Eén CLT-staaf (plaatstrook). Een onbekende veldnaam wordt geweigerd, ook in de opbouw en in een laag.",
         "properties": {
+            "bijlage": crate::schema_bijlage(),
             "beam_id": { "type": "integer", "minimum": 0,
                 "description": "Staafnummer; komt onveranderd terug in het resultaat." },
             "layup": schema_opbouw(),
@@ -467,6 +469,9 @@ mod tests {
             "het houten staafschema moet onbekende velden weigeren, net als de kern"
         );
         let verwacht = [
+            // De nationale bijlage waarmee getoetst wordt (normnaad, september
+            // 2026): zij bepaalt gamma_M, k_cr en de doorbuigingsnoemers.
+            "bijlage",
             "beam_id",
             "width_mm",
             "height_mm",
@@ -547,6 +552,8 @@ mod tests {
         );
         let velden = staaf["properties"].as_object().expect("properties");
         let verwacht = [
+            // Zie het staafschema hierboven: de bijlage reist mee.
+            "bijlage",
             "beam_id",
             "layup",
             "service_class",

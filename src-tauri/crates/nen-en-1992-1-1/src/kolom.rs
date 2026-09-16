@@ -692,7 +692,9 @@ pub fn lambda_lim_5_13n(a: f64, b: f64, c: f64, n: f64) -> Result<f64, String> {
             nl(n, 4)
         ));
     }
-    Ok(20.0 * a * b * c / n.sqrt())
+    // De coëfficiënt 20 is een nationaal bepaalde parameter en komt uit de
+    // normnaad, niet uit een los getal in deze regel.
+    Ok(crate::NDP.lambda_lim_coefficient * a * b * c / n.sqrt())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

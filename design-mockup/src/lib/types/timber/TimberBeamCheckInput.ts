@@ -6,6 +6,7 @@ import type { LateralBracing } from "../steel/LateralBracing";
 import type { LoadDurationClass } from "./LoadDurationClass";
 import type { LtbLoadCase } from "./LtbLoadCase";
 import type { LtbLoadPosition } from "./LtbLoadPosition";
+import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { ServiceClass } from "./ServiceClass";
 
 /**
@@ -19,7 +20,23 @@ import type { ServiceClass } from "./ServiceClass";
  * (w_fin-UC 0,788 in plaats van 1,143) — beide zonder melding. Staal
  * (`BeamCheckInput`) en beton (`ConcreteBeamCheckInput`) weigerden al.
  */
-export type TimberBeamCheckInput = { beam_id: number, 
+export type TimberBeamCheckInput = { 
+/**
+ * De nationale bijlage waarmee getoetst wordt.
+ *
+ * Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+ * crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+ * bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+ * de Nederlandse waarden teruggevallen.
+ *
+ * `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+ * precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+ * betekenen dan die rij. Het houdt oude projectbestanden en oude
+ * MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+ * regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+ * in `nationale-bijlage` valt dan om en zegt dat.
+ */
+bijlage: NationaleBijlage, beam_id: number, 
 /**
  * Doorsnedebreedte b in mm. Bij een samengestelde doorsnede
  * (`custom_section`) de omhullende breedte; de toetsing rekent dan met

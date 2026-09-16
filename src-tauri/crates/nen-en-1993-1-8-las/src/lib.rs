@@ -71,9 +71,17 @@ use nen_en_1993_1_1_section::grade_by_name;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// De nationaal bepaalde parameters bij NEN-EN 1993-1-8, uit de normnaad.
+///
+/// Apart van die bij NEN-EN 1993-1-1: het is een ander normdeel met een eigen
+/// nationale bijlage (NB:2011 tegen NB:2016). Dat beide γ_M2's vandaag 1,25
+/// zijn, is een uitkomst en geen afspraak.
+const NDP: nationale_bijlage::Ndp1993Las =
+    nationale_bijlage::Ndp1993Las::voor(nationale_bijlage::NationaleBijlage::NL);
+
 /// Partiële factor voor de weerstand van lassen — NEN-EN 1993-1-8 tabel 2.1
 /// met de waarde uit de Nederlandse nationale bijlage.
-pub const GAMMA_M2: f64 = 1.25;
+pub const GAMMA_M2: f64 = NDP.gamma_m2;
 
 /// Kleinste keeldikte die de norm toelaat: NEN-EN 1993-1-8 4.5.2(2) — een
 /// hoeklas met een keeldikte kleiner dan 3 mm behoort niet te worden gebruikt.
@@ -107,6 +115,21 @@ impl Lassoort {
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/las/")]
 pub struct LasInput {
+    /// De nationale bijlage waarmee getoetst wordt.
+    ///
+    /// Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+    /// crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+    /// bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+    /// de Nederlandse waarden teruggevallen.
+    ///
+    /// `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+    /// precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+    /// betekenen dan die rij. Het houdt oude projectbestanden en oude
+    /// MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+    /// regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+    /// in `nationale-bijlage` valt dan om en zegt dat.
+    #[serde(default)]
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     /// Vrij te kiezen aanduiding; komt onveranderd in het resultaat terug.
     pub id: String,
     pub soort: Lassoort,
@@ -231,7 +254,7 @@ pub fn toets_las(input: &LasInput) -> LasResultaat {
             staalsoort: input.staalsoort.clone(),
             f_u_mpa: f_u,
             beta_w: bw,
-            gamma_m2: GAMMA_M2,
+            gamma_m2: nationale_bijlage::Ndp1993Las::voor(input.bijlage).gamma_m2,
             f_vw_d_mpa: 0.0,
             f_w_rd_n_per_mm: 0.0,
             f_w_ed_n_per_mm: input.f_w_ed_n_per_mm,
@@ -266,7 +289,10 @@ pub fn toets_las(input: &LasInput) -> LasResultaat {
         meldingen.push("Geef de keeldikte a een positieve waarde.".to_string());
     }
 
-    let fvwd = f_vw_d(f_u, bw, GAMMA_M2);
+    // γ_M2 uit de rij van de bijlage die in DEZE invoer staat (tabel 2.1 met
+    // de NB-waarde), niet uit de vaste constante hierboven.
+    let gamma_m2 = nationale_bijlage::Ndp1993Las::voor(input.bijlage).gamma_m2;
+    let fvwd = f_vw_d(f_u, bw, gamma_m2);
     let f_w_rd = fvwd * a_totaal;
     let getoetst = f_w_rd > 0.0;
     let tau = if a_totaal > 0.0 {
@@ -288,7 +314,7 @@ pub fn toets_las(input: &LasInput) -> LasResultaat {
         staalsoort: input.staalsoort.clone(),
         f_u_mpa: f_u,
         beta_w: bw,
-        gamma_m2: GAMMA_M2,
+        gamma_m2,
         f_vw_d_mpa: fvwd,
         f_w_rd_n_per_mm: f_w_rd,
         f_w_ed_n_per_mm: input.f_w_ed_n_per_mm,
@@ -339,6 +365,7 @@ mod tests {
     #[test]
     fn dubbelzijdige_hoeklas_haalt_twee_keeldoorsneden() {
         let r = toets_las(&LasInput {
+            bijlage: Default::default(),
             id: "flens-lijf".into(),
             soort: Lassoort::HoeklasDubbel,
             a_mm: 4.0,
@@ -357,6 +384,7 @@ mod tests {
     #[test]
     fn enkelzijdig_is_de_helft_van_dubbelzijdig() {
         let maak = |soort| LasInput {
+            bijlage: Default::default(),
             id: "n".into(),
             soort,
             a_mm: 5.0,
@@ -374,6 +402,7 @@ mod tests {
     #[test]
     fn stompe_las_krijgt_geen_unity_check() {
         let r = toets_las(&LasInput {
+            bijlage: Default::default(),
             id: "stomp".into(),
             soort: Lassoort::StompVolledig,
             a_mm: 0.0,
@@ -390,6 +419,7 @@ mod tests {
     #[test]
     fn te_kleine_keeldikte_wordt_gemeld() {
         let r = toets_las(&LasInput {
+            bijlage: Default::default(),
             id: "dun".into(),
             soort: Lassoort::HoeklasDubbel,
             a_mm: 2.0,
@@ -405,6 +435,7 @@ mod tests {
     #[test]
     fn onbekende_staalsoort_levert_geen_getal() {
         let r = toets_las(&LasInput {
+            bijlage: Default::default(),
             id: "x".into(),
             soort: Lassoort::HoeklasDubbel,
             a_mm: 4.0,

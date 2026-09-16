@@ -69,6 +69,7 @@ fn ligger(
     onder: Vec<f64>,
 ) -> BeamCheckResult {
     check_beam(BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: "IPE 300".to_string(),
         steel_grade: "S235".to_string(),

@@ -70,6 +70,10 @@ log("\n[1] Elke rekeninstelling verandert de versie");
     scheefstandHoogteM: null,
     scheefstandAantalElementen: null,
     gevolgklasse: "CC2",
+    // De nationale bijlage (normnaad): zij bepaalt de nationaal bepaalde
+    // parameters van elke toetsing, dus een wijziging hoort de resultaten te
+    // laten vervallen.
+    nationaleBijlage: "NL",
   });
   const v0 = rekenInstellingenVersie(basis());
 
@@ -100,6 +104,9 @@ log("\n[1] Elke rekeninstelling verandert de versie");
     scheefstandHoogteM: (m) => { m.scheefstandHoogteM = 6; },
     scheefstandAantalElementen: (m) => { m.scheefstandAantalElementen = 3; },
     gevolgklasse: (m) => { m.gevolgklasse = "CC3"; },
+    // Er is vandaag maar één gevulde bijlage; "naar niets" is de enige
+    // wijziging die te maken is, en ook die hoort een nieuwe versie te geven.
+    nationaleBijlage: (m) => { m.nationaleBijlage = null; },
   };
   for (const [veld, wijzig] of Object.entries(wijzigingen)) {
     const m = basis();
@@ -142,7 +149,11 @@ log("\n[2] Beide invalidatie-effecten lezen de versie");
   );
   check(
     "App.tsx: de gevolgklasse uit de uitgangspunten gaat de store in",
-    /useFemStore\(\{ gevolgklasse: projectInfo\.uitgangspunten\?\.gevolgklasse/.test(app),
+    /gevolgklasse: projectInfo\.uitgangspunten\?\.gevolgklasse/.test(app),
+  );
+  check(
+    "App.tsx: de nationale bijlage uit de uitgangspunten gaat de store in",
+    /nationaleBijlage: projectInfo\.uitgangspunten\?\.nationaleBijlage/.test(app),
   );
   check(
     "FemCanvas.tsx: het canvasresultaat vervalt ook bij een andere scheefstand",

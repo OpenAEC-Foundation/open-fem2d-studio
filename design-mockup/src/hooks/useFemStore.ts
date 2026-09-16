@@ -1643,6 +1643,12 @@ export interface FemStore {
    */
   rekenInstellingenVersie: string;
   /**
+   * De nationale bijlage van het project, zoals hij aan deze store is
+   * meegegeven. Staat hier zodat de toetsing en het rapport hem uit dezelfde
+   * plek halen als de rekeninstellingen; `null` = niet ingesteld.
+   */
+  nationaleBijlage: string | null;
+  /**
    * Scheefstand (initiële imperfectie, EN 1993-1-1 §5.3.2-aanpak): elke
    * verticale last krijgt een horizontale metgezel H = φ·V. φ = 1/noemer
    * (default 1/200); richting +1 = +x, −1 = −x. De motor past alleen toe —
@@ -1781,6 +1787,13 @@ export function useFemStore(opties?: {
    * reist mee in de projectgegevens), maar hoort wél bij de rekeninstellingen.
    */
   gevolgklasse?: string | null;
+  /**
+   * De nationale bijlage uit de projectinstellingen (normnaad). Net als de
+   * gevolgklasse staat hij niet in deze store maar hoort hij wél bij de
+   * rekeninstellingen: hij bepaalt de nationaal bepaalde parameters van elke
+   * toetsing, dus een wijziging maakt de resultaten ongeldig.
+   */
+  nationaleBijlage?: string | null;
 }): FemStore {
   // Active snapshot (current model)
   const [nodes, setNodes]       = useState<Node[]>(DEFAULT_NODES);
@@ -1913,16 +1926,20 @@ export function useFemStore(opties?: {
       setGevolgklasse(projectKlasse);
     }
   }, [projectKlasse, setGevolgklasse]);
+  // De nationale bijlage komt uit de projectgegevens en wordt hier alleen
+  // doorgegeven: hij is geen staat van de store, maar wel een rekeninstelling.
+  const projectBijlage = opties?.nationaleBijlage ?? null;
   const rekenInstellingenVersie = useMemo(
     () => bepaalRekenInstellingenVersie({
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
       scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
       scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse,
+      nationaleBijlage: projectBijlage,
     }),
     [
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
       scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
-      scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse,
+      scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse, projectBijlage,
     ],
   );
   // Canvas view mode: false = "Model" tab (no loads drawn), true = LC active.
@@ -2680,6 +2697,7 @@ export function useFemStore(opties?: {
     analysetype, setAnalysetype,
     betonSegmentLengteMm, setBetonSegmentLengteMm,
     rekenInstellingenVersie,
+    nationaleBijlage: projectBijlage,
     scheefstandEnabled, setScheefstandEnabled,
     scheefstandNoemer, setScheefstandNoemer,
     scheefstandRichting, setScheefstandRichting,

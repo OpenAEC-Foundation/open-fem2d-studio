@@ -627,6 +627,20 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         }
     };
 
+    // De partiele factoren horen bij de BIJLAGE, niet bij de staalsoort.
+    // `SteelGrade` draagt ze mee omdat dat type ook langs de drie wegen naar
+    // buiten gaat, maar de waarde komt uit de rij van de bijlage die in DEZE
+    // invoer staat — niet uit een vaste constante. Voor NL levert dat exact
+    // dezelfde getallen; voor een tweede bijlage is dit de plek waar ze
+    // veranderen.
+    let ndp = nationale_bijlage::Ndp1993::voor(input.bijlage);
+    let grade = SteelGrade {
+        gamma_m0: ndp.gamma_m0,
+        gamma_m1: ndp.gamma_m1,
+        gamma_m2: ndp.gamma_m2,
+        ..grade
+    };
+
     // 3. Find per-check governing force points.
     //    - Compression: max |N|
     //    - Bending:     max |M_y| (+ small N weight for combined checks)

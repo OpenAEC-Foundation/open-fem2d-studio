@@ -1785,6 +1785,7 @@
     },
     "steel_check_inputs": [
       {
+        "bijlage": "NL",
         "beam_id": 1,
         "profile_name": "HEA160",
         "steel_grade": "S235",
@@ -2067,6 +2068,7 @@
         "z_a_mm": 76
       },
       {
+        "bijlage": "NL",
         "beam_id": 2,
         "profile_name": "IPE300",
         "steel_grade": "S235",
@@ -2345,6 +2347,7 @@
         "z_a_mm": 150
       },
       {
+        "bijlage": "NL",
         "beam_id": 3,
         "profile_name": "HEA160",
         "steel_grade": "S235",

@@ -1710,8 +1710,10 @@ pub fn min_verankering_tussensteunpunt_mm(
 /// figuur 8.8)" — dus 50 voor 50 %, niet 0,5.
 pub fn alpha_6(percentage_overlapt: f64, soort: Verankeringssoort) -> f64 {
     match soort {
-        // Tabel NB 8.3, regel "Druk": 1 bij elk percentage.
-        Verankeringssoort::Druk => 1.0,
+        // Tabel NB 8.3, regel "Druk": 1 bij elk percentage. Uit de normnaad,
+        // want de EN-tabel 8.3 die hier is doorgehaald geeft voor druk andere
+        // waarden — een ander land kan dus een ander getal hebben.
+        Verankeringssoort::Druk => crate::NDP.alpha_6_druk,
         Verankeringssoort::Trek => (percentage_overlapt / 25.0).sqrt().clamp(1.0, 1.5),
     }
 }

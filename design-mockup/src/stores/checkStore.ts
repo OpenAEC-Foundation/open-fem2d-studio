@@ -62,6 +62,7 @@ import {
 } from "../lib/beffLiggerlijn";
 import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
 import { isVrijMateriaal } from "../lib/vrijMateriaal";
+import type { NationaleBijlageCode } from "../lib/normAanduidingen";
 
 /**
  * Roep de Rust-rekenkern aan, waar de app ook draait.
@@ -145,6 +146,13 @@ export interface CheckRunData {
    * (`consequence_class`); de factoren zitten al in de combinaties. Ontbreekt → CC2.
    */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * De nationale bijlage van het project (normnaad). Zij gaat als `bijlage`
+   * naar elke rekenkern en bepaalt daar de nationaal bepaalde parameters —
+   * γ_M, k_cr, de doorbuigingsgrenzen, de dekkingseisen, de kipmethode.
+   * Ontbreekt → de enige gevulde bijlage; zie `lib/normAanduidingen.ts`.
+   */
+  nationaleBijlage?: NationaleBijlageCode;
   /**
    * De belastinggevallen, voor de belastingduur PER UGT-combinatie van de
    * hout- en CLT-toetsing (EN 1995-1-1 3.1.3(2), `lib/belastingduur.ts`).

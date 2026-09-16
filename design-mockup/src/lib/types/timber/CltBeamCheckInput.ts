@@ -3,6 +3,7 @@ import type { CltLayup } from "./CltLayup";
 import type { CombinationLoadDuration } from "./CombinationLoadDuration";
 import type { ForcePoint } from "../steel/ForcePoint";
 import type { LoadDurationClass } from "./LoadDurationClass";
+import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { ServiceClass } from "./ServiceClass";
 
 /**
@@ -13,7 +14,23 @@ import type { ServiceClass } from "./ServiceClass";
  * standaardwaarde, en een tikfout in die namen viel stil op die standaard
  * terug (gemeten: `kcr` werd genegeerd).
  */
-export type CltBeamCheckInput = { beam_id: number, 
+export type CltBeamCheckInput = { 
+/**
+ * De nationale bijlage waarmee getoetst wordt.
+ *
+ * Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+ * crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+ * bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+ * de Nederlandse waarden teruggevallen.
+ *
+ * `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+ * precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+ * betekenen dan die rij. Het houdt oude projectbestanden en oude
+ * MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+ * regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+ * in `nationale-bijlage` valt dan om en zegt dat.
+ */
+bijlage: NationaleBijlage, beam_id: number, 
 /**
  * Opbouw: breedte van de strook en de lagen van boven naar beneden.
  */

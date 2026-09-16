@@ -16,6 +16,9 @@
 //! tweemaal de lengte van een uitkraging."
 
 use crate::input::DeflectionClass;
+// De vier grenswaarden van A1.4.3(3) zijn nationaal bepaalde parameters en
+// komen uit de normnaad, niet uit losse getallen hieronder.
+use crate::NDP_1990;
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityCheck};
 
@@ -240,7 +243,7 @@ pub fn w_add_grens(
             (fin_noemer as f64, None)
         } else {
             (
-                1000.0 / 3.0,
+                NDP_1990.w_add_noemer_intensief,
                 Some(format!(
                     "Klasse 'Custom' zonder noemer: er is teruggevallen op 3/1 000 · ℓ_rep \
                      ({NB_A1_4_3_3}, tweede gedachtestreepje). Geef een noemer op als een \
@@ -283,14 +286,14 @@ pub fn w_add_grens(
     // `FloorBrittlePartitions` gekozen te worden; dat staat ook in de notitie.
     let (noemer, grens_tekst, categorie, streepje, combinatie) = match class {
         DeflectionClass::FloorBrittlePartitions => (
-            500.0,
+            NDP_1990.w_add_noemer_scheurgevoelig,
             "1/500 deel van ℓ_rep",
             "vloeren die scheurgevoelige scheidingswanden dragen",
             "eerste",
             "de FREQUENTE belastingscombinatie (uitdrukking 6.15b)",
         ),
         DeflectionClass::Roof => (
-            250.0,
+            NDP_1990.w_add_noemer_overige_daken,
             "1/250 deel van ℓ_rep",
             "overige daken",
             "derde",
@@ -300,7 +303,7 @@ pub fn w_add_grens(
         ),
         // Floor en Cantilever delen dezelfde categorie.
         _ => (
-            1000.0 / 3.0,
+            NDP_1990.w_add_noemer_intensief,
             "3/1 000 deel van ℓ_rep",
             "overige vloeren en daken die intensief door personen worden gebruikt",
             "tweede",

@@ -74,6 +74,7 @@ fn bgt(m: f64) -> Vec<ForcePoint> {
 /// aan wat ze nodig hebben.
 fn invoer(cage: ReinforcementCage, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
     ConcreteBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 7,
         section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".into(),

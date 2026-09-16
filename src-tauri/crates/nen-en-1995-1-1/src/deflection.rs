@@ -24,8 +24,11 @@ pub fn w_add_mm(w_fin_mm: f64, w_perm_mm: f64) -> f64 {
 }
 
 /// Standaard NB-noemers zoals gebruikt in de referentie-uitwerking.
-pub const NOEMER_W_FIN: f64 = 250.0;
-pub const NOEMER_W_ADD: f64 = 333.0;
+///
+/// Doorbuigingsgrenzen zijn nationaal bepaald (7.2(2) staat in de NDP-lijst van
+/// het voorwoord), dus komen de getallen uit de normnaad.
+pub const NOEMER_W_FIN: f64 = crate::NDP.noemer_w_fin;
+pub const NOEMER_W_ADD: f64 = crate::NDP.noemer_w_add;
 
 fn doorbuigingstoets(
     id: &str,

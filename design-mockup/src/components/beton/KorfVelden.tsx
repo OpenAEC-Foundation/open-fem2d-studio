@@ -70,6 +70,7 @@ import {
   zijstaafRij,
 } from "./wapeningskorf";
 import "./beton.css";
+import { STANDAARD_BIJLAGE } from "../../lib/normAanduidingen";
 
 /** Eén getalveld met label en eenheid. */
 export function Getal({
@@ -277,6 +278,12 @@ function useDekkingstoets(
           {
             zijde,
             verzoek: {
+              // De nationale bijlage waarmee de kern rekent. Dit paneel toont
+              // de dekkingstoets terwijl de gebruiker typt; het kent de
+              // projectinstellingen niet en houdt daarom de enige gevulde
+              // bijlage aan. Wisselt een project ooit van bijlage, dan moet
+              // deze regel de keuze van het project doorgeven.
+              bijlage: STANDAARD_BIJLAGE,
               beam_id: 0,
               side: zijde,
               exposure_class: klasse,

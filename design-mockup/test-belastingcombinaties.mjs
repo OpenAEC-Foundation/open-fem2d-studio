@@ -117,10 +117,15 @@ log("\n[1] De tabellen zijn die van NEN-EN 1990:2002/NB:2019 (pdftotext -raw)");
   checkWaar("NB.2 sneeuw 0/0,2/0", PSI_SNEEUW.psi0 === 0 && PSI_SNEEUW.psi1 === 0.2 && PSI_SNEEUW.psi2 === 0);
   checkWaar("NB.2 wind 0/0,2/0", PSI_WIND.psi0 === 0 && PSI_WIND.psi1 === 0.2 && PSI_WIND.psi2 === 0);
 
-  // De Rust-crate nen-en-1990 draagt dezelfde tabellen (ruw 8/40: daar weken
-  // D, F en EQU af). Gelezen als bronbestand, zodat beide kanten niet uiteen
-  // kunnen lopen zonder dat dit rood wordt.
-  const rs = readFileSync(new URL("../src-tauri/crates/nen-en-1990/src/lib.rs", import.meta.url), "utf8");
+  // De Rust-kant draagt dezelfde tabellen (ruw 8/40: daar weken D, F en EQU
+  // af). Gelezen als bronbestand, zodat beide kanten niet uiteen kunnen lopen
+  // zonder dat dit rood wordt.
+  //
+  // Sinds de normnaad (september 2026) staan die tabellen niet meer in
+  // nen-en-1990/src/lib.rs maar in de NL-rij van de crate `nationale-bijlage`;
+  // nen-en-1990 leest ze daar uit en heeft zelf geen getallen meer. Dit is
+  // hetzelfde bewijs, nu op de bron gericht in plaats van op de doorgeefluik.
+  const rs = readFileSync(new URL("../src-tauri/crates/nationale-bijlage/src/ndp_1990.rs", import.meta.url), "utf8");
   const psiRs = [...rs.matchAll(/PsiFactors \{ category: "([^"]+)", description: "[^"]*", psi0: ([\d.]+), psi1: ([\d.]+), psi2: ([\d.]+) \}/g)];
   checkWaar("crate: 13 ψ-rijen gevonden", psiRs.length === 13, String(psiRs.length));
   for (const [, cat, p0, p1, p2] of psiRs) {
@@ -131,7 +136,8 @@ log("\n[1] De tabellen zijn die van NEN-EN 1990:2002/NB:2019 (pdftotext -raw)");
     .map(([, n, g, gi, q]) => [n, +g, +gi, +q]);
   checkWaar("crate: EQU volgens NB.3 (1,1 / 0,9 / 1,5)",
     lfRs.some(([n, g, gi, q]) => n === "EQU" && g === 1.1 && gi === 0.9 && q === 1.5));
-  for (const [cc, i610a] of [["CC2", 0], ["CC1", 3], ["CC3", 5]]) {
+  // De volgorde in de NL-rij is CC1 (6.10a, 6.10b), CC2, CC3, daarna EQU.
+  for (const [cc, i610a] of [["CC1", 0], ["CC2", 2], ["CC3", 4]]) {
     const f = PARTIELE_FACTOREN[cc];
     const [, ga, , qa] = lfRs[i610a];
     const [, gb, , qb] = lfRs[i610a + 1];

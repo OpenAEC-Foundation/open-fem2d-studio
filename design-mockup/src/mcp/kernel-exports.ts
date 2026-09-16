@@ -47,6 +47,14 @@ export * from "../lib/combinatieBeheer";
 // het combineren, zodat een MCP-solve niet acht combinaties oplevert waar de
 // app er zes toont. Hij trekt `variantInvoer` mee — de materiaalclassificatie
 // die de toetsing ook gebruikt; pure rekencode, geen DOM en geen Tauri.
+// De NORMNAAD: welke nationale bijlagen rekenwaarden hebben, en de
+// normaanduidingen die bij die keuze horen. Zit al in de bundel via
+// `sidecar.ts` en de vier check-bouwers, maar zonder deze regel is hij in de
+// bundelstand van de regressierunner niet aanroepbaar — en juist de WEIGERING
+// van een niet-gevulde bijlage hoort in het MCP-artefact net zo hard te zijn
+// als in de bron: dat is de enige plek waar een stille terugval op Nederlandse
+// partiële factoren zou kunnen ontstaan. Pure tekst en tabellen, geen DOM.
+export * from "../lib/normAanduidingen";
 export * from "../lib/combinatieSelectie";
 export * from "../lib/steelCheckBuilder";
 // De referentierichting (spiegelen van staaf, uitkomst en toetsconfig): al in

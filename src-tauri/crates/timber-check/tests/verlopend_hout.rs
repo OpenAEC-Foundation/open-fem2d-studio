@@ -38,6 +38,7 @@ fn staaf(
     punten: &[(f64, f64)],
 ) -> TimberBeamCheckInput {
     TimberBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         width_mm: b_mm,
         height_mm: h_mm,

@@ -260,12 +260,21 @@ pub struct ReportInput {
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
 
+/// De normaanduidingen van de gekozen nationale bijlage, uit de normnaad.
+///
+/// Welke UITGAVE geldt hangt samen met welke bijlage geldt; ze horen dus in
+/// dezelfde rij. Tot september 2026 stonden deze zes constanten hier los, naast
+/// drie in de frontend en vier i18n-kopieën — en hout en beton waren al
+/// uiteengelopen.
+const AANDUIDINGEN: nationale_bijlage::Aanduidingen =
+    nationale_bijlage::Aanduidingen::voor(nationale_bijlage::NationaleBijlage::NL);
+
 /// Kort normlabel voor staaltoetsingen.
-pub const NORM_STEEL: &str = "EN 1993-1-1";
+pub const NORM_STEEL: &str = AANDUIDINGEN.norm_staal_kort;
 /// Kort normlabel voor houttoetsingen.
-pub const NORM_TIMBER: &str = "EN 1995-1-1";
+pub const NORM_TIMBER: &str = AANDUIDINGEN.norm_hout_kort;
 /// Kort normlabel voor betontoetsingen.
-pub const NORM_CONCRETE: &str = "EN 1992-1-1";
+pub const NORM_CONCRETE: &str = AANDUIDINGEN.norm_beton_kort;
 /// Wat er staat waar bij de andere kernen een norm staat. De vrije
 /// spanningstoets vergelijkt met een opgegeven toelaatbare spanning; "EN …"
 /// suggereren zou de lezer op het verkeerde been zetten. Zelfde bewoording als
@@ -273,7 +282,7 @@ pub const NORM_CONCRETE: &str = "EN 1992-1-1";
 pub const GEEN_NORM: &str = "geen norm";
 
 /// Volledige normaanduiding (cover) voor staal.
-const NORM_STEEL_FULL: &str = "NEN-EN 1993-1-1+C2+A1/NB:2016 nl";
+const NORM_STEEL_FULL: &str = AANDUIDINGEN.norm_staal_omslag;
 /// Volledige normaanduiding (cover) voor hout: de aanduiding waarmee de
 /// uitgave zichzelf op elk vel noemt, plus de taal.
 ///
@@ -285,10 +294,10 @@ const NORM_STEEL_FULL: &str = "NEN-EN 1993-1-1+C2+A1/NB:2016 nl";
 /// Publiek omdat een test hem naast de notitie van de kruislaaghouttoets legt
 /// (`nen_en_1995_1_1::clt_toets::NORM_HOUT_AANDUIDING`, dev-dependency): dat is
 /// de enige manier waarop die twee plaatsen aan elkaar vastzitten.
-pub const NORM_TIMBER_FULL: &str = "NEN-EN 1995-1-1:2005+A2:2014+NB:2013 nl";
+pub const NORM_TIMBER_FULL: &str = AANDUIDINGEN.norm_hout_omslag;
 /// Volledige normaanduiding (cover) voor beton — dezelfde uitgave als waaruit
 /// de `nen-en-1992-1-1`-crate haar waarden leest (zie de crate-doc daar).
-const NORM_CONCRETE_FULL: &str = "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020 nl";
+const NORM_CONCRETE_FULL: &str = AANDUIDINGEN.norm_beton_omslag;
 /// Wat er in het infoblok op het omslag staat voor de vrije spanningstoets:
 /// geen normaanduiding maar de vermelding dát er geen norm achter zit, zodat
 /// het omslag ook zonder Eurocode-toets iets waars zegt. Kort gehouden, want

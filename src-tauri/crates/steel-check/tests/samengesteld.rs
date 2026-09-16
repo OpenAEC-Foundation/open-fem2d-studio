@@ -98,6 +98,7 @@ fn invoer(
     my_ed_knm: f64,
 ) -> BeamCheckInput {
     BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: profielnaam.to_string(),
         steel_grade: "S235".to_string(),

@@ -42,6 +42,7 @@ fn duur(combinatie: u32, d: LoadDurationClass, basis: &str) -> CombinationLoadDu
 
 fn ligger(klasse: &str, b: f64, h: f64, l_m: f64, env: Vec<ForcePoint>) -> TimberBeamCheckInput {
     TimberBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         width_mm: b,
         height_mm: h,
@@ -325,6 +326,7 @@ fn clt_per_klasse_met_de_laagregel_uit_de_klasse_van_elke_toets() {
         ForcePoint { combination_id: 2, position_mm: 2500.0, forces: InternalForces { my_ed: 14.0, ..Default::default() } },
     ];
     let invoer = |lijst: Vec<CombinationLoadDuration>| CltBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 7,
         layup: CltLayup::alternating(1000.0, &[40.0, 20.0, 40.0, 20.0, 40.0], "C24"),
         service_class: ServiceClass::Sc1,

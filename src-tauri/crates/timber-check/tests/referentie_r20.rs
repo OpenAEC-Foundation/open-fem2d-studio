@@ -139,6 +139,7 @@ fn invoer(
     lef_override_m: f64,
 ) -> TimberBeamCheckInput {
     TimberBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 2,
         width_mm: B_MM,
         height_mm: H_MM,

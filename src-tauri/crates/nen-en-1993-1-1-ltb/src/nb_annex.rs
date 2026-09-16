@@ -1,4 +1,8 @@
-//! NEN-EN 1993-1-1+C2+A1/NB:2016 nl — Mcr formulation per Dutch national annex.
+//! NEN-EN 1993-1-1+C2+A1/NB:2016 — M_cr volgens bijlage NB.NB.
+//!
+//! De aanduiding hierboven is die van `nationale_bijlage::Aanduidingen`, waar
+//! zij voor de hele werkruimte wordt bepaald; hier staat zij alleen ter
+//! oriëntatie in de bovenste regel van het bestand.
 
 use std::f64::consts::PI;
 

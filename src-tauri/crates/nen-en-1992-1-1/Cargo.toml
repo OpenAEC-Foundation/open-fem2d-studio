@@ -9,6 +9,7 @@ license = "CC-BY-SA-4.0"
 crate-type = ["lib"]
 
 [dependencies]
+nationale-bijlage = { path = "../nationale-bijlage" }
 serde = { workspace = true }
 ts-rs = { workspace = true }
 mechanics = { path = "../mechanics" }
