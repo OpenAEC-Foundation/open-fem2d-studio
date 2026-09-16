@@ -24,6 +24,7 @@ import type { SpanningBeamCheckResult } from "../../lib/types/spanning/SpanningB
 import SpanningDoorsnedeTekening from "../spanning/SpanningDoorsnedeTekening";
 import CheckBlock from "./CheckBlock";
 import VariantenBlok from "./VariantenBlok";
+import { OvergeslagenPlaten, PlaatToetsKaart } from "./PlaatToetsKaart";
 import { governingInfo } from "../report/checkReportUtils";
 import "./CheckPanel.css";
 
@@ -206,6 +207,9 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
   const isRunning = useCheckStore((s) => s.isRunning);
   const error = useCheckStore((s) => s.error);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
+  const plateResults = useCheckStore((s) => s.plateResults);
+  const plateSkipped = useCheckStore((s) => s.plateSkipped);
+  const heeftPlaten = plateResults.length > 0 || plateSkipped.length > 0;
 
   const okCount = results.filter((r) => r.status === "Ok").length;
   const notOkCount = results.filter((r) => r.status === "NotOk").length;
@@ -250,7 +254,7 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
           </details>
         )}
 
-        {results.length === 0 && !error && (
+        {results.length === 0 && !error && !heeftPlaten && (
           <div className="cp-empty">
             <p className="cp-empty-title">{t("emptyTitle")}</p>
             <p className="cp-empty-hint">{t("emptyHint")}</p>
@@ -264,6 +268,19 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
             focusToken={focus && focus.beamId === r.beam_id ? focus : null}
           />
         ))}
+
+        {/* Platen (wandschijven): een eigen lijst na de staven. Het
+            staafcontract is per staaf-id, en een plaatnummer kan gelijk zijn
+            aan een staafnummer — daarom niet in dezelfde lijst. */}
+        {heeftPlaten && (
+          <>
+            <div className="cp-title" style={{ margin: "10px 0 4px" }}>{t("plaat.titel")}</div>
+            <OvergeslagenPlaten skipped={plateSkipped} open={plateResults.length === 0} />
+            {plateResults.map((r) => (
+              <PlaatToetsKaart key={`p-${r.plate_id}`} result={r} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

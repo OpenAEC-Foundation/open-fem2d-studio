@@ -251,6 +251,23 @@ const BUNDEL_TESTS = new Set([
   // zulke platen zonder canvas; een staaf die in de bundel stil los zou
   // blijven, moet ook daar gekoppeld of geweigerd worden.
   "plaat-opening-staafeinde",
+  // Plaattoets staal (issue #15): de bouwer `plaatCheckBuilder`, de in-proces
+  // sidecar (`check` levert `plate_check_inputs`) — beide in de barrel — en de
+  // echte kern via de toetsbrug als apart proces. Hoort óók tegen de bundel:
+  // `check_fem_model` bouwt de plaatinvoer uit de bundel, en een bundel die
+  // spanningen, dikte of materiaal verkeerd doorgeeft, toetst daar stil een
+  // andere plaat dan de app.
+  "plaat-toets-staal",
+  // Plaattoets hout (issue #15, stap 2): bouwer via de in-proces sidecar
+  // (hoofdrichting, klimaatklasse, belastingduur per combinatie), de modelpoort
+  // (`valideerModel`) — alles in de barrel — en de kern via de toetsbrug. Hoort
+  // óók tegen de bundel: laat de bundel de belastingduur of de hoofdrichting
+  // vallen, dan weigert of toetst de MCP-weg een andere plaat dan de app.
+  "plaat-toets-hout",
+  // Plaattoets beton (issue #15, stap 3): bouwer via de in-proces sidecar en de
+  // kern (bijlage F) via de toetsbrug. Hoort óók tegen de bundel: de MCP-weg
+  // moet dezelfde spanningen doorgeven, anders klopt de benodigde wapening niet.
+  "plaat-toets-beton",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",
@@ -420,6 +437,10 @@ const ALLEEN_BRON = new Map([
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
+  [
+    "plaat-toets-weergave",
+    "rendert de plaatkaart van het toetsingspaneel en de rapportsectie \"Toetsing platen\" met react-dom/server, gevoed met een kernantwoord van de toetsbrug (apart proces). React en de stylesheets bestaan in de sidecarbundel niet, en paneel en rapport horen niet in de barrel; de bundelkant van de plaattoets staat in `plaat-toets-staal`",
+  ],
   [
     "plaat-openingen-store",
     "test de modelcontrole (lib/modelControle) en het meereizen van openingen bij verplaatsen, roteren, spiegelen en kopiëren in de zustand-store; geen van beide hoort in de barrel",

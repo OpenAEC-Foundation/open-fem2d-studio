@@ -75,7 +75,7 @@ import {
   scheefstandToelichting,
   toepasselijkeScheefstandNormen,
 } from "./lib/scheefstandNorm";
-import { useCheckStore, anyCheckableBeams, roepKern } from "./stores/checkStore";
+import { useCheckStore, anyCheckableBeams, anyCheckablePlates, roepKern } from "./stores/checkStore";
 // Het venster onderin bij een betonstaaf: de aanzicht met de dekkingslijnen,
 // de doorsnede op de aangewezen snede en de invoer van de wapeningszones.
 import BetonStaafVenster from "./components/beton/dekking/BetonStaafVenster";
@@ -1484,7 +1484,9 @@ function App() {
     // desktop-app via Tauri, in de browser via de dev-brug (zie checkStore).
     // Lukt het niet, dan meldt de check-store dat als fout — beter dan een
     // toetsing die er stilzwijgend niet is.
-    if (!anyCheckableBeams(fem.beams)) {
+    // Platen tellen mee: een model met alleen een wandschijf heeft wél iets te
+    // toetsen (of met reden over te slaan).
+    if (!anyCheckableBeams(fem.beams) && !anyCheckablePlates(fem.plates)) {
       notifyInfo(
         i18next.t("common:app.check.noCheckableTitle"),
         i18next.t("common:app.check.noCheckableBody"),

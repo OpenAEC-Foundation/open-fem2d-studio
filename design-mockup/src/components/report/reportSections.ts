@@ -59,6 +59,7 @@ import DisplacementsSection from "./sections/DisplacementsSection";
 import PlateStressSection from "./sections/PlateStressSection";
 import CheckTableSection from "./sections/CheckTableSection";
 import CheckDetailSection from "./sections/CheckDetailSection";
+import PlateCheckSection from "./sections/PlateCheckSection";
 import CltSection from "./sections/CltSection";
 import BetonSection from "./sections/BetonSection";
 import BetonStijfheidSection from "./sections/BetonStijfheidSection";
@@ -68,6 +69,7 @@ import {
   nvtBetonStijfheid,
   nvtKruislaaghout,
   nvtPlaatspanningen,
+  nvtPlaattoetsing,
   nvtPlaten,
   nvtSpanningstoets,
   type RapportGegevens,
@@ -266,6 +268,21 @@ export const REPORT_SECTIONS: ReportSectionDef[] = [
       "De formule-afleidingen per staaf: verantwoording voor de " +
       "controlerend constructeur, niet voor de opdrachtgever.",
     Component: CheckDetailSection,
+  },
+  // Platen (wandschijven): de normtoets per element — overzicht, wat niet
+  // getoetst is, en de afleiding op het maatgevende punt (issue #15).
+  {
+    id: "plateCheck",
+    titleKey: "report.sectionPlateCheck",
+    defaultTitle: "Toetsing platen",
+    inBeperkt: true,
+    beperktReden:
+      "Het oordeel over de platen hoort bij de conclusie van het rapport, net " +
+      "als het toetsingsoverzicht van de staven — en vooral wat NIET getoetst " +
+      "is (plooi, een geweigerd materiaal) moet de ontvanger lezen. Op beknopt " +
+      "niveau staat alleen de maatgevende toets uitgeschreven.",
+    nietVanToepassing: nvtPlaattoetsing,
+    Component: PlateCheckSection,
   },
   // Kruislaaghout: de opbouw en de toetsing per lamel. Rendert alleen iets
   // wanneer er CLT-staven zijn; anders één regel "geen".

@@ -69,6 +69,8 @@ export interface BedieningActies {
   fem: {
     nodes: readonly { id: number; x: number; z: number }[];
     beams: readonly Beam[];
+    /** Platen: tellen mee bij "is er iets te toetsen" (plaattoets). */
+    plates?: readonly { materiaal?: string }[];
     loads: readonly Load[];
     loadCases: readonly { id: number; name: string }[];
     combinations: readonly { id: number; name: string }[];
@@ -453,6 +455,10 @@ function toetsenUitlezen() {
   return {
     results: s.results,
     skipped: s.skipped,
+    // De plaattoets: per plaat het resultaat (of de weigering) en de platen
+    // die met reden niet naar de kern gingen. `inputs.plaat` is de kerninvoer.
+    plate_results: s.plateResults,
+    skipped_plates: s.plateSkipped,
     error: s.error,
     lastRunAt: s.lastRunAt,
     inputs: s.lastRunInputs,

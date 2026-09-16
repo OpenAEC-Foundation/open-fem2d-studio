@@ -1141,7 +1141,8 @@
       "removeOpeningTitle": "Diese Öffnung entfernen",
       "removeOpening": "Entfernen",
       "openingsHint": "Das Rechennetz spart die Öffnungen aus und legt Knoten auf den Öffnungsrand.",
-      "openingsHintCdt": "Eine nicht rechteckige Öffnung wird über die CDT (Netz-Cache) gerechnet."
+      "openingsHintCdt": "Eine nicht rechteckige Öffnung wird über die CDT (Netz-Cache) gerechnet.",
+      "serviceClassTitle": "Nutzungsklasse für den Plattennachweis (NEN-EN 1995-1-1 2.3.1.3): bestimmt mit der Lasteinwirkungsdauer k_mod. Die Steifigkeit ändert sich nicht."
     }
   },
   "barDialog": {
@@ -1184,5 +1185,14 @@
     "governingLine": "Maßgebend: {{toets}} — UC {{uc}}. Vollständige Herleitung: Registerkarte Nachweis → Nachweisbereich.",
     "notChecked": "Noch nicht nachgewiesen — führen Sie den Normnachweis über die Ribbon-Registerkarte \"Nachweis\" aus (Schaltfläche \"Stahl + Holz nachweisen\").",
     "cancel": "Abbrechen"
+  },
+  "plaat": {
+    "plaat": "Platte",
+    "titel": "Platten",
+    "elementInCombinatie": "Element {{element}} in Kombination {{combinatie}}",
+    "nietGetoetst": "Nicht nachgewiesen",
+    "krachtregel": "Kombination {{combinatie}} — elementgemittelte Spannungen in der Ebene; das Element steht in den Anmerkungen",
+    "overgeslagenTitel": "Übersprungene Platten",
+    "wapening": "Erforderliche Bewehrung (Anhang F): x bis {{x}} kN/m (Element {{ex}}), z bis {{z}} kN/m (Element {{ez}}) — vorhandene Bewehrung nicht nachgewiesen"
   }
 }

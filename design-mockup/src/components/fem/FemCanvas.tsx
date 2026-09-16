@@ -148,6 +148,21 @@ function contourKleur(t: number): string {
   const c = a.map((v, i) => Math.round(v + (b[i] - v) * f));
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
+/**
+ * Kleur van een plaatelement naar zijn unity check (plaattoets, issue #15):
+ * dezelfde grenzen als het toetsingspaneel (0,9 en 1,0), met onder 0,5 een
+ * lichtere tint zodat ruim voldoende elementen niet opvallen.
+ */
+const PLAAT_UC_KLASSEN: { tot: number; kleur: string; label: string }[] = [
+  { tot: 0.5, kleur: "#bbf7d0", label: "≤ 0,5" },
+  { tot: 0.9, kleur: "#4ade80", label: "≤ 0,9" },
+  { tot: 1.0, kleur: "#f59e0b", label: "≤ 1,0" },
+  { tot: Number.POSITIVE_INFINITY, kleur: "#dc2626", label: "> 1,0" },
+];
+function plaatUcKleur(uc: number): string {
+  return (PLAAT_UC_KLASSEN.find((k) => uc <= k.tot) ?? PLAAT_UC_KLASSEN[PLAAT_UC_KLASSEN.length - 1]).kleur;
+}
+
 const CONTOUR_GRADIENT_CSS = `linear-gradient(to top, ${
   CONTOUR_STOPS.map(([r, g, b]) => `rgb(${r}, ${g}, ${b})`).join(", ")})`;
 
@@ -571,6 +586,10 @@ export default function FemCanvas(props: FemCanvasProps) {
   const { t: tCommon } = useTranslation("common");
   // Toetsresultaten (normtoetsing) — voor de Unity-check-badges op het canvas.
   const checkResults = useCheckStore((s) => s.results);
+  // Plaattoets: de omhullende UC per element, en het rekenmesh van de ronde
+  // waarop getoetst is (de hoekpunten van elk element).
+  const plateCheckResults = useCheckStore((s) => s.plateResults);
+  const checkRunData = useCheckStore((s) => s.lastRunData);
   // updateNode is consumed by FemProperties — accept the prop but suppress unused-var lint
   void props.updateNode;
 
@@ -3450,6 +3469,41 @@ export default function FemCanvas(props: FemCanvasProps) {
     return { platenRes, min, max };
   }, [overlayResult, plaatComponent, displayFlags.plaatContour, showLoads]);
 
+  // ── Plaattoets op het canvas (issue #15) ────────────────────────────────
+  // Per getoetst element de omhullende UC als kleur, en per plaat een badge
+  // met de maatgevende UC. De hoekpunten komen uit het resultaat van de ronde
+  // waarop getoetst is (`lastRunData`), niet uit het getoonde resultaat: zo
+  // hoort elke kleur bij precies het element dat de kern beoordeelde.
+  const plaatUcData = useMemo(() => {
+    if (!showLoads || displayFlags.uc !== true || plateCheckResults.length === 0) return null;
+    const cr = checkRunData?.combinationResults;
+    if (!cr) return null;
+    const uit: {
+      plateId: number;
+      ucMax: number;
+      checkId: string;
+      elementen: { id: number; uc: number; corners: { x: number; z: number }[] }[];
+    }[] = [];
+    for (const r of plateCheckResults) {
+      if (r.geweigerd !== undefined || r.elementen.length === 0) continue;
+      const hoeken = new Map<number, { x: number; z: number }[]>();
+      for (const res of cr.values()) {
+        const pr = res.plateElements?.find((p) => p.plateId === r.plate_id);
+        if (!pr) continue;
+        for (const el of pr.elements) hoeken.set(el.elementId, el.corners);
+        break;
+      }
+      const elementen = r.elementen.flatMap((e) => {
+        const c = hoeken.get(e.element_id);
+        return c ? [{ id: e.element_id, uc: e.uc, corners: c }] : [];
+      });
+      if (elementen.length > 0) {
+        uit.push({ plateId: r.plate_id, ucMax: r.uc_max, checkId: r.governing_check_id, elementen });
+      }
+    }
+    return uit.length > 0 ? uit : null;
+  }, [showLoads, displayFlags.uc, plateCheckResults, checkRunData]);
+
   // ── Modelcontrole ───────────────────────────────────────────────────────
   // Loopt live mee met het model: zo zie je een niet-aangesloten kolomvoet al
   // terwijl je tekent, en niet pas als de solver met "singuliere matrix" komt.
@@ -3967,6 +4021,28 @@ export default function FemCanvas(props: FemCanvasProps) {
           )}
         </g>
 
+        {/* Plaattoets: elementen gekleurd naar hun omhullende UC, boven de
+            spanningscontouren en onder de staven. */}
+        {plaatUcData && (
+          <g className="fem-plaat-uc" pointerEvents="none">
+            {plaatUcData.flatMap((p) =>
+              p.elementen.map((el) => (
+                <polygon
+                  key={`puc${p.plateId}-${el.id}`}
+                  points={el.corners.map((c) => {
+                    const q = worldToScreen(c.x, c.z);
+                    return `${q.x.toFixed(2)},${q.y.toFixed(2)}`;
+                  }).join(" ")}
+                  fill={plaatUcKleur(el.uc)}
+                  fillOpacity={0.85}
+                  stroke="rgba(15, 23, 42, 0.35)"
+                  strokeWidth={0.6}
+                />
+              )),
+            )}
+          </g>
+        )}
+
         {/* Het assenkruis op de wereld-oorsprong is vervangen door de vaste
             assenstelsel-widget linksboven (fem-coord-widget) — één weergave
             i.p.v. twee. */}
@@ -4460,7 +4536,43 @@ export default function FemCanvas(props: FemCanvasProps) {
             })}
           </g>
         )}
+        {/* Plaattoets: per plaat de maatgevende UC in het zwaartepunt van de
+            getoetste elementen (bovenop, net als de staafbadges). */}
+        {plaatUcData && (
+          <g className="fem-uc-layer" pointerEvents="none">
+            {plaatUcData.map((p) => {
+              let sx = 0, sz = 0, n = 0;
+              for (const el of p.elementen) for (const c of el.corners) { sx += c.x; sz += c.z; n++; }
+              const m = worldToScreen(sx / n, sz / n);
+              const tekst = `UC ${fmtNl(p.ucMax, 2)}`;
+              const bw = tekst.length * 7.5 + 16;
+              return (
+                <g key={`pucb${p.plateId}`} className="fem-uc-badge">
+                  <title>{tCommon("canvas.uc.plaatBadgeTitle", { plaat: p.plateId, toets: p.checkId })}</title>
+                  <rect x={m.x - bw / 2} y={m.y - 11} width={bw} height={22} rx={4}
+                    fill={p.ucMax <= 1.0 ? "#16a34a" : "#dc2626"} />
+                  <text x={m.x} y={m.y + 4} className="fem-uc-badge-text">{tekst}</text>
+                </g>
+              );
+            })}
+          </g>
+        )}
       </svg>
+
+      {/* Legenda van de kleurklassen van de plaattoets. */}
+      {plaatUcData && (
+        <div className="fem-hud" style={{ right: 12, top: "50%", transform: "translateY(-50%)" }}>
+          <div className="fem-hud-card" style={{ display: "flex", flexDirection: "column", gap: 3, padding: "8px 10px" }}>
+            <span style={{ fontSize: 11, fontWeight: 600 }}>{tCommon("canvas.uc.plaatLegenda")}</span>
+            {PLAAT_UC_KLASSEN.map((k) => (
+              <span key={k.label} className="fem-hud-mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+                <span style={{ width: 12, height: 10, background: k.kleur, borderRadius: 2, display: "inline-block" }} />
+                UC {k.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* HUDs */}
       <div className="fem-hud fem-hud-tl">

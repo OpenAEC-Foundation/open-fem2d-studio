@@ -392,7 +392,9 @@
       "lengthPointDirection": "{{lengte}} m — point in a direction"
     },
     "uc": {
-      "badgeTitle": "Member {{staaf}}: governing {{toets}} — click for the check"
+      "badgeTitle": "Member {{staaf}}: governing {{toets}} — click for the check",
+      "plaatBadgeTitle": "Plate {{plaat}}: governing {{toets}} — see the check panel",
+      "plaatLegenda": "UC plate element"
     },
     "hud": {
       "tool": "Tool:",

@@ -1141,7 +1141,8 @@
       "removeOpeningTitle": "Supprimer cette ouverture",
       "removeOpening": "Supprimer",
       "openingsHint": "Le maillage de calcul laisse les ouvertures libres et place des nœuds sur le bord des ouvertures.",
-      "openingsHintCdt": "Une ouverture non rectangulaire est calculée via la CDT (cache de maillage)."
+      "openingsHintCdt": "Une ouverture non rectangulaire est calculée via la CDT (cache de maillage).",
+      "serviceClassTitle": "Classe de service pour la vérification de la plaque (NEN-EN 1995-1-1 2.3.1.3) : avec la durée de charge, elle fixe k_mod. La rigidité ne change pas."
     }
   },
   "barDialog": {
@@ -1184,5 +1185,14 @@
     "governingLine": "Déterminant : {{toets}} — UC {{uc}}. Justification complète : onglet Vérification → panneau de vérification.",
     "notChecked": "Pas encore vérifié — lancez la vérification normative via l'onglet du ruban \"Vérification\" (bouton \"Vérifier acier + bois\").",
     "cancel": "Annuler"
+  },
+  "plaat": {
+    "plaat": "Plaque",
+    "titel": "Plaques",
+    "elementInCombinatie": "élément {{element}} dans la combinaison {{combinatie}}",
+    "nietGetoetst": "Non vérifié",
+    "krachtregel": "Combinaison {{combinatie}} — contraintes moyennes par élément dans le plan ; l'élément figure dans les remarques",
+    "overgeslagenTitel": "Plaques ignorées",
+    "wapening": "Armatures nécessaires (annexe F) : x jusqu'à {{x}} kN/m (élément {{ex}}), z jusqu'à {{z}} kN/m (élément {{ez}}) — armatures en place non vérifiées"
   }
 }

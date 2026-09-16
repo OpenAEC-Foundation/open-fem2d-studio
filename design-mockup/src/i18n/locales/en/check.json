@@ -1141,7 +1141,8 @@
       "removeOpeningTitle": "Remove this opening",
       "removeOpening": "Remove",
       "openingsHint": "The calculation mesh leaves the openings free and places nodes on the opening edge.",
-      "openingsHintCdt": "A non-rectangular opening is calculated via the CDT (mesh cache)."
+      "openingsHintCdt": "A non-rectangular opening is calculated via the CDT (mesh cache).",
+      "serviceClassTitle": "Service class for the plate check (NEN-EN 1995-1-1 2.3.1.3): together with the load duration it sets k_mod. The stiffness does not change."
     }
   },
   "barDialog": {
@@ -1184,5 +1185,14 @@
     "governingLine": "Governing: {{toets}} — UC {{uc}}. Full derivation: Check tab → check panel.",
     "notChecked": "Not checked yet — run the code check via the ribbon tab \"Check\" (button \"Check steel + timber\").",
     "cancel": "Cancel"
+  },
+  "plaat": {
+    "plaat": "Plate",
+    "titel": "Plates",
+    "elementInCombinatie": "element {{element}} in combination {{combinatie}}",
+    "nietGetoetst": "Not checked",
+    "krachtregel": "Combination {{combinatie}} — element-averaged in-plane stresses; the element is named in the notes",
+    "overgeslagenTitel": "Skipped plates",
+    "wapening": "Required reinforcement (annex F): x up to {{x}} kN/m (element {{ex}}), z up to {{z}} kN/m (element {{ez}}) — provided reinforcement not checked"
   }
 }

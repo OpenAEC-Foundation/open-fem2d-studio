@@ -392,7 +392,9 @@
       "lengthPointDirection": "{{lengte}} m — wijs een richting aan"
     },
     "uc": {
-      "badgeTitle": "Staaf {{staaf}}: maatgevend {{toets}} — klik voor de toetsing"
+      "badgeTitle": "Staaf {{staaf}}: maatgevend {{toets}} — klik voor de toetsing",
+      "plaatBadgeTitle": "Plaat {{plaat}}: maatgevend {{toets}} — zie het toetsingspaneel",
+      "plaatLegenda": "UC plaatelement"
     },
     "hud": {
       "tool": "Tool:",

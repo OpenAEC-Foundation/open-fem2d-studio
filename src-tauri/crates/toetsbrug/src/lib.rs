@@ -37,6 +37,7 @@ use concrete_check::ConcreteColumnCheckRequest;
 use nen_en_1992_1_1::{ConcreteCoverRequest, CreepCoefficientRequest, EffectiveFlangeWidthRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use nen_en_1993_1_8_las::LasInput;
+use plaat_check::PlateCheckInput;
 use serde::Deserialize;
 use serde_json::Value;
 use spanning_check::SpanningBeamCheckInput;
@@ -227,6 +228,15 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
                 serde_json::from_value(inputs).map_err(|e| format!("spanningsinvoer: {e}"))?;
             serde_json::to_value(spanning_check::check_all_spanning_beams(inputs))
                 .map_err(|e| e.to_string())
+        }
+        // Platen (wandschijven): de elementspanningen per UGT-combinatie getoetst
+        // aan de norm van het plaatmateriaal. Zelfde typen en dezelfde functie
+        // als het Tauri-command en het MCP-gereedschap `check_plates`.
+        "check_plates" => {
+            let inputs = v.inputs.ok_or("check_plates vraagt om `inputs`")?;
+            let inputs: Vec<PlateCheckInput> =
+                serde_json::from_value(inputs).map_err(|e| format!("plaatinvoer: {e}"))?;
+            serde_json::to_value(plaat_check::check_all_plates(inputs)).map_err(|e| e.to_string())
         }
         // Doorlopende langslassen in een samengestelde doorsnede, getoetst
         // volgens NEN-EN 1993-1-8 4.5.3.3. De schuifstroom per naad komt van de

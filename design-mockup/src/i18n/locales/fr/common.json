@@ -392,7 +392,9 @@
       "lengthPointDirection": "{{lengte}} m — indiquez une direction"
     },
     "uc": {
-      "badgeTitle": "Barre {{staaf}} : déterminant {{toets}} — cliquez pour la vérification"
+      "badgeTitle": "Barre {{staaf}} : déterminant {{toets}} — cliquez pour la vérification",
+      "plaatBadgeTitle": "Plaque {{plaat}} : déterminant {{toets}} — voir le panneau de vérification",
+      "plaatLegenda": "UC élément de plaque"
     },
     "hud": {
       "tool": "Outil :",

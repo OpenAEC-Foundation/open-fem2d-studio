@@ -37,6 +37,7 @@ const {
   nvtBetonStijfheid,
   nvtKruislaaghout,
   nvtPlaatspanningen,
+  nvtPlaattoetsing,
   nvtPlaten,
   nvtSpanningstoets,
   redenenPerSectie,
@@ -67,10 +68,13 @@ const vrij = (id) => ({
 });
 const plaat = (id) => ({ id, nodeIds: [1, 2, 3, 4] });
 
-/** De zes secties met een oordeel, in de volgorde van de registry. */
+/** De zeven secties met een oordeel, in de volgorde van de weglatingen. */
 const REGELS = [
   { id: "plates", fn: nvtPlaten },
   { id: "plateStresses", fn: nvtPlaatspanningen },
+  // De plaattoets (issue #15). In de echte registry staat hij ná checkDetail;
+  // voor [7] telt alleen dát hij een oordeel heeft.
+  { id: "plateCheck", fn: nvtPlaattoetsing },
   { id: "clt", fn: nvtKruislaaghout },
   { id: "beton", fn: nvtBeton },
   { id: "betonStijfheid", fn: nvtBetonStijfheid },
@@ -94,7 +98,7 @@ const gegevens = (o = {}) => ({
 const weggelaten = (g) => [...redenenPerSectie(REGISTRY, g).keys()];
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[1] Zuiver stalen raamwerk: zes hoofdstukken vallen weg");
+log("\n[1] Zuiver stalen raamwerk: zeven hoofdstukken vallen weg");
 {
   const g = gegevens({ beams: [staal(1), staal(2), staal(3)] });
   checkGelijk("weggelaten secties", weggelaten(g), REGELS.map((r) => r.id));
@@ -115,7 +119,7 @@ log("\n[2] Eén betonstaaf erbij: de twee betonhoofdstukken komen terug");
 {
   const g = gegevens({ beams: [staal(1), beton(2)] });
   checkGelijk("weggelaten secties", weggelaten(g),
-    ["plates", "plateStresses", "clt", "spanning"]);
+    ["plates", "plateStresses", "plateCheck", "clt", "spanning"]);
   checkWaar("het betonhoofdstuk (met beperkingenblok) is van toepassing",
     nvtBeton(g) === null);
   checkWaar("de fysisch niet-lineaire tweede orde óók — ook zonder die berekening",
@@ -134,9 +138,10 @@ log("\n[3] Elk materiaal brengt zijn eigen hoofdstuk terug, en alleen dat");
     nvtKruislaaghout(gegevens({ beams: [vrij(1)] })) !== null);
   checkWaar("massief hout brengt géén CLT-hoofdstuk mee",
     nvtKruislaaghout(gegevens({ beams: [hout(1)] })) !== null);
-  checkWaar("een plaat brengt beide plaathoofdstukken terug",
+  checkWaar("een plaat brengt de drie plaathoofdstukken terug",
     nvtPlaten(gegevens({ plates: [plaat(1)] })) === null &&
-    nvtPlaatspanningen(gegevens({ plates: [plaat(1)] })) === null);
+    nvtPlaatspanningen(gegevens({ plates: [plaat(1)] })) === null &&
+    nvtPlaattoetsing(gegevens({ plates: [plaat(1)] })) === null);
   checkWaar("een plaat brengt géén materiaalhoofdstuk mee",
     nvtBeton(gegevens({ plates: [plaat(1)] })) !== null);
 }
@@ -206,10 +211,11 @@ log("\n[7] De registry is gewired zoals hierboven getest");
   // Elk blok begint bij `id: "<naam>"` en loopt tot het volgende id.
   const blokken = bron.split(/\n\s+id: "/).slice(1)
     .map((b) => ({ id: b.slice(0, b.indexOf('"')), tekst: b }));
-  checkGelijk("alle 20 secties gevonden", blokken.length, 20);
+  // 21: de plaattoets (issue #15) kwam erbij.
+  checkGelijk("alle 21 secties gevonden", blokken.length, 21);
   const gewired = blokken.filter((b) => b.tekst.includes("nietVanToepassing:"))
     .map((b) => b.id);
-  checkGelijk("precies de zes secties met een oordeel", gewired.sort(),
+  checkGelijk("precies de zeven secties met een oordeel", gewired.sort(),
     REGELS.map((r) => r.id).sort());
   checkWaar("elke regel wordt bij naam aan de registry gehangen",
     REGELS.every((r) => new RegExp(`nietVanToepassing: nvt`).test(bron)) &&

@@ -11,7 +11,7 @@
  * Het datacontract (ResistanceCalc/StabilityCalc) is identiek voor staal en
  * hout.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -133,7 +133,19 @@ function Afleiding({ stappen }: { stappen: Deelstap[] }) {
   );
 }
 
-export default function CheckBlock({ check }: { check: CheckLike }) {
+export default function CheckBlock({
+  check,
+  krachtregel,
+}: {
+  check: CheckLike;
+  /**
+   * Vervangt de regel met de snedekrachten. Een plaattoets heeft geen N, V en
+   * M op een positie x, maar een element en een combinatie; zonder deze regel
+   * zou het blok "x = 0 mm, N = 0 kN" tonen, en dat leest als een uitkomst.
+   * Ontbreekt de prop, dan is het blok ongewijzigd.
+   */
+  krachtregel?: ReactNode;
+}) {
   const { t } = useTranslation("check");
   const formulaRef = useRef<HTMLDivElement>(null);
   const ucRef = useRef<HTMLDivElement>(null);
@@ -160,13 +172,17 @@ export default function CheckBlock({ check }: { check: CheckLike }) {
         <span className="check-article">{artikel}</span>
       </div>
 
-      <div className="check-force-state">
-        {t("block.combination")} {check.force_state.combination_id}
-        &nbsp;&nbsp; x = {nl(check.force_state.position_mm, 0)} mm
-        &nbsp;&nbsp; N = {nl(check.force_state.forces.n_ed, 2)} kN
-        &nbsp;&nbsp; V<sub>z</sub> = {nl(check.force_state.forces.vz_ed, 2)} kN
-        &nbsp;&nbsp; M<sub>y</sub> = {nl(check.force_state.forces.my_ed, 2)} kNm
-      </div>
+      {krachtregel !== undefined ? (
+        <div className="check-force-state">{krachtregel}</div>
+      ) : (
+        <div className="check-force-state">
+          {t("block.combination")} {check.force_state.combination_id}
+          &nbsp;&nbsp; x = {nl(check.force_state.position_mm, 0)} mm
+          &nbsp;&nbsp; N = {nl(check.force_state.forces.n_ed, 2)} kN
+          &nbsp;&nbsp; V<sub>z</sub> = {nl(check.force_state.forces.vz_ed, 2)} kN
+          &nbsp;&nbsp; M<sub>y</sub> = {nl(check.force_state.forces.my_ed, 2)} kNm
+        </div>
+      )}
 
       {/* Symbolisch → ingevuld → uitkomst, met het vergelijkingsnummer rechts. */}
       <div className="check-derivation">

@@ -740,7 +740,19 @@
     "levensduur_5": "100 years: monumental buildings, bridges and infrastructure",
     "kruipKop": "Creep coefficient φ(∞,t₀) according to annex B",
     "kruipInleiding": "Calculated from RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} days and cement class {{cement}}: φ(∞,t₀) = {{phi}}. The SLS stiffness and the column check of this member use this value, because no φ(∞,t₀) has been specified.",
-    "kruipKetenKop": "Derivation according to annex B, step by step:"
+    "kruipKetenKop": "Derivation according to annex B, step by step:",
+    "sectionPlateCheck": "Plate checks",
+    "plaatToetsNoot": "Checked per element of the analysis mesh with the element-averaged in-plane stresses; per plate the highest unity check over all ULS combinations. What is not checked is listed per plate with the reason.",
+    "plaatMateriaal": "Material",
+    "plaatNorm": "Code",
+    "plaatStatus": "Status",
+    "plaatGeweigerd": "Not checked",
+    "plaatOvergeslagen": "Not checked",
+    "plaatNietGetoetst": "Not checked:",
+    "plaatElementgemiddeld": "element-averaged stresses; the element is named in the notes",
+    "plaatWapeningKop": "Required reinforcement according to annex F",
+    "plaatRichting": "Direction",
+    "plaatWapeningNoot": "n_td = f'_td · t: the required tensile force in the reinforcement per metre of wall, both faces together, in the horizontal (x) and vertical (z) model direction; A_s = n_td / f_yd. The provided reinforcement is not checked."
   },
   "viewer": {
     "file": "File",

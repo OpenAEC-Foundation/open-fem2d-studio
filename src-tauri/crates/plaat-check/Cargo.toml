@@ -1,0 +1,43 @@
+[package]
+name = "plaat-check"
+version = "0.1.0"
+edition = "2021"
+description = "Normtoetsing van platen (wandschijven, belast in het vlak) per element"
+license = "CC-BY-SA-4.0"
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+nationale-bijlage = { path = "../nationale-bijlage" }
+serde = { workspace = true }
+ts-rs = { workspace = true }
+mechanics = { path = "../mechanics" }
+# `NamedCheck`/`CheckKind` en `ResistanceCalc`/`Deelstap`: hetzelfde contract als
+# de staaftoetsen, zodat paneel en rapport één weergavepad houden. Staal levert
+# daarnaast tabel 3.1 (`SteelGrade::voor_dikte`).
+nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
+steel-check = { path = "../steel-check" }
+# Hout: sterkteklassen (EN 338 / EN 14080), k_mod (tabel 3.1), en de
+# belastingduur per combinatie (`CombinationLoadDuration`) — dezelfde typen als
+# de staaftoets, zodat de invoerbouwer één afleiding gebruikt.
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
+timber-check = { path = "../timber-check" }
+# Beton: tabel 3.1 (f_ck) voor bijlage F en de drukdiagonaal.
+nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
+
+[dev-dependencies]
+approx = { workspace = true }
+serde_json = { workspace = true }
+
+[[test]]
+name = "handberekening_staal"
+path = "tests/handberekening_staal.rs"
+
+[[test]]
+name = "handberekening_hout"
+path = "tests/handberekening_hout.rs"
+
+[[test]]
+name = "handberekening_beton"
+path = "tests/handberekening_beton.rs"

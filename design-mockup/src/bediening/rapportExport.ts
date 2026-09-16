@@ -21,7 +21,7 @@
  * de knoppen in de zijbalk, en wat geprint wordt is de ReportShell die de
  * gebruiker ziet — dezelfde vellen als Afdrukken → Opslaan als PDF.
  */
-import { anyCheckableBeams, useCheckStore } from "../stores/checkStore";
+import { anyCheckableBeams, anyCheckablePlates, useCheckStore } from "../stores/checkStore";
 import { useBetonStijfheidStore } from "../stores/betonStijfheidStore";
 import {
   pageDimsMm,
@@ -84,7 +84,9 @@ export function rekenVoorwaardenNu(a: BedieningActies): RekenVoorwaarden {
     toetsingGedraaid: c.lastRunAt !== null,
     toetsingHoortBijResultaten:
       f.combinationResults !== null && c.lastRunData?.combinationResults === f.combinationResults,
-    toetsbareStaven: anyCheckableBeams([...f.beams]),
+    // Platen tellen mee: een ontbrekende of verouderde plaattoets hoort de
+    // export net zo te weigeren als een ontbrekende staaftoets.
+    toetsbareStaven: anyCheckableBeams([...f.beams]) || anyCheckablePlates(f.plates),
     analysetype: f.analysetype,
     resultatenUitVolledigeRekengang:
       f.combinationResults !== null && r.volledigeRekengang === f.combinationResults,
@@ -316,6 +318,9 @@ export async function rapportVoorbereiden(
         toetsbareStaven: anyCheckableBeams([...f.beams]),
         getoetst: c.results.length,
         overgeslagen: c.skipped.length,
+        platenGetoetst: c.plateResults.filter((r) => r.geweigerd === undefined).length,
+        platenNietGetoetst:
+          c.plateResults.filter((r) => r.geweigerd !== undefined).length + c.plateSkipped.length,
         uitgevoerdOp: c.lastRunAt,
       },
       fysischeRonde:

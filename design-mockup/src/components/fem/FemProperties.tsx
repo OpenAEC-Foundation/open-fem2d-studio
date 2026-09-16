@@ -1942,6 +1942,22 @@ function PlateProperties({ plate, nodes, updatePlate }: {
               />
             </Row>
           )}
+          {/* Klimaatklasse van een houten plaat: alleen voor de plaattoets
+              (k_mod, NEN-EN 1995-1-1 tabel 3.1); de stijfheid verandert niet. */}
+          {stijfheid?.soort === "hout" && (
+            <Row label={t("cfg.serviceClass")}>
+              <select
+                className="fem-prop-select"
+                value={plate.klimaatklasse ?? 1}
+                onChange={(e) => updatePlate?.(plate.id, { klimaatklasse: Number(e.target.value) as 1 | 2 | 3 })}
+                title={t("props.plate.serviceClassTitle")}
+              >
+                <option value={1}>{t("props.beam.sc1")}</option>
+                <option value={2}>{t("props.beam.sc2")}</option>
+                <option value={3}>{t("props.beam.sc3")}</option>
+              </select>
+            </Row>
+          )}
           {stijfheid?.orthotroop && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
               {t("props.plate.orthotropic", {

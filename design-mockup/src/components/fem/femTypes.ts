@@ -644,6 +644,14 @@ export interface Plate {
    * vóór issue #14. Niet samen met `cltG12`.
    */
   cltG12Bovengrens?: boolean;
+  /**
+   * Alleen bij HOUT (massief of gelijmd gelamineerd): de klimaatklasse
+   * (NEN-EN 1995-1-1 2.3.1.3) voor de plaattoets — met de belastingduur de
+   * ingang van k_mod (tabel 3.1). Ontbreekt = klimaatklasse 1, net als bij een
+   * houten staaf; de toets vermeldt dan dat die klasse is aangehouden. Rekent
+   * niet mee in de stijfheid.
+   */
+  klimaatklasse?: 1 | 2 | 3;
 }
 
 /** De elementkeuzes die een plaat kan dragen — ook de poort en het MCP-schema lezen deze lijst. */

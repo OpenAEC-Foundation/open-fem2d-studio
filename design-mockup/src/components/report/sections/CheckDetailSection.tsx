@@ -226,14 +226,21 @@ function VerloopBlok({ verloop }: { verloop: VerloopRapport }) {
 }
 
 /** Eén toets, volledig afgeleid — de opmaak van het referentie-rapport. */
-function DerivationBlock({
+export function DerivationBlock({
   check,
   governing,
   metTussenwaarden,
+  krachtregel,
 }: {
   check: CheckCalc;
   governing: boolean;
   metTussenwaarden: boolean;
+  /**
+   * Vervangt de regel met combinatie, x en snedekrachten — voor de
+   * plaattoets, die een element en een combinatie heeft en geen N, V en M.
+   * Ontbreekt de prop, dan is het blok ongewijzigd.
+   */
+  krachtregel?: string;
 }) {
   const { t } = useTranslation("ribbon");
   const cls = statusClass(check.status);
@@ -269,6 +276,9 @@ function DerivationBlock({
       {/* Krachtstoestand op de getoetste plek — combinatie, x en de
           snedekrachten. Getallen in nl-notatie, net als de rest van het
           rapport (decimaalkomma, geen punt). */}
+      {krachtregel !== undefined ? (
+        <div className="rpt-chk-forces">{krachtregel}</div>
+      ) : (
       <div className="rpt-chk-forces">
         {t("report.combination", "Combinatie")} {check.force_state.combination_id}
         {"   x = "}
@@ -284,6 +294,7 @@ function DerivationBlock({
         {" = "}
         {fmtValue(f.my_ed, 2)} kNm
       </div>
+      )}
 
       {/* De aanloop: de keten die de rekenkern doorliep om aan deze toets toe
           te komen. Staat vóór de toets zelf, want dat is de volgorde waarin

@@ -2744,6 +2744,7 @@ dependencies = [
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-8-las",
  "nen-en-1995-1-1",
+ "plaat-check",
  "png 0.17.16",
  "rand",
  "raw-window-handle",
@@ -2787,6 +2788,7 @@ dependencies = [
  "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
  "nen-en-1995-1-1",
+ "plaat-check",
  "report",
  "section-properties",
  "serde",
@@ -2947,6 +2949,23 @@ name = "pkg-config"
 version = "0.3.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
+
+[[package]]
+name = "plaat-check"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nationale-bijlage",
+ "nen-en-1992-1-1",
+ "nen-en-1993-1-1-section",
+ "nen-en-1995-1-1",
+ "serde",
+ "serde_json",
+ "steel-check",
+ "timber-check",
+ "ts-rs",
+]
 
 [[package]]
 name = "plist"
@@ -4611,6 +4630,7 @@ dependencies = [
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-8-las",
  "nen-en-1995-1-1",
+ "plaat-check",
  "report",
  "serde",
  "serde_json",

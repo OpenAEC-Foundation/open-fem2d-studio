@@ -392,7 +392,9 @@
       "lengthPointDirection": "{{lengte}} m — zeigen Sie eine Richtung an"
     },
     "uc": {
-      "badgeTitle": "Stab {{staaf}}: maßgebend {{toets}} — klicken Sie für den Nachweis"
+      "badgeTitle": "Stab {{staaf}}: maßgebend {{toets}} — klicken Sie für den Nachweis",
+      "plaatBadgeTitle": "Platte {{plaat}}: maßgebend {{toets}} — siehe Nachweisbereich",
+      "plaatLegenda": "UC Plattenelement"
     },
     "hud": {
       "tool": "Werkzeug:",
