@@ -485,7 +485,7 @@
     "eisKruip": "Kriechen",
     "eisBeta": "Belastungsdauer β (7.19)",
     "eisZonderKruipKop": "OHNE KRIECHEN GERECHNET — Stab/Stäbe {{ids}}: es ist keine Kriechzahl φ(∞,t₀) angegeben (Abs. 3.1.4), also φ_ef = 0.",
-    "eisZonderKruipUitleg": "Abs. 5.8.6(4) erlaubt, das Kriechen zu berücksichtigen, indem alle Dehnungswerte der Spannungs-Dehnungs-Linie mit (1 + φ_ef) multipliziert werden; für die Anfangssteigung entspricht das dem effektiven Elastizitätsmodul E_c,eff = E_cm/(1 + φ) nach (7.20). Ohne diese Abminderung ist die Biegesteifigkeit zu hoch: die berechnete Durchbiegung ist ZU KLEIN, und in einem statisch unbestimmten Tragwerk ziehen die zu steifen Betonstäbe außerdem zu viel Moment an. Beides liegt auf der unsicheren Seite. Abs. 3.1.4 wird nicht berechnet — dazu sind die relative Luftfeuchte, die wirksame Bauteildicke h₀, die Zementklasse und das Betonalter t₀ bei Belastungsbeginn nötig (Anhang B) — und bleibt daher eine Eingabe.",
+    "eisZonderKruipUitleg": "Abs. 5.8.6(4) erlaubt, das Kriechen zu berücksichtigen, indem alle Dehnungswerte der Spannungs-Dehnungs-Linie mit (1 + φ_ef) multipliziert werden; für die Anfangssteigung entspricht das dem effektiven Elastizitätsmodul E_c,eff = E_cm/(1 + φ) nach (7.20). Ohne diese Abminderung ist die Biegesteifigkeit zu hoch: die berechnete Durchbiegung ist ZU KLEIN, und in einem statisch unbestimmten Tragwerk ziehen die zu steifen Betonstäbe außerdem zu viel Moment an. Beides liegt auf der unsicheren Seite. Geben Sie φ(∞,t₀) an oder lassen Sie ihn nach Anhang B aus der relativen Luftfeuchte, dem Betonalter t₀ bei Belastungsbeginn und der Zementklasse berechnen (h₀ folgt aus dem Querschnitt).",
     "eisSegmenten": "Segmente",
     "eisFiguurBijschrift": "Biegesteifigkeit EI je Segment entlang Stab {{staaf}}. Die Strichlinie ist das ungerissene E_c·I_c = {{ei0}} kNm²; {{gescheurd}} von {{totaal}} Segmenten ist/sind gerissen. Kleinster Wert {{min}} kNm² ({{factor}}·E_c·I_c).",
     "eisToestand": "Zustand",
@@ -730,7 +730,10 @@
     "levensduur_2": "10 bis 25 Jahre: austauschbare Tragwerksteile",
     "levensduur_3": "15 bis 30 Jahre: landwirtschaftliche und ähnliche Tragwerke",
     "levensduur_4": "50 Jahre: Hochbauten und andere gewöhnliche Tragwerke",
-    "levensduur_5": "100 Jahre: monumentale Hochbauten, Brücken und Infrastruktur"
+    "levensduur_5": "100 Jahre: monumentale Hochbauten, Brücken und Infrastruktur",
+    "kruipKop": "Kriechzahl φ(∞,t₀) nach Anhang B",
+    "kruipInleiding": "Berechnet aus RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} Tagen und Zementklasse {{cement}}: φ(∞,t₀) = {{phi}}. Mit diesem Wert rechnen die GZG-Steifigkeit und der Stütznachweis dieses Stabes, weil kein φ(∞,t₀) angegeben ist.",
+    "kruipKetenKop": "Herleitung nach Anhang B, Schritt für Schritt:"
   },
   "viewer": {
     "file": "Datei",

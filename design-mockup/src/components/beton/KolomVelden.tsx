@@ -241,7 +241,9 @@ export default function KolomVelden({
 
           {/* GetalOptioneel en niet Getal: leeg moet hier een BETEKENIS hebben.
               De norm kent voor φ(∞,t₀) geen aanbevolen waarde — hij volgt uit
-              art. 3.1.4 met de luchtvochtigheid, h₀, de cementklasse en t₀ — en
+              art. 3.1.4 met de luchtvochtigheid, h₀, de cementklasse en t₀, en
+              die berekening (bijlage B) doet de kern als het project daarom
+              vraagt; leeg valt dan terug op die waarde — en
               een 0 zou "geen kruip" betekenen, wat een andere kolom is dan
               "kruip onbekend". */}
           <GetalOptioneel

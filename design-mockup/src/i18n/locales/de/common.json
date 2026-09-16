@@ -542,7 +542,7 @@
     },
     "segmentTitle": "Gewünschte Segmentlänge in mm. Jeder Betonstab wird in gleich lange Segmente geteilt, die jeweils ihre eigene Sekanten-EI erhalten (5.8.6(6)). Kürzer = genauer und langsamer; die Anwendung vergröbert nicht von selbst.",
     "segment": "Segment",
-    "creepTitle": "Endwert der Kriechzahl φ(∞,t₀) nach Abs. 3.1.4, für jeden Betonstab ohne eigenen Wert bei den §5.8-Angaben. Der Kern verarbeitet sie nach 5.8.6(4) — alle Bemessungswerte mal (1 + φ_ef) — was für die Anfangssteigung E_c,eff = E_cm/(1 + φ) nach (7.20) entspricht. LEER = nicht angegeben: dann wird OHNE Kriechen gerechnet, die Durchbiegung fällt zu klein aus, und das liegt auf der unsicheren Seite. Abs. 3.1.4 wird hier nicht berechnet: dafür sind die relative Luftfeuchte, die wirksame Bauteildicke h₀, die Zementklasse und das Betonalter t₀ bei Belastungsbeginn nötig.",
+    "creepTitle": "Endwert der Kriechzahl φ(∞,t₀) nach Abs. 3.1.4, für jeden Betonstab ohne eigenen Wert bei den §5.8-Angaben. Der Kern verarbeitet sie nach 5.8.6(4) — alle Bemessungswerte mal (1 + φ_ef) — was für die Anfangssteigung E_c,eff = E_cm/(1 + φ) nach (7.20) entspricht. LEER = nicht angegeben: dann wird OHNE Kriechen gerechnet, die Durchbiegung fällt zu klein aus, und das liegt auf der unsicheren Seite. Mit dem Kästchen daneben wird φ(∞,t₀) nach Anhang B berechnet; ein hier angegebener Wert hat Vorrang.",
     "creepFeedsBoth": "Dieser Wert speist zwei Berechnungen: die GZG-Steifigkeit bei der physikalisch nichtlinearen Analyse (5.8.6(4)) und den Stützennachweis bei jedem Analysetyp (A in λ_lim nach 5.8.3.1(1), φ_ef nach (5.19)). Ein Stab mit eigenem φ(∞,t₀) in den §5.8-Angaben hat Vorrang.",
     "emptyPlaceholder": "leer",
     "noConcreteBarsTitle": "Physikalisch nichtlinear wirkt auf Betonstäbe mit Bewehrungskorb: Werkstoff eine Festigkeitsklasse (z. B. C30/37), Profil ein Rechteck (z. B. 300x500) und ein Korb in den Stabeigenschaften. Ohne solche Stäbe entspricht das Ergebnis Theorie II. Ordnung (P-Δ).",
@@ -600,7 +600,16 @@
     "deleteComboConfirm": "Kombination \"{{naam}}\" löschen?",
     "newComboPlaceholder": "Neue Kombination (z. B. \"GZT eigene\")",
     "combosHint": "Standardkombinationen werden aus den Lastfällen und der Schadensfolgeklasse {{klasse}} abgeleitet (γ aus NEN-EN 1990 {{bron}}, ψ aus Tabelle NB.2–A1.1) und werden mitgeführt, wenn Sie Lastfälle hinzufügen, ihren Typ ändern oder sie löschen; die Kombinationen des Windgenerators werden auf dieselbe Weise mitgeführt. Ändern Sie einen Faktor, Namen oder Typ, wird daraus eine eigene Kombination: diese passt die App danach nicht mehr an, prüft sie aber nach jeder Änderung. Beim Öffnen eines Projekts der Version 0.3.11 oder älter ersetzt die App die alten Standardkombinationen durch diesen Satz, mit einem Hinweis und Rückgängig; eigene Kombinationen bleiben erhalten. Faktor 0 (oder leer) = dieser Lastfall wirkt in dieser Kombination nicht mit. Ein negativer Faktor ist zulässig — zum Beispiel",
-    "combosHintUplift": "für Abheben."
+    "combosHintUplift": "für Abheben.",
+    "creepAnnexB": "Anhang B",
+    "creepAnnexBTitle": "φ(∞,t₀) je Betonstab nach EN 1992-1-1 Anhang B (B.1–B.9) berechnen lassen, aus der relativen Luftfeuchte RH, dem Betonalter t₀ bei Belastungsbeginn und der Zementklasse (S langsam, N normal, R schnell erhärtend). Die wirksame Bauteildicke h₀ = 2·A_c/u folgt aus dem Querschnitt jedes Stabes, wobei der gesamte Umfang als austrocknend gilt. Ein angegebenes φ(∞,t₀) hat Vorrang, und der Wert in den §5.8-Angaben eines Stabes hat wiederum Vorrang davor. Nicht berücksichtigt: die Temperaturkorrektur (B.10) und nichtlineares Kriechen bei einer Druckspannung über 0,45·f_ck(t₀) (3.1.4(4)). Die Herleitung steht im Bericht beim Betonstab.",
+    "creepAnnexBOverridden": "Es ist ein φ(∞,t₀) angegeben; dieser hat Vorrang, und diese Eingabe nach Anhang B wird nicht verwendet. Leeren Sie das φ-Feld, um den berechneten Wert zu verwenden.",
+    "creepRh": "RH",
+    "creepT0": "t₀",
+    "creepDays": "d",
+    "creepCement": "Zement",
+    "creepAnnexBFailedTitle": "Kriechzahl nach Anhang B nicht bestimmt",
+    "creepAnnexBFailedBody": "Stab {{staaf}}: {{reden}} Dieser Stab wird ohne Kriechzahl berechnet."
   },
   "tree": {
     "runToSeeResults": "Führen Sie \"Berechnen\" aus, um Ergebnisse zu sehen.",

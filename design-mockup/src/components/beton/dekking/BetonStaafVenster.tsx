@@ -64,6 +64,7 @@ import { VERTICAAL_VANAF_GRADEN } from "../../../lib/steelCheckBuilder";
 // dev-brug. De melding hieronder maakt dat onderscheid.
 import { isTauriApp } from "../../../lib/tauri";
 import { getConcreteClasses, korvenUitStaven, roepKern, useCheckStore } from "../../../stores/checkStore";
+import { kruipWaardenPerStaaf } from "../../../lib/kruipcoefficient";
 // Het laatste antwoord gaat óók naar een store: de GUI-bediening (en straks
 // het rapport) moet kunnen zien wanneer dit venster klaar is en wat het kreeg,
 // zonder de DOM te schrapen. De lokale state hieronder blijft leidend voor het
@@ -243,7 +244,11 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       beams: lastRunData.beams,
       combinations: lastRunData.combinations,
       combinationResults: lastRunData.combinationResults,
-      korven: korvenUitStaven(lastRunData.beams, lastRunData.standaardPhiInfT0),
+      korven: korvenUitStaven(
+        lastRunData.beams,
+        lastRunData.standaardPhiInfT0,
+        kruipWaardenPerStaaf(useCheckStore.getState().kruip),
+      ),
       supportedClasses: klassen,
       bEffPerStaaf: bEffWaardenPerStaaf(beff),
     });

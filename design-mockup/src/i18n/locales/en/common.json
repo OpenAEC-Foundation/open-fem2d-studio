@@ -542,7 +542,7 @@
     },
     "segmentTitle": "Target segment length in mm. Each concrete member is split into segments of equal length, each with its own secant EI (5.8.6(6)). Shorter = more accurate and slower; the application does not coarsen on its own.",
     "segment": "segment",
-    "creepTitle": "Final value of the creep coefficient φ(∞,t₀) according to art. 3.1.4, for every concrete member without its own value in the §5.8 data. The engine applies it according to 5.8.6(4) — all design values times (1 + φ_ef) — which for the initial slope amounts to E_c,eff = E_cm/(1 + φ) of (7.20). EMPTY = not specified: the analysis then runs WITHOUT creep, the deflection comes out too small and that is the unsafe side. Art. 3.1.4 is not evaluated here: it requires the relative humidity, the notional size h₀, the cement class and the age t₀ at loading.",
+    "creepTitle": "Final value of the creep coefficient φ(∞,t₀) according to art. 3.1.4, for every concrete member without its own value in the §5.8 data. The engine applies it according to 5.8.6(4) — all design values times (1 + φ_ef) — which for the initial slope amounts to E_c,eff = E_cm/(1 + φ) of (7.20). EMPTY = not specified: the analysis then runs WITHOUT creep, the deflection comes out too small and that is the unsafe side. Tick the box next to it to have φ(∞,t₀) calculated according to annex B; a value specified here takes precedence.",
     "creepFeedsBoth": "This value feeds two calculations: the SLS stiffness in the physically non-linear analysis (5.8.6(4)) and the column check in every analysis type (A in λ_lim per 5.8.3.1(1), φ_ef per (5.19)). A member with its own φ(∞,t₀) in the §5.8 data takes precedence.",
     "emptyPlaceholder": "empty",
     "noConcreteBarsTitle": "Material non-linearity applies to concrete members with a reinforcement cage: material a strength class (e.g. C30/37), section a rectangle (e.g. 300x500) and a cage in the member properties. Without such members the result equals 2nd order (P-Δ).",
@@ -600,7 +600,16 @@
     "deleteComboConfirm": "Delete combination \"{{naam}}\"?",
     "newComboPlaceholder": "New combination (e.g. \"ULS custom\")",
     "combosHint": "Standard combinations are derived from the load cases and consequence class {{klasse}} (γ from NEN-EN 1990 {{bron}}, ψ from table NB.2–A1.1) and are updated when you add cases, change their type or delete them; the combinations of the wind generator are updated in the same way. If you change a factor, name or type, it becomes a custom combination: the app no longer adjusts it, but does check it after every change. When opening a project of version 0.3.11 or older, the app replaces the old standard combinations with this set, with a notice and Undo; custom combinations are kept. Factor 0 (or empty) = that load case does not take part in this combination. A negative factor is allowed — for example",
-    "combosHintUplift": "for uplift."
+    "combosHintUplift": "for uplift.",
+    "creepAnnexB": "annex B",
+    "creepAnnexBTitle": "Have φ(∞,t₀) calculated per concrete member according to EN 1992-1-1 annex B (B.1–B.9), from the relative humidity RH, the age t₀ at loading and the cement class (S slow, N normal, R rapid hardening). The notional size h₀ = 2·A_c/u follows from the cross-section of each member, with the whole perimeter taken as drying. A specified φ(∞,t₀) takes precedence, and the value in the §5.8 data of a member takes precedence over that. Not included: the temperature correction (B.10) and non-linear creep for a compressive stress above 0.45·f_ck(t₀) (3.1.4(4)). The derivation is shown in the report with the concrete member.",
+    "creepAnnexBOverridden": "A φ(∞,t₀) has been specified; it takes precedence and this annex B input is not used. Clear the φ box to use the calculated value.",
+    "creepRh": "RH",
+    "creepT0": "t₀",
+    "creepDays": "d",
+    "creepCement": "cement",
+    "creepAnnexBFailedTitle": "Creep coefficient according to annex B not determined",
+    "creepAnnexBFailedBody": "Member {{staaf}}: {{reden}} This member is analysed without a creep coefficient."
   },
   "tree": {
     "runToSeeResults": "Run \"Solve\" to see results.",

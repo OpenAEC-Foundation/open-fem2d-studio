@@ -54,10 +54,11 @@ buckling_length: Kniklengtekeuze,
 /**
  * Eindwaarde van de kruipcoëfficiënt φ(∞,t₀) volgens §3.1.4.
  *
- * `None` = niet opgegeven. §3.1.4 wordt in deze app niet gerekend — dat
+ * `None` = niet opgegeven. Deze toets rekent §3.1.4 niet zelf uit: dat
  * vraagt de relatieve luchtvochtigheid, de fictieve dikte h₀, de
- * cementklasse en de ouderdom t₀ bij eerste belasting, geen van alle
- * invoer van een raamwerkmodel. Zonder φ(∞,t₀) blijft φ_ef onbekend en
+ * cementklasse en de ouderdom t₀ bij eerste belasting. De berekening
+ * volgens bijlage B staat apart in `nen_en_1992_1_1::kruip`
+ * (`concrete_creep_coefficient`); de app vult haar uitkomst hier in. Zonder φ(∞,t₀) blijft φ_ef onbekend en
  * staat §5.8.3.1(1) A = 0,7 toe; dat is GEEN veilige kant maar de waarde
  * bij φ_ef ≈ 2,14, en dat wordt gemeld. Om de z-as, waar deze toets e₂
  * zelf bepaalt, geeft de norm voor φ_ef geen standaardwaarde (§5.8.4(1)P,

@@ -126,6 +126,7 @@ pub mod dwarskracht;
 pub mod factors;
 pub mod hefboomsarm;
 pub mod kolom;
+pub mod kruip;
 pub mod mnkappa;
 pub mod scheurwijdte;
 pub mod section;
@@ -154,6 +155,12 @@ pub use dekking::{
     c_min_dur_mm, concrete_cover_request, ConcreteCoverRequest, ConcreteCoverResponse,
     CoverGovernedBy, CoverSide, ExposureClass, ExposureClassInfo, FaceCover, StructuralClass,
     EXPOSURE_CLASSES,
+};
+// De kruipcoëfficiënt volgens bijlage B. Op crate-niveau om dezelfde reden als
+// `beff` en `dekking`: de drie wegen roepen hem alle drie rechtstreeks aan.
+pub use kruip::{
+    creep_coefficient_request, kruip_deelstappen, kruipcoefficient_bijlage_b, CementClass,
+    CreepCoefficientRequest, CreepCoefficientResponse, KruipUitkomst,
 };
 pub use factors::{DesignSituation, ALPHA_CC, E_S, GAMMA_CE};
 // De inwendige hefboomsarm van 6.2.3(1): de dwarskrachttoets en de

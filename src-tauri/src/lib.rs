@@ -10,6 +10,8 @@ use nen_en_1992_1_1::{
 // meer dan één spoor tegelijk wordt bewerkt; twee `use`-regels naar dezelfde
 // crate is toegestaan en houdt de wijzigingen uit elkaars vaarwater.
 use concrete_check::{ConcreteColumnCheckRequest, ConcreteColumnCheckResponse};
+// Bijlage B — de kruipcoëfficiënt. Eigen `use`-regel om dezelfde reden.
+use nen_en_1992_1_1::{CreepCoefficientRequest, CreepCoefficientResponse};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460, SteelGrade};
 use nen_en_1993_1_8_las::{LasInput, LasResultaat};
 use nen_en_1995_1_1::clt::CltPreset;
@@ -243,6 +245,22 @@ async fn concrete_cover_check(
     nen_en_1992_1_1::dekking::concrete_cover_request(inputs)
 }
 
+/// De kruipcoëfficiënt φ(∞,t₀) (en desgewenst φ(t,t₀)) volgens bijlage B van
+/// NEN-EN 1992-1-1, uit de betonklasse, de relatieve vochtigheid, de fictieve
+/// dikte h₀ en de ouderdom t₀ bij belasten met de cementklasse (B.1–B.9).
+///
+/// h₀ komt uit de doorsnede (B.6, hele omtrek) of wordt opgegeven. Het
+/// antwoord draagt alle tussenwaarden en de afleiding als deelstappen, zodat de
+/// app de waarde in de BGT-stijfheidslus en de kolomtoets kan gebruiken en het
+/// rapport kan laten zien waar hij vandaan komt. De rekengang staat in
+/// `nen_en_1992_1_1::kruip` en nergens anders.
+#[tauri::command]
+async fn concrete_creep_coefficient(
+    inputs: CreepCoefficientRequest,
+) -> Result<CreepCoefficientResponse, String> {
+    nen_en_1992_1_1::kruip::creep_coefficient_request(inputs)
+}
+
 /// Vrije spanningstoets (geen norm): een doorsnede plus een toelaatbare
 /// spanning, getoetst op de vergelijkspanning van von Mises. Bedoeld voor
 /// materialen die buiten EN 1992/1993/1995 vallen — natuursteen, een
@@ -352,6 +370,7 @@ pub fn run() {
             concrete_effective_flange_width,
             list_exposure_classes,
             concrete_cover_check,
+            concrete_creep_coefficient,
             check_stress_beams,
             check_fillet_welds,
             bereken_doorsneden,

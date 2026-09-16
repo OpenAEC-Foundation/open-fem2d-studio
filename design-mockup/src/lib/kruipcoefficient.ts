@@ -15,14 +15,28 @@
  * welke waarde dat is.
  *
  * DE REGEL
- * Per staaf gaat vóór per project: §5.8.4 hangt φ_ef uitdrukkelijk aan het
- * element, dus een eigen waarde is de specifiekere. Allebei afwezig betekent
- * NIET OPGEGEVEN, en dat is iets anders dan 0 ("geen kruip"): de kern meldt het
- * dan en keurt een toets die kruip nodig heeft niet goed.
+ * 1. Een OPGEGEVEN waarde per staaf (§5.8-blok) gaat vóór alles: §5.8.4 hangt
+ *    φ_ef uitdrukkelijk aan het element, dus een eigen waarde is de specifiekere.
+ * 2. Dan de OPGEGEVEN projectwaarde.
+ * 3. Dan de BEREKENDE waarde volgens bijlage B (B.1–B.9), per staaf uit de
+ *    kern (`concrete_creep_coefficient`), met h₀ uit de doorsnede van die
+ *    staaf en RH, t₀ en de cementklasse van het project. Een opgegeven waarde
+ *    gaat voor, omdat de constructeur daarmee iets weet wat de kern niet weet
+ *    (een gedeeltelijk uitdrogende omtrek, een andere verhardingstemperatuur).
+ * Alle drie afwezig betekent NIET OPGEGEVEN, en dat is iets anders dan 0
+ * ("geen kruip"): de kern meldt het dan en keurt een toets die kruip nodig
+ * heeft niet goed.
+ *
+ * HET REKENWERK staat in de kern (`nen_en_1992_1_1::kruip`); deze module
+ * verzamelt alleen de invoer per staaf en kiest welke waarde geldt.
  */
 import type { Beam } from "../components/fem/femTypes";
 import type { ConcreteColumnInput } from "./types/concrete/ConcreteColumnInput";
-import { matchSupportedConcreteClass } from "./betonCheckBuilder";
+import type { CementClass } from "./types/concrete/CementClass";
+import type { CreepCoefficientRequest } from "./types/concrete/CreepCoefficientRequest";
+import type { CreepCoefficientResponse } from "./types/concrete/CreepCoefficientResponse";
+import type { NationaleBijlage } from "./types/norm/NationaleBijlage";
+import { matchSupportedConcreteClass, parseConcreteSection } from "./betonCheckBuilder";
 
 /**
  * Bevat het model een betonstaaf (materiaal met een volledige sterkteklasse,
@@ -51,13 +65,18 @@ export function kruipveldZichtbaar(
   return heeftBetonstaaf || (projectwaarde !== null && projectwaarde !== undefined);
 }
 
-/** De φ(∞,t₀) van een staaf: eigen waarde, anders die van het project. */
+/**
+ * De φ(∞,t₀) van een staaf: eigen waarde, anders die van het project, anders
+ * de berekende waarde volgens bijlage B (zie DE REGEL bovenaan).
+ */
 export function kruipcoefficientVanStaaf(
   eigen: number | undefined,
   project: number | null | undefined,
+  berekend?: number,
 ): number | undefined {
   if (eigen !== undefined) return eigen;
-  return project ?? undefined;
+  if (project !== null && project !== undefined) return project;
+  return berekend;
 }
 
 /**
@@ -68,8 +87,132 @@ export function kruipcoefficientVanStaaf(
 export function kolomMetKruipcoefficient(
   kolom: ConcreteColumnInput | undefined,
   project: number | null | undefined,
+  berekend?: number,
 ): ConcreteColumnInput | undefined {
   if (!kolom) return undefined;
-  const phi = kruipcoefficientVanStaaf(kolom.phi_inf_t0, project);
+  const phi = kruipcoefficientVanStaaf(kolom.phi_inf_t0, project, berekend);
   return phi === undefined ? kolom : { ...kolom, phi_inf_t0: phi };
+}
+
+// ── Bijlage B: de invoer van het project en de aanroep van de kern ─────────
+
+/**
+ * De projectinvoer voor φ(∞,t₀) volgens bijlage B. De fictieve dikte h₀ staat
+ * er NIET in: die hoort bij de doorsnede van elke staaf (B.6).
+ */
+export interface KruipInvoerProject {
+  /** Relatieve vochtigheid van de omgeving, % (bijvoorbeeld 50 binnen, 80 buiten). */
+  rhProcent: number;
+  /** Ouderdom van het beton bij belasten, dagen. */
+  t0Dagen: number;
+  /** Cementklasse volgens art. 3.1.2(6). */
+  cementklasse: CementClass;
+}
+
+export const CEMENTKLASSEN: readonly CementClass[] = ["S", "N", "R"];
+
+/**
+ * De beginwaarden als de gebruiker bijlage B aanzet: het binnenmilieu van
+ * figuur 3.1a (RH 50 %), belasten na 28 dagen, cement N. Het zijn zichtbare,
+ * direct aan te passen invulwaarden en geen stille aanname: zolang bijlage B
+ * uit staat, wordt er niets berekend.
+ */
+export const STANDAARD_KRUIPINVOER: KruipInvoerProject = {
+  rhProcent: 50,
+  t0Dagen: 28,
+  cementklasse: "N",
+};
+
+/**
+ * Is deze invoer bruikbaar, of komt hij uit een beschadigd of ouder bestand?
+ * Alleen de VORM wordt hier bekeken; de grenzen (RH ≤ 100, t₀ > 0) bewaakt de
+ * kern, met reden.
+ */
+export function leesKruipInvoer(waarde: unknown): KruipInvoerProject | null {
+  if (!waarde || typeof waarde !== "object") return null;
+  const w = waarde as Record<string, unknown>;
+  if (typeof w.rhProcent !== "number" || !Number.isFinite(w.rhProcent)) return null;
+  if (typeof w.t0Dagen !== "number" || !Number.isFinite(w.t0Dagen)) return null;
+  if (!CEMENTKLASSEN.includes(w.cementklasse as CementClass)) return null;
+  return {
+    rhProcent: w.rhProcent,
+    t0Dagen: w.t0Dagen,
+    cementklasse: w.cementklasse as CementClass,
+  };
+}
+
+/** Wat de kern per staaf opleverde. */
+export interface KruipBerekening {
+  /** Het volledige antwoord per staaf-id — de afleiding voor het rapport. */
+  perStaaf: Map<number, CreepCoefficientResponse>;
+  /** Staven waarvoor de kern weigerde, met zijn reden. */
+  mislukt: { beamId: number; reden: string }[];
+}
+
+/** De vorm van `roepKern` uit `stores/checkStore`. */
+type Roep = <T>(opdracht: string, inputs?: unknown) => Promise<T>;
+
+/**
+ * φ(∞,t₀) volgens bijlage B voor elke betonstaaf, uit de kern.
+ *
+ * Er wordt NIETS gevraagd — en de uitkomst is leeg — als er geen invoer is of
+ * als het project een opgegeven φ(∞,t₀) heeft: die gaat voor, dus een
+ * berekende waarde zou nergens gebruikt worden. Zo rekent een project zonder
+ * de nieuwe invoer precies als voorheen.
+ *
+ * h₀ volgt uit de INGEVOERDE doorsnede met de hele omtrek (B.6), niet uit de
+ * meewerkende flensbreedte: uitdroging gaat over het beton dat er is.
+ */
+export async function bepaalKruipPerStaaf(
+  beams: readonly Pick<Beam, "id" | "material" | "profile">[],
+  invoer: KruipInvoerProject | null | undefined,
+  projectwaarde: number | null | undefined,
+  roep: Roep,
+  bijlage?: NationaleBijlage,
+): Promise<KruipBerekening> {
+  const perStaaf = new Map<number, CreepCoefficientResponse>();
+  const mislukt: { beamId: number; reden: string }[] = [];
+  if (!invoer || (projectwaarde !== null && projectwaarde !== undefined)) {
+    return { perStaaf, mislukt };
+  }
+  for (const beam of beams) {
+    const klasse = matchSupportedConcreteClass(beam.material?.trim() ?? "");
+    if (!klasse) continue;
+    const vorm = parseConcreteSection(beam.profile);
+    if (!vorm.ok) continue; // de betonbouwer meldt deze staaf al met reden
+    const verzoek = {
+      ...(bijlage ? { bijlage } : {}),
+      beam_id: beam.id,
+      concrete_class: klasse,
+      relative_humidity_pct: invoer.rhProcent,
+      t0_days: invoer.t0Dagen,
+      cement_class: invoer.cementklasse,
+      section: vorm.doorsnede,
+    } as CreepCoefficientRequest;
+    try {
+      perStaaf.set(
+        beam.id,
+        await roep<CreepCoefficientResponse>("concrete_creep_coefficient", verzoek),
+      );
+    } catch (e) {
+      mislukt.push({ beamId: beam.id, reden: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  return { perStaaf, mislukt };
+}
+
+/**
+ * Alleen de getallen: φ(∞,t₀) per staaf-id — uit een berekening, of uit de
+ * lijst antwoorden die de toetsingsstore bewaart.
+ */
+export function kruipWaardenPerStaaf(
+  berekening: KruipBerekening | readonly CreepCoefficientResponse[] | undefined,
+): Map<number, number> {
+  const uit = new Map<number, number>();
+  if (!berekening) return uit;
+  const antwoorden = Array.isArray(berekening)
+    ? (berekening as readonly CreepCoefficientResponse[])
+    : [...(berekening as KruipBerekening).perStaaf.values()];
+  for (const a of antwoorden) uit.set(a.beam_id, a.uitkomst.phi_inf_t0);
+  return uit;
 }

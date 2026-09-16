@@ -412,7 +412,8 @@ if (!existsSync(TOETSBRUG)) {
   // 6. KRUIP — wat er verandert als φ(∞,t₀) wél bekend is
   // ═════════════════════════════════════════════════════════════════════════
   //
-  // §3.1.4 wordt in deze app niet gerekend: de kruipcoëfficiënt is INVOER.
+  // De kolomtoets rekent §3.1.4 niet zelf: de kruipcoëfficiënt is INVOER van
+  // die toets (de app kan hem vooraf volgens bijlage B laten berekenen).
   // Wat de app wél doet is (5.19) en de doorwerking van 5.8.6(4). Deze stap
   // legt vast dat kruip de kolom ONGUNSTIGER maakt en niet gunstiger — het
   // teken waar de meeste fouten in zitten.

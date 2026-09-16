@@ -29,6 +29,7 @@
 import type { Analysetype, LoadCase } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { ScheefstandBron } from "./scheefstandNorm";
+import type { KruipInvoerProject } from "./kruipcoefficient";
 
 /** Alles buiten de modelgeometrie en de lasten dat de uitkomst bepaalt. */
 export interface RekenInstellingen {
@@ -47,6 +48,13 @@ export interface RekenInstellingen {
    * vervallen, net als de segmentlengte.
    */
   betonKruipcoefficient: number | null;
+  /**
+   * De projectinvoer voor φ(∞,t₀) volgens bijlage B (RH, t₀, cementklasse),
+   * of `null` als bijlage B uit staat. Zonder opgegeven φ bepaalt zij de
+   * kruipcoëfficiënt van elke betonstaaf, dus een wijziging laat de
+   * resultaten vervallen.
+   */
+  betonKruipInvoer: KruipInvoerProject | null;
   scheefstandEnabled: boolean;
   scheefstandNoemer: number;
   scheefstandRichting: 1 | -1;
@@ -80,6 +88,7 @@ const VELDEN: Record<keyof RekenInstellingen, true> = {
   analysetype: true,
   betonSegmentLengteMm: true,
   betonKruipcoefficient: true,
+  betonKruipInvoer: true,
   scheefstandEnabled: true,
   scheefstandNoemer: true,
   scheefstandRichting: true,

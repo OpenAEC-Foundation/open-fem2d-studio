@@ -58,6 +58,7 @@ import {
 // waarde moet kunnen terugzetten op "vast".
 import { SCHEEFSTAND_BRONNEN, type ScheefstandBron } from "../lib/scheefstandNorm";
 import { rekenInstellingenVersie as bepaalRekenInstellingenVersie } from "../lib/rekenInstellingen";
+import { leesKruipInvoer, type KruipInvoerProject } from "../lib/kruipcoefficient";
 
 // ── Defaults ───────────────────────────────────────────────────────────────
 //
@@ -1666,16 +1667,23 @@ export interface FemStore {
    * De eindwaarde van de kruipcoëfficiënt φ(∞,t₀) van het PROJECT, art. 3.1.4.
    * `null` = niet opgegeven, en dat is iets anders dan 0 ("geen kruip").
    *
-   * Art. 3.1.4 wordt NIET gerekend: dat vraagt de relatieve luchtvochtigheid,
-   * de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij eerste
-   * belasten (bijlage B). De waarde is dus invoer, precies zoals in het
-   * §5.8-blok van een kolom — dat blok gaat per staaf vóór deze projectwaarde.
+   * Een OPGEGEVEN waarde. Het §5.8-blok van een staaf gaat vóór deze
+   * projectwaarde, en deze projectwaarde gaat vóór de berekening volgens
+   * bijlage B (`betonKruipInvoer`).
    *
-   * Zonder waarde rekent de fysisch niet-lineaire lus met φ_ef = 0 en meldt de
-   * kern dat luid; de zakking is dan te klein (de onveilige kant).
+   * Zonder waarde en zonder bijlage-B-invoer rekent de fysisch niet-lineaire
+   * lus met φ_ef = 0 en meldt de kern dat luid; de zakking is dan te klein (de
+   * onveilige kant).
    */
   betonKruipcoefficient: number | null;
   setBetonKruipcoefficient: (v: number | null) => void;
+  /**
+   * De projectinvoer om φ(∞,t₀) volgens bijlage B te laten BEREKENEN: de
+   * relatieve vochtigheid, de ouderdom t₀ bij belasten en de cementklasse. h₀
+   * volgt per staaf uit diens doorsnede. `null` = bijlage B staat uit.
+   */
+  betonKruipInvoer: KruipInvoerProject | null;
+  setBetonKruipInvoer: (v: KruipInvoerProject | null) => void;
   /**
    * De versie van de rekeninstellingen (combinaties, belastinggevaltypen,
    * eigen gewicht, analysetype, segmentlengte, alle scheefstandvelden en de
@@ -1784,6 +1792,8 @@ export interface FemStore {
     betonSegmentLengteMm?: number;
     /** φ(∞,t₀) van het project (art. 3.1.4); ontbreekt → niet opgegeven. */
     betonKruipcoefficient?: number | null;
+    /** Invoer voor φ(∞,t₀) volgens bijlage B; ontbreekt → niet berekenen. */
+    betonKruipInvoer?: KruipInvoerProject | null;
     /** v2: combinatie-definities; ontbreekt (v1) → defaultCombinations(). */
     combinations?: LoadCombination[];
     /** v2: stramien; ontbreekt (v1) → DEFAULT_STRUCTURAL_GRID. */
@@ -1925,6 +1935,9 @@ export function useFemStore(opties?: {
   // Geen beginwaarde: de norm kent voor φ(∞,t₀) geen aanbevolen getal, en een
   // stille 0 zou "geen kruip" beweren waar "niet opgegeven" bedoeld is.
   const [betonKruipcoefficient, setBetonKruipcoefficient] = useState<number | null>(null);
+  // Bijlage B staat standaard UIT: berekenen vraagt invoer die de gebruiker
+  // bewust kiest (RH, t₀, cementklasse).
+  const [betonKruipInvoer, setBetonKruipInvoer] = useState<KruipInvoerProject | null>(null);
   // Scheefstand (initiële imperfectie) — zelfde patroon als selfWeightEnabled.
   const [scheefstandEnabled, setScheefstandEnabled] = useState<boolean>(false);
   const [scheefstandNoemer, setScheefstandNoemer]   = useState<number>(200);
@@ -2006,14 +2019,14 @@ export function useFemStore(opties?: {
   const rekenInstellingenVersie = useMemo(
     () => bepaalRekenInstellingenVersie({
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
-      betonKruipcoefficient,
+      betonKruipcoefficient, betonKruipInvoer,
       scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
       scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse,
       nationaleBijlage: projectBijlage,
     }),
     [
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
-      betonKruipcoefficient,
+      betonKruipcoefficient, betonKruipInvoer,
       scheefstandEnabled, scheefstandNoemer, scheefstandRichting, scheefstandBron,
       scheefstandHoogteM, scheefstandAantalElementen, gevolgklasse, projectBijlage,
     ],
@@ -2777,6 +2790,7 @@ export function useFemStore(opties?: {
     analysetype, setAnalysetype,
     betonSegmentLengteMm, setBetonSegmentLengteMm,
     betonKruipcoefficient, setBetonKruipcoefficient,
+    betonKruipInvoer, setBetonKruipInvoer,
     rekenInstellingenVersie,
     nationaleBijlage: projectBijlage,
     scheefstandEnabled, setScheefstandEnabled,
@@ -2853,6 +2867,8 @@ export function useFemStore(opties?: {
     betonSegmentLengteMm?: number;
     /** φ(∞,t₀) van het project (art. 3.1.4); ontbreekt → niet opgegeven. */
     betonKruipcoefficient?: number | null;
+    /** Invoer voor φ(∞,t₀) volgens bijlage B; ontbreekt → niet berekenen. */
+    betonKruipInvoer?: KruipInvoerProject | null;
       combinations?: LoadCombination[];
       structuralGrid?: StructuralGrid;
       scheefstandEnabled?: boolean;
@@ -2924,6 +2940,10 @@ export function useFemStore(opties?: {
           ? p.betonKruipcoefficient
           : null,
       );
+      // Bijlage-B-invoer: ontbreekt of is hij onleesbaar, dan staat bijlage B
+      // uit. Er wordt dan niets berekend, en een ouder bestand rekent als
+      // voorheen.
+      setBetonKruipInvoer(leesKruipInvoer(p.betonKruipInvoer));
       // Scheefstand — ontbrekende velden (v1/oudere v2-bestanden) → uit,
       // noemer 200 (φ = 1/200), richting +x.
       setScheefstandEnabled(!!p.scheefstandEnabled);

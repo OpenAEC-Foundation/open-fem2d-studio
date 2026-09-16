@@ -19,7 +19,8 @@
 //! `list_concrete_classes`, `list_reinforcement_grades`, `concrete_mn_kappa`,
 //! `concrete_segment_stiffness`, `concrete_dekkingslijn`,
 //! `concrete_effective_flange_width`,
-//! `list_exposure_classes` en `concrete_cover_check` heten hier
+//! `list_exposure_classes`, `concrete_cover_check` en
+//! `concrete_creep_coefficient` heten hier
 //! precies zoals in de andere twee wegen. `check_concrete_beam`
 //! staat in het ENKELVOUD en toetst één staaf, gelijk aan `check_steel_beam`
 //! hiernaast; de Tauri- en toetsbrug-weg heten `check_concrete_beams` en nemen
@@ -59,10 +60,10 @@ use serde_json::{json, Value};
 
 use crate::RpcError;
 
-/// De tien betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
+/// De elf betontools. Eén lijst, gebruikt door `is_concrete_tool`, de
 /// schema's en de dispatch — zodat een tool niet in `tools/list` kan staan
 /// zonder afhandeling, of andersom.
-pub const CONCRETE_TOOLS: [&str; 10] = [
+pub const CONCRETE_TOOLS: [&str; 11] = [
     "list_concrete_classes",
     "list_reinforcement_grades",
     "check_concrete_beam",
@@ -73,6 +74,7 @@ pub const CONCRETE_TOOLS: [&str; 10] = [
     "concrete_effective_flange_width",
     "list_exposure_classes",
     "concrete_cover_check",
+    "concrete_creep_coefficient",
 ];
 
 pub fn is_concrete_tool(naam: &str) -> bool {
@@ -203,6 +205,17 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
             let req: nen_en_1992_1_1::ConcreteCoverRequest = serde_json::from_value(args)
                 .map_err(|e| RpcError::invalid_params(format!("ConcreteCoverRequest: {e}")))?;
             let result = nen_en_1992_1_1::dekking::concrete_cover_request(req)
+                .map_err(RpcError::invalid_params)?;
+            serde_json::to_value(result)
+                .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
+        }
+        // De kruipcoëfficiënt volgens bijlage B (B.1–B.9). Geen blokkerend
+        // werk: een handvol machten. Onzinnige invoer is een toolfout MÉT de
+        // reden en geen getal.
+        "concrete_creep_coefficient" => {
+            let req: nen_en_1992_1_1::CreepCoefficientRequest = serde_json::from_value(args)
+                .map_err(|e| RpcError::invalid_params(format!("CreepCoefficientRequest: {e}")))?;
+            let result = nen_en_1992_1_1::kruip::creep_coefficient_request(req)
                 .map_err(RpcError::invalid_params)?;
             serde_json::to_value(result)
                 .map_err(|e| RpcError::tool_exec(format!("serialize result: {e}")))
@@ -596,7 +609,7 @@ pub(crate) fn schema_kolom() -> Value {
             "m0_edz_knm": { "type": "number",
                 "description": "Een EXTERN eerste-orde-moment om de z-as in kNm, constant over de staaf, opgeteld bij het M_z uit de omhullende. Weglaten = 0. Het veld bestaat omdat de vlakke raamwerkoplosser geen M_z levert; een ruimtelijk model of een handberekening vult het. Ook zonder dit veld is M_Edz NIET nul: de imperfectie van §5.2 en het tweede-orde-effect om z komen er altijd bij." },
             "phi_inf_t0": { "type": "number", "minimum": 0,
-                "description": "Eindwaarde van de kruipcoefficient phi(oneindig,t0) volgens §3.1.4. Weglaten = niet opgegeven; §3.1.4 wordt niet gerekend (dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h0, de cementklasse en de ouderdom t0). Zonder deze waarde blijft phi_ef onbekend: §5.8.3.1(1) staat dan A = 0,7 toe - GEEN veilige kant maar de waarde bij phi_ef van ongeveer 2,14, en de toets meldt dat als WAARSCHUWING - en om de z-as, waar de norm voor phi_ef geen standaardwaarde geeft (§5.8.4(1)P, §5.8.6(4)), is e_2 zonder kruip een ondergrens: `5.8.9_moment_z` en `5.8.9_dubbele_buiging` komen dan als NotApplicable terug (of NotOk als de ondergrens al faalt) en `phi_ef_z`, `e_2_z_mm`, `m_edz_knm` en `interactie_5_39` blijven leeg. Met deze waarde maar zonder `sls_quasi_permanent_envelope` geldt phi(oneindig,t0) als bovengrens van phi_ef: A = min(0,7; 1/(1 + 0,2*phi)) en phi_ef,z = phi, met een waarschuwing." },
+                "description": "Eindwaarde van de kruipcoefficient phi(oneindig,t0) volgens §3.1.4. Weglaten = niet opgegeven; deze toets rekent §3.1.4 niet zelf uit - bereken de waarde volgens bijlage B met de tool `concrete_creep_coefficient` (relatieve luchtvochtigheid, h0, cementklasse, t0) en vul haar hier in. Zonder deze waarde blijft phi_ef onbekend: §5.8.3.1(1) staat dan A = 0,7 toe - GEEN veilige kant maar de waarde bij phi_ef van ongeveer 2,14, en de toets meldt dat als WAARSCHUWING - en om de z-as, waar de norm voor phi_ef geen standaardwaarde geeft (§5.8.4(1)P, §5.8.6(4)), is e_2 zonder kruip een ondergrens: `5.8.9_moment_z` en `5.8.9_dubbele_buiging` komen dan als NotApplicable terug (of NotOk als de ondergrens al faalt) en `phi_ef_z`, `e_2_z_mm`, `m_edz_knm` en `interactie_5_39` blijven leeg. Met deze waarde maar zonder `sls_quasi_permanent_envelope` geldt phi(oneindig,t0) als bovengrens van phi_ef: A = min(0,7; 1/(1 + 0,2*phi)) en phi_ef,z = phi, met een waarschuwing." },
             "stirrup_zone": {
                 "type": "string",
                 "enum": ["Regulier", "BijBalkOfPlaat", "BijOverlappingslas"],
@@ -919,6 +932,33 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "De grootste diameter van de hoofdwapening in mm, voor c_min,b uit tabel 4.2." }
                 },
                 "required": ["exposure_class", "cover_mm"]
+            }
+        }),
+        json!({
+            "name": "concrete_creep_coefficient",
+            "description": "Creep coefficient phi(infinity,t0) - and optionally phi(t,t0) - per EN 1992-1-1 annex B (B.1-B.9), informative in the Dutch national annex. From the strength class (f_cm from table 3.1), the relative humidity RH, the notional size h0 = 2*A_c/u (B.6) and the age at loading t0 with the cement class S/N/R (B.9 adjusts t0 with alpha = -1/0/1, lower bound 0,5 day). Branch (B.3a)/(B.8a) for f_cm <= 35 MPa, (B.3b)/(B.8b) with alpha_1/2/3 (B.8c) above. phi(infinity,t0) = phi_0 = phi_RH * beta(f_cm) * beta(t0) because beta_c tends to 1; figure 3.1 gives the value at 70 years, slightly lower. Give h0 through EXACTLY ONE of `section` (whole perimeter exposed to drying) or `h0_mm`. NOT included: the temperature correction (B.10) - t0,T = t0 - and non-linear creep for a compressive stress above 0,45*f_ck(t0) (3.1.4(4), (3.7)); both are stated in `notes`. The answer carries all intermediate values in `uitkomst` and the derivation as `deelstappen`. Same input and output types as the Tauri command and the toetsbrug opdracht of the same name.",
+            "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                    "bijlage": crate::schema_bijlage(),
+                    "beam_id": { "type": "integer", "minimum": 0,
+                        "description": "Staafnummer; komt onveranderd terug in het resultaat." },
+                    "concrete_class": { "type": "string",
+                        "description": "Sterkteklasse uit tabel 3.1, bijvoorbeeld \"C30/37\"; f_cm = f_ck + 8 MPa. Zie `list_concrete_classes`." },
+                    "relative_humidity_pct": { "type": "number", "exclusiveMinimum": 0, "maximum": 100,
+                        "description": "Relatieve vochtigheid van de omgeving in %, bijvoorbeeld 50 binnen en 80 buiten (de twee gevallen van figuur 3.1). Figuur 3.1 geldt voor 40 ... 100 %; daaronder staat een kanttekening in `notes`." },
+                    "t0_days": { "type": "number", "exclusiveMinimum": 0,
+                        "description": "Ouderdom van het beton bij belasten in dagen (t0,T in (B.9), zonder temperatuurcorrectie)." },
+                    "cement_class": { "type": "string", "enum": ["S", "N", "R"],
+                        "description": "Cementklasse volgens 3.1.2(6): S langzaam (alpha = -1), N normaal (0), R snel verhardend (1)." },
+                    "section": schema_doorsnede(),
+                    "h0_mm": { "type": ["number", "null"], "exclusiveMinimum": 0,
+                        "description": "De fictieve dikte h0 = 2*A_c/u in mm, als maar een deel van de omtrek uitdroogt. Weglaten als `section` is opgegeven; allebei of geen van beide is een fout." },
+                    "t_days": { "type": ["number", "null"],
+                        "description": "Optioneel het beschouwde tijdstip t in dagen (t > t0); dan komen ook beta_H (B.8), beta_c (B.7) en phi(t,t0) (B.1) terug. Weglaten = alleen phi(infinity,t0)." }
+                },
+                "required": ["concrete_class", "relative_humidity_pct", "t0_days", "cement_class"]
             }
         }),
     ]

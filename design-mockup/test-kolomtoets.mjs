@@ -284,7 +284,8 @@ log("\n[3] korvenUitStaven en de bouwer dragen het §5.8-blok door");
 
   const store = readFileSync(join(HIER, "src", "stores", "checkStore.ts"), "utf8");
   ok("de toetsronde vult de korven met de projectwaarde",
-    /korvenUitStaven\(data\.beams,\s*data\.standaardPhiInfT0\)/.test(store));
+    /korvenUitStaven\(data\.beams,\s*data\.standaardPhiInfT0[,)]/.test(store));
+  // (Het derde argument is de φ volgens bijlage B, zie test-kruip-bijlage-b.mjs.)
 }
 {
   const { inputs, skipped } = bouw(KOLOM_GESCHOORD);

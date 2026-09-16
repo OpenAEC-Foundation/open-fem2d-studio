@@ -100,9 +100,9 @@ async fn stdio_roundtrip_initialize_list_call() {
     // iemand hem hier noemt, hoort op te vallen. De namenlijst hieronder is
     // niet uitputtend, dus zonder deze telling zou zo'n tool ongemerkt
     // meeliften.
-    // 24 rekenkern-/FEM-tools + 15 gui_*-tools (het bedieningskanaal van de
-    // desktop-app, zie gui_tools.rs) = 39.
-    assert_eq!(tools.len(), 39, "expected 39 tools, got {}", tools.len());
+    // 25 rekenkern-/FEM-tools + 15 gui_*-tools (het bedieningskanaal van de
+    // desktop-app, zie gui_tools.rs) = 40.
+    assert_eq!(tools.len(), 40, "expected 40 tools, got {}", tools.len());
     let names: Vec<&str> = tools
         .iter()
         .map(|t| t["name"].as_str().unwrap())
@@ -146,6 +146,8 @@ async fn stdio_roundtrip_initialize_list_call() {
         // c_min,dur uit de door de nationale bijlage voorgeschreven tabel 4.4N.
         "list_exposure_classes",
         "concrete_cover_check",
+        // De kruipcoëfficiënt volgens bijlage B (B.1–B.9).
+        "concrete_creep_coefficient",
         // De vier houttools (NEN-EN 1995-1-1), hout en kruislaaghout. Ze
         // ontbraken hier terwijl `generate_steel_report_pdf` hierboven wél
         // `timber_check_results` accepteert; zie `tests/drie_wegen_hout.rs` en

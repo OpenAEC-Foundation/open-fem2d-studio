@@ -485,7 +485,7 @@
     "eisKruip": "Kruip",
     "eisBeta": "Belastingduur β (7.19)",
     "eisZonderKruipKop": "ZONDER KRUIP GEREKEND — staaf/staven {{ids}}: er is geen kruipcoëfficiënt φ(∞,t₀) opgegeven (art. 3.1.4), dus φ_ef = 0.",
-    "eisZonderKruipUitleg": "Art. 5.8.6(4) laat kruip in rekening brengen door alle rekwaarden van het spanning-rekdiagram met (1 + φ_ef) te vermenigvuldigen, wat voor de beginhelling neerkomt op de effectieve elasticiteitsmodulus E_c,eff = E_cm/(1 + φ) van (7.20). Zonder die verlaging is de buigstijfheid te hoog: de berekende zakking is TE KLEIN, en in een statisch onbepaalde constructie trekken de te stijve betonstaven bovendien te veel moment naar zich toe. Beide staan aan de onveilige kant. Art. 3.1.4 wordt niet uitgerekend — dat vraagt de relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten (bijlage B) — en blijft daarom invoer.",
+    "eisZonderKruipUitleg": "Art. 5.8.6(4) laat kruip in rekening brengen door alle rekwaarden van het spanning-rekdiagram met (1 + φ_ef) te vermenigvuldigen, wat voor de beginhelling neerkomt op de effectieve elasticiteitsmodulus E_c,eff = E_cm/(1 + φ) van (7.20). Zonder die verlaging is de buigstijfheid te hoog: de berekende zakking is TE KLEIN, en in een statisch onbepaalde constructie trekken de te stijve betonstaven bovendien te veel moment naar zich toe. Beide staan aan de onveilige kant. Geef φ(∞,t₀) op, of laat hem volgens bijlage B berekenen uit de relatieve vochtigheid, de ouderdom t₀ bij belasten en de cementklasse (h₀ volgt uit de doorsnede).",
     "eisSegmenten": "segmenten",
     "eisFiguurBijschrift": "Buigstijfheid EI per segment langs staaf {{staaf}}. De streeplijn is de ongescheurde E_c·I_c = {{ei0}} kNm²; {{gescheurd}} van de {{totaal}} segmenten is gescheurd. Laagste waarde {{min}} kNm² ({{factor}}·E_c·I_c).",
     "eisToestand": "Toestand",
@@ -730,7 +730,10 @@
     "levensduur_2": "10 tot 25 jaar: vervangbare constructiedelen",
     "levensduur_3": "15 tot 30 jaar: agrarische en soortgelijke constructies",
     "levensduur_4": "50 jaar: gebouwen en andere gewone constructies",
-    "levensduur_5": "100 jaar: monumentale gebouwen, bruggen en infrastructuur"
+    "levensduur_5": "100 jaar: monumentale gebouwen, bruggen en infrastructuur",
+    "kruipKop": "Kruipcoëfficiënt φ(∞,t₀) volgens bijlage B",
+    "kruipInleiding": "Berekend uit RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} dagen en cementklasse {{cement}}: φ(∞,t₀) = {{phi}}. Met deze waarde rekenen de BGT-stijfheid en de kolomtoets van deze staaf, omdat er geen φ(∞,t₀) is opgegeven.",
+    "kruipKetenKop": "Afleiding volgens bijlage B, stap voor stap:"
   },
   "viewer": {
     "file": "Bestand",

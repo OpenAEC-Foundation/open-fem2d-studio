@@ -34,7 +34,7 @@ use concrete_check::{
 // §5.8 — de kolomtoets. Apart van de `use` hierboven omdat die regel al door
 // meer dan één spoor tegelijk wordt bewerkt.
 use concrete_check::ConcreteColumnCheckRequest;
-use nen_en_1992_1_1::{ConcreteCoverRequest, EffectiveFlangeWidthRequest};
+use nen_en_1992_1_1::{ConcreteCoverRequest, CreepCoefficientRequest, EffectiveFlangeWidthRequest};
 use nen_en_1993_1_1_section::{S235, S275, S355, S420, S460};
 use nen_en_1993_1_8_las::LasInput;
 use serde::Deserialize;
@@ -206,6 +206,16 @@ pub fn behandel(v: Verzoek) -> Result<Value, String> {
             let verzoek: ConcreteCoverRequest =
                 serde_json::from_value(inputs).map_err(|e| format!("dekkingsinvoer: {e}"))?;
             let uit = nen_en_1992_1_1::dekking::concrete_cover_request(verzoek)?;
+            serde_json::to_value(uit).map_err(|e| e.to_string())
+        }
+        // De kruipcoëfficiënt volgens bijlage B (B.1–B.9). Zelfde typen als het
+        // Tauri-command en de MCP-tool; de rekengang staat in
+        // `nen_en_1992_1_1::kruip` en nergens anders.
+        "concrete_creep_coefficient" => {
+            let inputs = v.inputs.ok_or("concrete_creep_coefficient vraagt om `inputs`")?;
+            let verzoek: CreepCoefficientRequest =
+                serde_json::from_value(inputs).map_err(|e| format!("kruipinvoer: {e}"))?;
+            let uit = nen_en_1992_1_1::kruip::creep_coefficient_request(verzoek)?;
             serde_json::to_value(uit).map_err(|e| e.to_string())
         }
         // Vrije spanningstoets: geen norm, alleen een doorsnede en een

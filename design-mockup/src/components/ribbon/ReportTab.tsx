@@ -37,6 +37,7 @@ import RibbonButton from "./RibbonButton";
 import RibbonButtonStack from "./RibbonButtonStack";
 import { useReportStore } from "../../stores/reportStore";
 import { getConcreteClasses, korvenUitStaven, useCheckStore } from "../../stores/checkStore";
+import { kruipWaardenPerStaaf } from "../../lib/kruipcoefficient";
 import { useBetonStijfheidStore } from "../../stores/betonStijfheidStore";
 import { useWindowManager } from "../../hooks/useWindowManager";
 import { useProjectInfo } from "../report/useProjectInfo";
@@ -179,7 +180,11 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting }
             beams: lastRunData.beams,
             combinations: lastRunData.combinations,
             combinationResults: lastRunData.combinationResults,
-            korven: korvenUitStaven(lastRunData.beams, lastRunData.standaardPhiInfT0),
+            korven: korvenUitStaven(
+              lastRunData.beams,
+              lastRunData.standaardPhiInfT0,
+              kruipWaardenPerStaaf(useCheckStore.getState().kruip),
+            ),
             supportedClasses: await getConcreteClasses(),
             bEffPerStaaf: bEffWaardenPerStaaf(beff),
           });

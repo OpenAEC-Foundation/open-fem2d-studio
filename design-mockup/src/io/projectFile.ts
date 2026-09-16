@@ -12,6 +12,7 @@ import {
   GEVOLGKLASSEN, type CombinatieSoort, type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
 import type { EigenDoorsnede } from "../lib/profieleditor/types";
+import type { KruipInvoerProject } from "../lib/kruipcoefficient";
 import type { EigenCltOpbouw } from "../lib/profieleditor/cltOpbouwenStore";
 
 export const PROJECT_FILE_EXT = "ifcfem2d";
@@ -278,6 +279,13 @@ export interface ProjectFile {
    * uitdrukkelijk iets anders dan 0.
    */
   betonKruipcoefficient?: number | null;
+  /**
+   * De invoer voor φ(∞,t₀) volgens bijlage B (september 2026, optioneel):
+   * `{ rhProcent, t0Dagen, cementklasse }`. Ontbreekt het veld of staat er
+   * `null`, dan wordt er niets berekend — elk ouder bestand rekent dus als
+   * voorheen. Een opgegeven `betonKruipcoefficient` gaat voor.
+   */
+  betonKruipInvoer?: KruipInvoerProject | null;
   /** Belastingcombinatie-definities (v2). */
   combinations?: ProjectFileCombination[];
   /**
@@ -399,7 +407,7 @@ const BEKENDE_TOPVELDEN: readonly string[] = [
   "format", "version", "savedAt",
   ...VERPLICHTE_LIJSTEN,
   "activeLoadCaseId", "selfWeightEnabled", "nonlinearEnabled", "analysetype",
-  "betonSegmentLengteMm", "betonKruipcoefficient", "combinations", "idTellers",
+  "betonSegmentLengteMm", "betonKruipcoefficient", "betonKruipInvoer", "combinations", "idTellers",
   "combinatiesVervangenBijOpenen", "structuralGrid",
   "scheefstandEnabled", "scheefstandNoemer", "scheefstandRichting",
   "scheefstandBron", "scheefstandHoogteM", "scheefstandAantalElementen",
