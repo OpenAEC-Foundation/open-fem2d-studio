@@ -237,7 +237,7 @@ export default function TableView(props: TableViewProps) {
               {isSpring ? (
                 <NumCell
                   value={sup?.k}
-                  title="Veerstijfheid: kN/mm (translatie) of kNm/rad (rotatie)"
+                  title={t("table.springStiffnessTitle")}
                   onCommit={(v) => {
                     if (v <= 0) return false; // veerstijfheid moet positief zijn
                     addSupport(n.id, sup!.type, v);
@@ -270,7 +270,7 @@ export default function TableView(props: TableViewProps) {
       columns: [
         t("table.colId"), t("table.colFrom"), t("table.colTo"), t("table.colLength"),
         t("table.colMaterial"), t("table.colProfile"),
-        "Staaftype",
+        t("table.colBeamRole"),
         t("table.colHingeStart"), t("table.colHingeEnd"),
       ],
       editable: true,
@@ -308,7 +308,7 @@ export default function TableView(props: TableViewProps) {
             String(b.id), String(b.from), String(b.to), fmtNum(beamLength(b), 0),
             material, profile,
             BEAM_LOAD_ROLE_LABEL[b.loadRole ?? bepaalStandaardRol(b, nodes)]
-              + (b.loadRole ? "" : " (auto)"),
+              + (b.loadRole ? "" : ` (${t("table.autoTag")})`),
             b.releases?.startRy ? "x" : "", b.releases?.endRy ? "x" : "",
           ],
           cells: (
@@ -353,7 +353,7 @@ export default function TableView(props: TableViewProps) {
                 <SelectCell
                   value={b.loadRole ?? ""}
                   options={[
-                    { value: "", label: `Auto — ${BEAM_LOAD_ROLE_LABEL[bepaalStandaardRol(b, nodes)]}` },
+                    { value: "", label: t("table.autoRole", { rol: BEAM_LOAD_ROLE_LABEL[bepaalStandaardRol(b, nodes)] }) },
                     ...BEAM_LOAD_ROLES.map((r) => ({ value: r.id, label: r.label })),
                   ]}
                   onCommit={(v) => updateBeam(b.id, {
@@ -439,7 +439,7 @@ export default function TableView(props: TableViewProps) {
       const stUit = bepaalPlaatStijfheid(d);
       const st = stUit.ok ? stUit.stijfheid : null;
       const hint = (v: number | undefined) =>
-        d.materiaal && v !== undefined ? `${fmtNum(v)} (materiaal)` : undefined;
+        d.materiaal && v !== undefined ? t("table.fromMaterialHint", { waarde: fmtNum(v) }) : undefined;
       const stats = plateMeshStats(p);
       const statCell = (v: number | undefined) =>
         v !== undefined ? v : <span className="ftable-muted">—</span>;
@@ -463,7 +463,7 @@ export default function TableView(props: TableViewProps) {
             <td>
               <NumCell
                 value={d.thickness}
-                title="Plaatdikte t in mm — spanningen schalen omgekeerd evenredig (t ×2 → σ ×0,5)"
+                title={t("table.plateThicknessTitle")}
                 onCommit={(v) => {
                   if (v <= 0) return false; // dikte moet positief zijn
                   updatePlate(p.id, { thickness: v });
@@ -477,10 +477,8 @@ export default function TableView(props: TableViewProps) {
                 listId="plaatmaterialen"
                 title={
                   stUit.ok
-                    ? "Materiaal van de plaat: staalsoort, betonklasse, houtsterkteklasse, "
-                      + "\"CLT C24 40/20/40\" of \"VRIJ:… E=… rho=… f=…\". Leeg = rekenen met de "
-                      + "E, ν en ρ hiernaast."
-                    : `Materiaal geweigerd: ${stUit.ok ? "" : stUit.reden}`
+                    ? t("table.plateMaterialTitle")
+                    : t("table.plateMaterialRejected", { reden: stUit.ok ? "" : stUit.reden })
                 }
                 onCommit={(v) => {
                   // Een materiaal kiezen wist de losse E, ν en ρ (die anders
@@ -508,8 +506,8 @@ export default function TableView(props: TableViewProps) {
                 value={d.E}
                 placeholder={hint(st?.E1)}
                 title={d.materiaal
-                  ? "Overschrijft de E van het materiaal, in BEIDE richtingen — de plaat rekent dan isotroop. Leeg = de waarde van het materiaal volgen."
-                  : "Elasticiteitsmodulus in N/mm² (staal 210000, beton ~30000)"}
+                  ? t("table.plateEOverrideTitle")
+                  : t("table.plateETitle")}
                 onCommit={(v) => {
                   if (v <= 0) return false;
                   updatePlate(p.id, { E: v });
@@ -522,8 +520,8 @@ export default function TableView(props: TableViewProps) {
                 value={d.nu}
                 placeholder={hint(st?.nu12)}
                 title={d.materiaal
-                  ? "Overschrijft ν₁₂ van het materiaal. Leeg = de waarde van het materiaal volgen."
-                  : "Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"}
+                  ? t("table.plateNuOverrideTitle")
+                  : t("table.plateNuTitle")}
                 onCommit={(v) => {
                   if (v < 0 || v >= 0.5) return false;
                   updatePlate(p.id, { nu: v });
@@ -536,8 +534,8 @@ export default function TableView(props: TableViewProps) {
                 value={d.rho}
                 placeholder={hint(st?.rho)}
                 title={d.materiaal
-                  ? "Overschrijft ρ van het materiaal, en daarmee het eigen gewicht. Leeg = de waarde van het materiaal volgen."
-                  : "Volumieke massa in kg/m³ — gebruikt voor het eigengewicht (staal 7850, beton 2500)"}
+                  ? t("table.plateRhoOverrideTitle")
+                  : t("table.plateRhoTitle")}
                 onCommit={(v) => {
                   if (v < 0) return false;
                   updatePlate(p.id, { rho: v });
@@ -548,7 +546,7 @@ export default function TableView(props: TableViewProps) {
             <td>
               <NumCell
                 value={d.meshSize}
-                title="Gewenste elementgrootte van het rekenmesh in mm; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)"
+                title={t("table.plateMeshSizeTitle")}
                 onCommit={(v) => {
                   if (v < 10) return false; // te fijn mesh → DOF-limiet
                   updatePlate(p.id, { meshSize: v });
@@ -572,9 +570,7 @@ export default function TableView(props: TableViewProps) {
     const tekst = v.trim();
     updateLoad(id, { omschrijving: tekst === "" ? undefined : tekst });
   };
-  const OMSCHRIJVING_TITEL =
-    "Vrije naam voor deze belasting; komt in de lastentabel van het rapport"
-    + " te staan en verandert niets aan de berekening.";
+  const OMSCHRIJVING_TITEL = t("table.loadDescriptionTitle");
 
   const buildPointLoadsSpec = (): TableSpec => {
     const rows = loads.filter((l) => l.type === "pointForce" || l.type === "pointMoment");
@@ -632,10 +628,10 @@ export default function TableView(props: TableViewProps) {
                   // Puntlast op een plaatrand: geen knoop te kiezen — de
                   // plek is plaat + rand + positie (eigenschappenpaneel).
                   <span className="ftable-muted">
-                    plaat {l.plateId}, {plaatRandLabel(l)}
+                    {t("table.onPlateEdge", { plaat: l.plateId, rand: plaatRandLabel(l) })}
                   </span>
                 ) : l.beamId !== undefined ? (
-                  <span className="ftable-muted">staaf {l.beamId}</span>
+                  <span className="ftable-muted">{t("table.onBeam", { staaf: l.beamId })}</span>
                 ) : (
                   <SelectCell
                     value={String(l.nodeId ?? "")} options={nodeOptions}
@@ -769,7 +765,7 @@ export default function TableView(props: TableViewProps) {
                 {/* Deellast: begin/einde als fractie 0..1 van de staaflengte. */}
                 <NumCell
                   value={fracA} decimals={3}
-                  title="Begin van het belaste deel als fractie van de staaflengte (0 = startknoop)"
+                  title={t("table.startFracTitle")}
                   onCommit={(v) => {
                     if (v < 0 || v >= fracB || v >= 1) return false;
                     updateLoad(l.id, { startFrac: v <= 0 && fracB >= 1 ? undefined : v });
@@ -779,7 +775,7 @@ export default function TableView(props: TableViewProps) {
               <td>
                 <NumCell
                   value={fracB} decimals={3}
-                  title="Einde van het belaste deel als fractie van de staaflengte (1 = eindknoop)"
+                  title={t("table.endFracTitle")}
                   onCommit={(v) => {
                     if (v <= fracA || v > 1) return false;
                     updateLoad(l.id, { endFrac: v >= 1 && fracA <= 0 ? undefined : v });
@@ -978,7 +974,7 @@ export default function TableView(props: TableViewProps) {
     return {
       columns: [
         t("table.colBeam"), "N [kN]", "V [kN]",
-        "M,begin [kNm]", "M,eind [kNm]", "|M|max [kNm]",
+        t("table.colMStart"), t("table.colMEnd"), "|M|max [kNm]",
         // De grootste hoekverdraaiing LANGS DE STAAF. Bewust hier en niet
         // alleen in de knooptabel: bij een scharnier verschilt de
         // element-eindrotatie van de knooprotatie φy, en dan is dit de enige

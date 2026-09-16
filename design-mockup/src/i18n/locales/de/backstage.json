@@ -53,6 +53,28 @@
     "clearAll": "Alle löschen",
     "noRecent": "Noch keine zuletzt verwendeten Dateien",
     "remove": "Entfernen",
-    "justNow": "Gerade eben"
+    "justNow": "Gerade eben",
+    "minutesAgo_one": "vor {{count}} Min.",
+    "minutesAgo_other": "vor {{count}} Min.",
+    "hoursAgo_one": "vor {{count}} Std.",
+    "hoursAgo_other": "vor {{count}} Std.",
+    "daysAgo_one": "vor {{count}} Tag",
+    "daysAgo_other": "vor {{count}} Tagen"
+  },
+  "extensionManager": {
+    "desc": {
+      "ifc-importer": "IFC4-STEP-Dateien in die Anwendung importieren",
+      "pdf-export": "Berichte mit dem OpenAEC Report Generator als PDF exportieren",
+      "excel-importer": "Daten aus Excel-Tabellen (.xlsx) importieren",
+      "bonsai-sync": "IFC-Modelle über WebSocket mit Bonsai/Blender synchronisieren",
+      "calculation-engine": "Einfache statische Berechnungsbausteine für Berichte"
+    },
+    "category": {
+      "importExport": "Import/Export",
+      "calculation": "Berechnung",
+      "reporting": "Berichte",
+      "utility": "Werkzeug",
+      "other": "Sonstiges"
+    }
   }
 }

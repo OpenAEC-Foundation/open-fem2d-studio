@@ -68,6 +68,7 @@ function opUnityCheck<T extends { kind: { data: { uc: { uc: number } | null } } 
  * vrije spanningstoets levert dit; bij de normkernen valt het weg.
  */
 function SpanningFiguur({ r }: { r: SpanningBeamCheckResult }) {
+  const { t } = useTranslation("check");
   const v = r.verloop;
   if (!v) {
     return r.notes.length > 0 ? (
@@ -93,11 +94,9 @@ function SpanningFiguur({ r }: { r: SpanningBeamCheckResult }) {
           fDMpa={r.f_d_mpa}
         />
         <div className="cp-spanning-bijschrift">
-          Spanningsverloop bij de maatgevende snede: x = {g(v.position_mm, 0)} mm,
-          combinatie {v.combination_id} — N = {g(v.n_ed_kn)} kN, V<sub>z</sub> ={" "}
+          {t("panel.stressAt", { x: g(v.position_mm, 0), combinatie: v.combination_id })} — N = {g(v.n_ed_kn)} kN, V<sub>z</sub> ={" "}
           {g(v.vz_ed_kn)} kN, M<sub>y</sub> = {g(v.my_ed_knm)} kNm
-          {v.sigma_z_mpa !== 0 && <>, σ<sub>z</sub> = {g(v.sigma_z_mpa)} N/mm²</>}. Trek
-          positief; f<sub>d</sub> = {g(r.f_d_mpa)} N/mm².
+          {v.sigma_z_mpa !== 0 && <>, σ<sub>z</sub> = {g(v.sigma_z_mpa)} N/mm²</>}. {t("panel.tensionPositive")}; f<sub>d</sub> = {g(r.f_d_mpa)} N/mm².
         </div>
       </div>
       {r.notes.length > 0 && (

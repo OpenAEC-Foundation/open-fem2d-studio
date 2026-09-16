@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { getSetting, setSetting } from "../../store";
 import {
   WINDGEBIEDEN, TERREIN_CATEGORIEEN,
@@ -164,18 +165,19 @@ const emptyProject: ProjectInfo = {
  * EN 1992 staat hier gelijkwaardig bij: de betontoetsing draait mee in
  * `checkStore` en heeft een eigen rapporthoofdstuk, dus een uitgeschakeld
  * hokje met "volgt later" zou nu een onwaarheid zijn.
+ * `label` en `materiaal` zijn i18n-sleutels (naamruimte common), vertaald bij het tonen.
  */
 const NORMEN: ReadonlyArray<{ sleutel: NormSleutel; label: string; materiaal: string }> = [
-  { sleutel: "en1993", label: "Eurocode 3 — Staal (EN 1993)", materiaal: "staal" },
-  { sleutel: "en1995", label: "Eurocode 5 — Hout (EN 1995)", materiaal: "hout of kruislaaghout" },
-  { sleutel: "en1992", label: "Eurocode 2 — Beton (EN 1992)", materiaal: "beton" },
+  { sleutel: "en1993", label: "projectSettingsDialog.normEn1993", materiaal: "projectSettingsDialog.materialSteel" },
+  { sleutel: "en1995", label: "projectSettingsDialog.normEn1995", materiaal: "projectSettingsDialog.materialTimber" },
+  { sleutel: "en1992", label: "projectSettingsDialog.normEn1992", materiaal: "projectSettingsDialog.materialConcrete" },
 ];
 
-/** De drie standen, in de volgorde waarin de keuzelijst ze aanbiedt. */
+/** De drie standen, in de volgorde waarin de keuzelijst ze aanbiedt (label = i18n-sleutel). */
 const STAND_LABEL: ReadonlyArray<{ stand: NormStand; label: string }> = [
-  { stand: "model", label: "Volgt het model" },
-  { stand: "aan", label: "Altijd vermelden" },
-  { stand: "uit", label: "Niet vermelden" },
+  { stand: "model", label: "projectSettingsDialog.standModel" },
+  { stand: "aan", label: "projectSettingsDialog.standOn" },
+  { stand: "uit", label: "projectSettingsDialog.standOff" },
 ];
 
 /**
@@ -189,21 +191,18 @@ const STAND_LABEL: ReadonlyArray<{ stand: NormStand; label: string }> = [
  * het geval waarin de keuze van de gebruiker het aflegt tegen een feit over de
  * berekening.
  */
-function normGevolg(oordeel: NormOordeel, stand: NormStand, materiaal: string): string {
+function normGevolg(t: TFunction, oordeel: NormOordeel, stand: NormStand, materiaal: string): string {
   switch (oordeel) {
     case "getoetst":
       return stand === "uit"
-        ? "Staat tóch in het rapport: er is op deze norm getoetst. Een uitgevoerde"
-          + " toetsing is een feit over de berekening en geen voorkeur; uw keuze telt"
-          + " weer zodra die toetsresultaten er niet meer zijn."
-        : "Staat in het rapport: er is op deze norm getoetst.";
+        ? t("projectSettingsDialog.effectCheckedOverruled")
+        : t("projectSettingsDialog.effectChecked");
     case "keuze-aan":
-      return `Staat in het rapport, ook zolang er nog geen ${materiaal} in het model zit.`;
+      return t("projectSettingsDialog.effectOn", { materiaal });
     case "keuze-uit":
-      return `Staat niet in het rapport, ook niet als er ${materiaal} in het model zit.`;
+      return t("projectSettingsDialog.effectOff", { materiaal });
     case "model":
-      return `Staat in het rapport zodra er ${materiaal} in het model zit of erop`
-        + " getoetst is — anders niet.";
+      return t("projectSettingsDialog.effectModel", { materiaal });
   }
 }
 
@@ -424,10 +423,10 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
               gevolgklasse. Deze keuzes horen bij de start van een project en
               komen als uitgangspunten in het rekenrapport. */}
           <div className="proj-section">
-            <div className="proj-section-title">Uitgangspunten</div>
+            <div className="proj-section-title">{t("projectSettingsDialog.basisOfDesign")}</div>
             <div className="proj-fields">
               <div className="proj-field">
-                <label id="proj-normen-kop">Toegepaste normen</label>
+                <label id="proj-normen-kop">{t("projectSettingsDialog.appliedStandards")}</label>
                 {/* Drie standen per norm, geen vinkje. Een vinkje toonde
                     "volgt het model" en "niet vermelden" als hetzelfde lege
                     hokje — twee standen met verschillende uitkomst in het
@@ -445,50 +444,45 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                     return (
                       <div key={sleutel} className="proj-norm">
                         <div className="proj-norm-regel">
-                          <span className="proj-norm-naam">{label}</span>
+                          <span className="proj-norm-naam">{t(label)}</span>
                           <select
                             className="proj-norm-stand"
-                            aria-label={`${label} in het rapport`}
+                            aria-label={t("projectSettingsDialog.normInReport", { norm: t(label) })}
                             value={stand}
                             onChange={(e) => updateNormStand(sleutel, e.target.value as NormStand)}
                           >
                             {STAND_LABEL.map(({ stand: waarde, label: standLabel }) => (
-                              <option key={waarde} value={waarde}>{standLabel}</option>
+                              <option key={waarde} value={waarde}>{t(standLabel)}</option>
                             ))}
                           </select>
                         </div>
                         <p className={`proj-norm-gevolg${overruled ? " proj-norm-overruled" : ""}`}>
-                          {normGevolg(oordeel, stand, materiaal)}
+                          {normGevolg(t, oordeel, stand, t(materiaal))}
                         </p>
                       </div>
                     );
                   })}
                 </div>
                 <p className="proj-uitleg">
-                  Deze keuze bepaalt alleen wát het rapport bij de uitgangspunten
-                  vermeldt; aan de berekening verandert ze niets. Standaard volgt
-                  elke norm het model, zodat een zuiver stalen berekening geen
-                  hout meldt. Zet een norm op “Altijd vermelden” als u vooruitloopt
-                  op wat u nog gaat tekenen — “Volgt het model” neemt die keuze
-                  weer terug.
+                  {t("projectSettingsDialog.standardsExplanation")}
                 </p>
               </div>
               <div className="proj-row">
                 <div className="proj-field">
-                  <label>Gevolgklasse (EN 1990)</label>
+                  <label>{t("projectSettingsDialog.consequenceClass")}</label>
                   <select
                     value={uitgangspunten.gevolgklasse}
                     onChange={(e) => updateUitgangspunt("gevolgklasse", e.target.value as Gevolgklasse)}
                   >
                     {(Object.keys(K_FI) as Gevolgklasse[]).map((cc) => (
                       <option key={cc} value={cc}>
-                        {cc} — {GEVOLGKLASSE_OMSCHRIJVING[cc]}
+                        {cc} — {t(`projectSettingsDialog.consequenceClassDesc.${cc}`)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="proj-field">
-                  <label>Nationale bijlage</label>
+                  <label>{t("projectSettingsDialog.nationalAnnex")}</label>
                   {/* De lijst komt uit de normnaad (`lib/normAanduidingen.ts`)
                       en niet uit een vaste optie hier: zodra er een tweede rij
                       met rekenwaarden is, staat hij vanzelf in de lijst en
@@ -499,7 +493,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                     disabled={BIJLAGEN_GEVULD.length < 2}
                     title={
                       BIJLAGEN_GEVULD.length < 2
-                        ? "Deze uitgave heeft alleen rekenwaarden voor de Nederlandse nationale bijlage."
+                        ? t("projectSettingsDialog.onlyDutchAnnex")
                         : undefined
                     }
                     onChange={(e) =>
@@ -515,13 +509,13 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                 </div>
               </div>
               <div className="proj-field">
-                <label>Ontwerplevensduur (EN 1990)</label>
+                <label>{t("projectSettingsDialog.designWorkingLife")}</label>
                 <select
                   value={uitgangspunten.levensduurklasse}
                   onChange={(e) => updateUitgangspunt("levensduurklasse", e.target.value as Levensduurklasse)}
                 >
                   {(Object.keys(LEVENSDUUR_OMSCHRIJVING) as Levensduurklasse[]).map((k) => (
-                    <option key={k} value={k}>{LEVENSDUUR_OMSCHRIJVING[k]}</option>
+                    <option key={k} value={k}>{t(`projectSettingsDialog.designLifeClass${k}`)}</option>
                   ))}
                 </select>
               </div>
@@ -537,14 +531,12 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   const n = (x: number) => String(x).replace(".", ",");
                   return (
                     <>
-                      De gevolgklasse bepaalt de partiële factoren van de
-                      standaardbelastingcombinaties volgens NEN-EN 1990 {f.bron}:
+                      {t("projectSettingsDialog.consequenceExplainIntro", { bron: f.bron })}{" "}
                       6.10a γ<sub>G</sub> = {n(f.gGsup610a)}, 6.10b γ<sub>G</sub> ={" "}
-                      {n(f.gGsup610b)}, γ<sub>Q</sub> = {n(f.gQ)} (gunstig werkende
-                      blijvende belasting 0,9). Daarin zit K<sub>FI</sub> ={" "}
-                      {K_FI[cc].toFixed(2).replace(".", ",")}; die factor wordt niet nog
-                      eens op een uitkomst toegepast. Een combinatie die u zelf hebt
-                      aangepast of toegevoegd, volgt de gevolgklasse niet.
+                      {n(f.gGsup610b)}, γ<sub>Q</sub> = {n(f.gQ)}{" "}
+                      {t("projectSettingsDialog.consequenceExplainFavourable")} K<sub>FI</sub> ={" "}
+                      {K_FI[cc].toFixed(2).replace(".", ",")}
+                      {t("projectSettingsDialog.consequenceExplainTail")}
                     </>
                   );
                 })()}
@@ -555,7 +547,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   leest ze hier uit. */}
               <div className="proj-row">
                 <div className="proj-field">
-                  <label>Windgebied (EN 1991-1-4/NB)</label>
+                  <label>{t("projectSettingsDialog.windRegion")}</label>
                   <select
                     value={uitgangspunten.windgebied ?? "II"}
                     onChange={(e) => updateUitgangspunt("windgebied", e.target.value as Windgebied)}
@@ -566,7 +558,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   </select>
                 </div>
                 <div className="proj-field">
-                  <label>Terreincategorie (EN 1991-1-4 tabel 4.1)</label>
+                  <label>{t("projectSettingsDialog.terrainCategory")}</label>
                   <select
                     value={uitgangspunten.terreincategorie ?? "II"}
                     onChange={(e) => updateUitgangspunt("terreincategorie", e.target.value as TerreinCategorie)}
@@ -578,15 +570,14 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                 </div>
               </div>
               <p className="proj-uitleg">
-                Windgebied {uitgangspunten.windgebied ?? "II"} geeft een basiswindsnelheid
+                {t("projectSettingsDialog.windExplainRegion", { gebied: uitgangspunten.windgebied ?? "II" })}{" "}
                 v<sub>b,0</sub> = {WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].vb0
-                  .toFixed(1).replace(".", ",")} m/s ({WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].bron}).
-                De terreincategorie levert z<sub>0</sub> ={" "}
+                  .toFixed(1).replace(".", ",")} m/s ({WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].bron}).{" "}
+                {t("projectSettingsDialog.windExplainTerrain")} z<sub>0</sub> ={" "}
                 {TERREIN_CATEGORIEEN[uitgangspunten.terreincategorie ?? "II"].z0
-                  .toFixed(3).replace(".", ",")} m uit EN 1991-1-4 tabel 4.1 —{" "}
-                <strong>niet</strong> uit de terreinsoortentabel van de nationale bijlage.
-                Houdt u die tabel aan, voer de stuwdruk dan handmatig in bij de
-                windbelastinggenerator.
+                  .toFixed(3).replace(".", ",")} m {t("projectSettingsDialog.windExplainFromTable")}{" "}
+                <strong>{t("projectSettingsDialog.windExplainNot")}</strong>{" "}
+                {t("projectSettingsDialog.windExplainNationalAnnex")}
               </p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import TitleBar from "./components/TitleBar";
 import Ribbon from "./components/ribbon/Ribbon";
 import DocumentBar from "./components/DocumentBar";
@@ -143,6 +144,7 @@ function voegBibliothekenSamen(parsed: {
  */
 function DetachedApp({ view, title }: { view: string; title: string }) {
   const { requestDockBack } = useWindowManager();
+  const { t } = useTranslation();
 
   useEffect(() => {
     getSetting("theme", "light").then((saved) => applyTheme(saved));
@@ -172,12 +174,12 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
         return <DetachedReportPreview />;
       case "viewer":
         return (
-          <Suspense fallback={<div className="placeholder"><p>Loading 3D Viewer...</p></div>}>
+          <Suspense fallback={<div className="placeholder"><p>{t("app.view.loading3d")}</p></div>}>
             <ThreeViewer />
           </Suspense>
         );
       default:
-        return <div className="placeholder"><p>Detached view</p></div>;
+        return <div className="placeholder"><p>{t("app.view.detached")}</p></div>;
     }
   };
 
@@ -187,11 +189,11 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
       {/* Dock-back bar */}
       <div className="detached-dock-bar">
         <span className="detached-dock-title">{title}</span>
-        <button className="detached-dock-btn" onClick={handleDockBack} title="Dock back to main window">
+        <button className="detached-dock-btn" onClick={handleDockBack} title={t("app.view.dockBackTitle")}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
           </svg>
-          <span>Dock back</span>
+          <span>{t("app.view.dockBack")}</span>
         </button>
       </div>
       <main className="main-view" style={{ flex: 1 }}>
@@ -533,10 +535,10 @@ function App() {
       }
       lastSavedRef.current = modelJson(snap);
       setDirty(false);
-      notifySuccess("Bestand opgeslagen", newPath || "Download gestart in browser.");
+      notifySuccess(i18next.t("common:app.file.saved"), newPath || i18next.t("common:app.file.downloadStarted"));
       return true;
     } catch (e) {
-      notifyWarning("Opslaan mislukt", e instanceof Error ? e.message : String(e));
+      notifyWarning(i18next.t("common:app.file.saveFailed"), e instanceof Error ? e.message : String(e));
       return false;
     }
   }, [buildProjectSnapshot, projectPath, addRecentFile, setDirty]);
@@ -554,10 +556,10 @@ function App() {
       await saveProjectTo(projectPath, text);
       lastSavedRef.current = modelJson(snap);
       setDirty(false);
-      notifySuccess("Bestand opgeslagen", projectPath.split(/[\\/]/).pop());
+      notifySuccess(i18next.t("common:app.file.saved"), projectPath.split(/[\\/]/).pop());
       return true;
     } catch (e) {
-      notifyWarning("Opslaan mislukt", e instanceof Error ? e.message : String(e));
+      notifyWarning(i18next.t("common:app.file.saveFailed"), e instanceof Error ? e.message : String(e));
       return false;
     }
   }, [buildProjectSnapshot, projectPath, handleSaveProjectAs, setDirty]);
@@ -656,12 +658,12 @@ function App() {
       if (vervanging || afwijking) {
         void import("./io/notify").then(({ notifyWarning }) => {
           if (vervanging) {
-            notifyWarning("Belastingcombinaties bij het openen vervangen", vervanging.samenvatting, {
-              actie: { label: "Ongedaan maken", onClick: fem.maakCombinatieVervangingOngedaan },
+            notifyWarning(i18next.t("common:app.file.combosReplacedTitle"), vervanging.samenvatting, {
+              actie: { label: i18next.t("common:undo"), onClick: fem.maakCombinatieVervangingOngedaan },
               duur: 30000,
             });
           }
-          if (afwijking) notifyWarning("Melding bij het openen: combinaties", afwijking.samenvatting);
+          if (afwijking) notifyWarning(i18next.t("common:app.file.combosNoticeTitle"), afwijking.samenvatting);
         });
       }
       // Projectgegevens, wind- en rapportinstellingen uit het bestand — elk
@@ -696,9 +698,8 @@ function App() {
       if (onbekend.length > 0) {
         void import("./io/notify").then(({ notifyWarning }) => {
           notifyWarning(
-            "Dit bestand bevat velden die deze versie niet kent",
-            `${onbekend.join(", ")} — ze worden niet geladen en verdwijnen bij het ` +
-              "volgende Opslaan. Bewaar een kopie van het bestand als je ze nodig hebt.",
+            i18next.t("common:app.file.unknownFieldsTitle"),
+            i18next.t("common:app.file.unknownFieldsBody", { velden: onbekend.join(", ") }),
             { duur: 30000 },
           );
         });
@@ -720,13 +721,13 @@ function App() {
     try {
       const overschreven = pasProjectToe(deserializeProject(opened.text), opened.path);
       const { notifySuccess, notifyWarning } = await import("./io/notify");
-      notifySuccess("Project geopend", opened.path.split(/[\\/]/).pop());
+      notifySuccess(i18next.t("common:app.file.projectOpened"), opened.path.split(/[\\/]/).pop());
       if (overschreven) {
-        notifyWarning("Bibliotheek bijgewerkt door dit project", overschreven);
+        notifyWarning(i18next.t("common:app.file.libraryUpdated"), overschreven);
       }
     } catch (e) {
       const { notifyWarning } = await import("./io/notify");
-      notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
+      notifyWarning(i18next.t("common:app.file.openFailed"), e instanceof Error ? e.message : String(e));
     }
   }, [pasProjectToe, confirmUnsavedAction]);
 
@@ -752,12 +753,12 @@ function App() {
       const text = await readTextFile(path);
       // Zelfde route als "Openen…" — via `pasProjectToe`, de enige mapping.
       const overschreven = pasProjectToe(deserializeProject(text), path);
-      notifySuccess("Project geopend", path.split(/[\\/]/).pop());
+      notifySuccess(i18next.t("common:app.file.projectOpened"), path.split(/[\\/]/).pop());
       if (overschreven) {
-        notifyWarning("Bibliotheek bijgewerkt door dit project", overschreven);
+        notifyWarning(i18next.t("common:app.file.libraryUpdated"), overschreven);
       }
     } catch (e) {
-      notifyWarning("Kan bestand niet openen", e instanceof Error ? e.message : String(e));
+      notifyWarning(i18next.t("common:app.file.openFailed"), e instanceof Error ? e.message : String(e));
     }
   }, [pasProjectToe, confirmUnsavedAction]);
 
@@ -944,15 +945,14 @@ function App() {
     const uitslag = valideerIfc(inhoud);
     const beperkingen = verzamelIfcBeperkingen(ifcModel, { zonderLasten });
     if (uitslag.fouten.length > 0) {
-      notifyWarning("IFC-export bevat fouten", uitslag.fouten.slice(0, 3).join("\n"));
+      notifyWarning(i18next.t("common:app.ifc.exportErrors"), uitslag.fouten.slice(0, 3).join("\n"));
     } else if (beperkingen.length > 0) {
       notifySuccess(
-        "IFC geëxporteerd — met kanttekeningen",
-        `${uitslag.entiteiten} entiteiten. Niet meegenomen: ${beperkingen.length} punt(en); ` +
-        "zie het IFC-tabblad.",
+        i18next.t("common:app.ifc.exportedWithNotes"),
+        i18next.t("common:app.ifc.exportedWithNotesBody", { entiteiten: uitslag.entiteiten, punten: beperkingen.length }),
       );
     } else {
-      notifySuccess("IFC geëxporteerd", `${uitslag.entiteiten} entiteiten, geldig IFC4.`);
+      notifySuccess(i18next.t("common:app.ifc.exported"), i18next.t("common:app.ifc.validBody", { entiteiten: uitslag.entiteiten }));
     }
   }, [ifcModel]);
 
@@ -965,15 +965,15 @@ function App() {
     setActiveView("ifc");
     if (uitslag.fouten.length > 0) {
       notifyWarning(
-        `IFC-validatie: ${uitslag.fouten.length} fout(en)`,
+        i18next.t("common:app.ifc.validationErrors", { aantal: uitslag.fouten.length }),
         uitslag.fouten.slice(0, 3).join("\n"),
       );
     } else {
       notifySuccess(
-        "IFC-validatie geslaagd",
-        `${uitslag.entiteiten} entiteiten, geldig IFC4.` +
+        i18next.t("common:app.ifc.validationPassed"),
+        i18next.t("common:app.ifc.validBody", { entiteiten: uitslag.entiteiten }) +
         (beperkingen.length > 0
-          ? ` ${beperkingen.length} punt(en) niet in IFC uitgedrukt — zie het IFC-tabblad.`
+          ? " " + i18next.t("common:app.ifc.notExpressed", { punten: beperkingen.length })
           : ""),
       );
     }
@@ -1135,7 +1135,7 @@ function App() {
     if (tekst !== null && gemeldeStabiliteitRef.current !== tekst) {
       gemeldeStabiliteitRef.current = tekst;
       void import("./io/notify").then(({ notifyWarning }) =>
-        notifyWarning("Stabiliteit: eerste orde niet toegestaan", tekst),
+        notifyWarning(i18next.t("common:app.stability.firstOrderNotAllowed"), tekst),
       );
     }
     if (tekst === null) gemeldeStabiliteitRef.current = null;
@@ -1233,7 +1233,7 @@ function App() {
       if (gemeldeRekenfoutRef.current !== tekst) {
         gemeldeRekenfoutRef.current = tekst;
         void import("./io/notify").then(({ notifyWarning }) =>
-          notifyWarning("Berekening mislukt", tekst),
+          notifyWarning(i18next.t("common:app.solve.failed"), tekst),
         );
       }
       return null;
@@ -1285,26 +1285,24 @@ function App() {
     stijfheidClear();
     if (staven.length === 0) {
       notifyInfo(
-        "Fysisch niet-lineair: niets te doen",
+        i18next.t("common:app.nonlinear.nothingToDo"),
         overgeslagen.length > 0
-          ? `Geen betonstaaf met wapeningskorf. ${overgeslagen.length} betonstaaf/-staven ` +
-            `overgeslagen: ${overgeslagen[0].reason}. De uitkomst is die van 2e orde (P-Δ).`
-          : "Het model bevat geen betonstaven met een wapeningskorf; de uitkomst " +
-            "is die van 2e orde (P-Δ).",
+          ? i18next.t("common:app.nonlinear.skippedBody", { aantal: overgeslagen.length, reden: overgeslagen[0].reason })
+          : i18next.t("common:app.nonlinear.noCageBody"),
       );
       return null;
     }
     const dof = schatVrijheidsgraden(fem.nodes.length, staven, fem.betonSegmentLengteMm);
     const waarschuwing = segmentWaarschuwing(dof, fem.betonSegmentLengteMm);
-    if (waarschuwing) notifyWarning("Segmentlengte", waarschuwing);
+    if (waarschuwing) notifyWarning(i18next.t("common:app.nonlinear.segmentLength"), waarschuwing);
 
     // Dezelfde model-invoer waarmee de synchrone gang gerekend heeft — niet
     // opnieuw opgebouwd, zodat er geen tweede vertaling van het model bestaat.
     const input = getSecondOrderInput(outputs.perCase);
     if (!input) {
       notifyWarning(
-        "Fysisch niet-lineair",
-        "De 2e-orde-status ontbreekt bij de resultaten; de berekening is niet uitgevoerd.",
+        i18next.t("common:app.nonlinear.title"),
+        i18next.t("common:app.nonlinear.missingSecondOrder"),
       );
       return null;
     }
@@ -1368,7 +1366,7 @@ function App() {
       setSolverErrorText(tekst);
       setSolverStatus({ kind: "error" });
       notifyWarning(
-        "Fysisch niet-lineaire berekening mislukt",
+        i18next.t("common:app.nonlinear.failed"),
         e instanceof Error ? e.message : String(e),
       );
       return null;
@@ -1390,21 +1388,16 @@ function App() {
       const bgt = spoor.filter((c) => c.grenstoestand === "MeanValues").length;
       const ids = [...zonderKruip].sort((a, b) => a - b);
       notifyWarning(
-        "Zonder kruip gerekend",
-        `Voor ${ids.length === 1 ? "staaf" : "de staven"} ${ids.join(", ")} is geen ` +
-          `kruipcoëfficiënt φ(∞,t₀) opgegeven (art. 3.1.4), dus er is met φ_ef = 0 ` +
-          `gerekend. ` +
+        i18next.t("common:app.creep.title"),
+        i18next.t("common:app.creep.noCoefficient", { count: ids.length, ids: ids.join(", ") }) + " " +
           (eersteAntwoord ? `${eersteAntwoord.creep_note} ` : "") +
           (bgt > 0
-            ? `De ${bgt} BGT-combinatie(s) geven daardoor een TE KLEINE zakking. `
+            ? i18next.t("common:app.creep.slsTooSmall", { aantal: bgt }) + " "
             : "") +
           (onb.statischBepaald
-            ? "De constructie is statisch bepaald, dus de krachtsverdeling zelf " +
-              "verandert er niet van."
-            : `De constructie is niet aantoonbaar statisch bepaald (${onb.toelichting}), ` +
-              "dus ook de KRACHTSVERDELING is onjuist: te stijve betonstaven trekken " +
-              "te veel moment naar zich toe.") +
-          " Vul φ(∞,t₀) in bij de projectinstellingen of per staaf bij de §5.8-gegevens.",
+            ? i18next.t("common:app.creep.determinate")
+            : i18next.t("common:app.creep.indeterminate", { toelichting: onb.toelichting })) +
+          " " + i18next.t("common:app.creep.fillIn"),
       );
     }
     stijfheidZet({
@@ -1452,8 +1445,8 @@ function App() {
     // toetsing die er stilzwijgend niet is.
     if (!anyCheckableBeams(fem.beams)) {
       notifyInfo(
-        "Geen toetsbare staven",
-        "Het model bevat geen staalprofielen (HEA/HEB/IPE/…) en geen houtklassen (C24, GL28h, …).",
+        i18next.t("common:app.check.noCheckableTitle"),
+        i18next.t("common:app.check.noCheckableBody"),
       );
       if (openPanel) setActiveView("check");
       return;
@@ -1473,8 +1466,8 @@ function App() {
       // hier ook bij een onbekende doorsnede of een kolom die knikt, en stuurde
       // de gebruiker naar de verkeerde plek.
       notifyWarning(
-        "Toetsing",
-        `Niet getoetst: het doorrekenen mislukte. ${rekenFoutRef.current ?? "Zie Inzichten → Fouten."}`,
+        i18next.t("common:app.check.title"),
+        i18next.t("common:app.check.notChecked", { reden: rekenFoutRef.current ?? i18next.t("common:app.check.seeInsightsErrors") }),
       );
       return;
     }
@@ -1717,7 +1710,7 @@ function App() {
   // Zonder pad: "Naamloos project" — zelfde tekst als de DocumentBar-tab,
   // zodat venstertitel en documenttab nooit verschillende namen tonen.
   useEffect(() => {
-    const name = projectPath ? projectPath.split(/[\\/]/).pop() : "Naamloos project";
+    const name = projectPath ? projectPath.split(/[\\/]/).pop() : i18next.t("ribbon:report.unnamedProject");
     document.title = `${isDirty ? "● " : ""}${name} — Open FEM2D Studio`;
   }, [isDirty, projectPath]);
 
@@ -1957,7 +1950,7 @@ function App() {
         return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} stabiliteitsMelding={stabiliteitsMelding} />;
       case "viewer":
         return (
-          <Suspense fallback={<div className="placeholder"><p>Loading 3D Viewer...</p></div>}>
+          <Suspense fallback={<div className="placeholder"><p>{t("app.view.loading3d")}</p></div>}>
             <ThreeViewer />
           </Suspense>
         );
@@ -2037,7 +2030,7 @@ function App() {
                 <div
                   className="canvas-split-divider"
                   onMouseDown={handleSplitResizeMouseDown}
-                  title="Sleep om de verdeling model/toetsing aan te passen"
+                  title={t("app.layout.dragCheckSplit")}
                 />
                 <div className="canvas-split-table">
                   {/* Toetsing van de aangeklikte staaf, naast het model. De
@@ -2055,7 +2048,7 @@ function App() {
                 <div
                   className="canvas-split-divider"
                   onMouseDown={handleSplitResizeMouseDown}
-                  title="Sleep om de verdeling canvas/tabel aan te passen"
+                  title={t("app.layout.dragTableSplit")}
                 />
                 <div className="canvas-split-table">
                   {/* Tabel-editor (ribbon-tab "Tabel") — model en lasten als
@@ -2209,8 +2202,8 @@ function App() {
           const { notifyInfo } = await import("./io/notify");
           if (checkResults.length === 0) {
             notifyInfo(
-              "Nog geen toetsing",
-              "Reken het model eerst door; de normtoetsing loopt dan mee en is daarna te exporteren.",
+              i18next.t("common:app.check.noneYetTitle"),
+              i18next.t("common:app.check.noneYetBody"),
             );
             return;
           }
@@ -2378,7 +2371,7 @@ function App() {
               <div
                 className="bottom-panel-resize"
                 onMouseDown={handleBottomResizeMouseDown}
-                title="Sleep om het betonvenster hoger of lager te maken"
+                title={t("app.layout.dragConcretePanel")}
               />
               <div className="bottom-panel-body">
                 <BetonStaafVenster
@@ -2402,9 +2395,9 @@ function App() {
                 bottomDoorGebruikerGesloten.current = false;
                 setBottomPanelOpen(true);
               }}
-              title="Betonstaaf — aanzicht, doorsnede en dekkingslijnen"
+              title={t("app.concrete.panelTitle")}
             >
-              <span>{`Betonstaaf ${geselecteerdeBetonStaaf.id} — dekkingslijnen`}</span>
+              <span>{t("app.concrete.panelTab", { id: geselecteerdeBetonStaaf.id })}</span>
             </button>
           )}
         </aside>
@@ -2533,21 +2526,21 @@ function App() {
       )}
       {/* Grids dialog — right-docked sheet, controls grid show/hide/spacing + stramien */}
       {!isFullWidthView && (
-        <Sheet open={gridsOpen} title="Stramien" onClose={() => setGridsOpen(false)}>
+        <Sheet open={gridsOpen} title={tRibbon("home.grids")} onClose={() => setGridsOpen(false)}>
           <div className="oa-grid-form">
-            <div className="oa-grid-section-title">Achtergrondgrid</div>
+            <div className="oa-grid-section-title">{t("app.grid.backgroundGrid")}</div>
             <label className="oa-grid-row">
-              <span>Toon grid</span>
+              <span>{t("app.grid.showGrid")}</span>
               <input type="checkbox" checked={grid.show}
                 onChange={e => setGrid(g => ({ ...g, show: e.target.checked }))} />
             </label>
             <label className="oa-grid-row">
-              <span>Toon gridlijnen</span>
+              <span>{t("app.grid.showGridLines")}</span>
               <input type="checkbox" checked={grid.showLines}
                 onChange={e => setGrid(g => ({ ...g, showLines: e.target.checked }))} />
             </label>
             <label className="oa-grid-row">
-              <span>Spacing (mm)</span>
+              <span>{t("app.grid.spacing")}</span>
               <input type="number" step="50" min="50" value={grid.spacingMm}
                 onChange={e => {
                   const v = Math.max(50, Number(e.target.value) || 500);
@@ -2555,16 +2548,16 @@ function App() {
                 }} />
             </label>
 
-            <div className="oa-grid-section-title" style={{ marginTop: 14 }}>Stramien (structureel)</div>
+            <div className="oa-grid-section-title" style={{ marginTop: 14 }}>{t("app.grid.structural")}</div>
             <label className="oa-grid-row">
-              <span>Stramien actief</span>
+              <span>{t("app.grid.enabled")}</span>
               <input type="checkbox" checked={fem.structuralGrid.enabled}
                 onChange={e => fem.setStructuralGrid(prev => ({ ...prev, enabled: e.target.checked }))} />
             </label>
 
-            <div className="oa-grid-subtitle">X-as (verticale lijnen)</div>
+            <div className="oa-grid-subtitle">{t("app.grid.xAxis")}</div>
             <table className="oa-grid-table">
-              <thead><tr><th>Label</th><th>X (mm)</th><th></th></tr></thead>
+              <thead><tr><th>{t("app.grid.label")}</th><th>X (mm)</th><th></th></tr></thead>
               <tbody>
                 {fem.structuralGrid.xAxes.map((ax, i) => (
                   <tr key={ax.id}>
@@ -2574,7 +2567,7 @@ function App() {
                       onChange={e => fem.setStructuralGrid(p => ({ ...p, xAxes: p.xAxes.map((a, j) => j === i ? { ...a, position: Number(e.target.value) || 0 } : a) }))} /></td>
                     <td><button className="oa-grid-x-btn"
                       onClick={() => fem.setStructuralGrid(p => ({ ...p, xAxes: p.xAxes.filter((_, j) => j !== i) }))}
-                      title="Verwijderen">×</button></td>
+                      title={t("delete")}>×</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -2590,11 +2583,11 @@ function App() {
                 const maxPos = p.xAxes.length ? Math.max(...p.xAxes.map(a => a.position)) : 0;
                 return { ...p, xAxes: [...p.xAxes, { id: `x-${Date.now()}`, label: lbl || `X${p.xAxes.length + 1}`, position: maxPos + 3000 }] };
               })}
-            >+ Toevoegen</button>
+            >{t("app.grid.add")}</button>
 
-            <div className="oa-grid-subtitle">Z-as (horizontale lijnen)</div>
+            <div className="oa-grid-subtitle">{t("app.grid.zAxis")}</div>
             <table className="oa-grid-table">
-              <thead><tr><th>Label</th><th>Z (mm)</th><th></th></tr></thead>
+              <thead><tr><th>{t("app.grid.label")}</th><th>Z (mm)</th><th></th></tr></thead>
               <tbody>
                 {fem.structuralGrid.zAxes.map((ax, i) => (
                   <tr key={ax.id}>
@@ -2604,7 +2597,7 @@ function App() {
                       onChange={e => fem.setStructuralGrid(p => ({ ...p, zAxes: p.zAxes.map((a, j) => j === i ? { ...a, position: Number(e.target.value) || 0 } : a) }))} /></td>
                     <td><button className="oa-grid-x-btn"
                       onClick={() => fem.setStructuralGrid(p => ({ ...p, zAxes: p.zAxes.filter((_, j) => j !== i) }))}
-                      title="Verwijderen">×</button></td>
+                      title={t("delete")}>×</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -2620,7 +2613,7 @@ function App() {
                 const maxPos = p.zAxes.length ? Math.max(...p.zAxes.map(a => a.position)) : 0;
                 return { ...p, zAxes: [...p.zAxes, { id: `z-${Date.now()}`, label: lbl || `Z${p.zAxes.length + 1}`, position: maxPos + 3000 }] };
               })}
-            >+ Toevoegen</button>
+            >{t("app.grid.add")}</button>
 
             {/* Afronden — het paneel blijft anders openstaan zolang je het
                 niet met het kruisje of Escape wegklikt, en dat leest als "de
@@ -2628,13 +2621,13 @@ function App() {
                 doorgevoerd; deze knop sluit alleen het paneel. */}
             <div className="oa-grid-afronden">
               <span className="oa-grid-afronden-hint">
-                Wijzigingen zijn direct doorgevoerd.
+                {t("app.grid.appliedHint")}
               </span>
               <button
                 className="oa-grid-done-btn"
                 onClick={() => setGridsOpen(false)}
-                title="Stramieninvoer afronden en dit paneel sluiten"
-              >Afronden</button>
+                title={t("app.grid.finishTitle")}
+              >{t("app.grid.finish")}</button>
             </div>
           </div>
         </Sheet>

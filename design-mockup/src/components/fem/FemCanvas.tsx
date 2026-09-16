@@ -28,6 +28,8 @@
  * via FemResultsOverlay until the next model edit.
  */
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import "./FemCanvas.css";
 import { solve } from "./solver/solver";
 import type { SolverResult, SolverInput } from "./solver/types";
@@ -100,9 +102,15 @@ export type { Tool } from "./femTypes";
 /** Benoemde plaatrand in modelassen — zelfde namen als het rekenmesh. */
 type PlaatRand = "bottom" | "top" | "left" | "right";
 
-const RAND_LABEL: Record<PlaatRand, string> = {
-  bottom: "onderrand", top: "bovenrand", left: "linkerrand", right: "rechterrand",
-};
+/** Vertaalde naam van een benoemde plaatrand — op het moment van tonen. */
+function randLabel(rand: PlaatRand): string {
+  switch (rand) {
+    case "bottom": return i18next.t("common:canvas.edge.bottom");
+    case "top":    return i18next.t("common:canvas.edge.top");
+    case "left":   return i18next.t("common:canvas.edge.left");
+    case "right":  return i18next.t("common:canvas.edge.right");
+  }
+}
 
 /**
  * Contourcomponenten voor de plaatspanningsweergave (P3.2): label + eenheid
@@ -175,12 +183,12 @@ export function valideerPlaatHoeken(
   punten: { x: number; z: number }[],
 ): string | null {
   const TOL = 1; // mm
-  if (punten.length !== 4) return "Een plaat heeft precies vier hoeken nodig.";
+  if (punten.length !== 4) return i18next.t("common:canvas.plate.needsFourCorners");
   const xs = punten.map(p => p.x), zs = punten.map(p => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   if (maxX - minX < TOL || maxZ - minZ < TOL) {
-    return "De hoeken vallen samen of liggen (vrijwel) op één lijn — teken een echte rechthoek.";
+    return i18next.t("common:canvas.plate.cornersCollinear");
   }
   // Elk van de vier bbox-hoeken moet door precies één hoekknoop bezet zijn.
   const doelen: [number, number][] = [
@@ -191,7 +199,7 @@ export function valideerPlaatHoeken(
     const hit = doelen.findIndex(([tx, tz], i) =>
       !bezet[i] && Math.abs(p.x - tx) <= TOL && Math.abs(p.z - tz) <= TOL);
     if (hit < 0) {
-      return "De vier hoeken vormen geen asgelijnde rechthoek — gedraaide of scheve platen worden nog niet ondersteund.";
+      return i18next.t("common:canvas.plate.notAxisAligned");
     }
     bezet[hit] = true;
   }
@@ -349,7 +357,7 @@ async function bouwPlaatMeshCache(
     }
   }
   if (points.length < 3 || triangles.length === 0) {
-    throw new Error("de CDT leverde geen bruikbaar mesh op");
+    throw new Error(i18next.t("common:canvas.plate.cdtNoMesh"));
   }
   // Openingsranden: per opening, per rand de meshknopen erop (de CDT legt
   // ze exact op het randsegment; tolerantie 1 mm zoals de engine keurt).
@@ -358,7 +366,7 @@ async function bouwPlaatMeshCache(
   for (let k = 0; k < openingen.length; k++) {
     for (let j = 0; j < openingen[k].length; j++) {
       if (openingEdgeNodeIndices[k][j].length < 2) {
-        throw new Error(`de CDT legde geen knopen op rand ${j + 1} van opening ${k + 1}`);
+        throw new Error(i18next.t("common:canvas.plate.cdtNoNodesOnOpeningEdge", { rand: j + 1, opening: k + 1 }));
       }
     }
   }
@@ -559,6 +567,8 @@ export default function FemCanvas(props: FemCanvasProps) {
     onZoomChange,
     onOpenCheckForBeam,
   } = props;
+  // `tCommon` i.p.v. `t`: in dit component heten veel lokale parameters `t`.
+  const { t: tCommon } = useTranslation("common");
   // Toetsresultaten (normtoetsing) — voor de Unity-check-badges op het canvas.
   const checkResults = useCheckStore((s) => s.results);
   // updateNode is consumed by FemProperties — accept the prop but suppress unused-var lint
@@ -797,9 +807,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       setControleOpen(true);
       setResults(null);
       setSolveError(
-        `Model niet doorgerekend — ${blokkerend.length} ` +
-        `${blokkerend.length === 1 ? "onderdeel is" : "onderdelen zijn"} niet ` +
-        "goed aangesloten. Zie de modelcontrole rechtsonder; herstellen kan daar.",
+        i18next.t("common:canvas.solve.blockedByModelCheck", { count: blokkerend.length }),
       );
       onSolveResultRef.current?.(null);
       return;
@@ -963,9 +971,8 @@ export default function FemCanvas(props: FemCanvasProps) {
           commitPlaatMeshCache(plateId, cache);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          notifyWarning("Plaatmesh niet bijgewerkt",
-            `Meshgeneratie (CDT) voor plaat ${plateId} mislukt: ${msg}. ` +
-            `Rekenen met deze plaat geeft een foutmelding totdat het mesh opnieuw lukt.`);
+          notifyWarning(i18next.t("common:canvas.plate.meshNotUpdated"),
+            i18next.t("common:canvas.plate.meshNotUpdatedBody", { plaat: plateId, fout: msg }));
         } finally {
           if (meshRegenBezigRef.current.get(plateId) === sig) {
             meshRegenBezigRef.current.delete(plateId);
@@ -1512,7 +1519,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         return !!punten && puntInPolygoon(s.x, s.z, punten);
       });
       if (!doel) {
-        notifyInfo("Opening", "Begin het slepen binnen een plaat: de opening hoort bij die plaat.");
+        notifyInfo(i18next.t("common:canvas.opening.title"), i18next.t("common:canvas.opening.startInsidePlate"));
         return;
       }
       setOpeningDrag({ plateId: doel.id, start: { x: s.x, z: s.z }, end: { x: s.x, z: s.z } });
@@ -1617,11 +1624,11 @@ export default function FemCanvas(props: FemCanvasProps) {
       const alle = [...(pl.openingen ?? []), nieuw];
       const fout = valideerPlaatOpeningen(punten, alle.map((o) => o.punten));
       if (fout) {
-        notifyWarning("Opening niet toegevoegd", fout);
+        notifyWarning(i18next.t("common:canvas.opening.notAdded"), fout);
         return;
       }
       if (!updatePlate) {
-        notifyWarning("Opening niet toegevoegd", "Dit canvas kan platen niet bijwerken.");
+        notifyWarning(i18next.t("common:canvas.opening.notAdded"), i18next.t("common:canvas.opening.cannotUpdatePlates"));
         return;
       }
       updatePlate(plateId, { openingen: alle });
@@ -1799,7 +1806,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         // het model komt.
         const fout = valideerPlaatPolygoon(geldigePunten);
         if (fout) {
-          notifyWarning("Plaat niet toegevoegd", fout);
+          notifyWarning(i18next.t("common:canvas.plate.notAdded"), fout);
           return;
         }
 
@@ -1813,8 +1820,8 @@ export default function FemCanvas(props: FemCanvasProps) {
             addPlate(hoekIds, cache);
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            notifyWarning("Plaat niet toegevoegd",
-              `Meshgeneratie (CDT) mislukt: ${msg}. De plaat is niet aangemaakt; het model is ongewijzigd.`);
+            notifyWarning(i18next.t("common:canvas.plate.notAdded"),
+              i18next.t("common:canvas.plate.meshFailedNotAdded", { fout: msg }));
           }
         })();
         return;
@@ -1823,10 +1830,10 @@ export default function FemCanvas(props: FemCanvasProps) {
       // Samenvallende hoekklik: dezelfde knoop nogmaals aanklikken (behalve
       // de eerste, die sluit) zou een gedegenereerde omtrek opleveren.
       if (plateCorners.includes(nodeId)) {
-        notifyWarning("Ongeldige hoek",
+        notifyWarning(i18next.t("common:canvas.plate.invalidCorner"),
           plateCorners.length >= 3 && nodeId !== plateCorners[0]
-            ? "Deze knoop is al een hoek van deze plaat — klik de eerste knoop om te sluiten."
-            : "Deze knoop is al een hoek van deze plaat — kies een andere knoop.");
+            ? i18next.t("common:canvas.plate.cornerTakenClose")
+            : i18next.t("common:canvas.plate.cornerTakenOther"));
         return;
       }
       setPlateCorners([...plateCorners, nodeId]);
@@ -1950,8 +1957,8 @@ export default function FemCanvas(props: FemCanvasProps) {
         if (overNodeId !== null) { setSelection({ type: "node", id: overNodeId }); return; }
         const sb = findSnapBeam(sx, sy);
         if (sb) { setSelection({ type: "beam", id: sb.beamId }); return; }
-        notifyWarning("Geen selectie",
-          "Selecteer eerst één of meer knopen, staven of platen — klik erop of sleep een selectiekader.");
+        notifyWarning(i18next.t("common:canvas.transform.noSelection"),
+          i18next.t("common:canvas.transform.noSelectionBody"));
         return;
       }
       if (!hoverModel) return;
@@ -1978,10 +1985,10 @@ export default function FemCanvas(props: FemCanvasProps) {
           ok = mirrorSelection(selection, a.x, a.z, b.x, b.z);
         }
         if (!ok) {
-          notifyWarning("Transformatie niet uitgevoerd",
+          notifyWarning(i18next.t("common:canvas.transform.notApplied"),
             tool === "mirror"
-              ? "De selectie bevat geen knopen, staven of platen — of de spiegelas heeft geen lengte."
-              : "De selectie bevat geen knopen, staven of platen.");
+              ? i18next.t("common:canvas.transform.emptySelectionOrMirrorAxis")
+              : i18next.t("common:canvas.transform.emptySelection"));
         }
         setTransformAnchor(null);
       }
@@ -2137,8 +2144,8 @@ export default function FemCanvas(props: FemCanvasProps) {
           lastenKlembordRef.current = kopieerLastenNaarKlembord(loads, ids, { nodes, beams, plates });
           const n = lastenKlembordRef.current.length;
           notifyInfo(
-            n === 1 ? "1 belasting gekopieerd" : `${n} belastingen gekopieerd`,
-            "Ga naar een ander belastinggeval en druk Ctrl+V om ze daar te plakken.");
+            i18next.t("common:canvas.clipboard.copied", { count: n }),
+            i18next.t("common:canvas.clipboard.copiedBody"));
           return;
         }
         if (k === "v") {
@@ -2148,28 +2155,22 @@ export default function FemCanvas(props: FemCanvasProps) {
           const r = plakLasten(klembord, activeLoadCaseId);
           const extra: string[] = [];
           if (r.overgeslagen > 0) {
-            extra.push(r.overgeslagen === 1
-              ? "1 belasting stond er al en is overgeslagen."
-              : `${r.overgeslagen} belastingen stonden er al en zijn overgeslagen.`);
+            extra.push(i18next.t("common:canvas.clipboard.skipped", { count: r.overgeslagen }));
           }
           const weg = r.verweesd - r.verplaatst;
           if (weg > 0) {
-            extra.push(weg === 1
-              ? "1 belasting is vervallen: de staaf, knoop of plaat bestaat niet meer."
-              : `${weg} belastingen zijn vervallen: hun staaf, knoop of plaat bestaat niet meer.`);
+            extra.push(i18next.t("common:canvas.clipboard.orphaned", { count: weg }));
           }
           if (r.verplaatst > 0) {
-            extra.push(r.verplaatst === 1
-              ? "1 belasting is vervallen: het onderdeel met dat nummer ligt niet meer op dezelfde plek."
-              : `${r.verplaatst} belastingen zijn vervallen: de onderdelen met die nummers liggen niet meer op dezelfde plek.`);
+            extra.push(i18next.t("common:canvas.clipboard.moved", { count: r.verplaatst }));
           }
           if (r.geplakt > 0) {
             notifyInfo(
-              `${r.geplakt} ${r.geplakt === 1 ? "belasting" : "belastingen"} geplakt in “${r.gevalNaam}”`,
+              i18next.t("common:canvas.clipboard.pasted", { count: r.geplakt, geval: r.gevalNaam }),
               extra.join(" ") || undefined);
           } else {
-            notifyWarning(`Niets geplakt in “${r.gevalNaam}”`,
-              extra.join(" ") || "Het klembord bevat geen belastingen.");
+            notifyWarning(i18next.t("common:canvas.clipboard.nothingPasted", { geval: r.gevalNaam }),
+              extra.join(" ") || i18next.t("common:canvas.clipboard.empty"));
           }
           return;
         }
@@ -2248,8 +2249,8 @@ export default function FemCanvas(props: FemCanvasProps) {
           e.preventDefault();
           // copySelection is multi-bewust; false = niets kopieerbaars.
           if (!copySelection(selection, 0, 0)) {
-            notifyWarning("Niets te dupliceren",
-              "De selectie bevat geen knopen, staven of platen.");
+            notifyWarning(i18next.t("common:canvas.transform.nothingToDuplicate"),
+              i18next.t("common:canvas.transform.emptySelection"));
           }
           // We don't auto-grab the new copy yet (would need access to the new
           // ids); user can re-grab manually. Mockup shortcut.
@@ -3195,25 +3196,25 @@ export default function FemCanvas(props: FemCanvasProps) {
         {rel?.startRy && (
           <circle cx={p1.x + ux * d} cy={p1.y + uy * d} r={r}
             className="fem-scharnier">
-            <title>Scharnier aan de startzijde (staaf {b.id})</title>
+            <title>{tCommon("canvas.hinge.start", { staaf: b.id })}</title>
           </circle>
         )}
         {rel?.endRy && (
           <circle cx={p2.x - ux * d} cy={p2.y - uy * d} r={r}
             className="fem-scharnier">
-            <title>Scharnier aan de eindzijde (staaf {b.id})</title>
+            <title>{tCommon("canvas.hinge.end", { staaf: b.id })}</title>
           </circle>
         )}
         {veerStart !== null && (
           <rect x={p1.x + ux * d - r} y={p1.y + uy * d - r} width={2 * r} height={2 * r}
             className="fem-scharnier fem-veer">
-            <title>{`Verende momentaansluiting aan de startzijde: k = ${veerStart} kNm/rad (staaf ${b.id})`}</title>
+            <title>{tCommon("canvas.hinge.springStart", { k: veerStart, staaf: b.id })}</title>
           </rect>
         )}
         {veerEind !== null && (
           <rect x={p2.x - ux * d - r} y={p2.y - uy * d - r} width={2 * r} height={2 * r}
             className="fem-scharnier fem-veer">
-            <title>{`Verende momentaansluiting aan de eindzijde: k = ${veerEind} kNm/rad (staaf ${b.id})`}</title>
+            <title>{tCommon("canvas.hinge.springEnd", { k: veerEind, staaf: b.id })}</title>
           </rect>
         )}
       </g>
@@ -3483,8 +3484,14 @@ export default function FemCanvas(props: FemCanvasProps) {
   const bannerText: { kind: "single" | "combo" | "envelope"; text: string } | null = useMemo(() => {
     if (envelopeView && envelope) {
       const combo = combinations?.find(c => c.id === envelope.maxDisplacementCombinationId);
-      const comboTag = combo ? ` (Combo: ${combo.name})` : "";
-      return { kind: "envelope", text: `Enveloppe (${combinations?.length ?? 0} combinaties): max |u| = ${envelope.maxDisplacement.toFixed(2)} mm${comboTag}` };
+      const u = envelope.maxDisplacement.toFixed(2);
+      const aantal = combinations?.length ?? 0;
+      return {
+        kind: "envelope",
+        text: combo
+          ? tCommon("canvas.banner.envelopeWithCombo", { count: aantal, u, combo: combo.name })
+          : tCommon("canvas.banner.envelope", { count: aantal, u }),
+      };
     }
     if (activeCombinationId !== null && activeCombinationId !== undefined && combinationResults) {
       const r = combinationResults.get(activeCombinationId);
@@ -3494,10 +3501,10 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
     }
     if (results) {
-      return { kind: "single", text: `Solved: max |u| = ${results.maxDisplacement.toFixed(2)} mm` };
+      return { kind: "single", text: tCommon("canvas.banner.solved", { u: results.maxDisplacement.toFixed(2) }) };
     }
     return null;
-  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results]);
+  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon]);
 
   // ── Envelope overlay rendering ──────────────────────────────────────────
   // Colors each beam by sign of max |M| and labels with value + governing combo.
@@ -3737,7 +3744,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         className="fem-stramien-minus"
                         onClick={(e) => { e.stopPropagation(); removeXAxis(ax.id); }}
                       >
-                        <title>X-stramien "{ax.label}" verwijderen</title>
+                        <title>{tCommon("canvas.grid.removeXAxis", { label: ax.label })}</title>
                         <circle r={7} />
                         <text y={3}>−</text>
                       </g>
@@ -3781,7 +3788,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         className="fem-stramien-minus"
                         onClick={(e) => { e.stopPropagation(); removeZAxis(az.id); }}
                       >
-                        <title>Niveau {elevText} verwijderen</title>
+                        <title>{tCommon("canvas.grid.removeLevel", { peil: elevText })}</title>
                         <circle r={7} />
                         <text y={3}>−</text>
                       </g>
@@ -3902,7 +3909,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                       className="fem-stramien-plus"
                       onClick={addXAxis}
                     >
-                      <title>X-stramien toevoegen (verticale lijn)</title>
+                      <title>{tCommon("canvas.grid.addXAxis")}</title>
                       <circle r={11} />
                       <text y={4}>+</text>
                     </g>
@@ -3912,7 +3919,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                       className="fem-stramien-plus"
                       onClick={addZAxis}
                     >
-                      <title>Z-stramien toevoegen (horizontale lijn)</title>
+                      <title>{tCommon("canvas.grid.addZAxis")}</title>
                       <circle r={11} />
                       <text y={4}>+</text>
                     </g>
@@ -4029,7 +4036,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                   >
                     {beamMaatEindpunt
                       ? `${fmtNl(lengteM, 3)} m`
-                      : `${beamLengte.replace(".", ",")} m — wijs een richting aan`}
+                      : tCommon("canvas.beam.lengthPointDirection", { lengte: beamLengte.replace(".", ",") })}
                   </text>
                 </>
               )}
@@ -4442,7 +4449,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                     onOpenCheckForBeam?.(r.beam_id);
                   }}
                 >
-                  <title>{`Staaf ${r.beam_id}: maatgevend ${r.governing_check_id} — klik voor de toetsing`}</title>
+                  <title>{tCommon("canvas.uc.badgeTitle", { staaf: r.beam_id, toets: r.governing_check_id })}</title>
                   <rect
                     x={mx - bw / 2} y={my - 11} width={bw} height={22} rx={11}
                     fill={ok ? "#16a34a" : "#dc2626"}
@@ -4458,56 +4465,58 @@ export default function FemCanvas(props: FemCanvasProps) {
       {/* HUDs */}
       <div className="fem-hud fem-hud-tl">
         <div className="fem-hud-card">
-          <span className="fem-hud-muted">Tool:</span>
+          <span className="fem-hud-muted">{tCommon("canvas.hud.tool")}</span>
           <span className="fem-hud-strong">{toolLabel(tool)}</span>
           {tool === "addBeam" && (
             <label
               className="fem-hud-muted fem-hud-optie"
-              title="Doorgaand tekenen: het eindpunt van een staaf is meteen het begin van de volgende (polylijn). Escape breekt de reeks af."
+              title={tCommon("canvas.hud.continuousTitle")}
             >
               <input
                 type="checkbox"
                 checked={beamDoorgaan}
                 onChange={(e) => setBeamDoorgaan(e.target.checked)}
               />
-              {" "}doorgaan
+              {" "}{tCommon("canvas.hud.continuous")}
             </label>
           )}
           {tool === "addBeam" && beamStart !== null && beamLengte === null && (
             <span className="fem-hud-muted">
-              — klik tweede knoop, of typ een lengte in m
+              — {tCommon("canvas.hud.beamClickSecondNode")}
             </span>
           )}
           {tool === "addBeam" && beamStart !== null && beamLengte !== null && (
             <span className="fem-hud-muted">
               — L = <span className="fem-hud-strong fem-hud-mono">
                 {beamLengte.replace(".", ",")}
-              </span> m · Enter bevestigt · Esc wist de maat
+              </span> {tCommon("canvas.hud.beamLengthTyped")}
             </span>
           )}
           {tool === "addPlate" && plateCorners.length > 0 && (
             <span className="fem-hud-muted">
-              — {plateCorners.length} {plateCorners.length === 1 ? "hoek" : "hoeken"}
-              {plateCorners.length >= 3
-                ? " · klik de eerste knoop om te sluiten · Esc annuleert"
-                : " · klik de volgende hoek · Esc annuleert"}
+              — {plateCorners.length >= 3
+                ? tCommon("canvas.hud.plateCornersClose", { count: plateCorners.length })
+                : tCommon("canvas.hud.plateCornersNext", { count: plateCorners.length })}
             </span>
           )}
           {tool === "addOpening" && (
             <span className="fem-hud-muted">
               — {openingDrag
-                ? `${Math.abs(openingDrag.end.x - openingDrag.start.x)} × ${Math.abs(openingDrag.end.z - openingDrag.start.z)} mm · laat los om te plaatsen`
-                : "sleep een rechthoek binnen een plaat · Esc annuleert"}
+                ? tCommon("canvas.hud.openingRelease", {
+                  b: Math.abs(openingDrag.end.x - openingDrag.start.x),
+                  h: Math.abs(openingDrag.end.z - openingDrag.start.z),
+                })
+                : tCommon("canvas.hud.openingDrag")}
             </span>
           )}
           {(tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") && !selection && (
-            <span className="fem-hud-muted">— selecteer eerst een knoop/staaf</span>
+            <span className="fem-hud-muted">— {tCommon("canvas.hud.transformSelectFirst")}</span>
           )}
           {(tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") && selection && transformAnchor === null && (
-            <span className="fem-hud-muted">— klik ankerpunt</span>
+            <span className="fem-hud-muted">— {tCommon("canvas.hud.transformClickAnchor")}</span>
           )}
           {(tool === "move" || tool === "copy" || tool === "rotate" || tool === "mirror") && transformAnchor !== null && (
-            <span className="fem-hud-muted">— klik doelpunt</span>
+            <span className="fem-hud-muted">— {tCommon("canvas.hud.transformClickTarget")}</span>
           )}
           {spaceHeld && <span className="fem-hud-muted">— [pan]</span>}
         </div>
@@ -4517,9 +4526,9 @@ export default function FemCanvas(props: FemCanvasProps) {
         <div
           className="fem-hud-card fem-coord-widget"
           style={{ marginTop: 6, padding: 6 }}
-          title="Assenstelsel: +X naar rechts, +Z omhoog; de boogpijl toont de positieve My-richting (om de y-as)"
+          title={tCommon("canvas.hud.axesTitle")}
         >
-          <svg width="84" height="72" viewBox="0 0 84 72" aria-label="Assenstelsel">
+          <svg width="84" height="72" viewBox="0 0 84 72" aria-label={tCommon("canvas.hud.axes")}>
             <defs>
               <marker id="fem-coord-head-x" viewBox="0 0 10 10" refX="8" refY="5"
                 markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -4556,11 +4565,13 @@ export default function FemCanvas(props: FemCanvasProps) {
       </div>
       <div className="fem-hud fem-hud-tr">
         <div className="fem-hud-card fem-hud-mono">
-          <span>{nodes.length} knopen · {beams.length} staven{plates.length ? ` · ${plates.length} platen` : ""}</span>
+          <span>{plates.length
+            ? tCommon("canvas.hud.countsWithPlates", { knopen: nodes.length, staven: beams.length, platen: plates.length })
+            : tCommon("canvas.hud.counts", { knopen: nodes.length, staven: beams.length })}</span>
         </div>
         <div className="fem-hud-card fem-hud-mono" style={{ marginTop: 6 }}>
           <span>{zoomPct}%</span>
-          <button className="fem-hud-btn" onClick={resetView} title="Reset zoom (F = fit)">Reset</button>
+          <button className="fem-hud-btn" onClick={resetView} title={tCommon("canvas.hud.resetZoomTitle")}>{tCommon("canvas.hud.resetZoom")}</button>
         </div>
         {/* De assenstelsel-widget staat nu linksboven (één weergave). */}
       </div>
@@ -4581,15 +4592,15 @@ export default function FemCanvas(props: FemCanvasProps) {
             <button
               className="fem-controle-kop"
               onClick={() => setControleOpen(v => !v)}
-              title="Modelcontrole — klik om de bevindingen te tonen of te verbergen"
+              title={tCommon("canvas.modelCheck.toggleTitle")}
             >
               <span className="fem-controle-merk">{aantalFouten > 0 ? "!" : "?"}</span>
               <span>
                 {aantalFouten > 0
-                  ? `Modelcontrole: ${aantalFouten} ${aantalFouten === 1 ? "fout" : "fouten"}`
-                  : `Modelcontrole: ${bevindingen.length} ${bevindingen.length === 1 ? "aandachtspunt" : "aandachtspunten"}`}
+                  ? tCommon("canvas.modelCheck.errors", { count: aantalFouten })
+                  : tCommon("canvas.modelCheck.attentionPoints", { count: bevindingen.length })}
                 {bevindingen.length > aantalFouten && aantalFouten > 0
-                  ? ` + ${bevindingen.length - aantalFouten} waarschuwing${bevindingen.length - aantalFouten === 1 ? "" : "en"}`
+                  ? " + " + tCommon("canvas.modelCheck.warnings", { count: bevindingen.length - aantalFouten })
                   : ""}
               </span>
               <span className="fem-controle-chevron">{controleOpen ? "▾" : "▴"}</span>
@@ -4604,10 +4615,10 @@ export default function FemCanvas(props: FemCanvasProps) {
                         className="fem-controle-fix"
                         onClick={() => herstelBevinding(b)}
                         title={b.herstel.soort === "verbind"
-                          ? "Splits de staaf op deze knoop, zodat hij er echt aan vastzit"
-                          : "Voeg de twee knopen samen; staven, opleggingen en lasten verhuizen mee"}
+                          ? tCommon("canvas.modelCheck.connectTitle")
+                          : tCommon("canvas.modelCheck.mergeTitle")}
                       >
-                        {b.herstel.soort === "verbind" ? "Verbind" : "Voeg samen"}
+                        {b.herstel.soort === "verbind" ? tCommon("canvas.modelCheck.connect") : tCommon("canvas.modelCheck.merge")}
                       </button>
                     )}
                   </div>
@@ -4618,10 +4629,10 @@ export default function FemCanvas(props: FemCanvasProps) {
                     onClick={() => {
                       const stappen = herstelModel();
                       if (stappen.length === 0) return;
-                      notifyInfo("Model hersteld", stappen.join(" "));
+                      notifyInfo(i18next.t("common:canvas.modelCheck.repaired"), stappen.join(" "));
                     }}
-                    title="Voer alle herstelbare bevindingen uit — één stap in de historie"
-                  >Herstel alles ({aantalFouten})</button>
+                    title={tCommon("canvas.modelCheck.repairAllTitle")}
+                  >{tCommon("canvas.modelCheck.repairAll", { n: aantalFouten })}</button>
                 )}
               </div>
             )}
@@ -4666,7 +4677,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         <div className="fem-hud fem-hud-tc">
           <div className={`fem-hud-card ${solveError ? "fem-hud-error" : "fem-hud-success"}`}>
             {solveError ? (
-              <span>Solver: {solveError}</span>
+              <span>{tCommon("canvas.solve.errorBanner", { fout: solveError })}</span>
             ) : bannerText ? (
               <span className="fem-hud-strong fem-hud-mono">{bannerText.text}</span>
             ) : null}
@@ -4725,12 +4736,14 @@ export default function FemCanvas(props: FemCanvasProps) {
           if (grabMode.axisLock === "x") dz = 0;
           if (grabMode.axisLock === "z") dx = 0;
         }
-        const lock = grabMode.axisLock ? ` [${grabMode.axisLock.toUpperCase()}-as]` : "";
+        const lock = grabMode.axisLock
+          ? ` [${tCommon("canvas.grab.axisLock", { as: grabMode.axisLock.toUpperCase() })}]`
+          : "";
         const typed = grabMode.typedDistance ? `  ⌨ ${grabMode.typedDistance}` : "";
         return (
           <div className="fem-hud fem-hud-tc" style={{ top: 38 }}>
             <div className="fem-hud-card" style={{ background: "var(--theme-accent)", color: "var(--theme-bg)", fontWeight: 600 }}>
-              <span>Move: ΔX = {Math.round(dx)} mm, ΔZ = {Math.round(dz)} mm{lock}{typed}</span>
+              <span>{tCommon("canvas.grab.move", { dx: Math.round(dx), dz: Math.round(dz) })}{lock}{typed}</span>
             </div>
           </div>
         );
@@ -4740,7 +4753,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       {rotateMode && (
         <div className="fem-hud fem-hud-tc" style={{ top: 38 }}>
           <div className="fem-hud-card" style={{ background: "var(--theme-accent)", color: "var(--theme-bg)", fontWeight: 600 }}>
-            <span>Rotate: {(rotateMode.deltaRad * 180 / Math.PI).toFixed(1)}°{rotateMode.snap ? " [snap 15°]" : " [vrij]"}</span>
+            <span>{tCommon("canvas.grab.rotate", { hoek: (rotateMode.deltaRad * 180 / Math.PI).toFixed(1) })}{rotateMode.snap ? " [snap 15°]" : ` [${tCommon("canvas.grab.free")}]`}</span>
           </div>
         </div>
       )}
@@ -4756,7 +4769,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             setContextMenu(null);
             if (selection?.type === "beam") setEditingBeamId(selection.id);
           }}>
-            Bewerk eigenschappen
+            {tCommon("canvas.contextMenu.editProperties")}
           </button>
           {/* Lastselectie: in één klik alle lasten van dezelfde soort in dit
               belastinggeval selecteren, klaar voor Ctrl+C → ander geval →
@@ -4774,10 +4787,10 @@ export default function FemCanvas(props: FemCanvasProps) {
                   loadIds: ids,
                 });
                 notifyInfo(
-                  `${ids.length} ${ids.length === 1 ? "belasting" : soort} geselecteerd`,
-                  "Ctrl+C kopieert ze; wissel van belastinggeval en plak met Ctrl+V.");
+                  i18next.t("common:canvas.contextMenu.loadsSelected", { count: ids.length, soort }),
+                  i18next.t("common:canvas.contextMenu.loadsSelectedBody"));
               }}>
-                Selecteer alle {soort} ({ids.length})
+                {tCommon("canvas.contextMenu.selectAllOfType", { soort, n: ids.length })}
               </button>
             );
           })()}
@@ -4785,14 +4798,14 @@ export default function FemCanvas(props: FemCanvasProps) {
             setContextMenu(null);
             // copySelection is multi-bewust; kleine offset zodat de kopie zichtbaar is.
             if (selection && !copySelection(selection, 500, 0)) {
-              notifyWarning("Niets te dupliceren",
-                "De selectie bevat geen knopen, staven of platen.");
+              notifyWarning(i18next.t("common:canvas.transform.nothingToDuplicate"),
+                i18next.t("common:canvas.transform.emptySelection"));
             }
           }}>
-            Dupliceer
+            {tCommon("canvas.contextMenu.duplicate")}
           </button>
           <button onClick={() => { setContextMenu(null); deleteSelected(); }} style={{ color: "#e94560" }}>
-            Verwijder
+            {tCommon("canvas.contextMenu.delete")}
           </button>
         </div>
       )}
@@ -4868,7 +4881,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         p.kind === "xSpring" ? "xSpring" : "rotSpring";
       const label = p.kind === "rotSpring" ? "kθ (kNm/rad)" : "k (kN/mm)";
       return <PopoverSingleNumberForm
-        title={p.kind === "rotSpring" ? "Rot-veer toevoegen" : "Veer toevoegen"}
+        title={p.kind === "rotSpring" ? tCommon("canvas.popover.addRotSpring") : tCommon("canvas.popover.addSpring")}
         label={label}
         defaultValue={10}
         onSubmit={(v) => cbs.onAddSupport(supportType, v)}
@@ -4902,7 +4915,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         beamLenM={opStaaf || opPlaat ? lenM : undefined}
         defaultPosM={opStaaf || opPlaat ? (p.posFrac ?? 0) * lenM : undefined}
         positieLabel={opPlaat
-          ? `Afstand langs ${plaatRandLabel(p)} van plaat ${p.plateId}, vanaf de beginhoek (0 – ${lenM.toFixed(2)} m).`
+          ? tCommon("canvas.popover.positionAlongEdge", { rand: plaatRandLabel(p), plaat: p.plateId, lengte: lenM.toFixed(2) })
           : undefined}
         onSubmit={(fx, fz, posFrac) => cbs.onAddLoad(
           opPlaat
@@ -4923,8 +4936,8 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (p.kind === "moment") {
       const w = lastwaarden("moment");
       return <PopoverSingleNumberForm
-        title="Moment toevoegen" label="My (kNm)" defaultValue={w.my ?? 5}
-        hint={isOnthouden("moment") ? ONTHOUDEN_HINT : undefined}
+        title={tCommon("canvas.popover.addMoment")} label="My (kNm)" defaultValue={w.my ?? 5}
+        hint={isOnthouden("moment") ? tCommon("canvas.popover.rememberedHint") : undefined}
         onSubmit={(my) => cbs.onAddLoad({ type: "pointMoment", nodeId: p.nodeId, my })}
       />;
     }
@@ -4949,8 +4962,8 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (p.kind === "thermal") {
       const w = lastwaarden("temperatuur");
       return <PopoverSingleNumberForm
-        title="Temperatuurlast" label="ΔT (K)" defaultValue={w.deltaT ?? 20}
-        hint={isOnthouden("temperatuur") ? ONTHOUDEN_HINT : undefined}
+        title={tCommon("canvas.popover.thermalLoad")} label="ΔT (K)" defaultValue={w.deltaT ?? 20}
+        hint={isOnthouden("temperatuur") ? tCommon("canvas.popover.rememberedHint") : undefined}
         onSubmit={(deltaT) => cbs.onAddLoad({ type: "thermal", beamId: p.beamId, deltaT })}
       />;
     }
@@ -4967,10 +4980,10 @@ export default function FemCanvas(props: FemCanvasProps) {
       const randLenM = (randGeo?.lengteMm ?? 0) / 1000;
       return <PopoverEdgeLoadForm
         randLabel={p.openingId !== undefined
-          ? `rand ${(p.edgeIndex ?? 0) + 1} van opening ${p.openingId}`
+          ? tCommon("canvas.edge.numberedOfOpening", { rand: (p.edgeIndex ?? 0) + 1, opening: p.openingId })
           : p.edgeIndex !== undefined
-            ? `rand ${p.edgeIndex + 1}`
-            : RAND_LABEL[p.edge ?? "top"]}
+            ? tCommon("canvas.edge.numbered", { rand: p.edgeIndex + 1 })
+            : randLabel(p.edge ?? "top")}
         randLenM={randLenM}
         startP={w.q ?? -5}
         startDir={w.qDir ?? "z"}
@@ -5009,34 +5022,34 @@ function lastSoortVanPopover(
   }
 }
 
-/** Regel onder een voorgevuld veld dat zijn waarde uit de vorige plaatsing
- *  overneemt — zodat niemand zich afvraagt waar die 8 kN/m vandaan komt. */
-const ONTHOUDEN_HINT = "Waarde overgenomen van je vorige plaatsing.";
+// Regel onder een voorgevuld veld dat zijn waarde uit de vorige plaatsing
+// overneemt — zodat niemand zich afvraagt waar die 8 kN/m vandaan komt:
+// sleutel `canvas.popover.rememberedHint`.
 
 function toolLabel(t: Tool): string {
   switch (t) {
-    case "select":     return "Selecteren";
-    case "addNode":    return "Knoop";
-    case "addBeam":    return "Staaf";
-    case "addSubNode": return "Subknoop";
-    case "addPlate":   return "Plaat";
-    case "addOpening": return "Opening";
-    case "addPinned":  return "Scharnier";
-    case "addFixed":   return "Inklemming";
-    case "addXRoller": return "X-Rol";
-    case "addZRoller": return "Z-Rol";
-    case "addZSpring": return "Z-Veer";
-    case "addXSpring": return "X-Veer";
-    case "addRotSpring": return "Rot-Veer";
-    case "addPointLoad": return "Puntlast (V)";
-    case "addPointLoadH": return "Puntlast (H)";
-    case "addMoment":  return "Moment";
-    case "addLineLoad": return "Lijnlast";
-    case "addThermal": return "Temperatuur";
-    case "move":       return "Verplaatsen";
-    case "copy":       return "Kopiëren";
-    case "rotate":     return "Roteren";
-    case "mirror":     return "Spiegelen";
+    case "select":     return i18next.t("common:canvas.tool.select");
+    case "addNode":    return i18next.t("common:canvas.tool.addNode");
+    case "addBeam":    return i18next.t("common:canvas.tool.addBeam");
+    case "addSubNode": return i18next.t("common:canvas.tool.addSubNode");
+    case "addPlate":   return i18next.t("common:canvas.tool.addPlate");
+    case "addOpening": return i18next.t("common:canvas.tool.addOpening");
+    case "addPinned":  return i18next.t("common:canvas.tool.addPinned");
+    case "addFixed":   return i18next.t("common:canvas.tool.addFixed");
+    case "addXRoller": return i18next.t("common:canvas.tool.addXRoller");
+    case "addZRoller": return i18next.t("common:canvas.tool.addZRoller");
+    case "addZSpring": return i18next.t("common:canvas.tool.addZSpring");
+    case "addXSpring": return i18next.t("common:canvas.tool.addXSpring");
+    case "addRotSpring": return i18next.t("common:canvas.tool.addRotSpring");
+    case "addPointLoad": return i18next.t("common:canvas.tool.addPointLoad");
+    case "addPointLoadH": return i18next.t("common:canvas.tool.addPointLoadH");
+    case "addMoment":  return i18next.t("common:canvas.tool.addMoment");
+    case "addLineLoad": return i18next.t("common:canvas.tool.addLineLoad");
+    case "addThermal": return i18next.t("common:canvas.tool.addThermal");
+    case "move":       return i18next.t("common:canvas.tool.move");
+    case "copy":       return i18next.t("common:canvas.tool.copy");
+    case "rotate":     return i18next.t("common:canvas.tool.rotate");
+    case "mirror":     return i18next.t("common:canvas.tool.mirror");
   }
 }
 
@@ -5054,6 +5067,7 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
   onSubmit: (newMm: number) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation("common");
   const [val, setVal] = useState((currentMm / 1000).toFixed(2));
   const commit = () => {
     const m = parseFloat(val);
@@ -5063,10 +5077,10 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
   return (
     <div className="fem-popover-form">
       <div className="fem-popover-title">
-        Maat {axis === "x" ? "X-stramien" : "Z-niveau"} bewerken
+        {axis === "x" ? t("canvas.dim.editXAxis") : t("canvas.dim.editZLevel")}
       </div>
       <label className="fem-popover-row">
-        <span>Afstand (m)</span>
+        <span>{t("canvas.dim.distance")}</span>
         <input
           type="number" step="0.1" min="0.01" value={val} autoFocus
           onChange={e => setVal(e.target.value)}
@@ -5079,15 +5093,16 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
       </label>
       <div className="fem-popover-hint">
         {meeschuivendeKnopen > 0
-          ? (meeschuivendeKnopen === 1
-            ? `1 knoop op ${axis === "x" ? "deze as" : "dit niveau"} schuift mee.`
-            : `${meeschuivendeKnopen} knopen op ${axis === "x" ? "deze as" : "dit niveau"} schuiven mee.`)
-          : `Geen knopen op ${axis === "x" ? "deze as" : "dit niveau"} — alleen de `
-            + `${axis === "x" ? "stramienlijn" : "niveaulijn"} verschuift.`}
+          ? (axis === "x"
+            ? t("canvas.dim.nodesMoveWithAxis", { count: meeschuivendeKnopen })
+            : t("canvas.dim.nodesMoveWithLevel", { count: meeschuivendeKnopen }))
+          : (axis === "x"
+            ? t("canvas.dim.noNodesOnAxis")
+            : t("canvas.dim.noNodesOnLevel"))}
       </div>
       <div className="fem-popover-actions">
-        <button onClick={onCancel}>Annuleer</button>
-        <button onClick={commit} className="fem-popover-primary">OK</button>
+        <button onClick={onCancel}>{t("canvas.dim.cancel")}</button>
+        <button onClick={commit} className="fem-popover-primary">{t("ok")}</button>
       </div>
     </div>
   );
@@ -5100,6 +5115,7 @@ function PopoverSingleNumberForm({ title, label, defaultValue, hint, onSubmit }:
     hint?: string;
     onSubmit: (v: number) => void;
   }) {
+  const { t } = useTranslation("common");
   const [val, setVal] = useState(String(defaultValue));
   return (
     <div className="fem-popover-form">
@@ -5114,7 +5130,7 @@ function PopoverSingleNumberForm({ title, label, defaultValue, hint, onSubmit }:
       </label>
       {hint && <div className="fem-popover-hint">{hint}</div>}
       <div className="fem-popover-actions">
-        <button onClick={() => onSubmit(Number(val) || 0)} className="fem-popover-primary">OK</button>
+        <button onClick={() => onSubmit(Number(val) || 0)} className="fem-popover-primary">{t("ok")}</button>
       </div>
     </div>
   );
@@ -5132,6 +5148,7 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
   /** startFrac/endFrac zijn undefined bij volle lengte (default-gedrag). */
   onSubmit: (q: number, qDir: "x" | "z", startFrac?: number, endFrac?: number) => void;
 }) {
+  const { t } = useTranslation("common");
   const [q, setQ]     = useState(String(startQ));
   const [dir, setDir] = useState<"x" | "z">(startDir);
   // Deellast-invoer in m VANAF DE STARTKNOOP (zelfde eenheid als de
@@ -5153,12 +5170,12 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
   };
   return (
     <div className="fem-popover-form">
-      <div className="fem-popover-title">Lijnlast toevoegen</div>
+      <div className="fem-popover-title">{t("canvas.popover.addLineLoad")}</div>
       <label className="fem-popover-row">
-        <span>Richting</span>
+        <span>{t("canvas.popover.direction")}</span>
         <select value={dir} onChange={e => setDir(e.target.value as "x" | "z")}>
-          <option value="z">Verticaal (+Z, gravitatie)</option>
-          <option value="x">Horizontaal (+X, wind)</option>
+          <option value="z">{t("canvas.popover.directionVertical")}</option>
+          <option value="x">{t("canvas.popover.directionHorizontal")}</option>
         </select>
       </label>
       <label className="fem-popover-row">
@@ -5170,9 +5187,9 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
-      {onthouden && <div className="fem-popover-hint">{ONTHOUDEN_HINT}</div>}
+      {onthouden && <div className="fem-popover-hint">{t("canvas.popover.rememberedHint")}</div>}
       <label className="fem-popover-row">
-        <span>Begin (m)</span>
+        <span>{t("canvas.popover.beginM")}</span>
         <input
           type="number" step="0.1" min="0" max={beamLenM} value={beginM}
           onChange={e => setBeginM(e.target.value)}
@@ -5180,7 +5197,7 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
         />
       </label>
       <label className="fem-popover-row">
-        <span>Einde (m)</span>
+        <span>{t("canvas.popover.endM")}</span>
         <input
           type="number" step="0.1" min="0" max={beamLenM} value={endM}
           onChange={e => setEndM(e.target.value)}
@@ -5188,16 +5205,15 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
         />
       </label>
       <div className="fem-popover-hint">
-        Negatief = tegen +richting in (downward voor Z, links voor X).
-        Begin/einde vanaf de startknoop; 0 t/m {beamLenM.toFixed(2)} m = volle lengte.
+        {t("canvas.popover.lineLoadHint", { lengte: beamLenM.toFixed(2) })}
       </div>
       {!rangeValid && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
-          Ongeldig bereik: 0 ≤ begin &lt; einde ≤ {beamLenM.toFixed(2)} m
+          {t("canvas.popover.invalidRange", { lengte: beamLenM.toFixed(2) })}
         </div>
       )}
       <div className="fem-popover-actions">
-        <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>OK</button>
+        <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>{t("ok")}</button>
       </div>
     </div>
   );
@@ -5222,6 +5238,7 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
   /** startFrac/endFrac zijn undefined bij de volle rand (default-gedrag). */
   onSubmit: (p: number, dir: "x" | "z", startFrac?: number, endFrac?: number) => void;
 }) {
+  const { t } = useTranslation("common");
   const [p, setP] = useState(String(startP));
   const [dir, setDir] = useState<"x" | "z">(startDir);
   // Deellast-invoer in m VANAF DE BEGINHOEK van de rand (hoek i bij een
@@ -5244,12 +5261,12 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
   };
   return (
     <div className="fem-popover-form">
-      <div className="fem-popover-title">Randlast op {randLabel}</div>
+      <div className="fem-popover-title">{t("canvas.popover.edgeLoadOn", { rand: randLabel })}</div>
       <label className="fem-popover-row">
-        <span>Richting</span>
+        <span>{t("canvas.popover.direction")}</span>
         <select value={dir} onChange={e => setDir(e.target.value as "x" | "z")}>
-          <option value="z">Verticaal (+Z, gravitatie)</option>
-          <option value="x">Horizontaal (+X, wind)</option>
+          <option value="z">{t("canvas.popover.directionVertical")}</option>
+          <option value="x">{t("canvas.popover.directionHorizontal")}</option>
         </select>
       </label>
       <label className="fem-popover-row">
@@ -5261,9 +5278,9 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
-      {onthouden && <div className="fem-popover-hint">{ONTHOUDEN_HINT}</div>}
+      {onthouden && <div className="fem-popover-hint">{t("canvas.popover.rememberedHint")}</div>}
       <label className="fem-popover-row">
-        <span>Begin (m)</span>
+        <span>{t("canvas.popover.beginM")}</span>
         <input
           type="number" step="0.1" min="0" max={randLenM} value={beginM}
           onChange={e => setBeginM(e.target.value)}
@@ -5271,7 +5288,7 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
         />
       </label>
       <label className="fem-popover-row">
-        <span>Einde (m)</span>
+        <span>{t("canvas.popover.endM")}</span>
         <input
           type="number" step="0.1" min="0" max={randLenM} value={endM}
           onChange={e => setEndM(e.target.value)}
@@ -5279,17 +5296,15 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
         />
       </label>
       <div className="fem-popover-hint">
-        p werkt per meter randlengte. Negatief = tegen de +richting in
-        (omlaag voor Z, links voor X). Begin/einde vanaf de beginhoek van de
-        rand; 0 t/m {randLenM.toFixed(2)} m = de volle rand.
+        {t("canvas.popover.edgeLoadHint", { lengte: randLenM.toFixed(2) })}
       </div>
       {!rangeValid && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
-          Ongeldig bereik: 0 ≤ begin &lt; einde ≤ {randLenM.toFixed(2)} m
+          {t("canvas.popover.invalidRange", { lengte: randLenM.toFixed(2) })}
         </div>
       )}
       <div className="fem-popover-actions">
-        <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>OK</button>
+        <button onClick={commit} className="fem-popover-primary" disabled={!rangeValid}>{t("ok")}</button>
       </div>
     </div>
   );
@@ -5317,6 +5332,7 @@ function PopoverPointLoadForm({
 }) {
   // De horizontale variant focust Fx, de verticale Fz. De waarden zelf komen
   // van de aanroeper (waardegeheugen, of de beginwaarden +10 / −10 kN).
+  const { t } = useTranslation("common");
   const [fx, setFx] = useState(String(startFx));
   const [fz, setFz] = useState(String(startFz));
   // Positie op de staaf in m vanaf de startknoop; intern omgerekend naar een
@@ -5335,15 +5351,15 @@ function PopoverPointLoadForm({
   return (
     <div className="fem-popover-form">
       <div className="fem-popover-title">
-        {horizontal ? "Horizontale puntlast toevoegen" : "Puntlast toevoegen"}
+        {horizontal ? t("canvas.popover.addPointLoadH") : t("canvas.popover.addPointLoad")}
       </div>
       {opStaaf && (
         <label className="fem-popover-row">
-          <span>Positie (m)</span>
+          <span>{t("canvas.popover.positionM")}</span>
           <input
             type="number" step="0.05" min="0" max={beamLenM}
             value={posM} onChange={e => setPosM(e.target.value)}
-            title={positieLabel ?? `Afstand vanaf de startknoop van de staaf (0 – ${beamLenM!.toFixed(2)} m).`}
+            title={positieLabel ?? t("canvas.popover.positionAlongBeam", { lengte: beamLenM!.toFixed(2) })}
             onKeyDown={e => { if (e.key === "Enter") commit(); }}
           />
         </label>
@@ -5360,14 +5376,14 @@ function PopoverPointLoadForm({
           autoFocus={!horizontal} onFocus={e => e.target.select()}
           onKeyDown={e => { if (e.key === "Enter") commit(); }} />
       </label>
-      {onthouden && <div className="fem-popover-hint">{ONTHOUDEN_HINT}</div>}
+      {onthouden && <div className="fem-popover-hint">{t("canvas.popover.rememberedHint")}</div>}
       {opStaaf && !posGeldig && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
-          Ongeldige positie: 0 ≤ positie ≤ {beamLenM!.toFixed(2)} m
+          {t("canvas.popover.invalidPosition", { lengte: beamLenM!.toFixed(2) })}
         </div>
       )}
       <div className="fem-popover-actions">
-        <button onClick={commit} className="fem-popover-primary" disabled={!posGeldig}>OK</button>
+        <button onClick={commit} className="fem-popover-primary" disabled={!posGeldig}>{t("ok")}</button>
       </div>
     </div>
   );

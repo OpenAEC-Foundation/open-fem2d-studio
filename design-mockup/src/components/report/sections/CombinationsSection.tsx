@@ -71,7 +71,7 @@ export default function CombinationsSection() {
                   <tr key={c.id} className={weg ? "rpt-rij-gedempt" : undefined}>
                     <td>
                       {c.name}
-                      {c.standaard ? "" : " (eigen)"}
+                      {c.standaard ? "" : ` (${t("report.comboEigen")})`}
                       {weg ? ` — ${weg.label}` : ""}
                     </td>
                     <td>
@@ -95,23 +95,20 @@ export default function CombinationsSection() {
 
           {combinatieVervanging && (
             <p className="rpt-note">
-              Combinaties vervangen bij het openen van het project: {combinatieVervanging}
+              {t("report.comboVervangen", { vervanging: combinatieVervanging })}
             </p>
           )}
 
           <p className="rpt-note">
             {klassen.length > 0
-              ? `Standaardcombinaties: afgeleid uit de belastinggevallen, met γ uit NEN-EN 1990 ` +
-                `${klassen.map((k) => PARTIELE_FACTOREN[k].bron).join(" en ")} en ψ uit tabel ` +
-                "NB.2–A1.1 (veranderlijke belasting per gebruikscategorie, zonder categorie A). " +
-                "Elk veranderlijk belastinggeval staat in combinaties mét en zonder dat geval " +
-                "(\"zonder …\"): een veranderlijke belasting telt alleen waar ze ongunstig werkt " +
-                "(vrije belasting, NEN-EN 1991-1-1 6.2.1(1)P)."
-              : "Geen van de combinaties is een standaardcombinatie."}
+              ? t("report.comboStandaardNoot", {
+                  bronnen: klassen
+                    .map((k) => PARTIELE_FACTOREN[k].bron)
+                    .join(` ${t("report.woordEn")} `),
+                })
+              : t("report.comboGeenStandaard")}
             {aantalEigen > 0
-              ? ` ${aantalEigen} combinatie(s) gemarkeerd met "(eigen)" zijn door de gebruiker ` +
-                "opgesteld, hernoemd of aangepast; hun factoren zijn niet door het programma " +
-                "afgeleid, maar wel gecontroleerd (zie de meldingen hieronder)."
+              ? ` ${t("report.comboEigenNoot", { aantal: aantalEigen, eigen: t("report.comboEigen") })}`
               : ""}
           </p>
 
@@ -119,7 +116,10 @@ export default function CombinationsSection() {
             <div className="rpt-note rpt-melding-fout">
               <ul>
                 {meldingen.map((m, i) => (
-                  <li key={i}>{m.niveau === "fout" ? "FOUT: " : "Let op: "}{m.tekst}</li>
+                  <li key={i}>
+                    {m.niveau === "fout" ? t("report.meldingFout") : t("report.meldingLetOp")}:{" "}
+                    {m.tekst}
+                  </li>
                 ))}
               </ul>
             </div>

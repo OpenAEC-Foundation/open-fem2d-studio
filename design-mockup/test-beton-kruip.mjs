@@ -418,7 +418,11 @@ log("\n[7] De doorvoer in App.tsx (bronteksttoets)");
   checkWaar("App.tsx geeft de projectkruipcoëfficiënt aan de staven mee",
     /standaardPhiInfT0:\s*fem\.betonKruipcoefficient/.test(app));
   checkWaar("App.tsx meldt het wanneer er zonder kruip is gerekend",
-    /zonderKruip\.size > 0/.test(app) && /Zonder kruip gerekend/.test(app));
+    /zonderKruip\.size > 0/.test(app) && /i18next\.t\("common:app\.creep\.title"\)/.test(app) &&
+      // De meldtekst loopt via i18n: de bron noemt de sleutel, de
+      // Nederlandse locale de tekst die de gebruiker ziet.
+      JSON.parse(readFileSync(join(HIER, "src", "i18n", "locales", "nl", "common.json"), "utf8"))
+        .app?.creep?.title === "Zonder kruip gerekend");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

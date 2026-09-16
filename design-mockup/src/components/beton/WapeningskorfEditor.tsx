@@ -19,6 +19,7 @@
  * rijen — staat in [`KorfVelden`], omdat de profielkiezer dezelfde velden
  * toont. Eén component, twee plaatsen, één gegeven; zie de tekst daar.
  */
+import { useTranslation } from "react-i18next";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
@@ -53,6 +54,7 @@ export default function WapeningskorfEditor({
   staalsoorten,
   milieuklassen,
 }: Props) {
+  const { t } = useTranslation("check");
   const zet = (patch: Partial<Wapeningskorf>) => onChange({ ...waarde, ...patch });
   const d = waarde.doorsnede;
   const heeftFlens = d.shape !== "Rectangle";
@@ -86,35 +88,35 @@ export default function WapeningskorfEditor({
   return (
     <div className="beton-form">
       <div className="beton-groep">
-        <div className="beton-groep-kop">Doorsnede</div>
+        <div className="beton-groep-kop">{t("concrete.cageEditor.section")}</div>
         <label className="beton-rij" htmlFor="beton-vorm">
-          <span className="beton-label">Vorm</span>
+          <span className="beton-label">{t("concrete.cageEditor.shape")}</span>
           <select
             id="beton-vorm"
             className="beton-invoer"
             value={d.shape}
             onChange={(e) => zetVorm(e.target.value as ConcreteShape)}
           >
-            <option value="Rectangle">rechthoek</option>
-            <option value="Tee">T-ligger</option>
-            <option value="Ell">L-ligger (randligger)</option>
+            <option value="Rectangle">{t("concrete.cageEditor.shapeRectangle")}</option>
+            <option value="Tee">{t("concrete.cageEditor.shapeTee")}</option>
+            <option value="Ell">{t("concrete.cageEditor.shapeEll")}</option>
           </select>
         </label>
         <Getal
           id="beton-b"
-          label={heeftFlens ? "Flensbreedte b_eff" : "Breedte b"}
+          label={heeftFlens ? t("concrete.cageEditor.flangeWidth") : t("concrete.cageEditor.width")}
           eenheid="mm"
           waarde={d.b_mm}
           min={50}
           stap={10}
           onChange={(v) => zetDoorsnede({ b_mm: v })}
         />
-        <Getal id="beton-h" label="Hoogte h" eenheid="mm" waarde={d.h_mm} min={50} stap={10} onChange={(v) => zetDoorsnede({ h_mm: v })} />
+        <Getal id="beton-h" label={t("concrete.cageEditor.height")} eenheid="mm" waarde={d.h_mm} min={50} stap={10} onChange={(v) => zetDoorsnede({ h_mm: v })} />
         {heeftFlens && (
           <>
             <Getal
               id="beton-bw"
-              label="Lijfbreedte b_w"
+              label={t("concrete.cageEditor.webWidth")}
               eenheid="mm"
               waarde={d.b_w_mm ?? 0}
               min={50}
@@ -123,7 +125,7 @@ export default function WapeningskorfEditor({
             />
             <Getal
               id="beton-hf"
-              label="Flensdikte h_f"
+              label={t("concrete.cageEditor.flangeThickness")}
               eenheid="mm"
               waarde={d.h_f_mm ?? 0}
               min={20}
@@ -131,35 +133,31 @@ export default function WapeningskorfEditor({
               onChange={(v) => zetDoorsnede({ h_f_mm: v })}
             />
             <label className="beton-rij" htmlFor="beton-flenszijde">
-              <span className="beton-label">Flens ligt</span>
+              <span className="beton-label">{t("concrete.cageEditor.flangePosition")}</span>
               <select
                 id="beton-flenszijde"
                 className="beton-invoer"
                 value={d.flange_at_bottom ? "onder" : "boven"}
                 onChange={(e) => zetDoorsnede({ flange_at_bottom: e.target.value === "onder" })}
               >
-                <option value="boven">boven (ligger onder een vloer)</option>
-                <option value="onder">onder (omgekeerde T)</option>
+                <option value="boven">{t("concrete.cageEditor.flangeTop")}</option>
+                <option value="onder">{t("concrete.cageEditor.flangeBottom")}</option>
               </select>
             </label>
             <div className="beton-hint">
-              De flensbreedte hoort de MEEWERKENDE breedte b<sub>eff</sub> te zijn — 5.3.2.1(3),
-              vergelijking (5.7). Bij het toetsen van het model leidt de rekenkern hem af uit de
-              liggerlijn en vervangt hij de waarde die hier staat; het resultaat noemt altijd de
-              breedte waarmee gerekend is.
+              {t("concrete.cageEditor.effectiveWidthHintA")}<sub>eff</sub>{" "}
+              {t("concrete.cageEditor.effectiveWidthHintB")}
               {d.shape === "Ell" && (
                 <>
                   {" "}
-                  Een L rekent in dit uniaxiale model exact als een T; dat geldt alleen als de
-                  zijdelingse kromming verhinderd is, bijvoorbeeld door een vloerschijf. Die
-                  aanname staat in elk resultaat.
+                  {t("concrete.cageEditor.ellHint")}
                 </>
               )}
             </div>
           </>
         )}
         <label className="beton-rij" htmlFor="beton-klasse">
-          <span className="beton-label">Betonkwaliteit</span>
+          <span className="beton-label">{t("concrete.cageEditor.concreteGrade")}</span>
           <select id="beton-klasse" className="beton-invoer" value={waarde.betonklasse} onChange={(e) => zet({ betonklasse: e.target.value })}>
             {klasseNamen.map((n) => (
               <option key={n} value={n}>
@@ -175,7 +173,7 @@ export default function WapeningskorfEditor({
           </div>
         )}
         <label className="beton-rij" htmlFor="beton-staal">
-          <span className="beton-label">Wapeningsstaal</span>
+          <span className="beton-label">{t("concrete.cageEditor.reinforcementSteel")}</span>
           <select id="beton-staal" className="beton-invoer" value={waarde.staalsoort} onChange={(e) => zet({ staalsoort: e.target.value })}>
             {staalNamen.map((n) => (
               <option key={n} value={n}>
@@ -187,13 +185,13 @@ export default function WapeningskorfEditor({
         {staal && (
           <div className="beton-hint">
             f<sub>yk</sub> = {nl(staal.f_yk, 0)} N/mm², f<sub>yd</sub> = {nl(staal.f_yk / 1.15, 1)} N/mm² (γ<sub>S</sub> = 1,15),
-            klasse {staal.ductility_class}, ε<sub>uk</sub> = {nl(staal.eps_uk * 100, 1)} %
+            {t("concrete.cageEditor.ductilityClass")} {staal.ductility_class}, ε<sub>uk</sub> = {nl(staal.eps_uk * 100, 1)} %
           </div>
         )}
       </div>
 
       <div className="beton-groep">
-        <div className="beton-groep-kop">Wapeningskorf</div>
+        <div className="beton-groep-kop">{t("concrete.cageEditor.cage")}</div>
         <KorfVelden
           idPrefix="beton"
           korf={waarde.korf}
@@ -208,10 +206,10 @@ export default function WapeningskorfEditor({
       </div>
 
       <div className="beton-groep">
-        <div className="beton-groep-kop">Berekening</div>
+        <div className="beton-groep-kop">{t("concrete.cageEditor.calculation")}</div>
         <Getal
           id="beton-stroken"
-          label="Aantal stroken"
+          label={t("concrete.cageEditor.strips")}
           waarde={waarde.aantalStroken}
           min={5}
           max={2000}
@@ -219,18 +217,17 @@ export default function WapeningskorfEditor({
           onChange={(v) => zet({ aantalStroken: Math.max(1, Math.round(v)) })}
         />
         <div className="beton-hint">
-          In hoeveel delen de doorsnede voor de integratie van de betonspanning wordt opgeknipt.
-          De fout neemt kwadratisch af; bij 50 stroken is hij kleiner dan 0,05 %.
+          {t("concrete.cageEditor.stripsHint")}
         </div>
         <label className="beton-rij" htmlFor="beton-staaltak">
-          <span className="beton-label">Staaldiagram</span>
+          <span className="beton-label">{t("concrete.cageEditor.steelDiagram")}</span>
           <select id="beton-staaltak" className="beton-invoer" value={waarde.staaltak} onChange={(e) => zet({ staaltak: e.target.value as SteelBranch })}>
-            <option value="Horizontal">horizontale bovenste tak (3.2.7(2)b)</option>
-            <option value="Inclined">hellende bovenste tak, ε_ud = 0,9·ε_uk (3.2.7(2)a)</option>
+            <option value="Horizontal">{t("concrete.cageEditor.branchHorizontal")}</option>
+            <option value="Inclined">{t("concrete.cageEditor.branchInclined")}</option>
           </select>
         </label>
-        <Getal id="beton-ned" label="N_Ed voor het diagram" eenheid="kN" waarde={nEdKn} stap={10} onChange={onNEdChange} />
-        <div className="beton-hint">Druk negatief, trek positief.</div>
+        <Getal id="beton-ned" label={t("concrete.cageEditor.nEdForDiagram")} eenheid="kN" waarde={nEdKn} stap={10} onChange={onNEdChange} />
+        <div className="beton-hint">{t("concrete.cageEditor.signConvention")}</div>
       </div>
     </div>
   );

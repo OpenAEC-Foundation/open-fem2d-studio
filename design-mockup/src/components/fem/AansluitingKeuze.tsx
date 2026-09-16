@@ -11,16 +11,19 @@
  * einde staan.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import type { BeamEindVeren, BeamReleases } from "./femTypes";
 import "./AansluitingKeuze.css";
 
 export type AansluitDof = "Tx" | "Tz" | "Ry";
 export type AansluitSoort = "vast" | "scharnier" | "veer";
 
+/** `titel` is een i18n-sleutel (naamruimte check), vertaald bij het tonen. */
 export const AANSLUIT_DOFS: { dof: AansluitDof; label: string; titel: string; eenheid: string; stap: number; standaard: number }[] = [
-  { dof: "Tx", label: "N", titel: "Normaalkracht — verplaatsing langs de staafas", eenheid: "kN/mm", stap: 10, standaard: 100 },
-  { dof: "Tz", label: "V", titel: "Dwarskracht — verplaatsing loodrecht op de staaf", eenheid: "kN/mm", stap: 10, standaard: 100 },
-  { dof: "Ry", label: "M", titel: "Moment — rotatie", eenheid: "kNm/rad", stap: 100, standaard: 5000 },
+  { dof: "Tx", label: "N", titel: "connection.dof.Tx", eenheid: "kN/mm", stap: 10, standaard: 100 },
+  { dof: "Tz", label: "V", titel: "connection.dof.Tz", eenheid: "kN/mm", stap: 10, standaard: 100 },
+  { dof: "Ry", label: "M", titel: "connection.dof.Ry", eenheid: "kNm/rad", stap: 100, standaard: 5000 },
 ];
 
 type Sleutel = keyof BeamReleases & keyof BeamEindVeren;
@@ -69,7 +72,7 @@ export function aansluitingSamenvatting(
 ): string {
   return AANSLUIT_DOFS.map((d) => {
     const a = aansluitingVan(releases, veren, zijde, d.dof);
-    return `${d.label} ${a.soort === "veer" ? `veer ${a.k} ${d.eenheid}` : a.soort}`;
+    return `${d.label} ${a.soort === "veer" ? i18next.t("check:connection.springSummary", { k: a.k, eenheid: d.eenheid }) : i18next.t(`check:connection.type.${a.soort}`)}`;
   }).join(" · ");
 }
 
@@ -81,6 +84,7 @@ export default function AansluitingKeuze({
   veren: BeamEindVeren | undefined;
   onChange: (waarde: { releases: BeamReleases | undefined; veren: BeamEindVeren | undefined }) => void;
 }) {
+  const { t } = useTranslation("check");
   // De ruwe tekst van het k-veld per DOF, zodat een leeg of half getypt veld
   // niet meteen terugvalt op "vast" (een veer zonder getal IS star, maar dat
   // hoort de gebruiker pas te merken als hij het veld leeg laat).
@@ -92,7 +96,7 @@ export default function AansluitingKeuze({
         const bezig = tekst[d.dof] !== undefined;
         const soort: AansluitSoort = bezig ? "veer" : a.soort;
         return (
-          <div className="aansluiting-rij" key={d.dof} title={d.titel}>
+          <div className="aansluiting-rij" key={d.dof} title={t(d.titel)}>
             <span className="aansluiting-dof">{d.label}</span>
             <select
               value={soort}
@@ -100,17 +104,17 @@ export default function AansluitingKeuze({
                 const nieuw = e.target.value as AansluitSoort;
                 if (nieuw === "veer") {
                   const k = a.k ?? d.standaard;
-                  setTekst((t) => ({ ...t, [d.dof]: String(k) }));
+                  setTekst((x) => ({ ...x, [d.dof]: String(k) }));
                   onChange(zetAansluiting(releases, veren, zijde, d.dof, "veer", k));
                 } else {
-                  setTekst((t) => { const n = { ...t }; delete n[d.dof]; return n; });
+                  setTekst((x) => { const n = { ...x }; delete n[d.dof]; return n; });
                   onChange(zetAansluiting(releases, veren, zijde, d.dof, nieuw, null));
                 }
               }}
             >
-              <option value="vast">vast</option>
-              <option value="scharnier">scharnier</option>
-              <option value="veer">veer</option>
+              <option value="vast">{t("connection.type.vast")}</option>
+              <option value="scharnier">{t("connection.type.scharnier")}</option>
+              <option value="veer">{t("connection.type.veer")}</option>
             </select>
             {soort === "veer" && (
               <label className="aansluiting-veer">
@@ -119,10 +123,10 @@ export default function AansluitingKeuze({
                   type="number" min={0} step={d.stap}
                   value={bezig ? tekst[d.dof] : String(a.k ?? "")}
                   onChange={(e) => {
-                    const t = e.target.value;
-                    setTekst((x) => ({ ...x, [d.dof]: t }));
-                    const k = Number(t.replace(",", "."));
-                    if (t !== "" && Number.isFinite(k) && k > 0) {
+                    const waarde = e.target.value;
+                    setTekst((x) => ({ ...x, [d.dof]: waarde }));
+                    const k = Number(waarde.replace(",", "."));
+                    if (waarde !== "" && Number.isFinite(k) && k > 0) {
                       onChange(zetAansluiting(releases, veren, zijde, d.dof, "veer", k));
                     }
                   }}

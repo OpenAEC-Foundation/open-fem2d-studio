@@ -8,6 +8,7 @@
  * ("Ongedaan maken") hoort in dezelfde melding te staan als het bericht.
  */
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import "./Toast.css";
 
 export type ToastKind = "info" | "success" | "warning" | "soon";
@@ -38,6 +39,7 @@ export function pushToast(t: Omit<ToastData, "id">): void {
 
 /** React component — mount once near the root; it subscribes to `pushToast`. */
 export default function ToastHost() {
+  const { t: tCommon } = useTranslation("common");
   const [items, setItems] = useState<ToastData[]>([]);
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export default function ToastHost() {
               </button>
             )}
           </div>
-          <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Sluiten">×</button>
+          <button className="toast-close" onClick={() => dismiss(t.id)} aria-label={tCommon("close")}>×</button>
         </div>
       ))}
     </div>

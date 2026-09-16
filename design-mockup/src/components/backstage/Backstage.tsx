@@ -393,11 +393,11 @@ function OpenPanel({
     const diffMs = now.getTime() - d.getTime();
     const diffMin = Math.floor(diffMs / 60000);
     if (diffMin < 1) return t("openPanel.justNow", "Just now");
-    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffMin < 60) return t("openPanel.minutesAgo", { count: diffMin });
     const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffHr < 24) return t("openPanel.hoursAgo", { count: diffHr });
     const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 7) return `${diffDay}d ago`;
+    if (diffDay < 7) return t("openPanel.daysAgo", { count: diffDay });
     return d.toLocaleDateString();
   };
 

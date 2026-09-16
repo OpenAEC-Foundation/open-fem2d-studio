@@ -416,42 +416,42 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
       <div className="bar-props-dialog" onClick={(e) => e.stopPropagation()} role="dialog">
         <div className="bar-props-header">
           <h2 className="bar-props-title">
-            Eigenschappen staaf #{beam.id}
+            {t("barDialog.title", { id: beam.id })}
             {/* Zichtbaar dat er nog iets op OK wacht. */}
-            {gewijzigd && <span className="bar-props-dirty" title="Nog niet opgeslagen — bevestig met OK"> ●</span>}
+            {gewijzigd && <span className="bar-props-dirty" title={t("barDialog.unsaved")}> ●</span>}
           </h2>
-          <button className="bar-props-close" onClick={onClose} aria-label="Sluiten">×</button>
+          <button className="bar-props-close" onClick={onClose} aria-label={t("common:close")}>×</button>
         </div>
 
         <div className="bar-props-tabs">
           <button
             className={`bar-props-tab${tab === "general" ? " active" : ""}`}
             onClick={() => setTab("general")}
-          >Algemeen</button>
+          >{t("barDialog.tabGeneral")}</button>
           <button
             className={`bar-props-tab${tab === "norm" ? " active" : ""}`}
             onClick={() => setTab("norm")}
-          >{vrij ? "Spanning" : isTimber ? "EN 1995" : "EN 1993"}</button>
+          >{vrij ? t("barDialog.tabStress") : isTimber ? "EN 1995" : "EN 1993"}</button>
         </div>
 
         <div className="bar-props-body">
           {tab === "general" && (
             <>
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Geometrie</div>
+                <div className="bar-props-section-title">{t("barDialog.geometry")}</div>
                 <div className="bar-props-row"><span>ID</span><code>{beam.id}</code></div>
-                <div className="bar-props-row"><span>Knoop A</span><code>{beam.from}</code></div>
-                <div className="bar-props-row"><span>Knoop B</span><code>{beam.to}</code></div>
-                <div className="bar-props-row"><span>Lengte</span><code>{(length / 1000).toFixed(3)} m</code></div>
-                <div className="bar-props-row"><span>Hoek</span><code>{angle.toFixed(1)}°</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.nodeA")}</span><code>{beam.from}</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.nodeB")}</span><code>{beam.to}</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.length")}</span><code>{(length / 1000).toFixed(3)} m</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.angle")}</span><code>{angle.toFixed(1)}°</code></div>
               </div>
 
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Doorsnede</div>
+                <div className="bar-props-section-title">{t("barDialog.crossSection")}</div>
                 {/* Profiel en materiaal zijn één combinatie — de wizard
                     (ProfielKiezer) vervangt de losse invoervelden. */}
                 <div className="bar-props-row">
-                  <span>Profiel</span>
+                  <span>{t("barDialog.profile")}</span>
                   <code>{doorsnedeNaam({ material, profile, profileEnd })} — {material}</code>
                 </div>
                 {/* Begin en eind apart, met de maten erbij — alleen bij een
@@ -459,13 +459,13 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                 {verlopendeMaten && (
                   <>
                     <div className="bar-props-row">
-                      <span>Begin (knoop A)</span>
+                      <span>{t("barDialog.startNodeA")}</span>
                       <code>
                         h = {verlopendeMaten.begin.h} mm, b = {verlopendeMaten.begin.b} mm
                       </code>
                     </div>
                     <div className="bar-props-row">
-                      <span>Eind (knoop B)</span>
+                      <span>{t("barDialog.endNodeB")}</span>
                       <code>
                         h = {verlopendeMaten.eind.h} mm, b = {verlopendeMaten.eind.b} mm
                       </code>
@@ -477,9 +477,9 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   <button
                     className="bar-props-btn-secondary"
                     onClick={() => setKiezerOpen(true)}
-                    title="Kies profiel én materiaal in één stap (wizard)"
+                    title={t("barDialog.chooseProfileTitle")}
                   >
-                    Profiel kiezen…
+                    {t("barDialog.chooseProfile")}
                   </button>
                 </div>
                 {kiezerOpen && (
@@ -515,18 +515,18 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
               </div>
 
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Aansluitingen</div>
+                <div className="bar-props-section-title">{t("barDialog.connections")}</div>
                 <table className="bar-props-release-table">
                   <tbody>
                     <tr>
-                      <td>Start A</td>
+                      <td>{t("barDialog.startA")}</td>
                       <td>
                         <AansluitingKeuze zijde="start" releases={releases} veren={veren}
                           onChange={(w) => { setReleases(w.releases); setVeren(w.veren); }} />
                       </td>
                     </tr>
                     <tr>
-                      <td>Eind B</td>
+                      <td>{t("barDialog.endB")}</td>
                       <td>
                         <AansluitingKeuze zijde="end" releases={releases} veren={veren}
                           onChange={(w) => { setReleases(w.releases); setVeren(w.veren); }} />
@@ -535,22 +535,22 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   </tbody>
                 </table>
                 <div className="bar-props-hint">
-                  Per einde N, V en M: vast, scharnier (los) of veer met stijfheid — N en V in kN/mm, M in kNm/rad.
+                  {t("barDialog.connectionsHint")}
                 </div>
               </div>
 
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Staaf op bedding</div>
+                <div className="bar-props-section-title">{t("barDialog.foundation")}</div>
                 <label className="bar-props-hint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input type="checkbox" checked={beddingAan}
                     onChange={(e) => setBeddingAan(e.target.checked)} />
-                  Verend gesteund over de hele lengte (Winkler)
+                  {t("barDialog.foundationToggle")}
                 </label>
                 {beddingAan && (
                   <table className="bar-props-release-table">
                     <tbody>
                       <tr>
-                        <td>Beddingsconstante k</td>
+                        <td>{t("barDialog.foundationModulus")}</td>
                         <td>
                           <input type="text" inputMode="decimal" value={beddingKStr} style={{ width: 90 }}
                             onChange={(e) => setBeddingKStr(e.target.value)} />
@@ -558,10 +558,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                         <td>kN/m³</td>
                       </tr>
                       <tr>
-                        <td>Contactbreedte b</td>
+                        <td>{t("barDialog.contactWidth")}</td>
                         <td>
                           <input type="text" inputMode="decimal" value={beddingBStr} style={{ width: 90 }}
-                            placeholder="bijv. 300"
+                            placeholder={t("barDialog.contactWidthPlaceholder")}
                             onChange={(e) => setBeddingBStr(e.target.value)} />
                         </td>
                         <td>mm</td>
@@ -571,14 +571,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                 )}
                 <div className="bar-props-hint">
                   {beddingAan && !buildBedding()
-                    ? "Vul k én b groter dan nul in; anders wordt er geen bedding gezet."
-                    : "Lijnstijfheid k·b; de staaf wordt automatisch fijn genoeg geknipt op 1/λ = (4EI/(k·b))^¼."}
+                    ? t("barDialog.foundationIncomplete")
+                    : t("barDialog.foundationHint")}
                 </div>
               </div>
 
               {beamForces && (
                 <div className="bar-props-section">
-                  <div className="bar-props-section-title">Krachten (huidige resultaat)</div>
+                  <div className="bar-props-section-title">{t("barDialog.forces")}</div>
                   <div className="bar-props-row"><span>N</span><code>{(beamForces.N / 1000).toFixed(2)} kN</code></div>
                   <div className="bar-props-row"><span>V</span><code>{(beamForces.V / 1000).toFixed(2)} kN</code></div>
                   <div className="bar-props-row"><span>M_start</span><code>{(beamForces.M_start / 1e6).toFixed(2)} kNm</code></div>
@@ -591,14 +591,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
           {tab === "norm" && (
             <>
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Materiaal + doorsnede</div>
-                <div className="bar-props-row"><span>Materiaal</span><code>{material}</code></div>
-                <div className="bar-props-row"><span>Profiel</span><code>{doorsnedeNaam({ material, profile, profileEnd })}</code></div>
+                <div className="bar-props-section-title">{t("barDialog.materialAndSection")}</div>
+                <div className="bar-props-row"><span>{t("barDialog.material")}</span><code>{material}</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.profile")}</span><code>{doorsnedeNaam({ material, profile, profileEnd })}</code></div>
                 <div className="bar-props-row">
-                  <span>Norm</span>
+                  <span>{t("barDialog.standard")}</span>
                   <code>
                     {vrij
-                      ? "geen — toets op de vergelijkspanning"
+                      ? t("barDialog.standardNone")
                       : isTimber ? "NEN-EN 1995-1-1" : "NEN-EN 1993-1-1"}
                   </code>
                 </div>
@@ -606,7 +606,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
 
               {vrij && (
                 <div className="bar-props-section">
-                  <div className="bar-props-section-title">Vergelijkspanning</div>
+                  <div className="bar-props-section-title">{t("barDialog.equivalentStress")}</div>
                   <div className="bar-props-row">
                     <span>f_toel</span>
                     <code>
@@ -624,9 +624,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     />
                   </div>
                   <div className="bar-props-hint">
-                    Dwarsspanning loodrecht op de staafas, bijvoorbeeld een
-                    oplegdruk. Een staafelement rekent die niet zelf uit. Leeg of
-                    0 laat σ_eq = √(σ_x² + 3τ²) over.
+                    {t("barDialog.sigmaZHint")}
                   </div>
                 </div>
               )}
@@ -835,11 +833,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
               {deflectionSection}
 
               <div className="bar-props-section">
-                <div className="bar-props-section-title">Toetsing (UC)</div>
+                <div className="bar-props-section-title">{t("barDialog.checkTitle")}</div>
                 {memberResult ? (
                   <>
                     <table className="bar-props-uc-table">
-                      <thead><tr><th>Toets</th><th>UC</th><th>Status</th></tr></thead>
+                      <thead><tr><th>{t("barDialog.checkColumn")}</th><th>UC</th><th>{t("barDialog.statusColumn")}</th></tr></thead>
                       <tbody>
                         {memberResult.checks.map((named) => {
                           const calc = named.kind.data;
@@ -853,7 +851,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                                 status === "Ok" ? "bar-props-uc-ok" :
                                 status === "NotOk" ? "bar-props-uc-notok" : "bar-props-uc-pending"
                               }>
-                                {status === "Ok" ? "✓ OK" : status === "NotOk" ? "✗ Niet OK" : "N.v.t."}
+                                {status === "Ok" ? `✓ ${t("statusOk")}` : status === "NotOk" ? `✗ ${t("statusNotOk")}` : t("statusNa")}
                               </td>
                             </tr>
                           );
@@ -861,8 +859,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       </tbody>
                     </table>
                     <div className="bar-props-hint">
-                      Maatgevend: {memberResult.governing_check_id} — UC {memberResult.uc_max.toFixed(2)}.
-                      Volledige afleiding: tabblad Toetsing → Toetsingspaneel.
+                      {t("barDialog.governingLine", { toets: memberResult.governing_check_id, uc: memberResult.uc_max.toFixed(2) })}
                     </div>
                     {(isTimber === isSteelCheckResult(memberResult)) && (
                       <div className="bar-props-hint">{t("cfg.staleResultHint")}</div>
@@ -870,8 +867,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   </>
                 ) : (
                   <div className="bar-props-hint">
-                    Nog niet getoetst — draai de normtoetsing via het ribbon-tabblad
-                    "Toetsing" (knop "Staal + hout toetsen").
+                    {t("barDialog.notChecked")}
                   </div>
                 )}
               </div>
@@ -882,11 +878,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
         <div className="bar-props-footer">
           {gewijzigd && (
             <span className="bar-props-dirty-hint">
-              Nog niet opgeslagen — bevestig met OK
+              {t("barDialog.unsaved")}
             </span>
           )}
-          <button className="bar-props-btn-secondary" onClick={onClose}>Annuleer</button>
-          <button className="bar-props-btn-primary" onClick={handleConfirm}>OK</button>
+          <button className="bar-props-btn-secondary" onClick={onClose}>{t("barDialog.cancel")}</button>
+          <button className="bar-props-btn-primary" onClick={handleConfirm}>{t("common:ok")}</button>
         </div>
       </div>
     </div>

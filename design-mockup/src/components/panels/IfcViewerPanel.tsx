@@ -11,6 +11,7 @@
  */
 import { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import {
   bouwIfcRekenmodel,
   bouwIfcBoom,
@@ -70,7 +71,7 @@ function highlightStepLine(text: string): React.ReactNode {
         <a
           key={key++}
           className="step-entity-type step-link"
-          title={`${full} — BuildingSMART docs`}
+          title={i18next.t("ribbon:ifc.docsLink", { type: full })}
           onClick={(e) => openIfcDocs(full, e)}
         >
           {full}
@@ -132,10 +133,10 @@ function StepViewer({ content, bestandsnaam }: { content: string; bestandsnaam: 
         <span className="ifc-viewer-label">IFC4 STEP</span>
         <span className="ifc-viewer-stats">{lines.length} {t("ifc.lines")} &middot; {sizeLabel}</span>
         <div className="ifc-viewer-actions">
-          <button onClick={handleCopy} title="Kopieer naar klembord">
+          <button onClick={handleCopy} title={t("ifc.copyToClipboard")}>
             {copied ? "✓" : "⎘"}
           </button>
-          <button onClick={handleExport} title={`Opslaan als ${bestandsnaam}`}>
+          <button onClick={handleExport} title={t("ifc.saveAsFile", { naam: bestandsnaam })}>
             .ifc
           </button>
         </div>
@@ -177,6 +178,7 @@ const TYPE_COLORS: Record<string, string> = {
 function TreeItem({ node, depth = 0 }: { node: IfcBoomKnoop; depth?: number }) {
   // Standaard staat de hiërarchie tot en met het analysemodel open; de lange
   // lijsten met knopen en staven vouwt de gebruiker zelf open.
+  const { t } = useTranslation("ribbon");
   const [expanded, setExpanded] = useState(depth < 4);
   const hasChildren = node.kinderen && node.kinderen.length > 0;
   const color = TYPE_COLORS[node.type] || "var(--theme-text-secondary)";
@@ -198,7 +200,7 @@ function TreeItem({ node, depth = 0 }: { node: IfcBoomKnoop; depth?: number }) {
         <a
           className="ifc-tree-type step-link"
           style={{ color }}
-          title={`${node.type} — BuildingSMART docs`}
+          title={t("ifc.docsLink", { type: node.type })}
           onClick={(e) => openIfcDocs(node.type, e)}
         >{node.type}</a>
         <span className="ifc-tree-name">{node.naam}</span>
@@ -239,6 +241,7 @@ function RapportPane({
   ifc: string;
   beperkingen: string[];
 }) {
+  const { t } = useTranslation("ribbon");
   const validatie = useMemo(() => valideerIfc(ifc), [ifc]);
   const statistiek = useMemo(() => ifcStatistiek(ifc), [ifc]);
   const geldig = validatie.fouten.length === 0;
@@ -246,16 +249,16 @@ function RapportPane({
   return (
     <div className="ifc-viewer-pane">
       <div className="ifc-viewer-toolbar">
-        <span className="ifc-viewer-label">Validatie</span>
+        <span className="ifc-viewer-label">{t("ifc.validation")}</span>
         <span className="ifc-viewer-stats">
-          {validatie.entiteiten} entiteiten
+          {t("ifc.entitiesCount", { aantal: validatie.entiteiten })}
         </span>
       </div>
       <div className="ifc-viewer-code ifc-rapport">
         <div className={`ifc-rapport-kop ${geldig ? "ok" : "fout"}`}>
           {geldig
-            ? "Geldig IFC4-bestand — geen fouten gevonden."
-            : `${validatie.fouten.length} fout(en) gevonden.`}
+            ? t("ifc.validFile")
+            : t("ifc.errorsFound", { aantal: validatie.fouten.length })}
         </div>
 
         {validatie.fouten.length > 0 && (
@@ -265,17 +268,17 @@ function RapportPane({
         )}
         {validatie.waarschuwingen.length > 0 && (
           <>
-            <div className="ifc-rapport-titel">Waarschuwingen</div>
+            <div className="ifc-rapport-titel">{t("ifc.warnings")}</div>
             <ul className="ifc-rapport-lijst waarschuwing">
               {validatie.waarschuwingen.map((r, i) => <li key={i}>{r}</li>)}
             </ul>
           </>
         )}
 
-        <div className="ifc-rapport-titel">Niet in IFC uitgedrukt</div>
+        <div className="ifc-rapport-titel">{t("ifc.notExpressed")}</div>
         {beperkingen.length === 0 ? (
           <p className="ifc-rapport-tekst">
-            Het volledige model staat in het bestand.
+            {t("ifc.fullModelInFile")}
           </p>
         ) : (
           <ul className="ifc-rapport-lijst waarschuwing">
@@ -283,7 +286,7 @@ function RapportPane({
           </ul>
         )}
 
-        <div className="ifc-rapport-titel">Entiteiten</div>
+        <div className="ifc-rapport-titel">{t("ifc.entitiesHead")}</div>
         <table className="ifc-rapport-tabel">
           <tbody>
             {statistiek.map(({ type, aantal }) => (
@@ -291,7 +294,7 @@ function RapportPane({
                 <td>
                   <a
                     className="step-entity-type step-link"
-                    title={`${type} — BuildingSMART docs`}
+                    title={t("ifc.docsLink", { type })}
                     onClick={(e) => openIfcDocs(type, e)}
                   >{type}</a>
                 </td>
@@ -318,6 +321,7 @@ export interface IfcViewerPanelProps {
 }
 
 export default function IfcViewerPanel({ model }: IfcViewerPanelProps) {
+  const { t } = useTranslation("ribbon");
   const ifc = useMemo(
     () => (model ? bouwIfcRekenmodel(model) : ""),
     [model],
@@ -341,9 +345,7 @@ export default function IfcViewerPanel({ model }: IfcViewerPanelProps) {
           </div>
           <div className="ifc-viewer-code ifc-rapport">
             <p className="ifc-rapport-tekst">
-              Geen model beschikbaar in dit venster. Koppel de weergave terug
-              naar het hoofdvenster om de IFC-export van het geopende model te
-              zien.
+              {t("ifc.noModel")}
             </p>
           </div>
         </div>

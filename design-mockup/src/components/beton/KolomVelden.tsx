@@ -49,6 +49,7 @@
  * rapport. Ook hier mag geen tegenspraak ontstaan: `maakZConsistent` in
  * `kolomgegevens.ts` houdt het vakje om z bij de schoring om z.
  */
+import { useTranslation } from "react-i18next";
 import type { Beugelzone } from "../../lib/types/concrete/Beugelzone";
 import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
 import type { Knikgeval } from "../../lib/types/concrete/Knikgeval";
@@ -118,6 +119,7 @@ export default function KolomVelden({
   overwegendVerticaal,
   idPrefix = "kolom",
 }: Props) {
+  const { t } = useTranslation("check");
   // Elke wijziging loopt door `maakZConsistent`: het vakje om z mag nooit in
   // tegenspraak raken met de schoring om z — ook niet als de gebruiker de
   // schoring in het VLAK wisselt terwijl z die overneemt.
@@ -168,7 +170,7 @@ export default function KolomVelden({
   return (
     <>
       <label className="beton-rij" htmlFor={`${idPrefix}-schoring`}>
-        <span className="beton-label">Schoring</span>
+        <span className="beton-label">{t("concrete.column.bracing")}</span>
         <select
           id={`${idPrefix}-schoring`}
           className="beton-invoer"
@@ -177,31 +179,27 @@ export default function KolomVelden({
             kiesSchoring(e.target.value === "" ? null : (e.target.value as Schoring))
           }
         >
-          <option value="">— niet opgegeven, §5.8 wordt niet getoetst —</option>
+          <option value="">{t("concrete.column.bracingNotGiven")}</option>
           <option value="Geschoord">
-            Geschoord — draagt NIET bij aan de horizontale stabiliteit
+            {t("concrete.column.braced")}
           </option>
           <option value="Ongeschoord">
-            Ongeschoord (schorend) — draagt WEL bij aan de stabiliteit
+            {t("concrete.column.unbraced")}
           </option>
         </select>
       </label>
 
       {!waarde && (
         <div className="beton-hint">
-          Geschoord of ongeschoord is een ontwerpbesluit (art. 5.8.1) en wordt niet
-          uit het model afgeleid: een raamwerk mét windverband ziet er hier niet
-          anders uit dan hetzelfde raamwerk zonder. Zonder deze keuze blijft de
-          slankheidsgrens van 5.8.3.1 ongetoetst, met die reden in het rapport.
-          {overwegendVerticaal &&
-            " Deze staaf staat vrijwel verticaal; draagt hij normaaldruk, dan is 5.8 op hem van toepassing."}
+          {t("concrete.column.bracingHint")}
+          {overwegendVerticaal && " " + t("concrete.column.verticalHint")}
         </div>
       )}
 
       {waarde && (
         <>
           <label className="beton-rij" htmlFor={`${idPrefix}-knikgeval`}>
-            <span className="beton-label">Kniklengte l₀</span>
+            <span className="beton-label">{t("concrete.column.bucklingLength")}</span>
             <select
               id={`${idPrefix}-knikgeval`}
               className="beton-invoer"
@@ -216,7 +214,7 @@ export default function KolomVelden({
                   {g.label}
                 </option>
               ))}
-              <option value="Opgegeven">l₀ zelf opgeven…</option>
+              <option value="Opgegeven">{t("concrete.column.l0Custom")}</option>
             </select>
           </label>
 
@@ -235,13 +233,10 @@ export default function KolomVelden({
           <div className="beton-hint">
             {l0Mm !== null && lengteMm > 0 && (
               <>
-                l₀ = {toonM(l0Mm)} m bij een vrije lengte l = {toonM(lengteMm)} m.{" "}
+                {t("concrete.column.l0Info", { l0: toonM(l0Mm), l: toonM(lengteMm) })}{" "}
               </>
             )}
-            De gevallen f) en g) van figuur 5.7 — gedeeltelijke inklemming — staan
-            er niet bij: die vragen de relatieve flexibiliteit k = (θ/M)·(EI/l) van
-            elk staafeind, die uit een raamwerkmodel niet is af te lezen. Reken
-            (5.15) of (5.16) zelf door en kies dan "l₀ zelf opgeven".
+            {t("concrete.column.casesFgHint")}
           </div>
 
           {/* GetalOptioneel en niet Getal: leeg moet hier een BETEKENIS hebben.
@@ -259,20 +254,14 @@ export default function KolomVelden({
             onChange={(v) => zet({ phi_inf_t0: v })}
           />
           <div className="beton-hint">
-            Eindwaarde van de kruipcoëfficiënt volgens art. 3.1.4. Leeg = niet
-            opgegeven; art. 3.1.4 wordt hier niet gerekend, want dat vraagt de
-            relatieve luchtvochtigheid, de fictieve dikte h₀, de cementklasse en de
-            ouderdom t₀ bij eerste belasting. Zonder deze waarde blijft φ_ef
-            onbekend en rekent 5.8.3.1(1) met A = 0,7 — dat is niet de veilige
-            kant maar de waarde bij φ_ef ≈ 2,14. Om de z-as wordt e₂ dan zonder
-            kruip bepaald, en ook dat meldt het rapport.
+            {t("concrete.column.phiHint")}
           </div>
 
           {/* ── De tweede as ─────────────────────────────────────────── */}
-          <div className="beton-groep-kop">Om de z-as (loodrecht op het vlak) — art. 5.8.9</div>
+          <div className="beton-groep-kop">{t("concrete.column.zAxisHeader")}</div>
 
           <label className="beton-rij" htmlFor={`${idPrefix}-schoring-z`}>
-            <span className="beton-label">Schoring om z</span>
+            <span className="beton-label">{t("concrete.column.bracingZ")}</span>
             <select
               id={`${idPrefix}-schoring-z`}
               className="beton-invoer"
@@ -285,15 +274,20 @@ export default function KolomVelden({
               }
             >
               <option value="">
-                — gelijk aan in het vlak ({waarde.bracing.toLowerCase()}) —
+                {t("concrete.column.sameAsPlaneWith", {
+                  schoring:
+                    waarde.bracing === "Geschoord"
+                      ? t("concrete.column.bracedLower")
+                      : t("concrete.column.unbracedLower"),
+                })}
               </option>
-              <option value="Geschoord">Geschoord om z</option>
-              <option value="Ongeschoord">Ongeschoord (schorend) om z</option>
+              <option value="Geschoord">{t("concrete.column.bracedZ")}</option>
+              <option value="Ongeschoord">{t("concrete.column.unbracedZ")}</option>
             </select>
           </label>
 
           <label className="beton-rij" htmlFor={`${idPrefix}-knikgeval-z`}>
-            <span className="beton-label">Kniklengte l₀,z</span>
+            <span className="beton-label">{t("concrete.column.bucklingLengthZ")}</span>
             <select
               id={`${idPrefix}-knikgeval-z`}
               className="beton-invoer"
@@ -304,14 +298,14 @@ export default function KolomVelden({
                   van het vlak bij de schoring om z past; anders zou dit
                   scherm een tegenspraak aanbieden die de kern weigert. */}
               {schoringZ !== undefined && kniklengtePastBij(waarde.buckling_length, schoringZ) && (
-                <option value="">— gelijk aan in het vlak —</option>
+                <option value="">{t("concrete.column.sameAsPlane")}</option>
               )}
               {gevallenZ.map((g) => (
                 <option key={g.geval} value={`Figuur57:${g.geval}`}>
                   {g.label}
                 </option>
               ))}
-              <option value="Opgegeven">l₀,z zelf opgeven…</option>
+              <option value="Opgegeven">{t("concrete.column.l0zCustom")}</option>
             </select>
           </label>
 
@@ -329,7 +323,7 @@ export default function KolomVelden({
 
           <Getal
             id={`${idPrefix}-m0edz`}
-            label="M₀Ed,z extern"
+            label={t("concrete.column.m0EdzExternal")}
             eenheid="kNm"
             waarde={waarde.m0_edz_knm ?? 0}
             stap={1}
@@ -338,23 +332,12 @@ export default function KolomVelden({
 
           <div className="beton-hint">
             {l0zMm !== null && lengteMm > 0 && <>l₀,z = {toonM(l0zMm)} m. </>}
-            De raamwerkoplosser rekent in één vlak en levert M_z = 0, maar een kolom
-            knikt ook om de z-as: de imperfectie van art. 5.2 (θ₀ = 1/300, nationale
-            bijlage) en het tweede-orde-effect in die richting hangen niet van het
-            model af. De kern rekent daarom altijd M_Ed,z = M₀Ed,z + N_Ed·(e_i + e₂)
-            uit, toetst hem aan M_Rd,z met de staven op hun plaats over de breedte,
-            en gaat dan art. 5.8.9 na: mogen de richtingen apart ((5.38a) en
-            (5.38b)), en zo niet, dan de interactie (5.39). De schoring en de
-            kniklengte om z zijn EIGEN gegevens — een kolom kan in het vlak
-            geschoord zijn en er loodrecht op niet; leeg = de keuze van het vlak
-            wordt overgenomen, met die melding in het rapport. M₀Ed,z extern is een
-            eerste-orde-moment om z uit een ruimtelijk model of een handberekening;
-            0 = geen.
+            {t("concrete.column.zAxisHint")}
           </div>
 
           {/* ── §9.5 ──────────────────────────────────────────────────── */}
           <label className="beton-rij" htmlFor={`${idPrefix}-zone`}>
-            <span className="beton-label">Beugelzone</span>
+            <span className="beton-label">{t("concrete.column.stirrupZone")}</span>
             <select
               id={`${idPrefix}-zone`}
               className="beton-invoer"
@@ -366,19 +349,19 @@ export default function KolomVelden({
                 })
               }
             >
-              <option value="">— niet opgegeven, s_cl,tmax wordt niet getoetst —</option>
-              <option value="Regulier">Regulier — volle s_cl,tmax van 9.5.3(3)</option>
+              <option value="">{t("concrete.column.stirrupZoneNotGiven")}</option>
+              <option value="Regulier">{t("concrete.column.stirrupZoneRegular")}</option>
               <option value="BijBalkOfPlaat">
-                Bij een balk of plaat — 9.5.3(4)i, ×0,6
+                {t("concrete.column.stirrupZoneNearBeam")}
               </option>
               <option value="BijOverlappingslas">
-                Bij een overlappingslas met Ø &gt; 14 mm — 9.5.3(4)ii, ×0,6
+                {t("concrete.column.stirrupZoneNearLap")}
               </option>
             </select>
           </label>
 
           <label className="beton-rij" htmlFor={`${idPrefix}-lassen`}>
-            <span className="beton-label">Overlappingslassen</span>
+            <span className="beton-label">{t("concrete.column.laps")}</span>
             <select
               id={`${idPrefix}-lassen`}
               className="beton-invoer"
@@ -392,30 +375,23 @@ export default function KolomVelden({
                 })
               }
             >
-              <option value="">— niet opgegeven, A_s,max wordt niet getoetst —</option>
-              <option value="GeenLassen">Geen lassen — A_s,max = 0,08·A_c</option>
+              <option value="">{t("concrete.column.lapsNotGiven")}</option>
+              <option value="GeenLassen">{t("concrete.column.lapsNone")}</option>
               <option value="LassenBuitenDezeDoorsnede">
-                Lassen elders in de kolom — A_s,max = 0,04·A_c
+                {t("concrete.column.lapsElsewhere")}
               </option>
               <option value="TerPlaatseVanLas">
-                Ter plaatse van een las — A_s,max = 0,08·A_c
+                {t("concrete.column.lapsAtLap")}
               </option>
             </select>
           </label>
 
           <div className="beton-hint">
-            Deze twee keuzen horen bij art. 9.5. Ze worden niet aangenomen: de
-            reguliere beugelzone en "geen lassen" zijn allebei de RUIMSTE tak, en
-            die stilzwijgend aanhouden zou een te grote beugelafstand of een te
-            zware wapening kunnen goedkeuren. Blijven ze leeg, dan komen s_cl,tmax
-            en A_s,max als niet-uitgevoerd in het rapport, met de reden.
+            {t("concrete.column.choicesHint")}
           </div>
 
           <div className="beton-hint">
-            Art. 9.5.2(4) (een staaf in iedere hoek) en 9.5.3(6) (elke hoekstaaf
-            opgesloten, geen staaf verder dan 150 mm van een opgesloten staaf)
-            worden getoetst met de ligging van elke staaf uit de korf — ook de
-            zijstaven. A_s in ω en in 9.5.2 is de TOTALE langswapening.
+            {t("concrete.column.detailingHint")}
           </div>
         </>
       )}

@@ -17,6 +17,7 @@
  * `RAPPORT_KLEUREN` mee (vaste papierkleuren) en zet `interactief` uit.
  */
 import { useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MnKappaDiagram } from "../../lib/types/concrete/MnKappaDiagram";
 import { THEMA_KLEUREN, type BetonTekenKleuren } from "./tekenkleuren";
 import { nl } from "./wapeningskorf";
@@ -88,13 +89,14 @@ export function ticks(max: number): number[] {
   return uit;
 }
 
-function bezwijkLabel(d: MnKappaDiagram): string {
+/** De i18n-sleutel (naamruimte "check") van de bezwijkwijze; vertaald bij het tonen. */
+function bezwijkSleutel(d: MnKappaDiagram): string {
   switch (d.failure_mode) {
-    case "ConcreteCrushing": return "bezwijken beton";
-    case "SteelRupture": return "bezwijken staal";
-    case "SteelStrainLimit": return "rekgrens staal";
-    case "AxialCapacityExceeded": return "N te groot";
-    default: return "geen evenwicht";
+    case "ConcreteCrushing": return "concrete.charts.mk.failureConcreteCrushing";
+    case "SteelRupture": return "concrete.charts.mk.failureSteelRupture";
+    case "SteelStrainLimit": return "concrete.charts.mk.failureSteelStrainLimit";
+    case "AxialCapacityExceeded": return "concrete.charts.mk.failureAxialExceeded";
+    default: return "concrete.charts.mk.failureNoEquilibrium";
   }
 }
 
@@ -106,6 +108,7 @@ export default function MNKappaGrafiek({
   kleuren = THEMA_KLEUREN,
   className,
 }: Props) {
+  const { t } = useTranslation("check");
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -173,8 +176,12 @@ export default function MNKappaGrafiek({
       role="img"
       aria-label={
         diagram && !leeg
-          ? `M-κ-diagram bij N = ${nl(diagram.n_kn, 1)} kN; M_Rd = ${nl(diagram.m_max_knm, 1)} kNm bij κ = ${nl(diagram.kappa_u_per_m * 1e3, 2)} per duizend meter`
-          : "M-κ-diagram (leeg)"
+          ? t("concrete.charts.mk.ariaLabel", {
+              n: nl(diagram.n_kn, 1),
+              mrd: nl(diagram.m_max_knm, 1),
+              kappa: nl(diagram.kappa_u_per_m * 1e3, 2),
+            })
+          : t("concrete.charts.mk.ariaLabelEmpty")
       }
       onMouseMove={bijMuis}
       onMouseLeave={() => setHover(null)}
@@ -205,7 +212,7 @@ export default function MNKappaGrafiek({
         ))}
       </g>
       <text x={MARGE.links + plotW / 2} y={HOOGTE - 6} fill={kleuren.tekstMaat} fontSize="8.5" textAnchor="middle">
-        kromming κ [10⁻³/m]
+        {t("concrete.charts.mk.curvatureAxis")}
       </text>
       <text
         x={12}
@@ -215,12 +222,14 @@ export default function MNKappaGrafiek({
         textAnchor="middle"
         transform={`rotate(-90 12 ${MARGE.boven + plotH / 2})`}
       >
-        moment M [kNm]
+        {t("concrete.charts.mk.momentAxis")}
       </text>
 
       {leeg && (
         <text x={MARGE.links + plotW / 2} y={MARGE.boven + plotH / 2} fill={kleuren.tekstMaat} fontSize="9" textAnchor="middle">
-          {diagram ? `Geen diagram: ${bezwijkLabel(diagram)}` : "Nog geen diagram berekend"}
+          {diagram
+            ? t("concrete.charts.mk.noDiagram", { reden: t(bezwijkSleutel(diagram)) })
+            : t("concrete.charts.mk.notYetCalculated")}
         </text>
       )}
 
@@ -252,7 +261,7 @@ export default function MNKappaGrafiek({
         <g>
           <circle cx={sx(diagram.kappa_y_per_m)} cy={sy(diagram.m_y_knm)} r="4.5" fill={kleuren.vlak} stroke={kleuren.reeks} strokeWidth="2" />
           <text x={sx(diagram.kappa_y_per_m) + 7} y={sy(diagram.m_y_knm) + 10} fill={kleuren.tekstZwak} fontSize="8">
-            vloeien {nl(diagram.m_y_knm, 1)} kNm
+            {t("concrete.charts.mk.yielding", { m: nl(diagram.m_y_knm, 1) })}
           </text>
         </g>
       )}
@@ -260,7 +269,7 @@ export default function MNKappaGrafiek({
         <g>
           <circle cx={sx(laatste.kappa_per_m)} cy={sy(laatste.m_knm)} r="4.5" fill={kleuren.reeks} />
           <text x={sx(laatste.kappa_per_m) - 7} y={sy(laatste.m_knm) - 6} fill={kleuren.tekstZwak} fontSize="8" textAnchor="end">
-            {bezwijkLabel(diagram)} {nl(laatste.m_knm, 1)} kNm
+            {t(bezwijkSleutel(diagram))} {nl(laatste.m_knm, 1)} kNm
           </text>
         </g>
       )}
@@ -288,7 +297,7 @@ export default function MNKappaGrafiek({
             fill={kleuren.rekenpunt}
             fontSize="8"
           >
-            maatgevend: κ = {nl(govPunt.kappa_per_m * 1e3, 2)}·10⁻³/m
+            {t("concrete.charts.mk.governing", { kappa: nl(govPunt.kappa_per_m * 1e3, 2) })}
           </text>
         </g>
       )}

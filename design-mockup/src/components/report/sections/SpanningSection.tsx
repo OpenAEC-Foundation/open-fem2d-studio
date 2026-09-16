@@ -84,7 +84,7 @@ function SpanningStaafBlok({ r }: { r: SpanningBeamCheckResult }) {
               vezels={v!.vezels}
               zMaatgevendMm={v!.z_maatgevend_mm}
               fDMpa={r.f_d_mpa}
-              titel={`${r.section.naam}: doorsnede en spanningsverloop`}
+              titel={t("report.spanningFiguurTitel", { naam: r.section.naam })}
             />
             <div className="rpt-figuur-bijschrift">
               {t("report.spanningFiguurBijschrift", {
@@ -118,14 +118,14 @@ function SpanningStaafBlok({ r }: { r: SpanningBeamCheckResult }) {
                 <td className="rpt-num">{fmtValue(r.section.hoogte_mm, 1)} mm</td>
                 <th>z_c</th>
                 <td className="rpt-num">{fmtValue(r.section.z_c_mm, 1)} mm</td>
-                <th>W_el (boven / onder)</th>
+                <th>{t("report.spanningWelBovenOnder")}</th>
                 <td className="rpt-num">
                   {fmtValue(r.section.wel_top_mm3 / 1e3, 1)} / {fmtValue(r.section.wel_bot_mm3 / 1e3, 1)}·10³ mm³
                 </td>
               </tr>
               {vezel && (
                 <tr className="rpt-spn-rij-gov">
-                  <th>z (maatgevend)</th>
+                  <th>{t("report.spanningZMaatgevend")}</th>
                   <td className="rpt-num">{fmtValue(vezel.z_mm, 1)} mm</td>
                   <th>σ_x / τ</th>
                   <td className="rpt-num">

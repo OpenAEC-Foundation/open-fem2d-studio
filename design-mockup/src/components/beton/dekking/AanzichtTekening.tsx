@@ -34,6 +34,7 @@
  * trapjes uit de gerenderde SVG kan terugmeten.
  */
 import { useMemo, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { SupportType } from "../../fem/femTypes";
 import {
   laanMaximum,
@@ -137,6 +138,7 @@ export default function AanzichtTekening({
   onCursorX,
   breedtePx = 900,
 }: Props) {
+  const { t } = useTranslation("check");
   const tekenW = Math.max(120, breedtePx - MARGE_LINKS - MARGE_RECHTS);
   const sx = (xMm: number) => MARGE_LINKS + (lengteMm > 0 ? (xMm / lengteMm) * tekenW : 0);
 
@@ -183,7 +185,7 @@ export default function AanzichtTekening({
       width={breedtePx}
       height={hoogte}
       role="img"
-      aria-label={`Aanzicht van de betonstaaf over ${nl(lengteMm / 1000, 2)} m met de dekkingslijnen`}
+      aria-label={t("concrete.elevation.ariaLabel", { lengte: nl(lengteMm / 1000, 2) })}
       // KLIKKEN wijst de snede aan, meebewegen met de muis niet. Dat is met
       // opzet: de werkwijze is "zet de aanwijzer waar je wilt inkorten en druk
       // dan op splits", en met een aanwijzer die de muis volgt zou hij
@@ -328,6 +330,7 @@ function StaafTekening({
   bundels: readonly BundelTekening[];
   beugels: readonly BeugelTekening[];
 }) {
+  const { t } = useTranslation("check");
   const y1 = y0 + hoogtePx;
   // De staven liggen op hun werkelijke hoogte in de doorsnede, omgerekend naar
   // de getekende staafhoogte. Zonder doorsnedehoogte valt er niets om te
@@ -418,7 +421,7 @@ function StaafTekening({
               fontSize="8.5"
               fill="var(--theme-text-secondary, #555)"
             >
-              {`Ø${maat(z.diameterMm)}-${maat(z.spacingMm)}${z.benen !== 2 ? `, ${z.benen}-benig` : ""}`}
+              {`Ø${maat(z.diameterMm)}-${maat(z.spacingMm)}${z.benen !== 2 ? `, ${t("concrete.elevation.legs", { benen: z.benen })}` : ""}`}
             </text>
           </g>
         );
@@ -442,10 +445,10 @@ function StaafTekening({
             {aanloop > 0 && (
               <>
                 <line x1={x0} y1={y} x2={x0 + aanloop} y2={y} stroke={kleur} strokeWidth="2" strokeDasharray="4 3" strokeLinecap="butt">
-                  <title>{`Verankeringslengte l_bd = ${maat(b.lBdMm)} mm: de staaf levert hier nog niet zijn volle kracht (§9.2.1.3(3))`}</title>
+                  <title>{t("concrete.elevation.anchorage", { lbd: maat(b.lBdMm) })}</title>
                 </line>
                 <line x1={x1 - aanloop} y1={y} x2={x1} y2={y} stroke={kleur} strokeWidth="2" strokeDasharray="4 3" strokeLinecap="butt">
-                  <title>{`Verankeringslengte l_bd = ${maat(b.lBdMm)} mm: de staaf levert hier nog niet zijn volle kracht (§9.2.1.3(3))`}</title>
+                  <title>{t("concrete.elevation.anchorage", { lbd: maat(b.lBdMm) })}</title>
                 </line>
               </>
             )}
@@ -550,6 +553,7 @@ function LaanTekening({
   sx: (x: number) => number;
   lengteMm: number;
 }) {
+  const { t: tLaan } = useTranslation("check");
   const max = laanMaximum(laan.punten);
   const bruikbaar = y1 - y0 - LAAN_KOP - 3;
   const schaal = max > 0 ? bruikbaar / max : 0;
@@ -600,7 +604,7 @@ function LaanTekening({
     <g className="dek-laan">
       <text x={MARGE_LINKS} y={y0 + 9} fontSize="9" fill="var(--theme-text-secondary, #555)">
         {`${laan.titel} — ${laan.benodigdLabel} / ${laan.aanwezigLabel} [${laan.eenheid}], max ${nl(max, max < 10 ? 3 : 0)}`}
-        {geenTrek ? `  ·  ${laan.benodigdLabel} is overal nul: aan deze zijde werkt geen trek` : ""}
+        {geenTrek ? `  ·  ${tLaan("concrete.elevation.noTension", { label: laan.benodigdLabel })}` : ""}
       </text>
       {laan.tweede && laan.tweede.punten.length > 1 && (
         <text
@@ -611,7 +615,12 @@ function LaanTekening({
           fill={laan.tweede.kleur}
           className="dek-tweede-kop"
         >
-          {`${laan.tweede.benodigdLabel} / ${laan.tweede.aanwezigLabel} [${laan.tweede.eenheid}] (eigen schaal), max ${nl(laanMaximum(laan.tweede.punten), 3)}`}
+          {tLaan("concrete.elevation.secondSeriesHeader", {
+            benodigd: laan.tweede.benodigdLabel,
+            aanwezig: laan.tweede.aanwezigLabel,
+            eenheid: laan.tweede.eenheid,
+            max: nl(laanMaximum(laan.tweede.punten), 3),
+          })}
         </text>
       )}
 
@@ -747,6 +756,7 @@ function UcBalk({
   hoogte: number;
   sx: (x: number) => number;
 }) {
+  const { t } = useTranslation("check");
   return (
     <g className="dek-ucbalk">
       {vakken.map((v, i) => (
@@ -767,7 +777,7 @@ function UcBalk({
       ))}
       {vakken.length === 0 && (
         <text x={MARGE_LINKS} y={y0 + hoogte - 5} fontSize="9" fill="var(--theme-text-faint, #888)">
-          Geen unity check per snede beschikbaar.
+          {t("concrete.elevation.noUcPerSection")}
         </text>
       )}
     </g>
@@ -789,6 +799,7 @@ function XAs({
   breedtePx: number;
   tekenW: number;
 }) {
+  const { t } = useTranslation("check");
   // Ongeveer één streepje per 90 beeldpunten, afgerond op een ronde maat in
   // meters — zodat er "1,0 m" staat en niet "0,857 m".
   const gewenst = Math.max(2, Math.round(tekenW / 90));
@@ -817,7 +828,7 @@ function XAs({
         </g>
       ))}
       <text x={sx(lengteMm)} y={y + 22} textAnchor="end" fontSize="8" fill="var(--theme-text-faint, #888)">
-        x [m] vanaf links (staande staaf: vanaf de voet)
+        {t("concrete.elevation.xAxis")}
       </text>
     </g>
   );

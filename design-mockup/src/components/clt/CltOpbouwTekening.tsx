@@ -35,6 +35,7 @@
  * berekend, dus er zijn geen spanningen om te tonen.
  */
 import { useId } from "react";
+import { useTranslation } from "react-i18next";
 import type { CltLayerOrientation } from "../../lib/types/timber/CltLayerOrientation";
 
 export interface CltTekenLaag {
@@ -337,6 +338,7 @@ export default function CltOpbouwTekening({
   className,
   kleuren: k = CLT_RAPPORT_KLEUREN,
 }: Props) {
+  const { t } = useTranslation("check");
   const rawId = useId();
   const uid = `clt${rawId.replace(/[^A-Za-z0-9]/g, "")}`;
   const hTot = lagen.reduce((a, l) => a + l.dikte, 0);
@@ -377,7 +379,7 @@ export default function CltOpbouwTekening({
       className={className}
       viewBox={`0 0 ${frameW} ${frameH}`}
       role="img"
-      aria-label={titel ?? `Kruislaaghout, ${lagen.length} lagen, h = ${maat(hTot)} mm`}
+      aria-label={titel ?? t("cltDrawing.ariaLabel", { count: lagen.length, h: maat(hTot) })}
     >
       <defs>
         {/* Lengtelaag: kopshout in doorsnede — diagonale arcering. */}
@@ -392,7 +394,7 @@ export default function CltOpbouwTekening({
 
       {/* ---- Paneel 1: doorsnede ---- */}
       <text x={XA + WA / 2} y={Y0 - 8} fill={k.tekst} fontSize="7.5" textAnchor="middle">
-        b = {maat(breedteMm)} (strook, breedte niet op schaal)
+        {t("cltDrawing.stripWidth", { b: maat(breedteMm) })}
       </text>
       {lagen.map((l, i) => {
         const y = Y0 + grenzen[i].zTop * s;
@@ -430,7 +432,7 @@ export default function CltOpbouwTekening({
                 fontSize="6.8"
                 fontStyle="italic"
               >
-                ◂ maatgevend
+                {t("cltDrawing.governing")}
               </text>
             )}
           </g>
@@ -477,17 +479,17 @@ export default function CltOpbouwTekening({
         <rect x={0} y={0} width={10} height={6} fill={k.houtVlak} />
         <rect x={0} y={0} width={10} height={6} fill={`url(#${uid}-lengte)`} stroke={k.contour} strokeWidth="0.5" />
         <text x={13} y={5} fill={k.tekst} fontSize="6.5">
-          lengtelaag (vezels in spanrichting)
+          {t("cltDrawing.legendLongitudinal")}
         </text>
         <rect x={0} y={10} width={10} height={6} fill={k.houtVlak} />
         <rect x={0} y={10} width={10} height={6} fill={`url(#${uid}-dwars)`} stroke={k.contour} strokeWidth="0.5" />
         <text x={13} y={15} fill={k.tekst} fontSize="6.5">
-          dwarslaag (rolschuiving)
-          {gov && !govOpEigenRegel ? " · zware contour = maatgevende laag" : ""}
+          {t("cltDrawing.legendTransverse")}
+          {gov && !govOpEigenRegel ? ` · ${t("cltDrawing.legendHeavyContour")}` : ""}
         </text>
         {govOpEigenRegel && (
           <text x={0} y={25} fill={k.tekst} fontSize="6.5">
-            zware contour = maatgevende laag
+            {t("cltDrawing.legendHeavyContour")}
           </text>
         )}
       </g>

@@ -41,6 +41,8 @@
  * d aan de trekzijde boven niet meer h − d.
  */
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import { STEEL_SECTION_DIMS } from "../../lib/steelSectionDims.generated";
 import { STEEL_SECTIONS } from "../../lib/steelSections.generated";
 import { SUPPORTED_TIMBER_GRADES, matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
@@ -207,13 +209,14 @@ interface ProfielKiezerProps {
 
 type MateriaalSoort = "staal" | "eigen" | "hout" | "beton" | "aluminium" | "overig";
 
-const SOORTEN: Array<{ id: MateriaalSoort; label: string; beschikbaar: boolean; hint: string }> = [
-  { id: "staal", label: "Staal", beschikbaar: true, hint: "Walsprofielen uit de profieldatabase + staalklasse (EN 1993)" },
-  { id: "eigen", label: "Eigen doorsnede", beschikbaar: true, hint: "Samenstellen uit platen en profielen, of een gat in een catalogusprofiel (staal, EN 1993)" },
-  { id: "hout", label: "Hout", beschikbaar: true, hint: "Massief b×h of kruislaaghout (CLT) + sterkteklasse (EN 1995)" },
-  { id: "beton", label: "Beton", beschikbaar: true, hint: "Rechthoek, T- of L-ligger + betonklasse (EN 1992); wapeningskorf bij de staafeigenschappen" },
-  { id: "aluminium", label: "Aluminium", beschikbaar: false, hint: "Volgt later — nog geen profieldatabase en toetsing" },
-  { id: "overig", label: "Overig", beschikbaar: true, hint: "Vrij materiaal: eigen naam, E, ρ en toelaatbare spanning; getoetst op de vergelijkspanning (von Mises), zonder norm" },
+// Label en hint staan in de locales onder check:profilePicker.kinds.<id>.label/.hint.
+const SOORTEN: Array<{ id: MateriaalSoort; beschikbaar: boolean }> = [
+  { id: "staal", beschikbaar: true },
+  { id: "eigen", beschikbaar: true },
+  { id: "hout", beschikbaar: true },
+  { id: "beton", beschikbaar: true },
+  { id: "aluminium", beschikbaar: false },
+  { id: "overig", beschikbaar: true },
 ];
 
 /**
@@ -272,22 +275,22 @@ function nlGetal(v: number, decimalen = 0): string {
  */
 function cltOpbouwReden(tekst: string): string {
   const t = tekst.trim();
-  if (!t) return "Nog geen opbouw ingevuld.";
-  if (!/^clt\b/i.test(t)) return 'Begin met "CLT", bijvoorbeeld CLT 40/20/40.';
+  if (!t) return i18next.t("check:profilePicker.cltReason.empty");
+  if (!/^clt\b/i.test(t)) return i18next.t("check:profilePicker.cltReason.startWithClt");
   const [lagen = "", ...rest] = t.replace(/^clt\s*/i, "").split(/\s+/);
   const tokens = lagen ? lagen.split("/") : [];
-  if (tokens.length < 3) return "Een opbouw heeft minstens drie lagen, bijvoorbeeld 40/20/40.";
+  if (tokens.length < 3) return i18next.t("check:profilePicker.cltReason.minThree");
   // Een lege plek tussen twee schuine strepen is de gewone tussenstand tijdens
   // het typen; die verdient een eigen zin in plaats van een leeg citaat.
-  if (tokens.some((x) => x.trim() === "")) return "Er staat nog een lege laag in de rij.";
+  if (tokens.some((x) => x.trim() === "")) return i18next.t("check:profilePicker.cltReason.emptyLayer");
   const fout = tokens.find((x) => !/^\d+(?:[.,]\d+)?[LD]?(?::[A-Za-z]+\d+[A-Za-z]*)?$/i.test(x));
   if (fout !== undefined) {
-    return `"${fout}" is geen laag: een dikte in mm, eventueel met L of D en een klasse (40L:C24).`;
+    return i18next.t("check:profilePicker.cltReason.notALayer", { laag: fout });
   }
   if (rest.length > 0) {
-    return "Achter de lagen past alleen een strookbreedte, bijvoorbeeld b=600.";
+    return i18next.t("check:profilePicker.cltReason.onlyWidth");
   }
-  return "De opbouw is niet te lezen; zie de notatie hierboven.";
+  return i18next.t("check:profilePicker.cltReason.unreadable");
 }
 
 /** Tekstveld → getal; NaN wanneer het veld leeg of onzin is (geen terugval). */
@@ -304,6 +307,8 @@ export default function ProfielKiezer({
   onApply,
   inGebruik,
 }: ProfielKiezerProps) {
+  const { t } = useTranslation("check");
+  const { t: tCommon } = useTranslation("common");
   const huidigVrij = parseVrijMateriaal(huidig?.material);
   const huidigIsBeton = !huidigVrij && matchSupportedConcreteClass(huidig?.material) !== null;
   const huidigIsHout =
@@ -836,7 +841,7 @@ export default function ProfielKiezer({
       width={VENSTER_BREEDTE}
       height={VENSTER_HOOGTE}
       className="pk-modal"
-      title={soort === null ? "Profiel toewijzen — kies materiaal" : `Profiel toewijzen — ${SOORTEN.find(s => s.id === soort)?.label}`}
+      title={soort === null ? t("profilePicker.titleChooseMaterial") : t("profilePicker.titleWithKind", { soort: t(`profilePicker.kinds.${soort}.label`) })}
     >
       <div className="pk-inhoud">
       {/* De materiaalkeuze is één lopende lijst en mag als geheel schuiven;
@@ -845,13 +850,13 @@ export default function ProfielKiezer({
         <div className="pk-start">
       {inGebruik && inGebruik.length > 0 && (
         <div className="pk-gebruikt">
-          <div className="pk-kolom-kop">In dit project</div>
+          <div className="pk-kolom-kop">{t("profilePicker.inProject")}</div>
           <div className="pk-gebruikt-rij">
             {inGebruik.map((g) => (
               <button
                 key={`${g.profile}|${g.material}`}
                 className="pk-gebruikt-knop"
-                title={`${g.profile} in ${g.material}, nu op ${g.aantal} ${g.aantal === 1 ? "staaf" : "staven"}`}
+                title={t("profilePicker.inUseTitle", { profiel: g.profile, materiaal: g.material, count: g.aantal })}
                 onClick={() => {
                   // Een snelkeuze is een PRISMATISCH profiel: `profileEnd`
                   // gaat als `undefined` mee, anders zou een staaf die al
@@ -875,11 +880,11 @@ export default function ProfielKiezer({
             key={s.id}
             className={`pk-soort${s.beschikbaar ? "" : " pk-soort-uit"}`}
             disabled={!s.beschikbaar}
-            title={s.hint}
+            title={t(`profilePicker.kinds.${s.id}.hint`)}
             onClick={() => s.beschikbaar && setSoort(s.id)}
           >
-            <span className="pk-soort-naam">{s.label}</span>
-            <span className="pk-soort-hint">{s.hint}</span>
+            <span className="pk-soort-naam">{t(`profilePicker.kinds.${s.id}.label`)}</span>
+            <span className="pk-soort-hint">{t(`profilePicker.kinds.${s.id}.hint`)}</span>
           </button>
         ))}
       </div>
@@ -889,7 +894,7 @@ export default function ProfielKiezer({
       {soort === "staal" && (
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
-            <div className="pk-kolom-kop">Reeks</div>
+            <div className="pk-kolom-kop">{t("profilePicker.series")}</div>
             {STAAL_REEKSEN.map((r) => (
               <button
                 key={r.id}
@@ -901,7 +906,7 @@ export default function ProfielKiezer({
             ))}
           </div>
           <div className="pk-kolom pk-kolom-maat">
-            <div className="pk-kolom-kop">Profiel</div>
+            <div className="pk-kolom-kop">{t("profilePicker.profile")}</div>
             <div className="pk-scroll">
               {reeksProfielen.map((naam) => (
                 <button
@@ -915,7 +920,7 @@ export default function ProfielKiezer({
             </div>
           </div>
           <div className="pk-kolom pk-kolom-detail">
-            <div className="pk-kolom-kop">Materiaalklasse</div>
+            <div className="pk-kolom-kop">{t("profilePicker.materialClass")}</div>
             <div className="pk-kolom-body">
             <select value={staalKlasse} onChange={(e) => setStaalKlasse(e.target.value)}>
               {STEEL_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
@@ -927,13 +932,13 @@ export default function ProfielKiezer({
                 <ProfielMiniatuur
                   shape={staalVorm}
                   materiaal="staal"
-                  titel={`Doorsnede ${staalProfiel}`}
+                  titel={t("profilePicker.sectionOf", { naam: staalProfiel })}
                 />
               </div>
             )}
             {dims && (
               <div className="pk-eigenschappen">
-                <div className="pk-kolom-kop">Eigenschappen</div>
+                <div className="pk-kolom-kop">{t("profilePicker.properties")}</div>
                 <div className="pk-eig-rij"><span>h × b</span><code>{dims.h} × {dims.b} mm</code></div>
                 <div className="pk-eig-rij"><span>t_w / t_f</span><code>{dims.tw} / {dims.tf} mm</code></div>
                 {sectie && <div className="pk-eig-rij"><span>A</span><code>{nlGetal(sectie.A)} mm²</code></div>}
@@ -952,17 +957,17 @@ export default function ProfielKiezer({
                   checked={verlopend}
                   onChange={(e) => setVerlopend(e.target.checked)}
                 />
-                <span>Verlopend profiel</span>
+                <span>{t("profilePicker.tapered")}</span>
               </label>
               {verlopend && (
                 <>
                   <label className="pk-veld">
-                    <span>Profiel eind (bij knoop 2)</span>
+                    <span>{t("profilePicker.endProfile")}</span>
                     <select
                       value={staalProfielEind}
                       onChange={(e) => setStaalProfielEind(e.target.value)}
                     >
-                      <option value="">— kies een eindprofiel —</option>
+                      <option value="">{t("profilePicker.chooseEndProfile")}</option>
                       {eindProfielGroepen.map((g) => (
                         <optgroup key={g.label} label={g.label}>
                           {g.profielen.map((naam) => (
@@ -973,15 +978,13 @@ export default function ProfielKiezer({
                     </select>
                   </label>
                   <div className="pk-hint">
-                    De maten h, b, t_w en t_f verlopen lineair van het
-                    beginprofiel naar dit eindprofiel. De doorsnede telt over de
-                    hele staaf als <strong>gelast</strong> I-profiel: geen
-                    afrondingsstraal, en de knik- en kipkrommen voor gelaste
-                    profielen (EN 1993-1-1 tabel 6.2 en 6.5).
+                    {t("profilePicker.steelTaperHintBefore")}{" "}
+                    <strong>{t("profilePicker.steelTaperHintWelded")}</strong>{" "}
+                    {t("profilePicker.steelTaperHintAfter")}
                   </div>
                   {verloopFout && <div className="pk-verloop-fout">{verloopFout}</div>}
                   {eindProfielNu === "" && (
-                    <div className="pk-hint">Kies een eindprofiel, of zet de schakelaar uit.</div>
+                    <div className="pk-hint">{t("profilePicker.chooseEndOrToggle")}</div>
                   )}
                 </>
               )}
@@ -989,12 +992,12 @@ export default function ProfielKiezer({
             </div>
             <div className="pk-samenvatting">
               {!staalGeldig
-                ? "Kies een profiel uit de lijst."
+                ? t("profilePicker.chooseFromList")
                 : verlopend && verloopGeldig
-                  ? <>Keuze: <strong>{staalProfiel} → {staalProfielEind} (verlopend) — {staalKlasse}</strong></>
+                  ? <>{t("profilePicker.choice")} <strong>{staalProfiel} → {staalProfielEind} ({t("profilePicker.taperedShort")}) — {staalKlasse}</strong></>
                   : verlopend
-                    ? "Het eindprofiel past niet bij het beginprofiel."
-                    : <>Keuze: <strong>{staalProfiel} — {staalKlasse}</strong></>}
+                    ? t("profilePicker.endProfileMismatch")
+                    : <>{t("profilePicker.choice")} <strong>{staalProfiel} — {staalKlasse}</strong></>}
             </div>
           </div>
         </div>
@@ -1003,20 +1006,20 @@ export default function ProfielKiezer({
       {soort === "hout" && (
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
-            <div className="pk-kolom-kop">Vorm</div>
+            <div className="pk-kolom-kop">{t("profilePicker.shape")}</div>
             <button
               className={`pk-rij${houtType === "massief" ? " actief" : ""}`}
               onClick={() => setHoutType("massief")}
             >
-              Massief <span className="pk-rij-sub">b × h</span>
+              {t("profilePicker.solid")} <span className="pk-rij-sub">b × h</span>
             </button>
             <button
               className={`pk-rij${houtType === "clt" ? " actief" : ""}`}
               onClick={() => setHoutType("clt")}
             >
-              Kruislaaghout <span className="pk-rij-sub">CLT-opbouw</span>
+              {t("profilePicker.clt")} <span className="pk-rij-sub">{t("profilePicker.cltLayupSub")}</span>
             </button>
-            <div className="pk-kolom-kop">Sterkteklasse</div>
+            <div className="pk-kolom-kop">{t("profilePicker.strengthClass")}</div>
             <div className="pk-scroll">
               {SUPPORTED_TIMBER_GRADES.map((g) => (
                 <button
@@ -1024,7 +1027,7 @@ export default function ProfielKiezer({
                   className={`pk-rij${houtKlasse === g ? " actief" : ""}`}
                   onClick={() => setHoutKlasse(g)}
                 >
-                  {g} <span className="pk-rij-sub">{g.startsWith("GL") ? "gelamineerd" : "gezaagd"}</span>
+                  {g} <span className="pk-rij-sub">{g.startsWith("GL") ? t("profilePicker.glulam") : t("profilePicker.sawn")}</span>
                 </button>
               ))}
             </div>
@@ -1032,15 +1035,15 @@ export default function ProfielKiezer({
 
           {houtType === "massief" && (
             <div className="pk-kolom pk-kolom-detail">
-              <div className="pk-kolom-kop">Doorsnede</div>
+              <div className="pk-kolom-kop">{t("profilePicker.crossSection")}</div>
               <div className="pk-kolom-body">
               <label className="pk-veld">
-                <span>Breedte b [mm]</span>
+                <span>{t("profilePicker.widthB")}</span>
                 <input type="number" min={10} step={1} value={houtB}
                   onChange={(e) => setHoutB(Number(e.target.value))} />
               </label>
               <label className="pk-veld">
-                <span>Hoogte h [mm]</span>
+                <span>{t("profilePicker.heightH")}</span>
                 <input type="number" min={10} step={1} value={houtH}
                   onChange={(e) => setHoutH(Number(e.target.value))} />
               </label>
@@ -1049,7 +1052,7 @@ export default function ProfielKiezer({
                   <ProfielMiniatuur
                     shape={houtVorm}
                     materiaal="hout"
-                    titel={`Doorsnede ${houtB}×${houtH} mm`}
+                    titel={t("profilePicker.sectionOfMm", { b: houtB, h: houtH })}
                   />
                 </div>
               )}
@@ -1072,25 +1075,22 @@ export default function ProfielKiezer({
                     checked={verlopend}
                     onChange={(e) => setVerlopend(e.target.checked)}
                   />
-                  <span>Verlopend profiel</span>
+                  <span>{t("profilePicker.tapered")}</span>
                 </label>
                 {verlopend && (
                   <>
                     <label className="pk-veld">
-                      <span>Breedte b eind [mm]</span>
+                      <span>{t("profilePicker.widthBEnd")}</span>
                       <input type="number" min={10} step={1} value={houtBEind}
                         onChange={(e) => setHoutBEind(Number(e.target.value))} />
                     </label>
                     <label className="pk-veld">
-                      <span>Hoogte h eind [mm]</span>
+                      <span>{t("profilePicker.heightHEnd")}</span>
                       <input type="number" min={10} step={1} value={houtHEind}
                         onChange={(e) => setHoutHEind(Number(e.target.value))} />
                     </label>
                     <div className="pk-hint">
-                      b en h verlopen lineair van de maat bij knoop 1 naar deze
-                      maat bij knoop 2. De hoogtefactor k_h van EN 1995-1-1
-                      art. 3.2(3) wordt per rekenpunt met de plaatselijke hoogte
-                      bepaald.
+                      {t("profilePicker.timberTaperHint")}
                     </div>
                     {verloopFout && <div className="pk-verloop-fout">{verloopFout}</div>}
                   </>
@@ -1099,12 +1099,12 @@ export default function ProfielKiezer({
               </div>
               <div className="pk-samenvatting">
                 {!houtGeldig
-                  ? "Vul een geldige doorsnede in."
+                  ? t("profilePicker.enterValidSection")
                   : verlopend && verloopGeldig
-                    ? <>Keuze: <strong>{houtB}×{houtH} → {houtBEind}×{houtHEind} (verlopend) — {houtKlasse}</strong></>
+                    ? <>{t("profilePicker.choice")} <strong>{houtB}×{houtH} → {houtBEind}×{houtHEind} ({t("profilePicker.taperedShort")}) — {houtKlasse}</strong></>
                     : verlopend
-                      ? "De eindmaten passen niet bij de beginmaten."
-                      : <>Keuze: <strong>{houtB}×{houtH} — {houtKlasse}</strong></>}
+                      ? t("profilePicker.endDimsMismatch")
+                      : <>{t("profilePicker.choice")} <strong>{houtB}×{houtH} — {houtKlasse}</strong></>}
               </div>
             </div>
           )}
@@ -1116,14 +1116,14 @@ export default function ProfielKiezer({
                 bron, de rijen zijn de lezing ervan, en elke rijbewerking
                 schrijft de tekst terug. Ze kunnen dus niet uit elkaar lopen. */}
             <div className="pk-kolom pk-kolom-detail pk-kolom-clt">
-              <div className="pk-kolom-kop">Opbouw</div>
+              <div className="pk-kolom-kop">{t("profilePicker.layup")}</div>
               <div className="pk-kolom-body">
               <label className="pk-veld">
-                <span>Kies een opbouw</span>
+                <span>{t("profilePicker.chooseLayup")}</span>
                 <select value={cltKeuzeWaarde} onChange={(e) => kiesUitCltLijst(e.target.value)}>
-                  <option value="">— vrij —</option>
+                  <option value="">{t("profilePicker.free")}</option>
                   {cltOpbouwen.length > 0 && (
-                    <optgroup label="Eigen opbouwen">
+                    <optgroup label={t("profilePicker.ownLayups")}>
                       {cltOpbouwen.map((o) => (
                         <option key={o.id} value={`${EIGEN_OPBOUW_WAARDE}${o.id}`}>
                           {o.naam} ({o.layup.layers.map((l) => l.thickness_mm).join("/")})
@@ -1131,7 +1131,7 @@ export default function ProfielKiezer({
                       ))}
                     </optgroup>
                   )}
-                  <optgroup label="Voorinstellingen">
+                  <optgroup label={t("profilePicker.presets")}>
                     {CLT_VOORINSTELLINGEN.map((p) => (
                       <option key={p.name} value={p.name}>
                         {p.name} ({p.thicknesses_mm.join("/")})
@@ -1141,12 +1141,12 @@ export default function ProfielKiezer({
                 </select>
               </label>
               <label className="pk-veld">
-                <span>Strookbreedte b [mm]</span>
+                <span>{t("profilePicker.stripWidth")}</span>
                 <input type="number" min={10} step={10} value={cltBreedte}
                   onChange={(e) => zetCltBreedte(Number(e.target.value))} />
               </label>
 
-              <div className="pk-kolom-kop">Lagen (boven → beneden)</div>
+              <div className="pk-kolom-kop">{t("profilePicker.layersTopDown")}</div>
               {cltLayup ? (
                 <div className="pk-clt-rijen">
                   {cltLayup.layers.map((l, i) => (
@@ -1169,7 +1169,7 @@ export default function ProfielKiezer({
                       <span
                         className="pk-clt-greep"
                         draggable
-                        title="Versleep om de laag te verplaatsen"
+                        title={t("profilePicker.dragLayer")}
                         onDragStart={() => setCltSleepIndex(i)}
                         onDragEnd={() => setCltSleepIndex(null)}
                       >
@@ -1182,7 +1182,7 @@ export default function ProfielKiezer({
                         min={1}
                         step={5}
                         value={l.thickness_mm}
-                        title="Laagdikte in mm"
+                        title={t("profilePicker.layerThickness")}
                         // Een dikte van 0 of leeg maakt de opbouw onleesbaar en
                         // laat de rijen verdwijnen terwijl je aan het typen
                         // bent; zo'n tussenstand nemen we niet over.
@@ -1194,7 +1194,7 @@ export default function ProfielKiezer({
                       <select
                         className="pk-clt-richting"
                         value={l.orientation}
-                        title="Vezelrichting: lengte draagt in de spanrichting, dwars niet"
+                        title={t("profilePicker.grainDirection")}
                         onChange={(e) =>
                           wijzigCltLaag(i, { orientation: e.target.value as CltLayerOrientation })
                         }
@@ -1205,7 +1205,7 @@ export default function ProfielKiezer({
                       <select
                         className="pk-clt-klasse"
                         value={l.strength_class}
-                        title="Sterkteklasse van de lamellen in deze laag"
+                        title={t("profilePicker.layerClass")}
                         onChange={(e) => wijzigCltLaag(i, { strength_class: e.target.value })}
                       >
                         {SUPPORTED_TIMBER_GRADES.map((g) => (
@@ -1215,18 +1215,18 @@ export default function ProfielKiezer({
                             lijst staat mag niet stil in een andere veranderen:
                             hij blijft zichtbaar, met de reden erbij. */}
                         {matchSupportedTimberGrade(l.strength_class) === null && (
-                          <option value={l.strength_class}>{l.strength_class} (onbekend)</option>
+                          <option value={l.strength_class}>{t("profilePicker.unknownClass", { klasse: l.strength_class })}</option>
                         )}
                       </select>
                       <button
                         className="pk-clt-knopje"
-                        title="Laag omhoog"
+                        title={t("profilePicker.layerUp")}
                         disabled={i === 0}
                         onClick={() => verplaatsCltLaag(i, i - 1)}
                       >↑</button>
                       <button
                         className="pk-clt-knopje"
-                        title="Laag omlaag"
+                        title={t("profilePicker.layerDown")}
                         disabled={i === cltLayup.layers.length - 1}
                         onClick={() => verplaatsCltLaag(i, i + 1)}
                       >↓</button>
@@ -1234,8 +1234,8 @@ export default function ProfielKiezer({
                         className="pk-clt-knopje"
                         title={
                           cltLayup.layers.length <= CLT_MIN_LAGEN
-                            ? `Een opbouw heeft minstens ${CLT_MIN_LAGEN} lagen`
-                            : "Laag verwijderen"
+                            ? t("profilePicker.minLayers", { n: CLT_MIN_LAGEN })
+                            : t("profilePicker.removeLayer")
                         }
                         disabled={cltLayup.layers.length <= CLT_MIN_LAGEN}
                         onClick={() => verwijderCltLaag(i)}
@@ -1243,7 +1243,7 @@ export default function ProfielKiezer({
                     </div>
                   ))}
                   <button className="pk-knop pk-knop-klein" onClick={voegCltLaagToe}>
-                    + Laag onderaan
+                    {t("profilePicker.addLayerBottom")}
                   </button>
                 </div>
               ) : (
@@ -1251,7 +1251,7 @@ export default function ProfielKiezer({
               )}
 
               <label className="pk-veld">
-                <span>Als profielnaam</span>
+                <span>{t("profilePicker.asProfileName")}</span>
                 <input
                   type="text"
                   value={cltTekst}
@@ -1261,25 +1261,23 @@ export default function ProfielKiezer({
                 />
               </label>
               <div className="pk-hint">
-                Dit is de naam die op de staaf landt, en tegelijk het snelle
-                invoerveld: wat je hier typt verschijnt hierboven als rijen.
-                Dikten in mm, gescheiden door "/", van boven naar beneden. Lagen
-                wisselen lengte/dwars af, beginnend met een lengtelaag; per laag
-                mag je daarvan afwijken met <code>L</code> of <code>D</code> en
-                met een eigen klasse — <code>40L:C24/20D:C16/40L</code>. Alleen
-                de strookbreedte (<code>b600</code>) geldt voor de hele plaat.
+                {t("profilePicker.nameHintIntro")} <code>L</code>{" "}
+                {t("profilePicker.or")} <code>D</code>{" "}
+                {t("profilePicker.nameHintClass")} <code>40L:C24/20D:C16/40L</code>.{" "}
+                {t("profilePicker.nameHintWidth")} (<code>b600</code>){" "}
+                {t("profilePicker.nameHintWholePlate")}
               </div>
 
-              <div className="pk-kolom-kop">Eigen opbouwen</div>
+              <div className="pk-kolom-kop">{t("profilePicker.ownLayups")}</div>
               {cltBewaardAls ? (
                 <div className="pk-clt-bewaard">
-                  <span>In je bibliotheek als <strong>{cltBewaardAls.naam}</strong></span>
+                  <span>{t("profilePicker.inLibraryAs")} <strong>{cltBewaardAls.naam}</strong></span>
                   <button
                     className="pk-knop pk-knop-klein"
-                    title="Uit de bibliotheek halen; de staaf en de opbouw op dit scherm veranderen er niet van"
+                    title={t("profilePicker.removeFromLibrary")}
                     onClick={() => verwijderCltOpbouw(cltBewaardAls.id)}
                   >
-                    Verwijderen
+                    {tCommon("delete")}
                   </button>
                 </div>
               ) : (
@@ -1287,7 +1285,7 @@ export default function ProfielKiezer({
                   <input
                     type="text"
                     value={cltNieuweNaam}
-                    placeholder="Naam, bijv. Vloer begane grond"
+                    placeholder={t("profilePicker.layupNamePlaceholder")}
                     onChange={(e) => setCltNieuweNaam(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") { e.preventDefault(); bewaarHuidigeCltOpbouw(); }
@@ -1298,23 +1296,19 @@ export default function ProfielKiezer({
                     disabled={!cltGeldig || cltNieuweNaam.trim() === ""}
                     onClick={bewaarHuidigeCltOpbouw}
                   >
-                    {cltNaamBestaat ? "Overschrijven" : "Bewaren"}
+                    {cltNaamBestaat ? t("profilePicker.overwrite") : t("profilePicker.keep")}
                   </button>
                 </div>
               )}
               <div className="pk-hint">
-                Een bewaarde opbouw staat in de keuzelijst bovenaan, blijft over
-                projecten heen bestaan en reist mee in het projectbestand. De
-                staaf krijgt de OPBOUW als profielnaam en niet de naam uit je
-                bibliotheek: een project rekent dus ook door op een machine die
-                deze bibliotheek niet kent.
+                {t("profilePicker.libraryHint")}
               </div>
               </div>
             </div>
 
             {/* Kolom 2 — wat die opbouw is. */}
             <div className="pk-kolom pk-kolom-detail">
-              <div className="pk-kolom-kop">Doorsnede</div>
+              <div className="pk-kolom-kop">{t("profilePicker.crossSection")}</div>
               <div className="pk-kolom-body">
               {/* De opbouw als tekening — bij kruislaaghout bepaalt de
                   laagrichting het gedrag, en dat lees je niet af aan een rij
@@ -1332,7 +1326,7 @@ export default function ProfielKiezer({
                     breedteMm={cltLayup.width_mm}
                     z0Mm={cltMech?.z0}
                     kleuren={CLT_THEMA_KLEUREN}
-                    titel={`Opbouw ${formatCltProfiel(cltLayup, houtKlasse)}`}
+                    titel={t("profilePicker.layupOf", { naam: formatCltProfiel(cltLayup, houtKlasse) })}
                   />
                 </div>
               ) : (
@@ -1340,7 +1334,7 @@ export default function ProfielKiezer({
               )}
               {cltLayup && (
                 <div className="pk-eigenschappen">
-                  <div className="pk-eig-rij"><span>lagen</span><code>{cltLayup.layers.length}</code></div>
+                  <div className="pk-eig-rij"><span>{t("profilePicker.layersLabel")}</span><code>{cltLayup.layers.length}</code></div>
                   <div className="pk-eig-rij"><span>h</span><code>{cltHoogteMm(cltLayup)} mm</code></div>
                   {cltMech && (
                     <>
@@ -1349,7 +1343,7 @@ export default function ProfielKiezer({
                           staat: het is de eerste plek waar je ziet dat je
                           opbouw niet symmetrisch is. */}
                       <div className="pk-eig-rij">
-                        <span>z₀ (v.a. boven)</span>
+                        <span>{t("profilePicker.z0FromTop")}</span>
                         <code>{nlGetal(cltMech.z0, 1)} mm</code>
                       </div>
                       <div className="pk-eig-rij">
@@ -1363,10 +1357,10 @@ export default function ProfielKiezer({
               </div>
               <div className="pk-samenvatting">
                 {cltGeldig && cltLayup
-                  ? <>Keuze: <strong>{formatCltProfiel(cltLayup, houtKlasse)} — {houtKlasse}</strong></>
+                  ? <>{t("profilePicker.choice")} <strong>{formatCltProfiel(cltLayup, houtKlasse)} — {houtKlasse}</strong></>
                   : cltLayup
-                    ? "De opbouw heeft geen lengtelaag."
-                    : "Geen geldige opbouw — zie de notatie hierboven."}
+                    ? t("profilePicker.noLongitudinalLayer")
+                    : t("profilePicker.invalidLayup")}
               </div>
             </div>
             </>
@@ -1377,7 +1371,7 @@ export default function ProfielKiezer({
       {soort === "beton" && (
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
-            <div className="pk-kolom-kop">Betonklasse</div>
+            <div className="pk-kolom-kop">{t("profilePicker.concreteClass")}</div>
             <div className="pk-scroll">
               {SUPPORTED_CONCRETE_CLASSES.map((k) => (
                 <button
@@ -1391,49 +1385,49 @@ export default function ProfielKiezer({
             </div>
           </div>
           <div className="pk-kolom pk-kolom-detail">
-            <div className="pk-kolom-kop">Doorsnede</div>
+            <div className="pk-kolom-kop">{t("profilePicker.crossSection")}</div>
             <div className="pk-kolom-body">
               <label className="pk-veld">
-                <span>Vorm</span>
+                <span>{t("profilePicker.shape")}</span>
                 <select
                   value={betonShapeKeuze}
                   onChange={(e) => setBetonShapeKeuze(e.target.value as ConcreteShape)}
                 >
-                  <option value="Rectangle">rechthoek</option>
-                  <option value="Tee">T-ligger</option>
-                  <option value="Ell">L-ligger (randligger)</option>
+                  <option value="Rectangle">{t("profilePicker.rectangle")}</option>
+                  <option value="Tee">{t("profilePicker.teeBeam")}</option>
+                  <option value="Ell">{t("profilePicker.ellBeam")}</option>
                 </select>
               </label>
               <label className="pk-veld">
-                <span>{betonHeeftFlens ? "Flensbreedte b_eff [mm]" : "Breedte b [mm]"}</span>
+                <span>{betonHeeftFlens ? t("profilePicker.flangeWidth") : t("profilePicker.widthB")}</span>
                 <input type="number" min={50} step={10} value={betonB}
                   onChange={(e) => setBetonB(Number(e.target.value))} />
               </label>
               <label className="pk-veld">
-                <span>Hoogte h [mm]</span>
+                <span>{t("profilePicker.heightH")}</span>
                 <input type="number" min={50} step={10} value={betonH}
                   onChange={(e) => setBetonH(Number(e.target.value))} />
               </label>
               {betonHeeftFlens && (
                 <>
                   <label className="pk-veld">
-                    <span>Lijfbreedte b_w [mm]</span>
+                    <span>{t("profilePicker.webWidth")}</span>
                     <input type="number" min={50} step={10} value={betonBw}
                       onChange={(e) => setBetonBw(Number(e.target.value))} />
                   </label>
                   <label className="pk-veld">
-                    <span>Flensdikte h_f [mm]</span>
+                    <span>{t("profilePicker.flangeThickness")}</span>
                     <input type="number" min={20} step={10} value={betonHf}
                       onChange={(e) => setBetonHf(Number(e.target.value))} />
                   </label>
                   <label className="pk-veld">
-                    <span>Flens ligt</span>
+                    <span>{t("profilePicker.flangePosition")}</span>
                     <select
                       value={betonFlensOnder ? "onder" : "boven"}
                       onChange={(e) => setBetonFlensOnder(e.target.value === "onder")}
                     >
-                      <option value="boven">boven</option>
-                      <option value="onder">onder (omgekeerde T)</option>
+                      <option value="boven">{t("profilePicker.top")}</option>
+                      <option value="onder">{t("profilePicker.bottomInverted")}</option>
                     </select>
                   </label>
                 </>
@@ -1479,8 +1473,7 @@ export default function ProfielKiezer({
                   )}
                   {betonKorfFout !== null && (
                     <div className="pk-tekening-reden">
-                      Alleen de omtrek: de wapening is zo niet te tekenen — zie
-                      de melding onderaan deze kolom.
+                      {t("profilePicker.outlineOnly")}
                     </div>
                   )}
                 </div>
@@ -1501,28 +1494,24 @@ export default function ProfielKiezer({
                   wapening erin werkt (M-N-κ bij de staafeigenschappen). */}
               {betonDoorsnedeGeldig && (
                 <div className="pk-hint">
-                  A<sub>c</sub>, I<sub>y,c</sub> en E<sub>cm</sub> zijn van de
-                  ongescheurde betondoorsnede zónder wapening — de stijfheid
-                  waarmee de solver rekent. Ze bewegen dus niet mee met de korf
-                  hiernaast; de toetsing rekent met de gescheurde doorsnede
-                  inclusief de wapening.
+                  A<sub>c</sub>, I<sub>y,c</sub> {t("profilePicker.and")} E<sub>cm</sub>{" "}
+                  {t("profilePicker.uncrackedHint")}
                 </div>
               )}
               {betonHeeftFlens && (
                 <div className="pk-hint">
-                  De flensbreedte hoort de meewerkende breedte b<sub>eff</sub> te
-                  zijn (5.3.2.1(3)); bij het toetsen leidt de rekenkern hem af uit
-                  de liggerlijn en vervangt hij de waarde die hier staat.
+                  {t("profilePicker.effWidthHintBefore")} b<sub>eff</sub>{" "}
+                  {t("profilePicker.effWidthHintAfter")}
                 </div>
               )}
             </div>
             <div className="pk-samenvatting">
               {betonGeldig
-                ? <>Keuze: <strong>{betonNaam} — {betonKlasse}</strong></>
+                ? <>{t("profilePicker.choice")} <strong>{betonNaam} — {betonKlasse}</strong></>
                 : !betonDoorsnedeGeldig
                   ? betonHeeftFlens
-                    ? "De lijfbreedte moet kleiner zijn dan de flensbreedte, en de flensdikte kleiner dan de hoogte."
-                    : "Vul een geldige doorsnede in."
+                    ? t("profilePicker.flangeMismatch")
+                    : t("profilePicker.enterValidSection")
                   : betonKorfFout}
             </div>
           </div>
@@ -1531,7 +1520,7 @@ export default function ProfielKiezer({
               velden als op het tabblad Norm van de staafeigenschappen: één
               component, dat naar hetzelfde gegeven schrijft. */}
           <div className="pk-kolom pk-kolom-korf">
-            <div className="pk-kolom-kop">Wapening en milieu</div>
+            <div className="pk-kolom-kop">{t("profilePicker.reinforcementAndExposure")}</div>
             <div className="pk-kolom-body">
               <KorfVelden
                 idPrefix="pk-beton"
@@ -1546,7 +1535,7 @@ export default function ProfielKiezer({
               />
               {milieuklassenFout && (
                 <div className="beton-fout" role="alert">
-                  Milieuklassen niet geladen uit de rekenkern: {milieuklassenFout}
+                  {t("profilePicker.exposureLoadFailed", { fout: milieuklassenFout })}
                 </div>
               )}
               {betonKorfFout && (
@@ -1554,10 +1543,10 @@ export default function ProfielKiezer({
               )}
               {!betonKorfFout && betonDoorsnedeGeldig && (
                 <div className="pk-eigenschappen">
-                  <div className="pk-eig-rij"><span>A_s,onder</span><code>{nlGetal(aOnder)} mm²</code></div>
-                  <div className="pk-eig-rij"><span>A_s,boven</span><code>{nlGetal(aBoven)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>{t("profilePicker.asBottom")}</span><code>{nlGetal(aOnder)} mm²</code></div>
+                  <div className="pk-eig-rij"><span>{t("profilePicker.asTop")}</span><code>{nlGetal(aBoven)} mm²</code></div>
                   <div className="pk-eig-rij">
-                    <span>{betonDekkingRondomGelijk ? "d" : "d (trek onder)"}</span>
+                    <span>{betonDekkingRondomGelijk ? "d" : t("profilePicker.dTensionBottom")}</span>
                     <code>{nlGetal(betonNuttigeHoogte)} mm</code>
                   </div>
                   {/* De tweede nuttige hoogte alleen als hij een eigen verhaal
@@ -1565,16 +1554,14 @@ export default function ProfielKiezer({
                       lezen, bij een dekking per zijde niet. */}
                   {!betonDekkingRondomGelijk && (
                     <div className="pk-eig-rij">
-                      <span>d (trek boven)</span>
+                      <span>{t("profilePicker.dTensionTop")}</span>
                       <code>{nlGetal(betonNuttigeHoogteBoven)} mm</code>
                     </div>
                   )}
                 </div>
               )}
               <div className="pk-hint">
-                {korfSamenvatting(betonKorf)}. Het M-N-κ-diagram bij deze korf
-                staat bij de staafeigenschappen, tabblad Norm — daar zijn dit
-                dezelfde velden.
+                {korfSamenvatting(betonKorf)}. {t("profilePicker.cageHint")}
               </div>
             </div>
           </div>
@@ -1584,22 +1571,22 @@ export default function ProfielKiezer({
       {soort === "overig" && (
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
-            <div className="pk-kolom-kop">Doorsnede</div>
+            <div className="pk-kolom-kop">{t("profilePicker.crossSection")}</div>
             <button
               className={`pk-rij${overigVorm === "rechthoek" ? " actief" : ""}`}
               onClick={() => setOverigVorm("rechthoek")}
             >
-              Rechthoek <span className="pk-rij-sub">b × h</span>
+              {t("profilePicker.rectangleCap")} <span className="pk-rij-sub">b × h</span>
             </button>
             <button
               className={`pk-rij${overigVorm === "profiel" ? " actief" : ""}`}
               onClick={() => setOverigVorm("profiel")}
             >
-              Uit de database <span className="pk-rij-sub">IPE, HEA, koker, buis</span>
+              {t("profilePicker.fromDatabase")} <span className="pk-rij-sub">{t("profilePicker.databaseSub")}</span>
             </button>
             {overigVorm === "profiel" && (
               <>
-                <div className="pk-kolom-kop">Reeks</div>
+                <div className="pk-kolom-kop">{t("profilePicker.series")}</div>
                 <div className="pk-scroll">
                   {STAAL_REEKSEN.map((r) => (
                     <button
@@ -1618,21 +1605,21 @@ export default function ProfielKiezer({
           <div className="pk-kolom pk-kolom-maat">
             {overigVorm === "rechthoek" ? (
               <>
-                <div className="pk-kolom-kop">Maten</div>
+                <div className="pk-kolom-kop">{t("profilePicker.dimensions")}</div>
                 <label className="pk-veld">
-                  <span>Breedte b [mm]</span>
+                  <span>{t("profilePicker.widthB")}</span>
                   <input type="number" min={1} step={1} value={overigB}
                     onChange={(e) => setOverigB(Number(e.target.value))} />
                 </label>
                 <label className="pk-veld">
-                  <span>Hoogte h [mm]</span>
+                  <span>{t("profilePicker.heightH")}</span>
                   <input type="number" min={1} step={1} value={overigH}
                     onChange={(e) => setOverigH(Number(e.target.value))} />
                 </label>
               </>
             ) : (
               <>
-                <div className="pk-kolom-kop">Profiel</div>
+                <div className="pk-kolom-kop">{t("profilePicker.profile")}</div>
                 <div className="pk-scroll">
                   {reeksProfielen.map((naam) => (
                     <button
@@ -1651,48 +1638,46 @@ export default function ProfielKiezer({
                 <ProfielMiniatuur
                   shape={overigVorm2}
                   materiaal="vrij"
-                  titel={`Doorsnede ${overigProfielnaam}`}
+                  titel={t("profilePicker.sectionOf", { naam: overigProfielnaam })}
                 />
               </div>
             )}
           </div>
 
           <div className="pk-kolom pk-kolom-detail">
-            <div className="pk-kolom-kop">Vrij materiaal</div>
+            <div className="pk-kolom-kop">{t("profilePicker.freeMaterial")}</div>
             <div className="pk-kolom-body">
             <label className="pk-veld">
-              <span>Naam</span>
+              <span>{t("profilePicker.name")}</span>
               <input type="text" value={vrijNaam} spellCheck={false}
-                placeholder="bijv. Natuursteen"
+                placeholder={t("profilePicker.freeNamePlaceholder")}
                 onChange={(e) => setVrijNaam(e.target.value)} />
             </label>
             <label className="pk-veld">
-              <span>E-modulus [N/mm²]</span>
+              <span>{t("profilePicker.eModulus")}</span>
               <input type="number" min={1} step={100} value={vrijE}
                 onChange={(e) => setVrijE(e.target.value)} />
             </label>
             <label className="pk-veld">
-              <span>Volumieke massa ρ [kg/m³]</span>
+              <span>{t("profilePicker.density")}</span>
               <input type="number" min={0} step={10} value={vrijRho}
                 onChange={(e) => setVrijRho(e.target.value)} />
             </label>
             <label className="pk-veld">
-              <span>Toelaatbare spanning f [N/mm²]</span>
+              <span>{t("profilePicker.allowableStress")}</span>
               <input type="number" min={0} step={1} value={vrijF}
                 onChange={(e) => setVrijF(e.target.value)} />
             </label>
             <label className="pk-veld">
-              <span>Materiaalfactor γ_M [-]</span>
+              <span>{t("profilePicker.materialFactor")}</span>
               <input type="number" min={0.1} step={0.05} value={vrijGamma}
                 onChange={(e) => setVrijGamma(e.target.value)} />
             </label>
             <div className="pk-hint">
-              Deze staaf wordt <strong>niet aan een norm</strong> getoetst, maar op de
-              vergelijkspanning van von Mises:
+              {t("profilePicker.vonMisesBefore")} <strong>{t("profilePicker.vonMisesStrong")}</strong>{" "}
+              {t("profilePicker.vonMisesAfter")}
               σ<sub>eq</sub> = √(σ<sub>x</sub>² + σ<sub>z</sub>² − σ<sub>x</sub>·σ<sub>z</sub>
-              {" "}+ 3·τ²) ≤ f/γ<sub>M</sub>. Er is dus geen doorsnedeklassificatie en geen
-              knik-, kip- of doorbuigingstoets. De velden hebben bewust geen
-              standaardwaarden: vul de gegevens van je eigen materiaal in.
+              {" "}+ 3·τ²) ≤ f/γ<sub>M</sub>. {t("profilePicker.vonMisesEnd")}
             </div>
             {overigDoorsnedeGeldig && (
               <div className="pk-eigenschappen">
@@ -1712,10 +1697,10 @@ export default function ProfielKiezer({
             </div>
             <div className="pk-samenvatting">
               {overigGeldig
-                ? <>Keuze: <strong>{overigProfielnaam} — {vrijMat.naam}</strong> (f = {nlGetal(vrijMat.fToel, 2)} N/mm²)</>
+                ? <>{t("profilePicker.choice")} <strong>{overigProfielnaam} — {vrijMat.naam}</strong> (f = {nlGetal(vrijMat.fToel, 2)} N/mm²)</>
                 : !overigDoorsnedeGeldig
-                  ? "Kies of vul een geldige doorsnede in."
-                  : "Vul naam, E, ρ en de toelaatbare spanning in."}
+                  ? t("profilePicker.chooseOrEnterSection")
+                  : t("profilePicker.enterFreeMaterial")}
             </div>
           </div>
         </div>
@@ -1724,7 +1709,7 @@ export default function ProfielKiezer({
       {soort === "eigen" && (
         <div className="pk-eigen">
           <label className="pk-veld pk-veld-inline">
-            <span>Staalklasse</span>
+            <span>{t("profilePicker.steelGrade")}</span>
             <select value={staalKlasse} onChange={(e) => setStaalKlasse(e.target.value)}>
               {STEEL_GRADES.map((g) => <option key={g} value={g}>{g}</option>)}
             </select>
@@ -1732,9 +1717,7 @@ export default function ProfielKiezer({
 
           {eigenDoorsneden.length === 0 ? (
             <p className="pk-hint">
-              Er zijn nog geen eigen doorsneden bewaard. Maak er een in de
-              profieleditor: samenstellen uit platen en profielen, of een gat in
-              een catalogusprofiel.
+              {t("profilePicker.noOwnSections")}
             </p>
           ) : (
             <div className="pk-scroll">
@@ -1743,7 +1726,7 @@ export default function ProfielKiezer({
                   key={d.id}
                   className="pk-rij pk-rij-eigen"
                   onClick={() => kiesEigen(d)}
-                  title="Deze doorsnede op de staaf zetten"
+                  title={t("profilePicker.assignThisSection")}
                 >
                   <span className="pk-rij-naam">{d.naam}</span>
                   <span className="pk-rij-sub">
@@ -1756,11 +1739,10 @@ export default function ProfielKiezer({
           )}
 
           <button className="pk-knop" onClick={() => setEditorOpen(true)}>
-            Profieleditor openen…
+            {t("profilePicker.openEditor")}
           </button>
           <div className="pk-hint">
-            De editor opent in een eigen venster. Wat je daar bewaart of kiest
-            landt met de staalklasse hierboven op de staaf.
+            {t("profilePicker.editorHint")}
           </div>
 
           {editorOpen && (
@@ -1777,17 +1759,17 @@ export default function ProfielKiezer({
 
       <div className="pk-voet">
         {soort !== null && (
-          <button className="pk-knop" onClick={() => setSoort(null)}>← Materiaal</button>
+          <button className="pk-knop" onClick={() => setSoort(null)}>{t("profilePicker.backToMaterial")}</button>
         )}
         <div className="pk-voet-rechts">
-          <button className="pk-knop" onClick={onClose}>Annuleren</button>
+          <button className="pk-knop" onClick={onClose}>{tCommon("cancel")}</button>
           {soort !== null && soort !== "eigen" && (
             <button
               className="pk-knop pk-knop-primair"
               disabled={toepassenUit}
               onClick={pasToe}
             >
-              Toepassen
+              {tCommon("apply")}
             </button>
           )}
         </div>

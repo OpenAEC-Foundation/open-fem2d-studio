@@ -476,6 +476,10 @@ const ALLEEN_BRON = new Map([
     "leest alleen de JSON-taalbestanden en config.ts van schijf en importeert geen enkele bronmodule; de bundelstand heeft er dus niets in te toetsen, en de runner weigert terecht een test zonder ./src-import",
   ],
   [
+    "i18n-vaste-tekst",
+    "scant de .tsx-bronbestanden met de TypeScript-parser op vaste Nederlandse teksten in JSX; hij importeert geen enkele bronmodule en rekent niets, dus de bundelstand heeft er niets in te toetsen (en de runner weigert terecht een test zonder ./src-import)",
+  ],
+  [
     "projectbestand",
     "serialiseert en leest het projectbestand terug (io/projectFile) en zet de rapportinstellingen in de zustand-store; projectFile en de rapportstore staan niet in de barrel",
   ],

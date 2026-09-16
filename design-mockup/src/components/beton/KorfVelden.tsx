@@ -42,6 +42,7 @@
  * is de eenheid van de norm — en de kop toont de zwaarste van de drie.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import type { CoverSide } from "../../lib/types/concrete/CoverSide";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
 import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
@@ -57,8 +58,6 @@ import {
   MILIEUKLASSEN,
   STAAFDIAMETERS,
   ZIJDEN,
-  ZIJDE_KORT,
-  ZIJDE_LABEL,
   beugelDwarsafstandMm,
   dekkingVanZijdeMm,
   grootsteStaafdiameterMm,
@@ -145,6 +144,7 @@ export function GetalOptioneel({
   stap?: number;
   geheel?: boolean;
 }) {
+  const { t } = useTranslation("check");
   return (
     <label className="beton-rij" htmlFor={id}>
       <span className="beton-label">{label}</span>
@@ -153,17 +153,17 @@ export function GetalOptioneel({
           id={id}
           className="beton-invoer"
           type="number"
-          placeholder="niet opgegeven"
+          placeholder={t("concrete.cage.notSpecified")}
           value={waarde === null || waarde === undefined ? "" : waarde}
           min={min}
           step={stap ?? 1}
           onChange={(e) => {
-            const t = e.target.value.trim();
-            if (t === "") {
+            const tekst = e.target.value.trim();
+            if (tekst === "") {
               onChange(undefined);
               return;
             }
-            const v = geheel ? parseInt(t, 10) : parseFloat(t);
+            const v = geheel ? parseInt(tekst, 10) : parseFloat(tekst);
             onChange(Number.isFinite(v) ? v : undefined);
           }}
         />
@@ -188,6 +188,7 @@ export function Rij({
   /** Korte uitleg onder het veld, voor een rij die anders leest dan hij is. */
   toelichting?: ReactNode;
 }) {
+  const { t } = useTranslation("check");
   return (
     <div className="beton-rij">
       <span className="beton-label">{label}</span>
@@ -200,7 +201,7 @@ export function Rij({
           max={30}
           step={1}
           value={rij.count}
-          aria-label={`${label}: aantal staven`}
+          aria-label={t("concrete.cage.barCountOf", { label })}
           onChange={(e) => {
             const v = parseInt(e.target.value, 10);
             if (Number.isFinite(v) && v >= 0) onChange({ ...rij, count: v });
@@ -211,7 +212,7 @@ export function Rij({
           id={`${id}-diameter`}
           className="beton-invoer beton-invoer-kort"
           value={rij.diameter_mm}
-          aria-label={`${label}: staafdiameter`}
+          aria-label={t("concrete.cage.barDiameterOf", { label })}
           onChange={(e) => onChange({ ...rij, diameter_mm: parseFloat(e.target.value) })}
         >
           {STAAFDIAMETERS.map((d) => (
@@ -362,6 +363,7 @@ export default function KorfVelden({
   doorsnede,
   idPrefix = "beton",
 }: Props) {
+  const { t } = useTranslation("check");
   const zet = (patch: Partial<ReinforcementCage>) => onKorfChange({ ...korf, ...patch });
   const { toetsen, fout } = useDekkingstoets(korf, milieuklasse, constructieklasse);
   const heeftBeugel = korf.stirrup_diameter_mm > 0;
@@ -432,7 +434,7 @@ export default function KorfVelden({
   return (
     <>
       <label className="beton-rij" htmlFor={`${idPrefix}-milieuklasse`}>
-        <span className="beton-label">Milieuklasse</span>
+        <span className="beton-label">{t("concrete.cage.exposureClass")}</span>
         <select
           id={`${idPrefix}-milieuklasse`}
           className="beton-invoer"
@@ -441,24 +443,25 @@ export default function KorfVelden({
             onMilieuklasseChange(e.target.value === "" ? null : (e.target.value as ExposureClass))
           }
         >
-          {klasseOpties("— kies —")}
+          {klasseOpties(t("concrete.cage.choose"))}
         </select>
       </label>
       {gekozen && (
         <div className="beton-hint">
-          {gekozen.description}. Voorbeelden uit tabel 4.1: {gekozen.examples.toLowerCase()}.
+          {t("concrete.cage.exposureExamples", {
+            omschrijving: gekozen.description,
+            voorbeelden: gekozen.examples.toLowerCase(),
+          })}
         </div>
       )}
       {!milieuklasse && (
         <div className="beton-hint">
-          Zonder milieuklasse wordt de dekking niet aan de norm getoetst. Tabel 4.1
-          van NEN-EN 1992-1-1 beschrijft de klassen; 4.4.1.2 leidt daaruit de
-          minimale dekking af.
+          {t("concrete.cage.noExposureClassHint")}
         </div>
       )}
 
       <label className="beton-rij" htmlFor={`${idPrefix}-constructieklasse`}>
-        <span className="beton-label">Constructieklasse</span>
+        <span className="beton-label">{t("concrete.cage.structuralClass")}</span>
         <select
           id={`${idPrefix}-constructieklasse`}
           className="beton-invoer"
@@ -469,7 +472,7 @@ export default function KorfVelden({
             )
           }
         >
-          <option value="">S4 — 50 jaar (nationale bijlage)</option>
+          <option value="">{t("concrete.cage.structuralClassDefault")}</option>
           {CONSTRUCTIEKLASSEN.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -480,7 +483,7 @@ export default function KorfVelden({
 
       <Getal
         id={`${idPrefix}-dekking`}
-        label="Dekking c_nom"
+        label={t("concrete.cage.coverNom")}
         eenheid="mm"
         waarde={korf.cover_mm}
         min={0}
@@ -506,8 +509,8 @@ export default function KorfVelden({
           aria-controls={`${idPrefix}-zijden`}
           onClick={() => setZijdenOpen((o) => !o)}
         >
-          <span aria-hidden="true">{zijdenOpen ? "▾" : "▸"}</span> Per zijde
-          {!zijdenOpen && heeftAfwijkendeZijde ? " (afwijkend)" : ""}
+          <span aria-hidden="true">{zijdenOpen ? "▾" : "▸"}</span> {t("concrete.cage.perSide")}
+          {!zijdenOpen && heeftAfwijkendeZijde ? ` ${t("concrete.cage.deviating")}` : ""}
         </button>
         {zijdenOpen && (
           <div id={`${idPrefix}-zijden`} className="beton-zijden-lijst">
@@ -516,13 +519,13 @@ export default function KorfVelden({
               const klasse = milieuklasseVanZijde(korf, zijde, milieuklasse);
               return (
                 <div className="beton-zijde-rij" key={zijde}>
-                  <span className="beton-zijde-naam" title={ZIJDE_LABEL[zijde]}>
-                    {ZIJDE_KORT[zijde]}
+                  <span className="beton-zijde-naam" title={t(`concrete.cage.sideName.${zijde}`)}>
+                    {t(`concrete.cage.sideShort.${zijde}`)}
                   </span>
                   <select
                     id={`${idPrefix}-zijde-${zijde}-klasse`}
                     className="beton-invoer beton-invoer-zijde"
-                    aria-label={`Milieuklasse ${ZIJDE_LABEL[zijde]}`}
+                    aria-label={t("concrete.cage.exposureClassOfSide", { zijde: t(`concrete.cage.sideName.${zijde}`) })}
                     value={eigen.exposure_class ?? ""}
                     onChange={(e) =>
                       onKorfChange(
@@ -535,7 +538,7 @@ export default function KorfVelden({
                       )
                     }
                   >
-                    {klasseOpties(milieuklasse ? `= ${milieuklasse}` : "— als element —")}
+                    {klasseOpties(milieuklasse ? `= ${milieuklasse}` : t("concrete.cage.asElement"))}
                   </select>
                   <input
                     id={`${idPrefix}-zijde-${zijde}-dekking`}
@@ -545,14 +548,14 @@ export default function KorfVelden({
                     max={200}
                     step={5}
                     placeholder={String(maat(korf.cover_mm))}
-                    aria-label={`Dekking ${ZIJDE_LABEL[zijde]} in mm`}
+                    aria-label={t("concrete.cage.coverOfSide", { zijde: t(`concrete.cage.sideName.${zijde}`) })}
                     value={eigen.cover_mm ?? ""}
                     onChange={(e) => {
-                      const t = e.target.value.trim();
-                      const v = parseFloat(t);
+                      const tekst = e.target.value.trim();
+                      const v = parseFloat(tekst);
                       onKorfChange(
                         zetZijde(korf, zijde, {
-                          cover_mm: t === "" || !Number.isFinite(v) ? undefined : v,
+                          cover_mm: tekst === "" || !Number.isFinite(v) ? undefined : v,
                         }),
                       );
                     }}
@@ -565,25 +568,15 @@ export default function KorfVelden({
               );
             })}
             <div className="beton-hint">
-              4.4.1.1(1)P meet de dekking tot <em>het dichtstbijzijnde</em>{" "}
-              betonoppervlak, dus per zijde. Leeg = die zijde volgt de milieuklasse
-              en de dekking van het element hierboven; er wordt niets aangenomen.
-              De bovenzijde bepaalt de ligging van de bovenwapening (d₂), de
-              onderzijde die van de onderwapening (d), en de zijkanten de
-              dwarsafstand van de beugelbenen (§9.2.2(8)) en de vrije staafafstand
-              (§8.2). Links en rechts staan niet apart: zij komen in elke formule
-              alleen als paar voor (b_w − 2c), dus een splitsing zou geen getal
-              veranderen — verschillen ze werkelijk van milieu, neem dan de
-              zwaarste. De constructieklasse blijft er één voor het hele element:
-              alle vijf de criteria van de door de nationale bijlage vervangen
-              tabel 4.3N zijn eigenschappen van het element.
+              {t("concrete.cage.perSideHintBefore")} <em>{t("concrete.cage.perSideHintEm")}</em>{" "}
+              {t("concrete.cage.perSideHintAfter")}
             </div>
           </div>
         )}
       </div>
 
       <label className="beton-rij" htmlFor={`${idPrefix}-beugel`}>
-        <span className="beton-label">Beugel</span>
+        <span className="beton-label">{t("concrete.cage.stirrup")}</span>
         <select
           id={`${idPrefix}-beugel`}
           className="beton-invoer"
@@ -592,7 +585,7 @@ export default function KorfVelden({
         >
           {BEUGELDIAMETERS.map((d) => (
             <option key={d} value={d}>
-              {d === 0 ? "geen" : `Ø${d}`}
+              {d === 0 ? t("concrete.cage.none") : `Ø${d}`}
             </option>
           ))}
         </select>
@@ -608,7 +601,7 @@ export default function KorfVelden({
         <>
           <GetalOptioneel
             id={`${idPrefix}-beugelafstand`}
-            label="Beugelafstand s"
+            label={t("concrete.cage.stirrupSpacing")}
             eenheid="mm"
             waarde={korf.stirrup_spacing_mm}
             min={1}
@@ -617,7 +610,7 @@ export default function KorfVelden({
           />
           <GetalOptioneel
             id={`${idPrefix}-beugelbenen`}
-            label="Beugelbenen n"
+            label={t("concrete.cage.stirrupLegs")}
             waarde={korf.stirrup_legs}
             min={1}
             stap={1}
@@ -628,7 +621,7 @@ export default function KorfVelden({
             id={`${idPrefix}-beugel-st`}
             label={
               <>
-                Dwarsafstand benen s<sub>t</sub>
+                {t("concrete.cage.legSpacing")}<sub>t</sub>
               </>
             }
             eenheid="mm"
@@ -641,7 +634,7 @@ export default function KorfVelden({
             id={`${idPrefix}-beugel-fywk`}
             label={
               <>
-                Beugelstaal f<sub>ywk</sub>
+                {t("concrete.cage.stirrupSteel")}<sub>ywk</sub>
               </>
             }
             eenheid="N/mm²"
@@ -653,33 +646,30 @@ export default function KorfVelden({
           <div className="beton-hint">
             {(korf.stirrup_spacing_mm ?? null) === null || (korf.stirrup_legs ?? null) === null ? (
               <>
-                <strong>Zonder beugelafstand s en aantal benen n kan de dwarskrachttoets
-                niet draaien.</strong>{" "}
-                A<sub>sw</sub>/s uit (6.8) en ρ<sub>w</sub> uit (9.4) zijn dan onbepaald. De
-                norm kent hier geen standaardwaarde — §9.2.2(6) en (8) geven alleen
-                bovengrenzen — dus er wordt niets aangenomen.{" "}
+                <strong>{t("concrete.cage.noShearCheck")}</strong>{" "}
+                A<sub>sw</sub>{t("concrete.cage.undeterminedA")}<sub>w</sub>{" "}
+                {t("concrete.cage.undeterminedB")}{" "}
               </>
             ) : null}
-            De hoek α van de beugels ligt vast op 90° (rechte beugels); §9.2.2(1) laat
-            45°–90° toe, maar hellende beugels en opgebogen staven zijn niet
-            gemodelleerd. s<sub>t</sub> leeg laten mag:{" "}
+            {t("concrete.cage.stirrupAngleHint")} s<sub>t</sub>{" "}
+            {t("concrete.cage.stEmptyAllowed")}{" "}
             {stAfgeleid?.afgeleid
-              ? `bij deze tweebenige beugel volgt s_t = ${maat(stAfgeleid.mm)} mm uit b_w, dekking en beugeldiameter.`
-              : "bij een tweebenige beugel leidt de kern hem meetkundig af uit b_w, dekking en beugeldiameter; bij meer benen blijft §9.2.2(8) ongetoetst."}{" "}
-            f<sub>ywk</sub> leeg laten betekent: dezelfde staalsoort als de langswapening.
+              ? t("concrete.cage.stDerived", { st: maat(stAfgeleid.mm) })
+              : t("concrete.cage.stDerivedByEngine")}{" "}
+            f<sub>ywk</sub> {t("concrete.cage.fywkEmpty")}
           </div>
         </>
       )}
 
       <Rij
         id={`${idPrefix}-boven`}
-        label="Bovenwapening"
+        label={t("concrete.cage.topReinforcement")}
         rij={korf.top}
         onChange={(top) => zet({ top })}
       />
       <Rij
         id={`${idPrefix}-onder`}
-        label="Onderwapening"
+        label={t("concrete.cage.bottomReinforcement")}
         rij={korf.bottom}
         onChange={(bottom) => zet({ bottom })}
       />
@@ -699,22 +689,19 @@ export default function KorfVelden({
       */}
       <Rij
         id={`${idPrefix}-opzij`}
-        label="Zijstaven per zijkant"
+        label={t("concrete.cage.sideBarsPerSide")}
         rij={zijstaafRij(korf)}
         onChange={(sides) => onKorfChange(zetKorfRij(korf, "sides", sides))}
         toelichting={
           zijstaafRij(korf).count > 0 ? (
             <>
-              {zijstaafRij(korf).count} per zijkant, dus{" "}
-              <strong>{2 * zijstaafRij(korf).count} in de doorsnede</strong>, tussen de
-              hoekstaven in. Zij worden gelijkmatig verdeeld tussen de onder- en de
-              bovenrij — een modelkeuze, geen normvoorschrift; §9.5.3(6) begrenst
-              alleen de afstand tot een opgesloten staaf op 150 mm.
+              {t("concrete.cage.sideBarsCount", { n: zijstaafRij(korf).count })}{" "}
+              <strong>{t("concrete.cage.sideBarsTotal", { n: 2 * zijstaafRij(korf).count })}</strong>
+              {t("concrete.cage.sideBarsHint")}
             </>
           ) : (
             <>
-              Alleen voor een kolom. 0 = geen zijstaven; de hoekstaven horen bij de
-              boven- en de onderrij en niet hier.
+              {t("concrete.cage.noSideBarsHint")}
             </>
           )
         }
@@ -735,36 +722,41 @@ export default function KorfVelden({
           {teDun ? (
             <>
               <strong>
-                Dekking te klein aan de {ZIJDE_LABEL[maatgevend.zijde]}:{" "}
-                {maat(maatgevend.antwoord.c_nom_provided_mm)} mm terwijl{" "}
-                {maat(maatgevend.antwoord.c_nom_required_mm)} mm nodig is
+                {t("concrete.cage.coverTooSmall", {
+                  zijde: t(`concrete.cage.sideName.${maatgevend.zijde}`),
+                  aanwezig: maat(maatgevend.antwoord.c_nom_provided_mm),
+                  vereist: maat(maatgevend.antwoord.c_nom_required_mm),
+                })}
               </strong>{" "}
               (UC = {maatgevend.antwoord.unity_check.toFixed(2).replace(".", ",")}).{" "}
             </>
           ) : (
             <>
-              Dekking in orde{toetsen.length > 1 ? " aan alle zijden" : ""}; maatgevend
-              is de {ZIJDE_LABEL[maatgevend.zijde]}:{" "}
-              {maat(maatgevend.antwoord.c_nom_provided_mm)} mm ≥{" "}
-              {maat(maatgevend.antwoord.c_nom_required_mm)} mm.{" "}
+              {t(toetsen.length > 1 ? "concrete.cage.coverOkAllSides" : "concrete.cage.coverOk", {
+                zijde: t(`concrete.cage.sideName.${maatgevend.zijde}`),
+                aanwezig: maat(maatgevend.antwoord.c_nom_provided_mm),
+                vereist: maat(maatgevend.antwoord.c_nom_required_mm),
+              })}{" "}
             </>
           )}
           <details className="beton-notities">
-            <summary>De keten per zijde (4.1 en 4.2)</summary>
+            <summary>{t("concrete.cage.chainPerSide")}</summary>
             {toetsen.map(({ zijde, antwoord }) => (
               <div key={zijde} className="beton-zijde-uitleg">
-                <strong>{ZIJDE_LABEL[zijde]}</strong> — {antwoord.exposure_class}, c
+                <strong>{t(`concrete.cage.sideName.${zijde}`)}</strong> — {antwoord.exposure_class}, c
                 <sub>nom</sub> = {maat(antwoord.c_nom_provided_mm)} mm. c
                 <sub>min,dur</sub> ={" "}
                 {antwoord.c_min_dur_mm === null
-                  ? "— (tabel 4.4N kent deze klasse niet)"
+                  ? t("concrete.cage.minDurUnknown")
                   : `${maat(antwoord.c_min_dur_mm)} mm`}
                 , c<sub>min,b</sub> = {maat(antwoord.c_min_b_mm)} mm → c<sub>min</sub> ={" "}
-                {maat(antwoord.c_min_mm)} mm; c<sub>nom,vereist</sub> = c<sub>min</sub> +
+                {maat(antwoord.c_min_mm)} mm; c<sub>{t("concrete.cage.nomRequiredSub")}</sub> = c<sub>min</sub> +
                 Δc<sub>dev</sub> = {maat(antwoord.c_min_mm)} +{" "}
                 {maat(antwoord.delta_c_dev_mm)} = {maat(antwoord.c_nom_required_mm)} mm
-                (constructieklasse {antwoord.structural_class}
-                {antwoord.cover_column ? `, kolom ${antwoord.cover_column}` : ""}, UC ={" "}
+                ({t("concrete.cage.structuralClassLower")} {antwoord.structural_class}
+                {antwoord.cover_column
+                  ? `, ${t("concrete.cage.coverColumn", { kolom: antwoord.cover_column })}`
+                  : ""}, UC ={" "}
                 {antwoord.unity_check.toFixed(2).replace(".", ",")}).
                 <ul>
                   {antwoord.notes.map((n, i) => (
@@ -778,8 +770,7 @@ export default function KorfVelden({
       )}
       {fout && (
         <div className="beton-hint">
-          De dekkingstoets kon niet draaien ({fout}). De dekking is dus niet aan de
-          milieuklasse getoetst.
+          {t("concrete.cage.coverCheckFailed", { fout })}
         </div>
       )}
     </>

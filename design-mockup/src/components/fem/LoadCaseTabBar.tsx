@@ -7,8 +7,9 @@
  * Hidden on full-width views (IFC, report) since those don't use LCs.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { LoadCase, Load, Analysetype } from "./femTypes";
-import { ANALYSETYPEN, ANALYSETYPE_LABEL, ANALYSETYPE_OMSCHRIJVING } from "./femTypes";
+import { ANALYSETYPEN } from "./femTypes";
 import {
   SCHEEFSTAND_BRONNEN, SCHEEFSTAND_BRON_LABEL, type ScheefstandBron,
 } from "../../lib/scheefstandNorm";
@@ -120,28 +121,29 @@ export default function LoadCaseTabBar({
   showLoads = true, setShowLoads,
   hasResults = false, resultsActive = false, onShowResults,
 }: Props) {
+  const { t } = useTranslation("common");
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
 
   const handleAdd = () => {
-    const name = newName.trim() || `Geval ${loadCases.length + 1}`;
+    const name = newName.trim() || t("loadCases.defaultCaseName", { n: loadCases.length + 1 });
     addLoadCase(name);
     setAdding(false);
     setNewName("");
   };
 
   return (
-    <div className="lc-tab-bar" role="tablist" aria-label="Belastinggevallen">
+    <div className="lc-tab-bar" role="tablist" aria-label={t("loadCases.tablistLabel")}>
       {/* Model tab — leftmost, hides loads when active. */}
       <button
         role="tab"
         aria-selected={!showLoads}
         className={`lc-tab lc-tab-model${!showLoads ? " active" : ""}`}
         onClick={() => setShowLoads?.(false)}
-        title="Model-view — toon alleen structuur, geen lasten"
+        title={t("loadCases.modelTabTitle")}
       >
         <span className="lc-tab-type lc-tab-type-model">M</span>
-        <span className="lc-tab-name">Model</span>
+        <span className="lc-tab-name">{t("loadCases.modelTab")}</span>
       </button>
 
       {loadCases.map(lc => {
@@ -157,7 +159,7 @@ export default function LoadCaseTabBar({
               setActiveLoadCaseId(lc.id);
               setShowLoads?.(true);    // any LC click leaves model-only view
             }}
-            title={`${lc.name} — ${count} belasting${count === 1 ? "" : "en"}`}
+            title={t("loadCases.tabTitle", { naam: lc.name, count })}
           >
             <span className={`lc-tab-type lc-tab-type-${lc.type}`}>{typeTag(lc.type)}</span>
             <span className="lc-tab-name">{lc.name}</span>
@@ -173,10 +175,10 @@ export default function LoadCaseTabBar({
           aria-selected={resultsActive}
           className={`lc-tab lc-tab-results${resultsActive ? " active" : ""}`}
           onClick={() => onShowResults?.()}
-          title="Toon krachtsverdeling en vervormingen"
+          title={t("loadCases.resultsTabTitle")}
         >
           <span className="lc-tab-type lc-tab-type-results">R</span>
-          <span className="lc-tab-name">Resultaten</span>
+          <span className="lc-tab-name">{t("loadCases.resultsTab")}</span>
         </button>
       )}
 
@@ -186,7 +188,7 @@ export default function LoadCaseTabBar({
             type="text"
             className="lc-tab-add-input"
             autoFocus
-            placeholder={`Geval ${loadCases.length + 1}`}
+            placeholder={t("loadCases.defaultCaseName", { n: loadCases.length + 1 })}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -200,8 +202,8 @@ export default function LoadCaseTabBar({
         <button
           className="lc-tab-add"
           onClick={() => setAdding(true)}
-          title="Nieuw belastinggeval toevoegen"
-          aria-label="Nieuw belastinggeval"
+          title={t("loadCases.addTitle")}
+          aria-label={t("loadCases.addLabel")}
         >
           +
         </button>
@@ -213,14 +215,14 @@ export default function LoadCaseTabBar({
       {setSelfWeightEnabled && (
         <label
           className={`lc-tab-toggle${selfWeightEnabled ? " active" : ""}`}
-          title="Voeg eigen gewicht (ρ·A·g) toe aan het permanente belastinggeval"
+          title={t("loadCases.selfWeightTitle")}
         >
           <input
             type="checkbox"
             checked={!!selfWeightEnabled}
             onChange={(e) => setSelfWeightEnabled(e.target.checked)}
           />
-          <span>Eigen gewicht</span>
+          <span>{t("loadCases.selfWeight")}</span>
         </label>
       )}
 
@@ -229,16 +231,16 @@ export default function LoadCaseTabBar({
       {setAnalysetype && (
         <span
           className={`lc-tab-phi${analysetype !== "eersteOrde" ? " active" : ""}`}
-          title={ANALYSETYPE_OMSCHRIJVING[analysetype]}
+          title={t(`loadCases.analysisDescription.${analysetype}`)}
         >
-          <span className="lc-tab-phi-label">Analyse</span>
+          <span className="lc-tab-phi-label">{t("loadCases.analysis")}</span>
           <select
             className="lc-tab-phi-dir"
             value={analysetype}
             onChange={(e) => setAnalysetype(e.target.value as Analysetype)}
           >
-            {ANALYSETYPEN.map((t) => (
-              <option key={t} value={t}>{ANALYSETYPE_LABEL[t]}</option>
+            {ANALYSETYPEN.map((a) => (
+              <option key={a} value={a}>{t(`loadCases.analysisType.${a}`)}</option>
             ))}
           </select>
         </span>
@@ -250,14 +252,9 @@ export default function LoadCaseTabBar({
       {setAnalysetype && analysetype === "tweedeOrdeFysisch" && (
         <span
           className="lc-tab-phi"
-          title={
-            "Gewenste segmentlengte in mm. Elke betonstaaf wordt in even lange " +
-            "segmenten geknipt die elk hun eigen secans-EI krijgen (5.8.6(6)). " +
-            "Korter = nauwkeuriger en trager; de applicatie vergroft niet uit " +
-            "zichzelf."
-          }
+          title={t("loadCases.segmentTitle")}
         >
-          <span className="lc-tab-phi-label">segment</span>
+          <span className="lc-tab-phi-label">{t("loadCases.segment")}</span>
           <input
             type="number"
             className="lc-tab-phi-input"
@@ -283,16 +280,7 @@ export default function LoadCaseTabBar({
       {setAnalysetype && analysetype === "tweedeOrdeFysisch" && (
         <span
           className={betonKruipcoefficient === null ? "lc-tab-phi lc-tab-phi-waarschuwing" : "lc-tab-phi"}
-          title={
-            "Eindwaarde van de kruipcoëfficiënt φ(∞,t₀) volgens art. 3.1.4, voor " +
-            "elke betonstaaf zonder eigen waarde bij de §5.8-gegevens. De kern " +
-            "verwerkt hem volgens 5.8.6(4) — alle rekwaarden maal (1 + φ_ef) — " +
-            "wat voor de beginhelling neerkomt op E_c,eff = E_cm/(1 + φ) van " +
-            "(7.20). LEEG = niet opgegeven: er wordt dan ZONDER kruip gerekend, " +
-            "de zakking komt te klein uit en dat is de onveilige kant. Art. 3.1.4 " +
-            "wordt hier niet uitgerekend: dat vraagt de relatieve luchtvochtigheid, " +
-            "de fictieve dikte h₀, de cementklasse en de ouderdom t₀ bij belasten."
-          }
+          title={t("loadCases.creepTitle")}
         >
           <span className="lc-tab-phi-label">φ(∞,t₀)</span>
           <input
@@ -300,7 +288,7 @@ export default function LoadCaseTabBar({
             className="lc-tab-phi-input"
             min={0}
             step={0.1}
-            placeholder="leeg"
+            placeholder={t("loadCases.emptyPlaceholder")}
             value={betonKruipcoefficient ?? ""}
             onChange={(e) => {
               const tekst = e.target.value.trim();
@@ -320,20 +308,15 @@ export default function LoadCaseTabBar({
       {setAnalysetype && analysetype === "tweedeOrdeFysisch" && aantalBetonstaven === 0 && (
         <span
           className="lc-tab-phi"
-          title={
-            "Fysisch niet-lineair werkt op betonstaven met een wapeningskorf: " +
-            "materiaal een sterkteklasse (bijv. C30/37), profiel een rechthoek " +
-            "(bijv. 300x500) en een korf bij de staafeigenschappen. Zonder die " +
-            "staven is de uitkomst gelijk aan 2e orde (P-Δ)."
-          }
+          title={t("loadCases.noConcreteBarsTitle")}
         >
-          <span className="lc-tab-phi-label">geen betonstaven met korf</span>
+          <span className="lc-tab-phi-label">{t("loadCases.noConcreteBars")}</span>
         </span>
       )}
 
       {setAnalysetype && analysetype === "tweedeOrdeFysisch" && segmentWaarschuwing && (
         <span className="lc-tab-phi" title={segmentWaarschuwing}>
-          <span className="lc-tab-phi-label">⚠ model groot — zie segmentlengte</span>
+          <span className="lc-tab-phi-label">⚠ {t("loadCases.modelLarge")}</span>
         </span>
       )}
 
@@ -342,20 +325,14 @@ export default function LoadCaseTabBar({
       {setScheefstandEnabled && (
         <label
           className={`lc-tab-toggle${scheefstandEnabled ? " active" : ""}`}
-          title={
-            "Scheefstand (initiële imperfectie) meenemen: elke verticale last " +
-            "krijgt een horizontale metgezel H = φ·V. Waar φ vandaan komt kies " +
-            "je hiernaast — de vaste noemer (de basiswaarde, en de stand van " +
-            "elk bestaand project) of de normformule van EN 1993-1-1 (5.5), " +
-            "EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1)."
-          }
+          title={t("loadCases.swayTitle")}
         >
           <input
             type="checkbox"
             checked={!!scheefstandEnabled}
             onChange={(e) => setScheefstandEnabled(e.target.checked)}
           />
-          <span>Scheefstand</span>
+          <span>{t("loadCases.sway")}</span>
         </label>
       )}
       {/* Waar φ vandaan komt. "vast" is de beginstand en de stand van elk
@@ -366,35 +343,27 @@ export default function LoadCaseTabBar({
       {setScheefstandEnabled && scheefstandEnabled && setScheefstandBron && (
         <span
           className="lc-tab-phi"
-          title={
-            "Waar φ vandaan komt.\n\n" +
-            "vaste noemer — het ingetikte getal, zonder α_h en α_m. Dit is de " +
-            "basiswaarde van de norm en dus de veilige bovengrens; het is ook " +
-            "de stand van elk project dat vóór deze keuze is gemaakt.\n" +
-            "EN 1993-1-1 (5.5) — φ = φ₀·α_h·α_m met φ₀ = 1/200 (staal).\n" +
-            "EN 1992-1-1 (5.1) — θ_i = θ₀·α_h·α_m met θ₀ = 1/300 volgens de " +
-            "Nederlandse nationale bijlage (beton).\n" +
-            "EN 1995-1-1 (5.1) — φ = 0,005 voor h ≤ 5 m, anders 0,005·√(5/h); " +
-            "geen α_m (hout).\n" +
-            "ongunstigste — rekent alle normen door die op dit model van " +
-            "toepassing zijn en neemt de grootste φ."
-          }
+          title={t("loadCases.swaySourceTitle")}
         >
-          <span className="lc-tab-phi-label">φ uit</span>
+          <span className="lc-tab-phi-label">{t("loadCases.phiFrom")}</span>
           <select
             className="lc-tab-phi-dir"
             value={scheefstandBron}
             onChange={(e) => setScheefstandBron(e.target.value as ScheefstandBron)}
           >
             {SCHEEFSTAND_BRONNEN.map((b) => (
-              <option key={b} value={b}>{SCHEEFSTAND_BRON_LABEL[b]}</option>
+              <option key={b} value={b}>
+                {b === "vast" || b === "ongunstigste"
+                  ? t(`loadCases.swaySource.${b}`)
+                  : SCHEEFSTAND_BRON_LABEL[b]}
+              </option>
             ))}
           </select>
         </span>
       )}
 
       {setScheefstandEnabled && scheefstandEnabled && scheefstandBron === "vast" && (
-        <span className="lc-tab-phi" title="Scheefstand φ als 1/x (default 1/200)">
+        <span className="lc-tab-phi" title={t("loadCases.swayDenominatorTitle")}>
           <span className="lc-tab-phi-label">φ = 1/</span>
           <input
             type="number"
@@ -430,12 +399,7 @@ export default function LoadCaseTabBar({
               const v = Number(t);
               if (Number.isFinite(v) && v > 0) setScheefstandHoogteM?.(v);
             }}
-            title={
-              "Hoogte h in m voor α_h = 2/√h. Leeg = uit het model afgeleid " +
-              `(${scheefstandAfgeleideHoogteM.toFixed(3)} m): van de laagste ` +
-              "oplegging tot de bovenkant van de constructie (EN 1993-1-1 " +
-              "figuur 5.2; EN 1992-1-1 §5.2(6) voor de schorende constructie)."
-            }
+            title={t("loadCases.swayHeightTitle", { hoogte: scheefstandAfgeleideHoogteM.toFixed(3) })}
           />
           <span className="lc-tab-phi-label">m</span>
           <input
@@ -451,15 +415,7 @@ export default function LoadCaseTabBar({
               const v = Number(t);
               if (Number.isFinite(v) && v >= 1) setScheefstandAantalElementen?.(Math.floor(v));
             }}
-            title={
-              "Aantal dragende verticale elementen m voor α_m = √(0,5(1+1/m)). " +
-              `Leeg = uit het model afgeleid (${scheefstandAfgeleidAantal}): het ` +
-              "aantal kolomlijnen, waarbij staven die op elkaar staan één kolom " +
-              "vormen. Het 50 %-criterium van EN 1993-1-1 5.3.2(3)a kan hier " +
-              "niet worden toegepast (het vraagt de kolomkrachten, en die " +
-              "volgen pas uit de berekening); haal een licht belaste stijl er " +
-              "met de hand uit — kleinere m geeft grotere φ."
-            }
+            title={t("loadCases.swayMembersTitle", { aantal: scheefstandAfgeleidAantal })}
           />
           <span className="lc-tab-phi-label">
             {scheefstandWaarschuwingen.length > 0 ? "⚠ " : ""}
@@ -473,15 +429,7 @@ export default function LoadCaseTabBar({
       {setScheefstandEnabled && scheefstandEnabled && (
         <span
           className="lc-tab-phi"
-          title={
-            "Richting van de equivalente horizontale krachten: BEIDE. Elke " +
-            "combinatie wordt met de scheefstand in +x én in −x doorgerekend " +
-            "(EN 1993-1-1 5.3.2(2): in de meest ongunstige richting); de " +
-            "omhullende en de toetsing nemen per staaf de ongunstigste van de " +
-            "twee, en de combinatienaam noemt de richting. De hier opgeslagen " +
-            `voorkeursrichting (${(scheefstandRichting ?? 1) === 1 ? "+x" : "−x"}) ` +
-            "bepaalt alleen welke variant het oorspronkelijke combinatienummer houdt."
-          }
+          title={t("loadCases.swayDirectionTitle", { richting: (scheefstandRichting ?? 1) === 1 ? "+x" : "−x" })}
         >
           <span className="lc-tab-phi-label">±x</span>
         </span>

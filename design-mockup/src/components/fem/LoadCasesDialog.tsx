@@ -17,6 +17,7 @@
  * "Ongedaan maken" zolang dat kan.
  */
 import { Fragment, useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { LoadCase } from "./femTypes";
 import { GEBRUIKSCATEGORIEEN } from "./femTypes";
 import type { LoadCombination } from "./solver/combinations";
@@ -68,10 +69,6 @@ interface Props {
 }
 
 const TYPE_OPTIONS: LoadCase["type"][] = ["dead", "live", "snow", "wind", "other"];
-const TYPE_LABEL: Record<LoadCase["type"], string> = {
-  dead: "Permanent (G)", live: "Variabel (Q)", snow: "Sneeuw (S)",
-  wind: "Wind (W)", other: "Overig",
-};
 
 export default function LoadCasesDialog({
   open, onClose, initialTab = "cases",
@@ -82,6 +79,7 @@ export default function LoadCasesDialog({
   addLoadCase, updateLoadCase, removeLoadCase,
   addCombination, updateCombination, removeCombination,
 }: Props) {
+  const { t } = useTranslation("common");
   const overgeslagenReden = new Map(
     overgeslagenCombinaties.map((o) => [o.id, o.reden] as const),
   );
@@ -102,13 +100,13 @@ export default function LoadCasesDialog({
   const adviesMeldingen = belastingMeldingen.filter((m) => m.vervangAdvies || m.windOpnieuwAdvies);
 
   const handleAddCase = () => {
-    const name = newCaseName.trim() || `Geval ${loadCases.length + 1}`;
+    const name = newCaseName.trim() || t("loadCases.defaultCaseName", { n: loadCases.length + 1 });
     addLoadCase(name);
     setNewCaseName("");
   };
 
   const handleAddCombo = () => {
-    const name = newComboName.trim() || `Combinatie ${combinations.length + 1}`;
+    const name = newComboName.trim() || t("loadCases.defaultComboName", { n: combinations.length + 1 });
     addCombination({
       name,
       type: "uls",
@@ -124,17 +122,17 @@ export default function LoadCasesDialog({
     <div className="lcd-overlay" onClick={onClose}>
       <div className="lcd-dialog" onClick={e => e.stopPropagation()}>
         <div className="lcd-header">
-          <span className="lcd-title">Belastinggevallen & combinaties</span>
-          <button className="lcd-close" onClick={onClose} aria-label="Sluiten">×</button>
+          <span className="lcd-title">{t("loadCases.dialogTitle")}</span>
+          <button className="lcd-close" onClick={onClose} aria-label={t("close")}>×</button>
         </div>
 
         <div className="lcd-tabs">
           <button className={`lcd-tab${tab === "cases" ? " active" : ""}`} onClick={() => setTab("cases")}>
-            Gevallen ({loadCases.length}){aantalFouten > 0 ? ` — ${aantalFouten} fout` : ""}
+            {t("loadCases.casesTab", { aantal: loadCases.length })}{aantalFouten > 0 ? ` — ${t("loadCases.errorCount", { count: aantalFouten })}` : ""}
           </button>
           <button className={`lcd-tab${tab === "combos" ? " active" : ""}`} onClick={() => setTab("combos")}>
-            Combinaties ({combinations.length})
-            {combinatieVervanging ? " — vervangen bij openen" : combinatieAfwijking ? " — melding" : ""}
+            {t("loadCases.combosTab", { aantal: combinations.length })}
+            {combinatieVervanging ? ` — ${t("loadCases.replacedOnOpen")}` : combinatieAfwijking ? ` — ${t("loadCases.notice")}` : ""}
           </button>
         </div>
 
@@ -148,10 +146,10 @@ export default function LoadCasesDialog({
                 <thead>
                   <tr>
                     <th style={{ width: 36 }}>#</th>
-                    <th>Naam</th>
-                    <th style={{ width: 140 }}>Type</th>
-                    <th style={{ width: 170 }} title="Gebruikscategorie volgens NEN-EN 1990 NB tabel NB.2–A1.1 — alleen voor veranderlijke belasting">
-                      Categorie (ψ)
+                    <th>{t("loadCases.name")}</th>
+                    <th style={{ width: 140 }}>{t("loadCases.type")}</th>
+                    <th style={{ width: 170 }} title={t("loadCases.categoryTitle")}>
+                      {t("loadCases.category")}
                     </th>
                     <th style={{ width: 36 }}></th>
                   </tr>
@@ -176,8 +174,8 @@ export default function LoadCasesDialog({
                           value={lc.type}
                           onChange={(e) => updateLoadCase(lc.id, { type: e.target.value as LoadCase["type"] })}
                         >
-                          {TYPE_OPTIONS.map(t => (
-                            <option key={t} value={t}>{TYPE_LABEL[t]}</option>
+                          {TYPE_OPTIONS.map(o => (
+                            <option key={o} value={o}>{t(`loadCases.caseType.${o}`)}</option>
                           ))}
                         </select>
                       </td>
@@ -205,13 +203,13 @@ export default function LoadCasesDialog({
                       <td>
                         <button
                           className="lcd-row-btn lcd-row-btn-danger"
-                          title="Verwijder belastinggeval, al zijn lasten en zijn factor in elke combinatie"
+                          title={t("loadCases.deleteCaseTitle")}
                           onClick={() => {
                             if (loadCases.length <= 1) {
-                              alert("Minstens één belastinggeval is verplicht.");
+                              alert(t("loadCases.atLeastOneCase"));
                               return;
                             }
-                            if (confirm(`Verwijder "${lc.name}"? Alle lasten in deze case worden ook verwijderd, en zijn factor verdwijnt uit elke combinatie.`)) {
+                            if (confirm(t("loadCases.deleteCaseConfirm", { naam: lc.name }))) {
                               removeLoadCase(lc.id);
                             }
                           }}
@@ -232,23 +230,16 @@ export default function LoadCasesDialog({
               <div className="lcd-add-row">
                 <input
                   className="lcd-input lcd-add-input"
-                  placeholder={`Nieuw geval (bijv. "Geval ${loadCases.length + 1}")`}
+                  placeholder={t("loadCases.newCasePlaceholder", { voorbeeld: t("loadCases.defaultCaseName", { n: loadCases.length + 1 }) })}
                   value={newCaseName}
                   onChange={(e) => setNewCaseName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleAddCase(); }}
                 />
-                <button className="lcd-btn-primary" onClick={handleAddCase}>+ Toevoegen</button>
+                <button className="lcd-btn-primary" onClick={handleAddCase}>+ {t("loadCases.add")}</button>
               </div>
 
               <p className="lcd-hint">
-                Een nieuw geval heeft type “Overig” en telt pas mee als u het een type
-                geeft: dan vullen de standaardcombinaties het aan (blijvend → γ<sub>G</sub>,
-                veranderlijk, sneeuw en wind → een eigen beurt als leidende last en ψ als
-                begeleidende). Elk veranderlijk geval komt daarbij voor in combinaties mét en
-                zonder dat geval: een veranderlijke belasting telt alleen waar ze ongunstig
-                werkt (vrije belasting, NEN-EN 1991-1-1 6.2.1(1)P), zodat een per veld verdeelde
-                vloerlast ook op één veld staat. De factoren volgen NEN-EN 1990 {bron} en tabel
-                NB.2–A1.1.
+                {t("loadCases.casesHintBeforeGamma")}<sub>G</sub>{t("loadCases.casesHintAfterGamma", { bron })}
               </p>
             </>
           )}
@@ -260,14 +251,14 @@ export default function LoadCasesDialog({
                   geopend — de melding rechtsboven verdwijnt na een halve minuut. */}
               {combinatieVervanging && (
                 <div className="lcd-afwijking">
-                  <p><strong>Combinaties vervangen bij het openen.</strong> {combinatieVervanging.samenvatting}</p>
+                  <p><strong>{t("loadCases.replacedOnOpenTitle")}</strong> {combinatieVervanging.samenvatting}</p>
                   <div className="lcd-afwijking-knoppen">
                     <button
                       className="lcd-btn-secondary"
-                      title="Zet de combinaties terug zoals ze in het projectbestand stonden"
+                      title={t("loadCases.undoReplaceTitle")}
                       onClick={() => onMaakVervangingOngedaan?.()}
                     >
-                      Ongedaan maken
+                      {t("undo")}
                     </button>
                   </div>
                 </div>
@@ -277,7 +268,7 @@ export default function LoadCasesDialog({
                   <p>{combinatieAfwijking.samenvatting}</p>
                   <div className="lcd-afwijking-knoppen">
                     <button className="lcd-btn-secondary" onClick={() => onSluitAfwijking?.()}>
-                      Sluiten
+                      {t("close")}
                     </button>
                   </div>
                 </div>
@@ -298,17 +289,17 @@ export default function LoadCasesDialog({
                       <button
                         className="lcd-btn-primary"
                         onClick={() => {
-                          if (confirm("Alle combinaties (behalve die van de windgenerator) vervangen door de standaardset? Uw eigen combinaties gaan daarbij verloren.")) {
+                          if (confirm(t("loadCases.replaceConfirm"))) {
                             onVervangDoorStandaard?.();
                           }
                         }}
                       >
-                        Vervang door standaardcombinaties
+                        {t("loadCases.replaceWithStandard")}
                       </button>
                     )}
                     {adviesMeldingen.some((m) => m.windOpnieuwAdvies) && onWindOpnieuw && (
                       <button className="lcd-btn-primary" onClick={() => onWindOpnieuw()}>
-                        Windbelasting opnieuw genereren
+                        {t("loadCases.regenerateWind")}
                       </button>
                     )}
                   </div>
@@ -318,9 +309,9 @@ export default function LoadCasesDialog({
                 <thead>
                   <tr>
                     <th style={{ width: 36 }}>#</th>
-                    <th>Naam</th>
-                    <th style={{ width: 80 }}>Type</th>
-                    <th style={{ width: 70 }} title="Standaard = afgeleid uit de gevallen en de gevolgklasse; eigen = door u opgesteld of aangepast">Herkomst</th>
+                    <th>{t("loadCases.name")}</th>
+                    <th style={{ width: 80 }}>{t("loadCases.type")}</th>
+                    <th style={{ width: 70 }} title={t("loadCases.originTitle")}>{t("loadCases.origin")}</th>
                     {loadCases.map(lc => (
                       <th key={lc.id} style={{ width: 70 }} title={lc.name}>
                         γ·{lc.name}
@@ -350,12 +341,12 @@ export default function LoadCasesDialog({
                           value={c.type}
                           onChange={(e) => updateCombination(c.id, { type: e.target.value as LoadCombination["type"] })}
                         >
-                          <option value="uls">ULS</option>
-                          <option value="sls">SLS</option>
+                          <option value="uls">{t("loadCases.uls")}</option>
+                          <option value="sls">{t("loadCases.sls")}</option>
                         </select>
                       </td>
                       <td className="lcd-td-id" title={c.formula}>
-                        {c.standaard ? "standaard" : "eigen"}
+                        {c.standaard ? t("loadCases.originStandard") : t("loadCases.originCustom")}
                       </td>
                       {loadCases.map(lc => {
                         const f = c.factors.get(lc.id) ?? 0;
@@ -379,9 +370,9 @@ export default function LoadCasesDialog({
                       <td>
                         <button
                           className="lcd-row-btn lcd-row-btn-danger"
-                          title="Verwijder combinatie"
+                          title={t("loadCases.deleteComboTitle")}
                           onClick={() => {
-                            if (confirm(`Verwijder combinatie "${c.name}"?`)) {
+                            if (confirm(t("loadCases.deleteComboConfirm", { naam: c.name }))) {
                               removeCombination(c.id);
                             }
                           }}
@@ -404,32 +395,24 @@ export default function LoadCasesDialog({
               <div className="lcd-add-row">
                 <input
                   className="lcd-input lcd-add-input"
-                  placeholder={`Nieuwe combinatie (bijv. "ULS eigen")`}
+                  placeholder={t("loadCases.newComboPlaceholder")}
                   value={newComboName}
                   onChange={(e) => setNewComboName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleAddCombo(); }}
                 />
-                <button className="lcd-btn-primary" onClick={handleAddCombo}>+ Toevoegen</button>
+                <button className="lcd-btn-primary" onClick={handleAddCombo}>+ {t("loadCases.add")}</button>
               </div>
 
               <p className="lcd-hint">
-                Standaardcombinaties worden afgeleid uit de belastinggevallen en gevolgklasse{" "}
-                {gevolgklasse} (γ uit NEN-EN 1990 {bron}, ψ uit tabel NB.2–A1.1) en lopen mee
-                als u gevallen toevoegt, van type verandert of verwijdert; de combinaties van de
-                windgenerator lopen op dezelfde manier mee. Wijzigt u een factor, naam of type,
-                dan wordt het een eigen combinatie: die past de app daarna niet meer aan, maar
-                controleert haar wel na elke wijziging. Bij het openen van een project van versie
-                0.3.11 of ouder vervangt de app de oude standaardcombinaties door deze set, met een
-                melding en Ongedaan maken; eigen combinaties blijven staan.
-                Factor 0 (of leeg) = dat belastinggeval doet niet mee in deze combinatie.
-                Negatieve factor mag — bijvoorbeeld <code>0.9·G + 1.5·W</code> voor uplift.
+                {t("loadCases.combosHint", { klasse: gevolgklasse, bron })}{" "}
+                <code>0.9·G + 1.5·W</code> {t("loadCases.combosHintUplift")}
               </p>
             </>
           )}
         </div>
 
         <div className="lcd-footer">
-          <button className="lcd-btn-secondary" onClick={onClose}>Sluiten</button>
+          <button className="lcd-btn-secondary" onClick={onClose}>{t("close")}</button>
         </div>
       </div>
     </div>

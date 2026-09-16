@@ -12,6 +12,7 @@
  * hout.
  */
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import "./CheckPanel.css";
@@ -43,12 +44,13 @@ function renderLatex(latex: string, displayMode: boolean): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation("check");
   const cls =
     status === "Ok" ? "check-status-ok" :
     status === "NotOk" ? "check-status-notok" : "check-status-na";
   const label =
-    status === "Ok" ? "✓ OK" :
-    status === "NotOk" ? "✗ NIET OK" : "N.v.t.";
+    status === "Ok" ? t("block.statusOk") :
+    status === "NotOk" ? t("block.statusNotOk") : t("statusNa");
   return <span className={`check-status ${cls}`}>{label}</span>;
 }
 
@@ -95,10 +97,11 @@ function nl(v: number, digits: number): string {
  * die het rapport gebruikt — paneel en rapport vertellen zo hetzelfde.
  */
 function Afleiding({ stappen }: { stappen: Deelstap[] }) {
+  const { t } = useTranslation("check");
   if (stappen.length === 0) return null;
   return (
     <details className="check-intermediates check-afleiding">
-      <summary>Afleiding ({stappen.length} stappen)</summary>
+      <summary>{t("block.derivation", { count: stappen.length })}</summary>
       <ol className="check-afleiding-stappen">
         {stappen.map((s, i) => {
           const { formule, uitkomst } = deelstapRegels(s);
@@ -131,6 +134,7 @@ function Afleiding({ stappen }: { stappen: Deelstap[] }) {
 }
 
 export default function CheckBlock({ check }: { check: CheckLike }) {
+  const { t } = useTranslation("check");
   const formulaRef = useRef<HTMLDivElement>(null);
   const ucRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +161,7 @@ export default function CheckBlock({ check }: { check: CheckLike }) {
       </div>
 
       <div className="check-force-state">
-        Combinatie {check.force_state.combination_id}
+        {t("block.combination")} {check.force_state.combination_id}
         &nbsp;&nbsp; x = {nl(check.force_state.position_mm, 0)} mm
         &nbsp;&nbsp; N = {nl(check.force_state.forces.n_ed, 2)} kN
         &nbsp;&nbsp; V<sub>z</sub> = {nl(check.force_state.forces.vz_ed, 2)} kN
@@ -184,7 +188,7 @@ export default function CheckBlock({ check }: { check: CheckLike }) {
 
       {intermediates.length > 0 && (
         <details className="check-intermediates">
-          <summary>Tussenwaarden ({intermediates.length})</summary>
+          <summary>{t("block.intermediates", { aantal: intermediates.length })}</summary>
           <VariableLine vars={intermediates} />
         </details>
       )}

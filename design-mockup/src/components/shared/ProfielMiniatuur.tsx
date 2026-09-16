@@ -16,6 +16,7 @@
  * geen ervan de kleur van beton. De aanroeper weet wél welk materiaal het is
  * en geeft dat nu door in [`Props.materiaal`].
  */
+import { useTranslation } from "react-i18next";
 import { shapePath, buitenmaten, type SectionShape } from "./profielVorm";
 
 /**
@@ -140,6 +141,7 @@ export default function ProfielMiniatuur({
   titel,
   className,
 }: Props) {
+  const { t } = useTranslation("check");
   const { b: bMm, h: hMm } = buitenmaten(shape);
   if (!(bMm > 0) || !(hMm > 0)) return null;
 
@@ -163,7 +165,7 @@ export default function ProfielMiniatuur({
       className={className}
       viewBox={`0 0 ${KADER_W} ${KADER_H}`}
       role="img"
-      aria-label={titel ?? `Doorsnede ${bLabel} × ${hLabel} mm`}
+      aria-label={titel ?? t("profileThumbnail.ariaLabel", { b: bLabel, h: hLabel })}
     >
       <path
         d={pad.d}

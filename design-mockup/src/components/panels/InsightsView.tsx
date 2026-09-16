@@ -15,6 +15,7 @@
  * onderste strip open.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { buildMatricesOnly, type ExposedBeamCache } from "../fem/solver/solver";
 import {
   controleerDoorsneden, doorsnedeVeldenVoorSolver, staafLengteMm,
@@ -76,7 +77,8 @@ function MatrixTable({ M, rowLabels, colLabels, max = 72, hl, wrapRef }: {
   hl?: Set<number>;
   wrapRef?: React.RefObject<HTMLDivElement | null>;
 }) {
-  if (M.length === 0 || M[0].length === 0) return <div className="insights-empty">— leeg —</div>;
+  const { t } = useTranslation("ribbon");
+  if (M.length === 0 || M[0].length === 0) return <div className="insights-empty">{t("insights.matrixEmpty")}</div>;
   const rows = Math.min(M.length, max);
   const cols = Math.min(M[0].length, max);
   const truncated = rows < M.length || cols < M[0].length;
@@ -117,8 +119,7 @@ function MatrixTable({ M, rowLabels, colLabels, max = 72, hl, wrapRef }: {
       </table>
       {truncated && (
         <div className="insights-truncated">
-          Matrix is {M.length}×{M[0].length}, eerste {rows}×{cols} getoond.
-          Gebruik Inzicht → Export matrix voor de volledige CSV.
+          {t("insights.truncated", { totaalRijen: M.length, totaalKolommen: M[0].length, rijen: rows, kolommen: cols })}
         </div>
       )}
     </div>
@@ -128,6 +129,7 @@ function MatrixTable({ M, rowLabels, colLabels, max = 72, hl, wrapRef }: {
 type PaneFocus = "element" | "system" | "dof";
 
 export default function InsightsView({ nodes, beams, supports, initialMode, solverError, stabiliteitsMelding }: Props) {
+  const { t } = useTranslation("ribbon");
   const [selectedBeamId, setSelectedBeamId] = useState<number | null>(beams[0]?.id ?? null);
   const [bottomOpen, setBottomOpen] = useState<"logs" | "errors" | null>(
     solverError || stabiliteitsMelding ? "errors" : null
@@ -182,8 +184,8 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
     }
     if (first) return; // geen flits bij eerste render
     setFocusPane(initialMode);
-    const t = window.setTimeout(() => setFocusPane(null), 1600);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setFocusPane(null), 1600);
+    return () => window.clearTimeout(timer);
   }, [initialMode]);
 
   // Houd de selectie geldig als de stavenlijst wijzigt.
@@ -207,7 +209,7 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
     return (
       <div className="insights-view">
         <div className="insights-header">
-          <h2>Inzicht — assembly-fout</h2>
+          <h2>{t("insights.assemblyErrorTitle")}</h2>
         </div>
         <div className="insights-empty">{asm.error}</div>
       </div>
@@ -247,20 +249,22 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
   return (
     <div className="insights-view">
       <div className="insights-header">
-        <h2>Inzicht — Stijfheidsmatrices</h2>
+        <h2>{t("insights.headerTitle")}</h2>
         <div className="insights-meta">
-          {nodes.length} knopen · {beams.length} staven · {asm.nDof} DOF's ·{" "}
-          {constrainedDofs.size} star · {asm.springs.length} veren ·{" "}
-          symmetrie: <strong className={symmetric ? "ok" : "bad"}>{symmetric ? "OK" : "ASYMMETRISCH"}</strong>
+          {t("insights.metaCounts", {
+            knopen: nodes.length, staven: beams.length, dofs: asm.nDof,
+            star: constrainedDofs.size, veren: asm.springs.length,
+          })}{" "}
+          {t("insights.symmetry")} <strong className={symmetric ? "ok" : "bad"}>{symmetric ? "OK" : t("insights.asymmetric")}</strong>
         </div>
       </div>
 
       <div className="insights-grid">
         {/* ── Links: stavenlijst ─────────────────────────────────────── */}
         <aside className="insights-pane insights-beams">
-          <div className="insights-pane-head"><h3>Staven</h3></div>
+          <div className="insights-pane-head"><h3>{t("insights.beamsHead")}</h3></div>
           {asm.beams.length === 0 ? (
-            <div className="insights-empty">Geen staven in het model</div>
+            <div className="insights-empty">{t("insights.noBeams")}</div>
           ) : (
             <ul className="insights-beamlist">
               {asm.beams.map(cache => {
@@ -274,7 +278,7 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
                       aria-pressed={active}
                       onClick={() => setSelectedBeamId(cache.id)}
                     >
-                      <span className="beam-title">Staaf {cache.id}</span>
+                      <span className="beam-title">{t("insights.beamTitle", { id: cache.id })}</span>
                       <span className="beam-nodes">n{ui?.from ?? "?"} → n{ui?.to ?? "?"}</span>
                       {(ui?.profile || ui?.material) && (
                         <span className="beam-props">
@@ -292,7 +296,7 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
         {/* ── Midden-links: element-K van de geselecteerde staaf ─────── */}
         <section className={`insights-pane insights-element${focusPane === "element" ? " focus-flash" : ""}`}>
           <div className="insights-pane-head">
-            <h3>{selectedBeam ? `Element-K — Staaf ${selectedBeam.id}` : "Element-K"}</h3>
+            <h3>{selectedBeam ? t("insights.elementKBeam", { id: selectedBeam.id }) : "Element-K"}</h3>
           </div>
           {selectedBeam ? (
             <div className="insights-pane-body">
@@ -309,13 +313,13 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
                 <span>12EI/L³ = <code>{fmtShort(selectedBeam.kLocal[1][1])}</code></span>
                 <span>4EI/L = <code>{fmtShort(selectedBeam.kLocal[2][2])}</code></span>
               </div>
-              <h4>k_local (6×6) — Euler-Bernoulli + axiaal</h4>
+              <h4>{t("insights.kLocalHead")}</h4>
               <MatrixTable
                 M={selectedBeam.kLocal}
                 rowLabels={ELEMENT_DOF_LABELS}
                 colLabels={ELEMENT_DOF_LABELS}
               />
-              <h4>Transformatie T (6×6) — globaal → lokaal</h4>
+              <h4>{t("insights.transformHead")}</h4>
               <MatrixTable
                 M={selectedBeam.T}
                 rowLabels={ELEMENT_DOF_LABELS}
@@ -323,17 +327,17 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
               />
             </div>
           ) : (
-            <div className="insights-empty">Selecteer een staaf in de lijst</div>
+            <div className="insights-empty">{t("insights.selectBeam")}</div>
           )}
         </section>
 
         {/* ── Groot: systeem-K met highlight van de staafbijdrage ────── */}
         <section className={`insights-pane insights-system${focusPane === "system" ? " focus-flash" : ""}`}>
           <div className="insights-pane-head">
-            <h3>Systeem-K ({asm.nDof}×{asm.nDof})</h3>
+            <h3>{t("insights.systemKHead", { n: asm.nDof })}</h3>
             {selectedBeam && (
               <span className="insights-pane-note">
-                bijdrage staaf {selectedBeam.id} gehighlight
+                {t("insights.contribution", { id: selectedBeam.id })}
               </span>
             )}
           </div>
@@ -350,11 +354,11 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
 
         {/* ── Rechts: DOF-mapping ────────────────────────────────────── */}
         <aside className={`insights-pane insights-dof${focusPane === "dof" ? " focus-flash" : ""}`}>
-          <div className="insights-pane-head"><h3>DOF-mapping</h3></div>
+          <div className="insights-pane-head"><h3>{t("insights.dofMappingHead")}</h3></div>
           <div className="insights-pane-body">
             <table className="insights-doftable">
               <thead>
-                <tr><th>DOF</th><th>Knoop</th><th>Comp.</th><th>Type</th></tr>
+                <tr><th>DOF</th><th>{t("insights.colNode")}</th><th>{t("insights.colComp")}</th><th>{t("insights.colType")}</th></tr>
               </thead>
               <tbody>
                 {Array.from({ length: asm.nDof }, (_, i) => {
@@ -374,10 +378,10 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
                       <td>{tag}</td>
                       <td>
                         {isConstrained
-                          ? <span className="dof-badge rigid">star</span>
+                          ? <span className="dof-badge rigid">{t("insights.rigid")}</span>
                           : springK !== undefined
-                            ? <span className="dof-badge spring" title={`k = ${fmtFull(springK)}`}>veer {fmtShort(springK)}</span>
-                            : <span className="dof-badge free">vrij</span>}
+                            ? <span className="dof-badge spring" title={`k = ${fmtFull(springK)}`}>{t("insights.spring", { k: fmtShort(springK) })}</span>
+                            : <span className="dof-badge free">{t("insights.free")}</span>}
                       </td>
                     </tr>
                   );
@@ -397,7 +401,7 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
             onClick={() => toggleBottom("logs")}
             aria-expanded={bottomOpen === "logs"}
           >
-            Logboek
+            {t("insights.logbook")}
           </button>
           <button
             type="button"
@@ -405,19 +409,19 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
             onClick={() => toggleBottom("errors")}
             aria-expanded={bottomOpen === "errors"}
           >
-            Fouten{(solverError || stabiliteitsMelding) && <span className="insights-err-dot" aria-label="actieve fout" />}
+            {t("insights.errors")}{(solverError || stabiliteitsMelding) && <span className="insights-err-dot" aria-label={t("insights.activeError")} />}
           </button>
           <span className="insights-bottom-hint">
-            {bottomOpen === null ? "klik om open te klappen" : ""}
+            {bottomOpen === null ? t("insights.expandHint") : ""}
           </span>
         </div>
         {bottomOpen === "logs" && (
           <div className="insights-bottom-body">
             <pre className="insights-log">
-{`[OK]  Mesh opgebouwd: ${nodes.length} knopen, ${beams.length} staven
-[OK]  DOF's: ${asm.nDof} (${asm.springs.length} veer-DOF's)
-[OK]  Stijfheidsmatrix geassembleerd (${asm.K.length}×${asm.K[0]?.length ?? 0})
-[OK]  Randvoorwaarden toegepast: ${constrainedDofs.size} star`}
+{t("insights.assemblyLog", {
+  knopen: nodes.length, staven: beams.length, dofs: asm.nDof, veerDofs: asm.springs.length,
+  rijen: asm.K.length, kolommen: asm.K[0]?.length ?? 0, star: constrainedDofs.size,
+})}
             </pre>
             {/* Hierboven staat de assembly die DIT paneel zelf opbouwt (de
                 matrices die je ernaast ziet); hieronder wat de SOLVER meldde
@@ -425,14 +429,12 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
                 ze door elkaar zetten zou suggereren dat het één reeks is. */}
             {solverLog.length === 0 ? (
               <div className="insights-noerror">
-                Er is nog niet gerekend. Zodra de solver draait staat hier zijn
-                logboek: de assembly per belastinggeval, en bij een niet-lineaire
-                berekening elke iteratie met ‖Δu‖ en ‖u‖.
+                {t("insights.notComputed")}
               </div>
             ) : (
               <pre className="insights-log">
                 {verlorenRegels > 0
-                  ? `[..]  ${verlorenRegels} oudere regel(s) weggelaten\n`
+                  ? `${t("insights.olderLinesOmitted", { count: verlorenRegels })}\n`
                   : ""}
                 {solverLog.map((r) => `${LOG_TAG[r.soort]}  ${r.tekst}`).join("\n")}
               </pre>
@@ -443,18 +445,18 @@ export default function InsightsView({ nodes, beams, supports, initialMode, solv
           <div className="insights-bottom-body">
             {stabiliteitsMelding && (
               <div className="insights-error-box">
-                <strong>Stabiliteit (NEN-EN 1993-1-1 5.2.1(3)):</strong>
+                <strong>{t("insights.stabilityLabel")}</strong>
                 <pre>{stabiliteitsMelding}</pre>
               </div>
             )}
             {solverError ? (
               <div className="insights-error-box">
-                <strong>Laatste fout:</strong>
+                <strong>{t("insights.lastError")}</strong>
                 <pre>{solverError}</pre>
               </div>
             ) : !stabiliteitsMelding ? (
               <div className="insights-noerror">
-                ✓ Geen actieve solver-fouten. De laatste succesvolle assembly staat in het logboek.
+                {t("insights.noErrors")}
               </div>
             ) : null}
           </div>

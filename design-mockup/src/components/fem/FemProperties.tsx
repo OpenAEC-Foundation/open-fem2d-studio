@@ -116,12 +116,13 @@ export default function FemProperties(props: FemPropertiesProps) {
   const { selection, nodes, beams, plates, supports, loads,
     updateNode, updateBeam, updateBeams, updatePlate, addSupport, removeSupport, updateLoad,
     pendingLoadFocus, clearPendingLoadFocus, results } = props;
+  const { t } = useTranslation("check");
 
   if (!selection) {
     return (
       <div className="fem-properties">
         <div className="fem-prop-empty">
-          Geen selectie — klik op een knoop of element in het canvas.
+          {t("props.empty.noSelection")}
         </div>
       </div>
     );
@@ -130,7 +131,7 @@ export default function FemProperties(props: FemPropertiesProps) {
   if (selection.type === "node") {
     const n = nodes.find(nn => nn.id === selection.id);
     if (!n) {
-      return <div className="fem-properties"><div className="fem-prop-empty">Knoop niet gevonden.</div></div>;
+      return <div className="fem-properties"><div className="fem-prop-empty">{t("props.empty.nodeNotFound")}</div></div>;
     }
     return <NodeProperties
       node={n}
@@ -145,7 +146,7 @@ export default function FemProperties(props: FemPropertiesProps) {
   if (selection.type === "beam") {
     const b = beams.find(bb => bb.id === selection.id);
     if (!b) {
-      return <div className="fem-properties"><div className="fem-prop-empty">Staaf niet gevonden.</div></div>;
+      return <div className="fem-properties"><div className="fem-prop-empty">{t("props.empty.beamNotFound")}</div></div>;
     }
     const nFrom = nodes.find(n => n.id === b.from);
     const nTo = nodes.find(n => n.id === b.to);
@@ -155,14 +156,14 @@ export default function FemProperties(props: FemPropertiesProps) {
   if (selection.type === "plate") {
     const p = plates.find(pp => pp.id === selection.id);
     if (!p) {
-      return <div className="fem-properties"><div className="fem-prop-empty">Plaat niet gevonden.</div></div>;
+      return <div className="fem-properties"><div className="fem-prop-empty">{t("props.empty.plateNotFound")}</div></div>;
     }
     return <PlateProperties plate={p} nodes={nodes} updatePlate={updatePlate} />;
   }
   if (selection.type === "load") {
     const ld = loads.find(l => l.id === selection.id);
     if (!ld) {
-      return <div className="fem-properties"><div className="fem-prop-empty">Belasting niet gevonden.</div></div>;
+      return <div className="fem-properties"><div className="fem-prop-empty">{t("props.empty.loadNotFound")}</div></div>;
     }
     return <LoadProperties
       load={ld} beams={beams} nodes={nodes} plates={plates} updateLoad={updateLoad}
@@ -195,6 +196,7 @@ function MultiProperties({ selection, beams, updateBeams }: {
   updateBeams?: (ids: number[], updates: Partial<Beam>) => void;
 }) {
   const [kiezerOpen, setKiezerOpen] = useState(false);
+  const { t } = useTranslation("check");
   // Lasten tellen mee in de selectie: "selecteer alle lijnlasten" levert een
   // selectie die uitsluitend uit belastingen bestaat.
   const aantalLasten = selection.loadIds?.length ?? 0;
@@ -238,41 +240,40 @@ function MultiProperties({ selection, beams, updateBeams }: {
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
-        <span className="fem-prop-selection-label">Selectie</span>
-        <span className="fem-prop-selection-value">{total} elementen</span>
+        <span className="fem-prop-selection-label">{t("props.common.selection")}</span>
+        <span className="fem-prop-selection-value">{t("props.multi.elements", { aantal: total })}</span>
       </div>
       <div className="fem-prop-tabs">
-        <button className="fem-prop-tab active">Algemeen</button>
+        <button className="fem-prop-tab active">{t("props.common.general")}</button>
       </div>
       <div className="fem-prop-body">
-        <Section title="Selectie">
+        <Section title={t("props.common.selection")}>
           {selection.nodeIds.length > 0 && (
-            <Row label="Knopen"><code>{selection.nodeIds.length}</code></Row>
+            <Row label={t("props.multi.nodes")}><code>{selection.nodeIds.length}</code></Row>
           )}
           {selection.beamIds.length > 0 && (
-            <Row label="Staven"><code>{selection.beamIds.length}</code></Row>
+            <Row label={t("props.multi.beams")}><code>{selection.beamIds.length}</code></Row>
           )}
           {selection.plateIds.length > 0 && (
-            <Row label="Platen"><code>{selection.plateIds.length}</code></Row>
+            <Row label={t("props.multi.plates")}><code>{selection.plateIds.length}</code></Row>
           )}
           {aantalLasten > 0 && (
-            <Row label="Belastingen"><code>{aantalLasten}</code></Row>
+            <Row label={t("props.multi.loads")}><code>{aantalLasten}</code></Row>
           )}
           <div className="fem-prop-hint">
-            <kbd>G</kbd> verplaatsen · <kbd>R</kbd> roteren · <kbd>Delete</kbd> verwijderen.
+            <kbd>G</kbd> {t("props.multi.keyMove")} · <kbd>R</kbd> {t("props.multi.keyRotate")} · <kbd>Delete</kbd> {t("props.multi.keyDelete")}
           </div>
           {aantalLasten > 0 && (
             <div className="fem-prop-hint">
-              <kbd>Ctrl</kbd>+<kbd>C</kbd> kopieert deze belastingen; wissel van
-              belastinggeval en plak ze met <kbd>Ctrl</kbd>+<kbd>V</kbd>.
+              <kbd>Ctrl</kbd>+<kbd>C</kbd> {t("props.multi.copyHintBefore")} <kbd>Ctrl</kbd>+<kbd>V</kbd>{t("props.multi.copyHintAfter")}
             </div>
           )}
         </Section>
 
         {gekozen.length > 0 && (
-          <Section title="Doorsnede">
+          <Section title={t("props.beam.crossSection")}>
             {rijen.map((r) => (
-              <Row key={`${r.profile}|${r.profileEnd ?? ""}|${r.material}`} label={`${r.ids.length}× staaf`}>
+              <Row key={`${r.profile}|${r.profileEnd ?? ""}|${r.material}`} label={t("props.multi.beamCount", { aantal: r.ids.length })}>
                 <code>{doorsnedeNaam(r)} — {r.material}</code>
               </Row>
             ))}
@@ -280,9 +281,9 @@ function MultiProperties({ selection, beams, updateBeams }: {
               className="fem-prop-kiezer-btn"
               onClick={() => setKiezerOpen(true)}
               disabled={!updateBeams}
-              title="Wijs één profiel én materiaal toe aan alle geselecteerde staven"
+              title={t("props.multi.chooseProfileTitle")}
             >
-              Profiel kiezen voor {gekozen.length} staven…
+              {t("props.multi.chooseProfile", { aantal: gekozen.length })}
             </button>
             {kiezerOpen && (
               <ProfielKiezer
@@ -343,6 +344,7 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
   removeSupport: (nodeId: number) => void;
   results: SolverResult | null;
 }) {
+  const { t } = useTranslation("check");
   const support = supports.find(s => s.nodeId === node.id);
   // Editable coord state (string for input control), reset on node change
   const [xStr, setXStr] = useState(String(node.x));
@@ -368,14 +370,14 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
-        <span className="fem-prop-selection-label">Selectie</span>
-        <span className="fem-prop-selection-value">Knoop {node.id}</span>
+        <span className="fem-prop-selection-label">{t("props.common.selection")}</span>
+        <span className="fem-prop-selection-value">{t("props.node.title", { id: node.id })}</span>
       </div>
       <div className="fem-prop-tabs">
-        <button className="fem-prop-tab active">Algemeen</button>
+        <button className="fem-prop-tab active">{t("props.common.general")}</button>
       </div>
       <div className="fem-prop-body">
-        <Section title="Geometrie">
+        <Section title={t("props.common.geometry")}>
           <Row label="ID"><code>{node.id}</code></Row>
           <Row label="X (mm)">
             <input
@@ -397,18 +399,18 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
           </Row>
         </Section>
 
-        <Section title="Oplegging">
-          <Row label="Type">
+        <Section title={t("props.node.support")}>
+          <Row label={t("props.common.type")}>
             <select className="fem-prop-select" value={support?.type ?? "none"}
               onChange={e => onChangeSupport(e.target.value)}>
-              <option value="none">Geen</option>
-              <option value="pinned">Scharnier</option>
-              <option value="fixed">Inklemming</option>
-              <option value="xRoller">X-Rol</option>
-              <option value="zRoller">Z-Rol</option>
-              <option value="zSpring">Z-Veer</option>
-              <option value="xSpring">X-Veer</option>
-              <option value="rotSpring">Rot-Veer</option>
+              <option value="none">{t("props.node.supportNone")}</option>
+              <option value="pinned">{t("props.node.supportPinned")}</option>
+              <option value="fixed">{t("props.node.supportFixed")}</option>
+              <option value="xRoller">{t("props.node.supportXRoller")}</option>
+              <option value="zRoller">{t("props.node.supportZRoller")}</option>
+              <option value="zSpring">{t("props.node.supportZSpring")}</option>
+              <option value="xSpring">{t("props.node.supportXSpring")}</option>
+              <option value="rotSpring">{t("props.node.supportRotSpring")}</option>
             </select>
           </Row>
           {support?.k !== undefined && (
@@ -419,7 +421,7 @@ function NodeProperties({ node, supports, updateNode, addSupport, removeSupport,
         </Section>
 
         {reaction && (
-          <Section title="Reactie">
+          <Section title={t("props.node.reaction")}>
             <Row label="Fx"><code>{reaction.fx.toFixed(0)} N</code></Row>
             <Row label="Fz"><code>{reaction.fz.toFixed(0)} N</code></Row>
             <Row label="My"><code>{reaction.my.toFixed(0)} N·mm</code></Row>
@@ -590,15 +592,15 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
-        <span className="fem-prop-selection-label">Selectie</span>
-        <span className="fem-prop-selection-value">Staaf {beam.id}</span>
+        <span className="fem-prop-selection-label">{t("props.common.selection")}</span>
+        <span className="fem-prop-selection-value">{t("props.beam.title", { id: beam.id })}</span>
       </div>
       <div className="fem-prop-tabs">
         <button
           className={`fem-prop-tab${propTab === "algemeen" ? " active" : ""}`}
           onClick={() => setPropTab("algemeen")}
         >
-          Algemeen
+          {t("props.common.general")}
         </button>
         <button
           className={`fem-prop-tab${propTab === "norm" ? " active" : ""}`}
@@ -668,7 +670,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 herkomst: herkomstTekst(voorspeldZ),
               })}{" "}
               {t("cfg.bucklingOutOfPlaneHint")}
-              {isHout && " Bij hout telt L_cr,z ook mee in de drukterm van de kiptoets (6.35)."}
+              {isHout && " " + t("props.beam.timberLcrzHint")}
             </div>
           </Section>
 
@@ -683,13 +685,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   onregelmatige verdeling nodig heeft, past het positieveld
                   daarna aan (het aantal volgt dan mee). */}
               {([
-                ["boven", isHout ? t("cfg.bracingTopTimber") : "Kipsteunen bovenflens", "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
-                ["onder", isHout ? t("cfg.bracingBottomTimber") : "Kipsteunen onderflens", "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
+                ["boven", isHout ? t("cfg.bracingTopTimber") : t("props.beam.bracingTopFlange"), "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
+                ["onder", isHout ? t("cfg.bracingBottomTimber") : t("props.beam.bracingBottomFlange"), "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
               ] as const).map(([sleutel, titel, veld, tekst, setTekst]) => {
                 const huidig = (cfg[veld] ?? []) as number[];
                 return (
                   <Section key={sleutel} title={titel} defaultOpen={sleutel === "boven"}>
-                    <Row label="Aantal">
+                    <Row label={t("props.beam.bracingCount")}>
                       <input
                         type="number" className="fem-prop-input" min="0" max="20" step="1"
                         placeholder="0"
@@ -704,7 +706,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         }}
                       />
                     </Row>
-                    <Row label="Posities">
+                    <Row label={t("cfg.bracingLabel")}>
                       <input
                         type="text" className="fem-prop-input"
                         placeholder="0.25, 0.5, 0.75"
@@ -723,8 +725,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                     )}
                     {huidig.length > 0 && L > 0 && (
                       <div className="fem-prop-hint">
-                        Op {huidig.map((f) => ((f * L) / 1000).toFixed(2).replace(".", ",")).join(" · ")} m
-                        vanaf de startknoop.
+                        {t("props.beam.bracingPositions", {
+                          posities: huidig.map((f) => ((f * L) / 1000).toFixed(2).replace(".", ",")).join(" · "),
+                        })}
                       </div>
                     )}
                     {/* Bij een staande staaf is "boven" geen wereldbegrip: de
@@ -732,9 +735,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         +y naar links. Zie lib/referentierichting.ts. */}
                     {isOverwegendVerticaal(beam, nodes) && (
                       <div className="fem-prop-hint">
-                        Staande staaf, getoetst van voet naar kop: {sleutel === "boven"
-                          ? "boven is hier de LINKERzijde"
-                          : "onder is hier de RECHTERzijde"} zoals de staaf in het model staat.
+                        {sleutel === "boven"
+                          ? t("props.beam.standingTop")
+                          : t("props.beam.standingBottom")}
                       </div>
                     )}
                     {sprong && (
@@ -744,7 +747,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                     )}
                     {huidig.length === 0 && (
                       <div className="fem-prop-hint">
-                        Vul een aantal in voor gelijke verdeling, of typ zelf fracties (0–1).
+                        {t("props.beam.bracingFillHint")}
                       </div>
                     )}
                   </Section>
@@ -754,8 +757,8 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
           )}
 
           {isHout && (
-            <Section title="Kip (art. 6.3.3)">
-              <Row label="Kipsteunafstand [m]">
+            <Section title={t("props.beam.ltbTitle")}>
+              <Row label={t("props.beam.ltbSpacing")}>
                 <input
                   type="number" className="fem-prop-input" step="0.1" min="0"
                   placeholder={systeemlengteM}
@@ -766,14 +769,12 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 />
               </Row>
               <div className="fem-prop-hint">
-                Leeg = staaflengte ({systeemlengteM} m). Dit is de ℓ waaruit tabel 6.1 de
-                meewerkende lengte l_ef maakt (l_ef = 0,9·ℓ bij een gelijkmatig verdeelde
-                belasting op twee steunpunten); l_ef bepaalt σ_m,crit en daarmee k_crit.
+                {t("props.beam.ltbSpacingHint", { lengte: systeemlengteM })}
               </div>
               {/* Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a).
                   Leeg/zwaartepunt = geen correctie; de drukzijde (dak of vloer
                   op de bovenrand) maakt l_ef 2h langer en is de ongunstige kant. */}
-              <Row label="Aangrijpingspunt">
+              <Row label={t("props.beam.ltbLoadPosition")}>
                 <select
                   className="fem-prop-select"
                   value={cfg.ltbLoadPosition ?? "centreOfGravity"}
@@ -783,9 +784,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                       : (e.target.value as NonNullable<BeamCheckConfig["ltbLoadPosition"]>),
                   })}
                 >
-                  <option value="centreOfGravity">Zwaartepunt (geen correctie)</option>
-                  <option value="compressionEdge">Drukzijde (l_ef + 2h)</option>
-                  <option value="tensionEdge">Trekzijde (l_ef − 0,5h)</option>
+                  <option value="centreOfGravity">{t("props.beam.ltbCentreOfGravity")}</option>
+                  <option value="compressionEdge">{t("props.beam.ltbCompressionEdge")}</option>
+                  <option value="tensionEdge">{t("props.beam.ltbTensionEdge")}</option>
                 </select>
               </Row>
               {/* Kiptoets aan/uit. Uit = de gedrukte rand is over de volle lengte
@@ -793,7 +794,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   k_crit = 1,0 (art. 6.3.3(5)). De kern zet de toets dan als
                   "niet van toepassing" mét die reden in het resultaat. Alleen
                   `false` gaat het bestand in; aan is de standaard. */}
-              <Row label="Kiptoets uitvoeren">
+              <Row label={t("props.beam.ltbPerform")}>
                 <input
                   type="checkbox" className="fem-prop-checkbox"
                   checked={cfg.performLtbCheck ?? true}
@@ -802,21 +803,19 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               </Row>
               {cfg.performLtbCheck === false && (
                 <div className="fem-prop-hint fem-prop-let-op" role="note">
-                  Kiptoets uit: u verklaart dat de gedrukte rand over de volle lengte zijdelings
-                  gesteund is (dakbeschot, vloerplaat) en de opleggingen torsievast zijn, zodat
-                  k_crit = 1,0 (art. 6.3.3(5)). Die aanname komt zo in het rapport te staan.
+                  {t("props.beam.ltbOffHint")}
                 </div>
               )}
             </Section>
           )}
 
           {isHout && (
-            <Section title="Dwarskracht (art. 6.1.7)">
+            <Section title={t("props.beam.shearTitle")}>
               {/* Scheurfactor k_cr, b_ef = k_cr · b (6.13a). Leeg = 1,0, de
                   waarde van de NB bij 6.1.7 voor een prismatische doorsnede; de
                   Europese aanbeveling is 0,67. Buiten (0, 1] wordt niet
                   weggeschreven: dat is geen factor maar een fout. */}
-              <Row label="Scheurfactor k_cr">
+              <Row label={t("props.beam.kCr")}>
                 <input
                   type="number" className="fem-prop-input" step="0.01" min="0.01" max="1"
                   placeholder="1,00"
@@ -832,27 +831,25 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 />
               </Row>
               <div className="fem-prop-hint">
-                b_ef = k_cr · b (6.13a). Leeg = 1,0: NEN-EN 1995-1-1/NB bij 6.1.7 voor een
-                prismatische doorsnede. De Europese aanbeveling van 6.1.7(2) is 0,67 voor
-                gezaagd en gelijmd gelamineerd hout; alleen waarden in (0, 1] worden bewaard.
+                {t("props.beam.kCrHint")}
               </div>
             </Section>
           )}
 
           {isHout && (
-            <Section title="Klimaat en belastingduur">
-              <Row label="Klimaatklasse">
+            <Section title={t("props.beam.climateTitle")}>
+              <Row label={t("cfg.serviceClass")}>
                 <select
                   className="fem-prop-select"
                   value={cfg.serviceClass ?? 1}
                   onChange={(e) => setCfg({ serviceClass: Number(e.target.value) as 1 | 2 | 3 })}
                 >
-                  <option value={1}>1 — verwarmd binnen</option>
-                  <option value={2}>2 — overdekt buiten</option>
-                  <option value={3}>3 — onbeschermd buiten</option>
+                  <option value={1}>{t("props.beam.sc1")}</option>
+                  <option value={2}>{t("props.beam.sc2")}</option>
+                  <option value={3}>{t("props.beam.sc3")}</option>
                 </select>
               </Row>
-              <Row label="Belastingduur">
+              <Row label={t("cfg.loadDuration")}>
                 <select
                   className="fem-prop-select"
                   value={cfg.loadDuration ?? "auto"}
@@ -864,33 +861,30 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                       : (e.target.value as NonNullable<BeamCheckConfig["loadDuration"]>),
                   })}
                 >
-                  <option value="auto">Automatisch (per combinatie)</option>
-                  <option value="permanent">Permanent</option>
-                  <option value="long">Lang</option>
-                  <option value="medium">Middellang</option>
-                  <option value="short">Kort</option>
-                  <option value="instantaneous">Momentaan</option>
+                  <option value="auto">{t("cfg.durAuto")}</option>
+                  <option value="permanent">{t("props.beam.durPermanent")}</option>
+                  <option value="long">{t("cfg.durLong")}</option>
+                  <option value="medium">{t("cfg.durMedium")}</option>
+                  <option value="short">{t("cfg.durShort")}</option>
+                  <option value="instantaneous">{t("props.beam.durInstantaneous")}</option>
                 </select>
               </Row>
               <div className="fem-prop-hint">
-                Klimaatklasse: k_mod en k_def. Belastingduur automatisch: k_mod per UGT-combinatie uit de
-                kortstdurende belasting (EN 1995-1-1 3.1.3(2)); een gekozen klasse werkt als ondergrens.
+                {t("props.beam.climateHint")}
               </div>
             </Section>
           )}
 
           {isBeton && (
-            <Section title="Wapeningskorf en M-N-κ">
+            <Section title={t("props.beam.cageTitle")}>
               {/* key: bij een andere staaf een vers paneel met díe korf. */}
               <BetonKorfPaneel key={beam.id} initieel={betonInitieel} onChange={setBetonKorf} />
               <div className="fem-prop-hint">
-                Zonder korf wordt de staaf niet getoetst; dat staat dan met reden in het toetsingspaneel.
+                {t("props.beam.noCageHint")}
               </div>
               {isOverwegendVerticaal(beam, nodes) && (
                 <div className="fem-prop-hint">
-                  Staande staaf, getoetst van voet naar kop: de ONDERwapening ligt RECHTS en de
-                  BOVENwapening LINKS, zoals de staaf in het model staat. Een positief moment geeft
-                  trek rechts.
+                  {t("props.beam.standingConcreteHint")}
                 </div>
               )}
               {sprong && (
@@ -920,7 +914,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
           */}
           {isBeton && (
             <Section
-              title="Kolom — knik (art. 5.8)"
+              title={t("props.beam.columnTitle")}
               defaultOpen={cfg.betonKolom !== undefined || isOverwegendVerticaal(beam, nodes)}
             >
               <KolomVelden
@@ -934,8 +928,8 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             </Section>
           )}
 
-          <Section title="Doorbuiging (BGT)">
-            <Row label="Klasse">
+          <Section title={t("cfg.deflectionTitle")}>
+            <Row label={t("cfg.deflClass")}>
               <select
                 className="fem-prop-select"
                 value={cfg.deflectionClass ?? "floor"}
@@ -948,15 +942,15 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                     september 2026 "L/300" en "L/150"; geen van beide is een
                     normwaarde voor een ligger — de ℓ_rep/150 hoort bij
                     vloerafscheidingen ter plaatse van een hoogteverschil. */}
-                <option value="floor">Vloer/dak, intensief gebruikt (w_add ≤ 3/1000·ℓ_rep)</option>
-                <option value="floorBrittle">Vloer met scheurgevoelige scheidingswanden (w_add ≤ ℓ_rep/500)</option>
-                <option value="roof">Overig dak (w_add ≤ ℓ_rep/250)</option>
-                <option value="cantilever">Uitkraging (ℓ_rep = 2 × uitkraaglengte)</option>
-                <option value="custom">Aangepast (L/n)</option>
+                <option value="floor">{t("cfg.deflFloor")}</option>
+                <option value="floorBrittle">{t("cfg.deflFloorBrittle")}</option>
+                <option value="roof">{t("cfg.deflRoof")}</option>
+                <option value="cantilever">{t("cfg.deflCantilever")}</option>
+                <option value="custom">{t("cfg.deflCustom")}</option>
               </select>
             </Row>
             {cfg.deflectionClass === "custom" && (
-              <Row label="n in L/n">
+              <Row label={t("props.beam.deflNumerator")}>
                 <input
                   type="number" className="fem-prop-input" step="1" min="1"
                   placeholder="333"
@@ -968,7 +962,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               </Row>
             )}
             {!isHout && !isBeton && (
-              <Row label="n voor w_add (leeg = norm)">
+              <Row label={t("cfg.deflAddNumerator")}>
                 <input
                   type="number" className="fem-prop-input" step="1" min="1"
                   placeholder="—"
@@ -981,7 +975,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               </Row>
             )}
             {!isHout && !isBeton && (
-              <Row label="Zeeg [mm]">
+              <Row label={t("props.beam.preCamber")}>
                 <input
                   type="number" className="fem-prop-input" step="1"
                   placeholder="0"
@@ -1000,17 +994,17 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       )}
       {propTab === "algemeen" && (
       <div className="fem-prop-body">
-        <Section title="Geometrie">
+        <Section title={t("props.common.geometry")}>
           <Row label="ID"><code>{beam.id}</code></Row>
-          <Row label="Type"><code>Staaf</code></Row>
-          <Row label="Knoop start">
+          <Row label={t("props.common.type")}><code>{t("props.beam.typeBeam")}</code></Row>
+          <Row label={t("props.beam.nodeStart")}>
             <code>{beam.from}{nFrom ? ` (${nFrom.x}, ${nFrom.z})` : ""}</code>
           </Row>
-          <Row label="Knoop eind">
+          <Row label={t("props.beam.nodeEnd")}>
             <code>{beam.to}{nTo ? ` (${nTo.x}, ${nTo.z})` : ""}</code>
           </Row>
-          <Row label="Lengte"><code>{L.toFixed(0)} mm</code></Row>
-          <Row label="Hoek"><code>{angDeg.toFixed(1)}°</code></Row>
+          <Row label={t("props.beam.length")}><code>{L.toFixed(0)} mm</code></Row>
+          <Row label={t("props.beam.angle")}><code>{angDeg.toFixed(1)}°</code></Row>
         </Section>
 
         {/* Staaftype: wát deze staaf constructief is, en dus welk
@@ -1018,18 +1012,17 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             schijf `loadRole` heet). De keuze "Automatisch" laat het staaftype
             uit de geometrie volgen; elke andere keuze legt het vast in het
             projectbestand. */}
-        <Section title="Staaftype">
-          <Row label="Staaftype">
+        <Section title={t("props.beam.loadRole")}>
+          <Row label={t("props.beam.loadRole")}>
             <select
               className="fem-prop-select"
               value={beam.loadRole ?? ""}
               onChange={(e) => updateBeam?.(beam.id, {
                 loadRole: e.target.value === "" ? undefined : e.target.value as BeamLoadRole,
               })}
-              title={"Bepaalt welk belastingvlak deze staaf draagt.\n"
-                + "Gevel en dak krijgen windbelasting; vloer en binnenstaaf niet."}
+              title={t("props.beam.loadRoleTitle")}
             >
-              <option value="">Automatisch — {BEAM_LOAD_ROLE_LABEL[afgeleideRol]}</option>
+              <option value="">{t("props.beam.loadRoleAuto", { rol: BEAM_LOAD_ROLE_LABEL[afgeleideRol] })}</option>
               {BEAM_LOAD_ROLES.map((r) => (
                 <option key={r.id} value={r.id}>{r.label}</option>
               ))}
@@ -1037,17 +1030,16 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
           </Row>
           <div className="fem-prop-hint">
             {beam.loadRole
-              ? "Handmatig vastgelegd — de windgenerator gebruikt dit staaftype."
-              : `Volgt uit de geometrie (${angDeg.toFixed(0)}° t.o.v. horizontaal). `
-                + "Kies zelf een staaftype om dit vast te leggen."}
+              ? t("props.beam.loadRoleManual")
+              : t("props.beam.loadRoleDerived", { hoek: angDeg.toFixed(0) })}
           </div>
         </Section>
 
         {/* Profiel en materiaal zijn één combinatie — geen losse velden.
             De knop opent de ProfielKiezer-wizard met de huidige waarden
             voorgeselecteerd; Toepassen schrijft beide velden in één keer. */}
-        <Section title="Doorsnede">
-          <Row label="Profiel">
+        <Section title={t("props.beam.crossSection")}>
+          <Row label={t("props.beam.profile")}>
             <code>{doorsnedeNaam(beam)} — {material}</code>
           </Row>
           {/* VERLOPEND PROFIEL: begin én eind, met de maten erbij. Staat er
@@ -1055,25 +1047,23 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               staaf zou een lege regel "Verloop" alleen ruis zijn. */}
           {verloopBeamMaten && (
             <>
-              <Row label="Begin (knoop 1)">
+              <Row label={t("props.beam.taperStart")}>
                 <code>
                   {beam.profile} · h = {verloopBeamMaten.begin.h} mm, b = {verloopBeamMaten.begin.b} mm
                 </code>
               </Row>
-              <Row label="Eind (knoop 2)">
+              <Row label={t("props.beam.taperEnd")}>
                 <code>
                   {beam.profileEnd} · h = {verloopBeamMaten.eind.h} mm, b = {verloopBeamMaten.eind.b} mm
                 </code>
               </Row>
               <div className="fem-prop-hint">
-                De maten verlopen lineair over de staaf. De solver deelt haar
-                daarvoor in stukken op; de toetsing rekent elke doorsnedetoets
-                op elk rekenpunt met de doorsnede die daar werkelijk staat.
+                {t("props.beam.taperHint")}
               </div>
             </>
           )}
           {isHout ? (
-            <Row label="Norm"><code>EN 338 / EN 1995-1-1</code></Row>
+            <Row label={t("props.beam.standard")}><code>EN 338 / EN 1995-1-1</code></Row>
           ) : (
             <>
               <Row label="E"><code>210000 N/mm²</code></Row>
@@ -1084,9 +1074,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             <button
               className="fem-prop-kiezer-btn"
               onClick={() => setKiezerOpen(true)}
-              title="Kies profiel én materiaal in één stap (wizard)"
+              title={t("props.beam.chooseProfileTitle")}
             >
-              Profiel kiezen…
+              {t("props.beam.chooseProfile")}
             </button>
           </div>
           {kiezerOpen && (
@@ -1118,23 +1108,23 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
           )}
         </Section>
 
-        <Section title="Randvoorwaarden" defaultOpen={false}>
-          <Row label="Aansluiting start">
+        <Section title={t("props.beam.boundaryConditions")} defaultOpen={false}>
+          <Row label={t("props.beam.connectionStart")}>
             <AansluitingKeuze zijde="start" releases={beam.releases} veren={beam.veren} onChange={setAansluiting} />
           </Row>
-          <Row label="Aansluiting eind">
+          <Row label={t("props.beam.connectionEnd")}>
             <AansluitingKeuze zijde="end" releases={beam.releases} veren={beam.veren} onChange={setAansluiting} />
           </Row>
-          <Row label="Bedding">
+          <Row label={t("props.beam.bedding")}>
             {beam.bedding
               ? <code>k = {beam.bedding.k} kN/m³ · b = {beam.bedding.b} mm</code>
-              : <code>geen</code>}
+              : <code>{t("props.beam.beddingNone")}</code>}
           </Row>
         </Section>
 
-        <Section title="Belastingen" defaultOpen={false}>
+        <Section title={t("props.multi.loads")} defaultOpen={false}>
           {beamLoads.length === 0 ? (
-            <Row label="—"><code>Geen lasten op deze staaf</code></Row>
+            <Row label="—"><code>{t("props.beam.noLoads")}</code></Row>
           ) : beamLoads.map(l => (
             <Row key={`bl${l.id}`} label={l.type}>
               <code>
@@ -1151,12 +1141,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
 }
 
 // ── Load properties ──────────────────────────────────────────────────────
+/** Vertaalsleutels (naamruimte check) per lasttype; vertaald bij het tonen. */
 const LOAD_TYPE_LABEL: Record<Load["type"], string> = {
-  lineLoad:    "Lijnlast (q)",
-  pointForce:  "Puntkracht",
-  pointMoment: "Puntmoment",
-  thermal:     "Temperatuur (ΔT)",
-  edgeLoad:    "Randlast (plaatrand)",
+  lineLoad:    "props.load.typeLineLoad",
+  pointForce:  "props.load.typePointForce",
+  pointMoment: "props.load.typePointMoment",
+  thermal:     "props.load.typeThermal",
+  edgeLoad:    "props.load.typeEdgeLoad",
 };
 
 /**
@@ -1180,6 +1171,7 @@ function LoadProperties({
   pendingFocus?: { loadId: number; field: keyof Load } | null;
   clearPendingFocus?: () => void;
 }) {
+  const { t } = useTranslation("check");
   // Refs for the value inputs so a canvas click can request focus.
   const qRef      = useRef<HTMLInputElement>(null);
   const qStartRef = useRef<HTMLInputElement>(null);
@@ -1328,39 +1320,39 @@ function LoadProperties({
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
-        <span className="fem-prop-selection-label">Selectie</span>
-        <span className="fem-prop-selection-value">Belasting {load.id}</span>
+        <span className="fem-prop-selection-label">{t("props.common.selection")}</span>
+        <span className="fem-prop-selection-value">{t("props.load.title", { id: load.id })}</span>
       </div>
       <div className="fem-prop-tabs">
-        <button className="fem-prop-tab active">Algemeen</button>
+        <button className="fem-prop-tab active">{t("props.common.general")}</button>
       </div>
       <div className="fem-prop-body">
-        <Section title="Algemeen">
+        <Section title={t("props.common.general")}>
           <Row label="ID"><code>{load.id}</code></Row>
-          <Row label="Type"><code>{LOAD_TYPE_LABEL[load.type]}</code></Row>
+          <Row label={t("props.common.type")}><code>{t(LOAD_TYPE_LABEL[load.type])}</code></Row>
           {/* Vrije omschrijving — waar komt deze last vandaan? Verandert niets
               aan de berekening; hij maakt de lastentabel in het rapport
               leesbaar. Leeg laten mag, en leegmaken wist het veld. */}
-          <Row label="Omschrijving">
+          <Row label={t("props.load.description")}>
             <input
               type="text" className="fem-prop-input"
               value={omschrijvingStr}
-              placeholder="bv. sneeuw op overstek"
+              placeholder={t("props.load.descriptionPlaceholder")}
               maxLength={80}
               spellCheck={false}
               onChange={e => setOmschrijvingStr(e.target.value)}
               onBlur={commitOmschrijving}
               onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-              title="Vrije naam voor deze belasting; komt in de lastentabel van het rapport te staan en verandert niets aan de berekening."
+              title={t("props.load.descriptionTitle")}
             />
           </Row>
-          <Row label="Lastgeval"><code>{load.caseId}</code></Row>
-          {beam && <Row label="Op staaf"><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
-          {node && <Row label="Op knoop"><code>{node.id}</code></Row>}
+          <Row label={t("props.load.loadCase")}><code>{load.caseId}</code></Row>
+          {beam && <Row label={t("props.load.onBeam")}><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
+          {node && <Row label={t("props.load.onNode")}><code>{node.id}</code></Row>}
           {/* Puntlast op een vrije positie op de staaf: positie achteraf
               bij te stellen, in meters vanaf de startknoop. */}
           {beam && load.type === "pointForce" && load.posFrac !== undefined && beamLen > 0 && (
-            <Row label="Positie [m]">
+            <Row label={t("props.load.position")}>
               <input
                 type="number"
                 className="fem-prop-input"
@@ -1378,12 +1370,12 @@ function LoadProperties({
             </Row>
           )}
           {load.plateId !== undefined && (
-            <Row label="Op plaat"><code>{load.plateId} ({randLabel(load)})</code></Row>
+            <Row label={t("props.load.onPlate")}><code>{load.plateId} ({randLabel(load)})</code></Row>
           )}
           {/* Puntlast op een plaatrand: positie langs de rand vanaf de
               beginhoek, bij te stellen in meters — dezelfde as als de kern. */}
           {plaat && load.type === "pointForce" && randLen > 0 && (
-            <Row label="Positie [m]">
+            <Row label={t("props.load.position")}>
               <input
                 type="number"
                 className="fem-prop-input"
@@ -1391,7 +1383,7 @@ function LoadProperties({
                 min="0"
                 max={(randLen / 1000).toFixed(3)}
                 value={(((load.posFrac ?? 0) * randLen) / 1000).toFixed(3)}
-                title="Afstand langs de rand vanaf de beginhoek (hoek i bij een rand-index; de kleinste x of z bij een benoemde rand)."
+                title={t("props.load.edgePositionTitle")}
                 onChange={(e) => {
                   const meters = Number(e.target.value);
                   if (!Number.isFinite(meters)) return;
@@ -1402,49 +1394,49 @@ function LoadProperties({
             </Row>
           )}
           {plaat && randLen > 0 && (
-            <Row label="Randlengte"><code>{(randLen / 1000).toFixed(2)} m</code></Row>
+            <Row label={t("props.load.edgeLength")}><code>{(randLen / 1000).toFixed(2)} m</code></Row>
           )}
           {beamLen > 0 && load.type === "lineLoad" && (
-            <Row label="Balklengte"><code>{(beamLen / 1000).toFixed(2)} m</code></Row>
+            <Row label={t("props.load.beamLength")}><code>{(beamLen / 1000).toFixed(2)} m</code></Row>
           )}
         </Section>
 
         {load.type === "lineLoad" && (
-          <Section title="Lijnlast">
-            <Row label="Assenstelsel">
+          <Section title={t("props.load.lineLoad")}>
+            <Row label={t("props.load.coordSystem")}>
               <select
                 className="fem-prop-select"
                 value={load.qCoord ?? "global"}
                 onChange={e => updateLoad?.(load.id, { qCoord: e.target.value as "global" | "local" })}
-                title={"Globaal: de last werkt in wereldassen (verticaal/horizontaal), ongeacht de staafhelling.\nLokaal: de last draait met de staaf mee (loodrecht op of langs de staafas).\nq blijft altijd per meter staaflengte."}
+                title={t("props.load.coordSystemTitle")}
               >
-                <option value="global">Globaal (wereldassen)</option>
-                <option value="local">Lokaal (staafassen)</option>
+                <option value="global">{t("props.load.coordGlobal")}</option>
+                <option value="local">{t("props.load.coordLocal")}</option>
               </select>
             </Row>
-            <Row label="Richting">
+            <Row label={t("props.load.direction")}>
               <select
                 className="fem-prop-select"
                 value={load.qDir ?? "z"}
                 onChange={e => updateLoad?.(load.id, { qDir: e.target.value as "x" | "z" })}
                 title={(load.qCoord ?? "global") === "local"
-                  ? "Lokale z: loodrecht op de staafas. Lokale x: axiaal langs de staaf."
-                  : "Wereld-Z: verticaal (negatief = omlaag). Wereld-X: horizontaal (wind)."}
+                  ? t("props.load.directionLocalTitle")
+                  : t("props.load.directionGlobalTitle")}
               >
                 {(load.qCoord ?? "global") === "local" ? (
                   <>
-                    <option value="z">Loodrecht op staaf (lokale z)</option>
-                    <option value="x">Axiaal langs staaf (lokale x)</option>
+                    <option value="z">{t("props.load.dirLocalZ")}</option>
+                    <option value="x">{t("props.load.dirLocalX")}</option>
                   </>
                 ) : (
                   <>
-                    <option value="z">Verticaal (+Z, gravitatie)</option>
-                    <option value="x">Horizontaal (+X, wind)</option>
+                    <option value="z">{t("props.load.dirGlobalZ")}</option>
+                    <option value="x">{t("props.load.dirGlobalX")}</option>
                   </>
                 )}
               </select>
             </Row>
-            <Row label="Trapezium">
+            <Row label={t("props.load.trapezium")}>
               <input
                 type="checkbox" className="fem-prop-checkbox"
                 checked={isTrap}
@@ -1488,7 +1480,7 @@ function LoadProperties({
             )}
             {beamLen > 0 && (
               <>
-                <Row label="Begin (m)">
+                <Row label={t("props.load.start")}>
                   <input
                     type="number" step="0.1" min="0" max={lenM}
                     className="fem-prop-input fem-prop-input-mono"
@@ -1496,10 +1488,10 @@ function LoadProperties({
                     onChange={e => setBeginStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={`Afstand vanaf de startknoop (0 – ${lenM.toFixed(2)} m); 0 t/m ${lenM.toFixed(2)} = volle lengte`}
+                    title={t("props.load.startTitleBeam", { lengte: lenM.toFixed(2) })}
                   />
                 </Row>
-                <Row label="Einde (m)">
+                <Row label={t("props.load.end")}>
                   <input
                     type="number" step="0.1" min="0" max={lenM}
                     className="fem-prop-input fem-prop-input-mono"
@@ -1507,15 +1499,15 @@ function LoadProperties({
                     onChange={e => setEndStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={`Afstand vanaf de startknoop (0 – ${lenM.toFixed(2)} m)`}
+                    title={t("props.load.endTitleBeam", { lengte: lenM.toFixed(2) })}
                   />
                 </Row>
                 {isPartial && (
-                  <Row label="Belast deel">
+                  <Row label={t("props.load.loadedPart")}>
                     <code>{((fracB - fracA) * lenM).toFixed(2)} m</code>
                   </Row>
                 )}
-                <Row label="Totaal">
+                <Row label={t("props.load.total")}>
                   <code>
                     {(() => {
                       // Uniform: q·L_belast. Trapezium: (qa+qb)/2 · L_belast.
@@ -1527,35 +1519,35 @@ function LoadProperties({
                 </Row>
               </>
             )}
-            <Row label="Werkt in">
+            <Row label={t("props.load.actsIn")}>
               <code>
                 {(load.qCoord ?? "global") === "local"
-                  ? ((load.qDir ?? "z") === "z" ? "Loodrecht op de staaf" : "Axiaal langs de staaf")
-                  : ((load.qDir ?? "z") === "z" ? "Wereld-Z (negatief = omlaag)" : "Wereld-X (horizontaal)")}
+                  ? ((load.qDir ?? "z") === "z" ? t("props.load.actsPerpendicular") : t("props.load.actsAxial"))
+                  : ((load.qDir ?? "z") === "z" ? t("props.load.actsWorldZ") : t("props.load.actsWorldX"))}
               </code>
             </Row>
           </Section>
         )}
 
         {load.type === "edgeLoad" && (
-          <Section title="Randlast">
-            <Row label="Rand"><code>{randLabel(load)}</code></Row>
-            <Row label="Richting">
+          <Section title={t("props.load.edgeLoad")}>
+            <Row label={t("props.load.edge")}><code>{randLabel(load)}</code></Row>
+            <Row label={t("props.load.direction")}>
               <select
                 className="fem-prop-select"
                 value={load.qDir ?? "z"}
                 onChange={e => updateLoad?.(load.id, { qDir: e.target.value as "x" | "z" })}
-                title={"Wereld-Z: verticaal (negatief = omlaag). Wereld-X: horizontaal.\np blijft per meter randlengte."}
+                title={t("props.load.edgeDirectionTitle")}
               >
-                <option value="z">Verticaal (+Z, gravitatie)</option>
-                <option value="x">Horizontaal (+X, wind)</option>
+                <option value="z">{t("props.load.dirGlobalZ")}</option>
+                <option value="x">{t("props.load.dirGlobalX")}</option>
               </select>
             </Row>
             {/* Trapezium en deellast langs de rand: dezelfde velden en
                 dezelfde betekenis als bij een lijnlast op een staaf, met de
                 fracties gemeten vanaf de beginhoek van de rand. De kern zet
                 ze om in consistente knoopkrachten (PlateLoads). */}
-            <Row label="Trapezium">
+            <Row label={t("props.load.trapezium")}>
               <input
                 type="checkbox" className="fem-prop-checkbox"
                 checked={isTrap}
@@ -1599,7 +1591,7 @@ function LoadProperties({
             )}
             {randLen > 0 && (
               <>
-                <Row label="Begin (m)">
+                <Row label={t("props.load.start")}>
                   <input
                     type="number" step="0.1" min="0" max={lenM}
                     className="fem-prop-input fem-prop-input-mono"
@@ -1607,10 +1599,10 @@ function LoadProperties({
                     onChange={e => setBeginStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={`Afstand vanaf de beginhoek van de rand (0 – ${lenM.toFixed(2)} m); 0 t/m ${lenM.toFixed(2)} = de volle rand`}
+                    title={t("props.load.startTitleEdge", { lengte: lenM.toFixed(2) })}
                   />
                 </Row>
-                <Row label="Einde (m)">
+                <Row label={t("props.load.end")}>
                   <input
                     type="number" step="0.1" min="0" max={lenM}
                     className="fem-prop-input fem-prop-input-mono"
@@ -1618,15 +1610,15 @@ function LoadProperties({
                     onChange={e => setEndStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={`Afstand vanaf de beginhoek van de rand (0 – ${lenM.toFixed(2)} m)`}
+                    title={t("props.load.endTitleEdge", { lengte: lenM.toFixed(2) })}
                   />
                 </Row>
                 {isPartial && (
-                  <Row label="Belast deel">
+                  <Row label={t("props.load.loadedPart")}>
                     <code>{((fracB - fracA) * lenM).toFixed(2)} m</code>
                   </Row>
                 )}
-                <Row label="Totaal">
+                <Row label={t("props.load.total")}>
                   <code>
                     {(() => {
                       // Uniform: p·L_belast. Trapezium: (pa+pb)/2 · L_belast.
@@ -1638,17 +1630,17 @@ function LoadProperties({
                 </Row>
               </>
             )}
-            <Row label="Werkt in">
+            <Row label={t("props.load.actsIn")}>
               <code>
                 {(load.qDir ?? "z") === "z"
-                  ? "Wereld-Z (negatief = omlaag)" : "Wereld-X (horizontaal)"}
+                  ? t("props.load.actsWorldZ") : t("props.load.actsWorldX")}
               </code>
             </Row>
           </Section>
         )}
 
         {load.type === "pointForce" && (
-          <Section title="Puntkracht">
+          <Section title={t("props.load.pointForce")}>
             <Row label="Fx (kN)">
               <input
                 ref={fxRef}
@@ -1673,7 +1665,7 @@ function LoadProperties({
         )}
 
         {load.type === "pointMoment" && (
-          <Section title="Puntmoment">
+          <Section title={t("props.load.pointMoment")}>
             <Row label="My (kNm)">
               <input
                 ref={myRef}
@@ -1688,7 +1680,7 @@ function LoadProperties({
         )}
 
         {load.type === "thermal" && (
-          <Section title="Temperatuur">
+          <Section title={t("props.load.thermal")}>
             <Row label="ΔT (K)">
               <input
                 ref={dtRef}
@@ -1699,13 +1691,13 @@ function LoadProperties({
                 onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
               />
             </Row>
-            <Row label="α"><code>1.2·10⁻⁵ /K (staal)</code></Row>
+            <Row label="α"><code>{t("props.load.alphaSteel")}</code></Row>
           </Section>
         )}
 
-        <Section title="Acties" defaultOpen={false}>
+        <Section title={t("props.load.actions")} defaultOpen={false}>
           <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-            Druk <kbd>Delete</kbd> om deze belasting te verwijderen.
+            {t("props.load.pressBefore")} <kbd>Delete</kbd> {t("props.load.pressAfter")}
           </div>
         </Section>
       </div>
@@ -1733,6 +1725,7 @@ function PlateProperties({ plate, nodes, updatePlate }: {
   // Met een materiaal mogen E, ν en ρ LEEG staan: dan volgen ze het
   // materiaal. Een leeg veld is dus geen ontbrekende invoer maar een keuze,
   // en `tekst` maakt daar "" van in plaats van "undefined".
+  const { t } = useTranslation("check");
   const tekst = (v: number | undefined) => (v === undefined ? "" : String(v));
   const [dikteStr, setDikteStr] = useState(String(d.thickness));
   const [eStr, setEStr]         = useState(tekst(d.E));
@@ -1786,12 +1779,14 @@ function PlateProperties({ plate, nodes, updatePlate }: {
   const openingen = plate.openingen ?? [];
   const raster = punten ? plaatRekentAlsRaster(punten, openingen.map((o) => o.punten)) : false;
   const effectief = punten ? effectiefPlaatMeshType(plate, punten) : "driehoeken";
-  const meshTypeLabel: Record<string, string> = { driehoeken: "Driehoeken (CST)", vierhoeken: "Vierhoeken (Quad4)" };
+  const meshTypeLabel: Record<string, string> = {
+    driehoeken: t("props.plate.meshTriangles"), vierhoeken: t("props.plate.meshQuads"),
+  };
   const meshSoortTekst = (() => {
-    if (raster) return `${meshTypeLabel[effectief]} — gestructureerd raster`;
+    if (raster) return t("props.plate.meshStructured", { type: meshTypeLabel[effectief] });
     const c = plate.meshCache;
-    if (c?.meshSoort === "gemengd") return "Gemengd: vierhoeken waar de koppeling lukt, elders driehoeken";
-    return `${meshTypeLabel[effectief]} — randconforme CDT`;
+    if (c?.meshSoort === "gemengd") return t("props.plate.meshMixed");
+    return t("props.plate.meshBoundaryCdt", { type: meshTypeLabel[effectief] });
   })();
   const verwijderOpening = (id: number) => {
     if (!updatePlate) return;
@@ -1846,54 +1841,49 @@ function PlateProperties({ plate, nodes, updatePlate }: {
     }
   };
   const bronTekst: Record<string, string> = {
-    materiaal: "uit het materiaal", handmatig: "handmatig ingevuld", standaard: "standaardwaarde",
+    materiaal: t("props.plate.sourceMaterial"), handmatig: t("props.plate.sourceManual"), standaard: t("props.plate.sourceDefault"),
   };
 
   const openingMaat = (p: { x: number; z: number }[]) => {
     const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
     const b = Math.max(...xs) - Math.min(...xs), h = Math.max(...zs) - Math.min(...zs);
     return p.length === 4
-      ? `${b} × ${h} mm op (${Math.min(...xs)}, ${Math.min(...zs)})`
-      : `${p.length} hoeken`;
+      ? t("props.plate.openingSize", { b, h, x: Math.min(...xs), z: Math.min(...zs) })
+      : t("props.plate.openingCorners", { aantal: p.length });
   };
 
   return (
     <div className="fem-properties">
       <div className="fem-prop-selection">
-        <span className="fem-prop-selection-label">Selectie</span>
-        <span className="fem-prop-selection-value">Plaat {plate.id}</span>
+        <span className="fem-prop-selection-label">{t("props.common.selection")}</span>
+        <span className="fem-prop-selection-value">{t("props.plate.title", { id: plate.id })}</span>
       </div>
       <div className="fem-prop-tabs">
-        <button className="fem-prop-tab active">Algemeen</button>
+        <button className="fem-prop-tab active">{t("props.common.general")}</button>
       </div>
       <div className="fem-prop-body">
-        <Section title="Geometrie">
+        <Section title={t("props.common.geometry")}>
           <Row label="ID"><code>{plate.id}</code></Row>
-          <Row label="Type"><code>Wandschijf (in het vlak)</code></Row>
+          <Row label={t("props.common.type")}><code>{t("props.plate.typeWall")}</code></Row>
           {plate.nodeIds.map((id, i) => {
             const n = nodes.find(nn => nn.id === id);
-            return <Row key={`pc${i}`} label={`Hoek ${i + 1}`}>
+            return <Row key={`pc${i}`} label={t("props.plate.corner", { nummer: i + 1 })}>
               <code>{id}{n ? ` (${n.x}, ${n.z})` : ""}</code>
             </Row>;
           })}
         </Section>
-        <Section title="Materiaal en dikte">
-          <Row label="Materiaal">
+        <Section title={t("props.plate.materialTitle")}>
+          <Row label={t("props.plate.material")}>
             <input
               type="text"
               list={`plaatmat${plate.id}`}
               className="fem-prop-input fem-prop-input-mono"
               value={materiaalStr}
-              placeholder="leeg = eigen E, ν en ρ"
+              placeholder={t("props.plate.materialPlaceholder")}
               onChange={(e) => setMateriaalStr(e.target.value)}
               onBlur={commitMateriaal}
               onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-              title={
-                "Staalsoort (S235–S460), betonklasse (C20/25…), houtsterkteklasse (C24, GL28h…), " +
-                "kruislaaghout (\"CLT C24 40/20/40/20/40\") of een vrij materiaal " +
-                "(\"VRIJ:Natuursteen E=60000 rho=2700 f=8\"). Leeg laten = rekenen met de losse " +
-                "E, ν en ρ hieronder, zoals voorheen."
-              }
+              title={t("props.plate.materialTitleAttr")}
             />
           </Row>
           <datalist id={`plaatmat${plate.id}`}>
@@ -1901,8 +1891,7 @@ function PlateProperties({ plate, nodes, updatePlate }: {
           </datalist>
           {materiaalFout && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-danger, #dc2626)" }}>
-              <strong>Materiaal geweigerd:</strong> {materiaalFout} Zolang dit niet klopt weigert
-              de berekening met dezelfde melding.
+              <strong>{t("props.plate.materialRejected")}</strong> {materiaalFout} {t("props.plate.materialRejectedHint")}
             </div>
           )}
           {stijfheid && stijfheid.soort !== null && (
@@ -1911,7 +1900,7 @@ function PlateProperties({ plate, nodes, updatePlate }: {
             </div>
           )}
           {stijfheid?.orthotroop && (
-            <Row label="Hoofdrichting (°)">
+            <Row label={t("props.plate.mainDirection")}>
               <input
                 {...inputProps} step="15" value={hoekStr}
                 onChange={(e) => setHoekStr(e.target.value)}
@@ -1922,80 +1911,86 @@ function PlateProperties({ plate, nodes, updatePlate }: {
                   if (!leeg && !Number.isFinite(v)) { setHoekStr(plate.hoofdrichting !== undefined ? String(plate.hoofdrichting) : ""); return; }
                   updatePlate(plate.id, { hoofdrichting: leeg ? undefined : v });
                 }}
-                title="Hoek tegen de klok in vanaf de globale x-as naar richting 1: de vezelrichting, bij kruislaaghout de richting van de lengtelagen. Leeg of 0 = horizontaal."
+                title={t("props.plate.mainDirectionTitle")}
               />
             </Row>
           )}
           {stijfheid?.orthotroop && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-              Richtingsafhankelijk: E₁ = {Math.round(stijfheid.E1)} N/mm² in richting 1,
-              E₂ = {Math.round(stijfheid.E2)} N/mm² daar loodrecht op,
-              G₁₂ = {Math.round(stijfheid.G12)} N/mm², ν₁₂ = {stijfheid.nu12}.
+              {t("props.plate.orthotropic", {
+                e1: Math.round(stijfheid.E1),
+                e2: Math.round(stijfheid.E2),
+                g12: Math.round(stijfheid.G12),
+                nu12: stijfheid.nu12,
+              })}
             </div>
           )}
-          <Row label="Dikte (mm)">
+          <Row label={t("props.plate.thickness")}>
             <input
               {...inputProps} step="1" min="0.1" value={dikteStr}
               onChange={e => setDikteStr(e.target.value)}
               onBlur={() => commitVeld(dikteStr, "thickness",
                 v => v > 0, () => setDikteStr(String(d.thickness)))}
-              title="Plaatdikte t — spanningen schalen omgekeerd evenredig (t ×2 → σ ×0,5)"
+              title={t("props.plate.thicknessTitle")}
             />
           </Row>
           <Row label="E (N/mm²)">
             <input
               {...inputProps} step="1000" min="1" value={eStr}
-              placeholder={heeftMateriaal && stijfheid ? `${Math.round(stijfheid.E1)} (materiaal)` : ""}
+              placeholder={heeftMateriaal && stijfheid ? t("props.plate.fromMaterialPlaceholder", { waarde: Math.round(stijfheid.E1) }) : ""}
               onChange={e => setEStr(e.target.value)}
               onBlur={() => commitVeld(eStr, "E",
                 v => v > 0, () => setEStr(tekst(d.E)), heeftMateriaal)}
               title={heeftMateriaal
-                ? "Overschrijft de E van het materiaal, in BEIDE richtingen — de plaat rekent dan isotroop. Leeg laten = de waarde van het materiaal volgen."
-                : "Elasticiteitsmodulus (staal 210000, beton ~30000)"}
+                ? t("props.plate.eOverrideTitle")
+                : t("props.plate.eTitle")}
             />
           </Row>
           <Row label="ν (—)">
             <input
               {...inputProps} step="0.05" min="0" max="0.49" value={nuStr}
-              placeholder={heeftMateriaal && stijfheid ? `${stijfheid.nu12} (materiaal)` : ""}
+              placeholder={heeftMateriaal && stijfheid ? t("props.plate.fromMaterialPlaceholder", { waarde: stijfheid.nu12 }) : ""}
               onChange={e => setNuStr(e.target.value)}
               onBlur={() => commitVeld(nuStr, "nu",
                 v => v >= 0 && v < 0.5, () => setNuStr(tekst(d.nu)), heeftMateriaal)}
               title={heeftMateriaal
-                ? "Overschrijft ν₁₂ van het materiaal. Leeg laten = de waarde van het materiaal volgen."
-                : "Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"}
+                ? t("props.plate.nuOverrideTitle")
+                : t("props.plate.nuTitle")}
             />
           </Row>
           <Row label="ρ (kg/m³)">
             <input
               {...inputProps} step="50" min="0" value={rhoStr}
-              placeholder={heeftMateriaal && stijfheid ? `${Math.round(stijfheid.rho)} (materiaal)` : ""}
+              placeholder={heeftMateriaal && stijfheid ? t("props.plate.fromMaterialPlaceholder", { waarde: Math.round(stijfheid.rho) }) : ""}
               onChange={e => setRhoStr(e.target.value)}
               onBlur={() => commitVeld(rhoStr, "rho",
                 v => v >= 0, () => setRhoStr(tekst(d.rho)), heeftMateriaal)}
               title={heeftMateriaal
-                ? "Overschrijft ρ van het materiaal, en daarmee het eigen gewicht ρ·t·A. Leeg laten = de waarde van het materiaal volgen."
-                : "Volumieke massa — gebruikt voor het eigengewicht (staal 7850, beton 2500)"}
+                ? t("props.plate.rhoOverrideTitle")
+                : t("props.plate.rhoTitle")}
             />
           </Row>
           {stijfheid && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-              Bron: E {bronTekst[stijfheid.bronE]}, ν {bronTekst[stijfheid.bronNu]},
-              ρ {bronTekst[stijfheid.bronRho]}.
+              {t("props.plate.source", {
+                e: bronTekst[stijfheid.bronE],
+                nu: bronTekst[stijfheid.bronNu],
+                rho: bronTekst[stijfheid.bronRho],
+              })}
             </div>
           )}
         </Section>
-        <Section title="Rekenmesh">
-          <Row label="Meshgrootte (mm)">
+        <Section title={t("props.plate.meshTitle")}>
+          <Row label={t("props.plate.meshSize")}>
             <input
               {...inputProps} step="50" min="10" value={meshStr}
               onChange={e => setMeshStr(e.target.value)}
               onBlur={() => commitVeld(meshStr, "meshSize",
                 v => v >= 10, () => setMeshStr(String(d.meshSize)))}
-              title="Gewenste elementgrootte van het rekenmesh; kleiner = nauwkeuriger maar zwaarder (limiet ±4000 vrijheidsgraden)"
+              title={t("props.plate.meshSizeTitle")}
             />
           </Row>
-          <Row label="Elementen">
+          <Row label={t("props.plate.elements")}>
             <select
               className="fem-prop-input"
               value={plate.meshType ?? ""}
@@ -2005,45 +2000,43 @@ function PlateProperties({ plate, nodes, updatePlate }: {
                   meshType: PLAAT_MESH_TYPEN.includes(v as never) ? (v as typeof PLAAT_MESH_TYPEN[number]) : undefined,
                 });
               }}
-              title="Vierhoeken (Quad4, bilineair) zijn per vrijheidsgraad nauwkeuriger dan driehoeken (CST, constante rek); driehoeken vragen een fijner net. Standaard = de keuze van vóór september 2026 voor deze vorm."
+              title={t("props.plate.elementsTitle")}
             >
-              <option value="">Standaard ({meshTypeLabel[raster ? "vierhoeken" : "driehoeken"]})</option>
-              <option value="vierhoeken">Vierhoeken (Quad4)</option>
-              <option value="driehoeken">Driehoeken (CST)</option>
+              <option value="">{t("props.plate.elementsDefault", { type: meshTypeLabel[raster ? "vierhoeken" : "driehoeken"] })}</option>
+              <option value="vierhoeken">{t("props.plate.meshQuads")}</option>
+              <option value="driehoeken">{t("props.plate.meshTriangles")}</option>
             </select>
           </Row>
-          <Row label="Rekent als"><code style={{ whiteSpace: "normal" }}>{meshSoortTekst}</code></Row>
+          <Row label={t("props.plate.computesAs")}><code style={{ whiteSpace: "normal" }}>{meshSoortTekst}</code></Row>
           <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-            Wijzigingen maken de resultaten ongeldig — klik <strong>Berekenen</strong> om
-            opnieuw te rekenen.
+            {t("props.plate.invalidateBefore")} <strong>{t("props.plate.invalidateCalculate")}</strong> {t("props.plate.invalidateAfter")}
           </div>
         </Section>
-        <Section title={`Openingen (${openingen.length})`}>
+        <Section title={t("props.plate.openingsTitle", { aantal: openingen.length })}>
           {openingen.length === 0 && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-              Geen openingen. Kies <strong>Opening</strong> in het lint en sleep een rechthoek
-              binnen de plaat.
+              {t("props.plate.noOpeningsBefore")} <strong>{t("props.plate.noOpeningsTool")}</strong> {t("props.plate.noOpeningsAfter")}
             </div>
           )}
           {openingen.map((o) => (
-            <Row key={`op${o.id}`} label={`Opening ${o.id}`}>
+            <Row key={`op${o.id}`} label={t("props.plate.opening", { id: o.id })}>
               <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <code style={{ whiteSpace: "normal" }}>{openingMaat(o.punten)}</code>
                 <button
                   type="button"
                   className="fem-prop-btn"
                   onClick={() => verwijderOpening(o.id)}
-                  title="Deze opening verwijderen"
+                  title={t("props.plate.removeOpeningTitle")}
                 >
-                  Verwijder
+                  {t("props.plate.removeOpening")}
                 </button>
               </span>
             </Row>
           ))}
           {openingen.length > 0 && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-              Het rekenmesh laat de openingen vrij en legt knopen op de openingsrand.
-              {!raster && " Een niet-rechthoekige opening rekent via de CDT (meshcache)."}
+              {t("props.plate.openingsHint")}
+              {!raster && " " + t("props.plate.openingsHintCdt")}
             </div>
           )}
         </Section>

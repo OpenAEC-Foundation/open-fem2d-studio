@@ -4,11 +4,13 @@
  * de kernvelden van de toetsconfiguratie (kniklengtes/kipsteunen) compact.
  * Leest live uit de ReportDataContext.
  */
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { Beam } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
 import {
+  HERKOMST_KIPSTEUNEN,
   HERKOMST_OPGEGEVEN,
   HERKOMST_STAAFLENGTE,
   voorspelKniklengte,
@@ -16,7 +18,7 @@ import {
 import { fmtLenM, fmtNum } from "../reportFormat";
 
 /** Scharnieren compact: "begin: Ry · einde: Ry" — leeg = star ("—"). */
-function releasesText(beam: Beam): string {
+function releasesText(t: TFunction, beam: Beam): string {
   const r = beam.releases;
   if (!r) return "—";
   const side = (tx?: boolean, tz?: boolean, ry?: boolean): string =>
@@ -25,8 +27,8 @@ function releasesText(beam: Beam): string {
   const end = side(r.endTx, r.endTz, r.endRy);
   if (!start && !end) return "—";
   const parts: string[] = [];
-  if (start) parts.push(`begin: ${start}`);
-  if (end) parts.push(`einde: ${end}`);
+  if (start) parts.push(t("report.releaseStart", { scharnieren: start }));
+  if (end) parts.push(t("report.releaseEnd", { scharnieren: end }));
   return parts.join(" · ");
 }
 
@@ -41,23 +43,45 @@ function releasesText(beam: Beam): string {
  * de staaflengte wordt hier niet herhaald: die staat bij elke knikcontrole zelf,
  * en in deze tabel zou hij bij elke staaf dezelfde ruis geven.
  */
-function checkConfigText(beam: Beam, nodes: Parameters<typeof beamLengthMm>[1]): string {
+/** De herkomst van een kniklengte, vertaald waar de tekst een bekende herkomst is. */
+function herkomstTekst(t: TFunction, herkomst: string): string {
+  if (herkomst === HERKOMST_OPGEGEVEN) return t("report.herkomstOpgegeven");
+  if (herkomst === HERKOMST_KIPSTEUNEN) return t("report.herkomstKipsteunen");
+  if (herkomst === HERKOMST_STAAFLENGTE) return t("report.herkomstStaaflengte");
+  return herkomst;
+}
+
+function checkConfigText(
+  t: TFunction,
+  beam: Beam,
+  nodes: Parameters<typeof beamLengthMm>[1],
+): string {
   const cfg = beam.checkConfig;
   if (!cfg) return "—";
   const parts: string[] = [];
   if (cfg.bucklingLengthY_m !== undefined) {
-    parts.push(`Lcr,y = ${fmtNum(cfg.bucklingLengthY_m, 2)} m (${HERKOMST_OPGEGEVEN}, in het vlak)`);
+    parts.push(
+      t("report.lcrInHetVlak", {
+        l: fmtNum(cfg.bucklingLengthY_m, 2),
+        herkomst: herkomstTekst(t, HERKOMST_OPGEGEVEN),
+      }),
+    );
   }
   const z = voorspelKniklengte(cfg.bucklingLengthZ_m, beamLengthMm(beam, nodes), {
     boven: cfg.lateralRestraints,
     onder: cfg.lateralRestraintsBottom,
   });
   if (z.herkomst !== HERKOMST_STAAFLENGTE) {
-    parts.push(`Lcr,z = ${fmtNum(z.lCrMm / 1000, 2)} m (${z.herkomst}, uit het vlak)`);
+    parts.push(
+      t("report.lcrUitHetVlak", {
+        l: fmtNum(z.lCrMm / 1000, 2),
+        herkomst: herkomstTekst(t, z.herkomst),
+      }),
+    );
   }
   if (cfg.lateralRestraints && cfg.lateralRestraints.length > 0) {
     const pos = cfg.lateralRestraints.map((f) => `${fmtNum(f, 2)}·L`).join(", ");
-    parts.push(`kipsteunen: ${pos}`);
+    parts.push(t("report.kipsteunen", { posities: pos }));
   }
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
@@ -67,7 +91,7 @@ export default function BeamsSection() {
   const { nodes, beams } = useReportData();
 
   const sorted = [...beams].sort((a, b) => a.id - b.id);
-  const anyCheckConfig = sorted.some((b) => checkConfigText(b, nodes) !== "—");
+  const anyCheckConfig = sorted.some((b) => checkConfigText(t, b, nodes) !== "—");
 
   return (
     <div className="rpt-block">
@@ -100,8 +124,8 @@ export default function BeamsSection() {
                 <td className="rpt-num">{fmtLenM(beamLengthMm(b, nodes))}</td>
                 <td>{b.material ?? "S235"}</td>
                 <td>{b.profile ?? "HEA160"}</td>
-                <td>{releasesText(b)}</td>
-                {anyCheckConfig && <td>{checkConfigText(b, nodes)}</td>}
+                <td>{releasesText(t, b)}</td>
+                {anyCheckConfig && <td>{checkConfigText(t, b, nodes)}</td>}
               </tr>
             ))}
           </tbody>

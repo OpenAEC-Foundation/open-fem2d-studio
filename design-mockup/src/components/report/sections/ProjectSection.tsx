@@ -12,6 +12,7 @@
  * Logo-upload is bewust R5+ — nu alleen tekst.
  */
 import { useEffect, useState, type ReactNode } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { setSetting } from "../../../store";
 import { useCheckStore } from "../../../stores/checkStore";
@@ -26,7 +27,6 @@ import { useProjectInfo, useRapportProjectInfo } from "../useProjectInfo";
 import {
   DEFAULT_UITGANGSPUNTEN,
   K_FI,
-  LEVENSDUUR_OMSCHRIJVING,
 } from "../../project/ProjectSettingsDialog";
 import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
 import { vrijstaandDakUitgangspunten } from "../../../lib/wind/windGenerator";
@@ -42,20 +42,20 @@ import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE } from "../../../lib
  * LETTERLIJK genoemd met de melding erbij; stil "Nederland" neerzetten zou het
  * rapport onwaar maken.
  */
-function bijlageTekst(code: string | undefined): string {
+function bijlageTekst(t: TFunction, code: string | undefined): string {
   try {
     const gekozen = bijlageUitBestand(code) ?? STANDAARD_BIJLAGE;
     return aanduidingen(gekozen).land;
   } catch (e) {
-    return `${String(code)} — niet gevuld in deze uitgave (${(e as Error).message})`;
+    return t("report.bijlageOnbekend", { code: String(code), fout: (e as Error).message });
   }
 }
 
-function formatDate(raw: string): string {
+function formatDate(raw: string, taal: string): string {
   if (!raw) return "—";
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+  return d.toLocaleDateString(taal, { day: "numeric", month: "long", year: "numeric" });
 }
 
 /**
@@ -91,7 +91,7 @@ function ScheefstandBlok({ tekst }: { tekst: string }) {
 }
 
 export default function ProjectSection() {
-  const { t } = useTranslation("ribbon");
+  const { t, i18n } = useTranslation("ribbon");
   // Twee lezingen, met opzet. `opgeslagen` is de instelling zelf: alleen die
   // mag terug naar de instelling (de koptekst-regel hieronder). `info` is wat
   // het rapport TOONT — tijdens een export via het bedieningskanaal met de kop
@@ -136,7 +136,7 @@ export default function ProjectSection() {
     { label: t("report.fieldProjectNumber", "Projectnummer"), value: info.projectNumber || "—" },
     { label: t("report.fieldEngineer", "Constructeur"), value: info.engineer || "—" },
     { label: t("report.fieldCompany", "Bedrijf"), value: info.company || "—" },
-    { label: t("report.fieldDate", "Datum"), value: formatDate(info.date) },
+    { label: t("report.fieldDate", "Datum"), value: formatDate(info.date, i18n.language) },
   ];
 
   return (
@@ -186,9 +186,9 @@ export default function ProjectSection() {
           normenUitToetsen(gebruikt),
         );
         const normen = [
-          toon.en1993 && "Eurocode 3 — Staal (EN 1993-1-1)",
-          toon.en1995 && "Eurocode 5 — Hout (EN 1995-1-1)",
-          toon.en1992 && "Eurocode 2 — Beton (EN 1992-1-1)",
+          toon.en1993 && t("report.normEc3"),
+          toon.en1995 && t("report.normEc5"),
+          toon.en1992 && t("report.normEc2"),
         ].filter(Boolean) as string[];
         const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
         // Wat er met de klasse GEBEURT, niet alleen welke het is. Tot
@@ -200,21 +200,23 @@ export default function ProjectSection() {
         const n = (x: number) => String(x).replace(".", ",");
         const eigenUgt = combinations.filter((c) => c.type === "uls" && !c.standaard).length;
         const gevolgklasseTekst =
-          `${u.gevolgklasse} (K_FI = ${kfi}), verwerkt in de partiële factoren van de ` +
-          `standaardcombinaties volgens NEN-EN 1990 ${pf.bron}: 6.10a γ_G = ${n(pf.gGsup610a)}, ` +
-          `6.10b γ_G = ${n(pf.gGsup610b)}, γ_Q = ${n(pf.gQ)}; K_FI is niet nog eens toegepast` +
-          (eigenUgt > 0
-            ? `. ${eigenUgt} UGT-combinatie(s) zijn eigen combinaties en volgen de gevolgklasse niet`
-            : "");
-        const levensduur = LEVENSDUUR_OMSCHRIJVING[u.levensduurklasse]
-          .replace(/^Klasse \d+ — /, "");
+          t("report.gevolgklasseTekst", {
+            klasse: u.gevolgklasse,
+            kfi,
+            bron: pf.bron,
+            g610a: n(pf.gGsup610a),
+            g610b: n(pf.gGsup610b),
+            gq: n(pf.gQ),
+          }) + (eigenUgt > 0 ? t("report.gevolgklasseEigenUgt", { aantal: eigenUgt }) : "");
+        // De omschrijving van de klasse zonder het voorvoegsel "Klasse n — ".
+        const levensduur = t(`report.levensduur_${u.levensduurklasse}`);
         const rijen: Array<[string, ReactNode]> = [
           [t("report.fieldNormen", "Toegepaste normen"), normen.length > 0 ? normen.join("; ") : "—"],
           // Het land komt uit de normnaad en niet meer als los woord uit deze
           // regel: de uitgave van elke norm in dit rapport hoort bij dezelfde
           // bijlage. Een bijlage die deze uitgave niet kent, wordt hier
           // benoemd in plaats van stil op Nederland uit te komen.
-          [t("report.fieldNationaleBijlage", "Nationale bijlage"), bijlageTekst(u.nationaleBijlage)],
+          [t("report.fieldNationaleBijlage", "Nationale bijlage"), bijlageTekst(t, u.nationaleBijlage)],
           [t("report.fieldGevolgklasse", "Gevolgklasse"), gevolgklasseTekst],
           [t("report.fieldLevensduur", "Ontwerplevensduur"), levensduur],
         ];

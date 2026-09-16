@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   useWindowManager,
   EVT_DOCK_REQUEST,
@@ -30,6 +31,7 @@ interface DocumentBarProps {
  * inhoud leeft immers al in de bijbehorende hoofdvenster-tab.
  */
 export default function DocumentBar({ fileName, modified }: DocumentBarProps) {
+  const { t } = useTranslation("common");
   const [dockIndicator, setDockIndicator] = useState(false);
   const { listenEvent, confirmDock } = useWindowManager();
 
@@ -51,7 +53,7 @@ export default function DocumentBar({ fileName, modified }: DocumentBarProps) {
     <div className={`document-bar${dockIndicator ? " dock-flash" : ""}`}>
       <div className="document-tabs">
         <button className="document-tab active">
-          <span className="document-tab-title">{fileName ?? "Naamloos project"}</span>
+          <span className="document-tab-title">{fileName ?? t("documentBar.untitledProject")}</span>
           {modified && <span className="document-tab-modified" />}
         </button>
       </div>

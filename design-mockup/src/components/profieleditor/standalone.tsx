@@ -7,6 +7,9 @@
  */
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { useTranslation } from "react-i18next";
+// Eigen ingang (profieleditor.html): i18n hier initialiseren, net als main.tsx.
+import "../../i18n/config";
 import "../../themes.css";
 import { naarCustomSection } from "../../lib/profieleditor/eigenDoorsnedenStore";
 import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
@@ -15,16 +18,17 @@ import ProfielEditor from "./ProfielEditor";
 
 /** Rapportweergave van de bewaarde doorsneden (papierstijl), ter controle. */
 function RapportProef() {
+  const { t } = useTranslation("check");
   const items = useEigenDoorsneden((s) => s.items);
   if (items.length === 0) return null;
   return (
     <div style={{ background: "#fff", color: "#111", padding: 16, marginTop: 16, border: "1px solid #ccc" }}>
-      <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>Rapportweergave (papierstijl) van de bewaarde doorsneden</h3>
+      <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>{t("profileEditor.main.standaloneReportHeading")}</h3>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 24 }}>
         {items.map((d) => (
           <div key={d.id} style={{ width: 300 }}>
             <EigenDoorsnedeTekening doorsnede={d} stijl="rapport" className="pe-rapportproef" />
-            <div style={{ fontWeight: 700, textAlign: "center", fontSize: 12 }}>Doorsnede {d.naam}</div>
+            <div style={{ fontWeight: 700, textAlign: "center", fontSize: 12 }}>{t("profileEditor.main.standaloneSectionName", { naam: d.naam })}</div>
             <pre style={{ fontSize: 9, whiteSpace: "pre-wrap", opacity: 0.7 }}>
               custom_section: {JSON.stringify(naarCustomSection(d), null, 0).slice(0, 400)}…
             </pre>
@@ -36,6 +40,7 @@ function RapportProef() {
 }
 
 function Pagina() {
+  const { t } = useTranslation("check");
   const [thema, setThema] = React.useState<string>(() => {
     try {
       return localStorage.getItem("openaec.profieleditor.thema") ?? "light";
@@ -55,11 +60,11 @@ function Pagina() {
   return (
     <div className="pe-standalone">
       <div className="pe-standalone-balk">
-        <strong>Profieleditor</strong>
-        <span style={{ opacity: 0.6, fontSize: 12 }}>losse testpagina — de app opent de editor vanuit het profielkeuzescherm</span>
+        <strong>{t("profileEditor.main.standaloneTitle")}</strong>
+        <span style={{ opacity: 0.6, fontSize: 12 }}>{t("profileEditor.main.standaloneSubtitle")}</span>
         <select value={thema} onChange={(e) => setThema(e.target.value)} style={{ marginLeft: "auto" }}>
-          {["light", "forge", "openaec", "blueprint", "contrast"].map((t) => (
-            <option key={t} value={t}>{t}</option>
+          {["light", "forge", "openaec", "blueprint", "contrast"].map((th) => (
+            <option key={th} value={th}>{th}</option>
           ))}
         </select>
       </div>

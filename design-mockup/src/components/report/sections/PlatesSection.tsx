@@ -16,6 +16,7 @@
  * lege-modelmelding. Eenheden zoals het eigenschappenpaneel: mm, N/mm²,
  * kg/m³.
  */
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { withPlateDefaults, effectiefPlaatMeshType, type Plate, type Node } from "../../fem/femTypes";
 import { bepaalPlaatStijfheid, plaatMateriaalLabel } from "../../../lib/plaatMateriaal";
@@ -44,22 +45,24 @@ function plateElemCount(
 
 /** Korte bronaanduiding in de tabel; de volle uitleg staat in de regels eronder. */
 const BRON_KORT: Record<string, string> = {
-  materiaal: "materiaal", handmatig: "handmatig", standaard: "standaard",
+  materiaal: "report.plateBron_materiaal",
+  handmatig: "report.plateBron_handmatig",
+  standaard: "report.plateBron_standaard",
 };
 
 /** Maten van een opening voor de tabel: "b × h mm" bij een rechthoek, anders het aantal hoeken. */
-function openingOmschrijving(punten: { x: number; z: number }[]): string {
+function openingOmschrijving(t: TFunction, punten: { x: number; z: number }[]): string {
   const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
   const b = Math.max(...xs) - Math.min(...xs), h = Math.max(...zs) - Math.min(...zs);
-  return punten.length === 4 ? `${fmtNum(b, 0)} × ${fmtNum(h, 0)} mm` : `${punten.length}-hoek`;
+  return punten.length === 4 ? `${fmtNum(b, 0)} × ${fmtNum(h, 0)} mm` : t("report.plateNHoek", { n: punten.length });
 }
 
 /** Elementkeuze zoals de plaat werkelijk rekent (eigen keuze of de standaard voor de vorm). */
-function meshTypeTekst(p: Plate, nodes: Node[]): string {
+function meshTypeTekst(t: TFunction, p: Plate, nodes: Node[]): string {
   const hoeken = p.nodeIds.map((id) => nodes.find((n) => n.id === id));
   if (hoeken.some((h) => !h)) return "—";
   const soort = effectiefPlaatMeshType(p, hoeken.map((h) => ({ x: h!.x, z: h!.z })));
-  return p.meshType ? soort : `${soort} (standaard)`;
+  return p.meshType ? soort : t("report.plateMeshStandaard", { soort });
 }
 
 export default function PlatesSection() {
@@ -75,7 +78,7 @@ export default function PlatesSection() {
   for (const p of sorted) {
     const uit = bepaalPlaatStijfheid(withPlateDefaults(p));
     if (uit.ok && uit.stijfheid.soort !== null) herkomstRegels.push([p.id, uit.stijfheid.herkomst]);
-    if (!uit.ok) herkomstRegels.push([p.id, `materiaal geweigerd — ${uit.reden}`]);
+    if (!uit.ok) herkomstRegels.push([p.id, t("report.plateMateriaalGeweigerd", { reden: uit.reden })]);
   }
 
   return (
@@ -122,20 +125,28 @@ export default function PlatesSection() {
                     <td>{p.id}</td>
                     <td>{p.nodeIds.join(", ")}</td>
                     <td className="rpt-num">{fmtNum(d.thickness!, 1)}</td>
-                    <td>{st ? plaatMateriaalLabel(st) : `geweigerd: ${uit.ok ? "" : uit.reden}`}</td>
+                    <td>
+                      {st
+                        ? plaatMateriaalLabel(st)
+                        : t("report.plateGeweigerd", { reden: uit.ok ? "" : uit.reden })}
+                    </td>
                     <td className="rpt-num">{st ? fmtNum(st.E1, 0) : "—"}</td>
                     <td className="rpt-num">{st ? fmtNum(st.E2, 0) : "—"}</td>
                     <td className="rpt-num">{st ? fmtNum(st.G12, 0) : "—"}</td>
                     <td className="rpt-num">{st ? fmtNum(st.nu12, 2) : "—"}</td>
                     <td className="rpt-num">{st ? fmtNum(st.rho, 0) : "—"}</td>
-                    <td>{st ? `${BRON_KORT[st.bronE]} / ${BRON_KORT[st.bronNu]} / ${BRON_KORT[st.bronRho]}` : "—"}</td>
+                    <td>
+                      {st
+                        ? `${t(BRON_KORT[st.bronE])} / ${t(BRON_KORT[st.bronNu])} / ${t(BRON_KORT[st.bronRho])}`
+                        : "—"}
+                    </td>
                     <td className="rpt-num">{st?.orthotroop ? fmtNum(st.hoekGraden, 1) : "—"}</td>
                     <td className="rpt-num">{fmtNum(d.meshSize!, 0)}</td>
-                    <td>{meshTypeTekst(p, nodes)}</td>
+                    <td>{meshTypeTekst(t, p, nodes)}</td>
                     <td className="rpt-num">{nElems !== null ? nElems : "—"}</td>
                     <td>
                       {p.openingen && p.openingen.length > 0
-                        ? p.openingen.map((o) => `${o.id}: ${openingOmschrijving(o.punten)}`).join("; ")
+                        ? p.openingen.map((o) => `${o.id}: ${openingOmschrijving(t, o.punten)}`).join("; ")
                         : t("report.noOpenings", "geen")}
                     </td>
                   </tr>
@@ -146,15 +157,14 @@ export default function PlatesSection() {
           {herkomstRegels.length > 0 && (
             <ul className="rpt-note" style={{ marginTop: "1.5mm" }}>
               {herkomstRegels.map(([id, tekst]) => (
-                <li key={`ph${id}`}>Plaat {id}: {tekst}</li>
+                <li key={`ph${id}`}>
+                  {t("report.colPlate", "Plaat")} {id}: {tekst}
+                </li>
               ))}
             </ul>
           )}
           <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
-            {t(
-              "report.plateKindNote",
-              "Platen rekenen mee als wandschijf (membraan, in het vlak); het rekenmesh wordt bij elke berekening opnieuw uit de meshgrootte gegenereerd. Vierhoeken zijn bilineaire Quad4-elementen, driehoeken CST-elementen (constante rek); een polygoonplaat met vierhoeken kan een gemengd net geven waar de koppeling van driehoeken niet lukt. Openingen blijven vrij van elementen; het net legt knopen op de openingsrand.",
-            )}
+            {t("report.plateKindNoteMesh")}
           </p>
           <p className="rpt-note" style={{ marginTop: "1mm" }}>
             {t(

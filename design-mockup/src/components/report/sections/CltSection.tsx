@@ -18,12 +18,14 @@
  * hoofdsessie bepaalt via reportSections.ts of de sectie überhaupt in het
  * rapport staat.
  */
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import "katex/dist/katex.min.css";
 import { useCheckStore } from "../../../stores/checkStore";
 import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportStore";
 import type { CltBeamCheckResult } from "../../../lib/types/timber/CltBeamCheckResult";
 import type { CltLayerResult } from "../../../lib/types/timber/CltLayerResult";
+import type { CltLayerOrientation } from "../../../lib/types/timber/CltLayerOrientation";
 import {
   cltLaagStijfheden,
   cltLagenZelfdeE,
@@ -31,7 +33,6 @@ import {
   cltReferentieEMpa,
   cltTauVerloop,
   isCltCheckResult,
-  richtingLabel,
   type CltMechanica,
 } from "../../../lib/cltCheckBuilder";
 import CltOpbouwTekening, { type Verloop } from "../../clt/CltOpbouwTekening";
@@ -89,8 +90,13 @@ function toetskrachten(r: CltBeamCheckResult): Toetskrachten {
 }
 
 /** "bij x = 2,50 m", of niets als de plaats niet bekend is. */
-function plaatsNoot(xMm: number | null): string | undefined {
-  return xMm === null ? undefined : `bij x = ${fmtValue(xMm / 1000, 2)} m`;
+function plaatsNoot(t: TFunction, xMm: number | null): string | undefined {
+  return xMm === null ? undefined : t("report.cltBijX", { x: fmtValue(xMm / 1000, 2) });
+}
+
+/** Richting van een laag in de tabel: lengte- of dwarslaag. */
+function richtingLabel(t: TFunction, r: CltLayerOrientation): string {
+  return r === "Longitudinal" ? t("report.cltRichtingLengte") : t("report.cltRichtingDwars");
 }
 
 /**
@@ -100,7 +106,7 @@ function plaatsNoot(xMm: number | null): string | undefined {
  * nagerekend — de tabel ernaast toont dezelfde velden, dus twee getallen uit
  * één bron.
  */
-function sigmaVerloop(r: CltBeamCheckResult, k: Toetskrachten): Verloop {
+function sigmaVerloop(t: TFunction, r: CltBeamCheckResult, k: Toetskrachten): Verloop {
   return {
     segmenten: r.layup.layers.map((l) => [
       { z: l.z_top_mm, v: l.sigma_top_mpa },
@@ -108,7 +114,7 @@ function sigmaVerloop(r: CltBeamCheckResult, k: Toetskrachten): Verloop {
     ]),
     label: "σm,d",
     eenheid: "N/mm²",
-    noot: plaatsNoot(k.mX),
+    noot: plaatsNoot(t, k.mX),
   };
 }
 
@@ -120,12 +126,12 @@ function sigmaVerloop(r: CltBeamCheckResult, k: Toetskrachten): Verloop {
  * Zonder dat punt lag de getekende piek bij een asymmetrische opbouw onder de
  * τ_d uit de tabel ernaast.
  */
-function tauVerloop(mech: CltMechanica, k: Toetskrachten): Verloop {
+function tauVerloop(t: TFunction, mech: CltMechanica, k: Toetskrachten): Verloop {
   return {
     segmenten: [cltTauVerloop(mech, k.v, k.kCr)],
     label: "τd",
     eenheid: "N/mm²",
-    noot: plaatsNoot(k.vX),
+    noot: plaatsNoot(t, k.vX),
   };
 }
 
@@ -197,7 +203,7 @@ function OpbouwVanIy({ r, mech }: { r: CltBeamCheckResult; mech: CltMechanica })
           {rijen.map((x) => (
             <tr key={x.index} className={x.draagt ? "" : "rpt-clt-rij-dwars"}>
               <td>{x.index}</td>
-              <td>{richtingLabel(x.richting)}</td>
+              <td>{richtingLabel(t, x.richting)}</td>
               <td className="rpt-num">{fmtValue(x.a / 1e3, 1)}</td>
               <td className="rpt-num">{fmtValue(x.iEigen / 1e6, 3)}</td>
               <td className="rpt-num">{fmtValue(x.arm, 1)}</td>
@@ -293,18 +299,22 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
               }))}
               breedteMm={r.layup.width_mm}
               z0Mm={r.layup.z0_mm}
-              sigma={sigmaVerloop(r, krachten)}
-              tau={tauVerloop(mech, krachten)}
-              titel={`${r.section_name}: opbouw en spanningsverloop`}
+              sigma={sigmaVerloop(t, r, krachten)}
+              tau={tauVerloop(t, mech, krachten)}
+              titel={t("report.cltFiguurTitel", { naam: r.section_name })}
             />
             <div className="rpt-figuur-bijschrift">
-              {t("report.cltFiguurBijschrift", {
-                defaultValue:
-                  "Opbouw van boven naar beneden, met de buigspanning σm,d (trek positief) en de schuifspanning τd over de hoogte. LET OP: de twee spanningspanelen horen bij TWEE VERSCHILLENDE punten in de omhullende — σm,d bij het maatgevende momentpunt (My,Ed = {{m}} kNm{{mx}}), τd bij het maatgevende dwarskrachtpunt (Vz,Ed = {{v}} kN{{vx}}). Naast elkaar getekend, maar samen géén toestand van één doorsnede.",
+              {t("report.cltFiguurBijschriftPunten", {
                 m: fmtValue(m, 2),
-                mx: krachten.mX === null ? "" : ` op x = ${fmtValue(krachten.mX / 1000, 2)} m`,
+                mx:
+                  krachten.mX === null
+                    ? ""
+                    : ` ${t("report.cltOpX", { x: fmtValue(krachten.mX / 1000, 2) })}`,
                 v: fmtValue(v, 2),
-                vx: krachten.vX === null ? "" : ` op x = ${fmtValue(krachten.vX / 1000, 2)} m`,
+                vx:
+                  krachten.vX === null
+                    ? ""
+                    : ` ${t("report.cltOpX", { x: fmtValue(krachten.vX / 1000, 2) })}`,
               })}
             </div>
           </div>
@@ -318,12 +328,12 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
                 <th>t (mm)</th>
                 <th>{t("report.cltKlasse", "Klasse")}</th>
                 <th>z (mm)</th>
-                <th>σm,d boven / onder (N/mm²)</th>
+                <th>{t("report.cltSigmaBovenOnder")}</th>
                 <th>fm,d (N/mm²)</th>
-                <th>UC buiging</th>
+                <th>{t("report.cltUcBuiging")}</th>
                 <th>τd (N/mm²)</th>
                 <th>fv,d (N/mm²)</th>
-                <th>UC dwarskracht</th>
+                <th>{t("report.cltUcDwarskracht")}</th>
                 <th>{t("report.colStatus", "Status")}</th>
               </tr>
             </thead>
@@ -342,7 +352,7 @@ function CltStaafBlok({ r }: { r: CltBeamCheckResult }) {
                         <span className="rpt-clt-gov-mark">◂ {t("report.governingTag", "maatgevend")}</span>
                       )}
                     </td>
-                    <td>{richtingLabel(l.orientation)}</td>
+                    <td>{richtingLabel(t, l.orientation)}</td>
                     <td className="rpt-num">{fmtValue(l.thickness_mm, 0)}</td>
                     <td>{l.strength_class}</td>
                     <td className="rpt-num">

@@ -3,10 +3,12 @@
  * kiezen en gaten toevoegen (door het lijf, door een flens, door de
  * buiswand), rond of rechthoekig.
  */
+import i18next from "i18next";
+import { useTranslation } from "react-i18next";
 import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
 import {
   controleerGat,
-  plaatsLabel,
+  isKoker,
   standaardGat,
   toegestanePlaatsen,
   vrijePlaatbereiken,
@@ -19,18 +21,40 @@ import GetalVeld from "./GetalVeld";
 type GatOntwerp = Extract<DoorsnedeOntwerp, { soort: "gat" }>;
 
 /**
- * Knopnaam voor een plaats: zonder het "door het/de"-voorvoegsel, zodat de
- * drie ＋-knoppen naast de kop passen. De volledige plaats staat in de tooltip
- * en op de gatkaart zelf.
+ * Sleutel van een gatplaats. Dezelfde indeling als `plaatsLabel` in
+ * lib/profieleditor/geometrie.ts (die Nederlands blijft voor de kern en de
+ * controles), maar vertaalbaar: een hoeklijn heeft benen, een koker wanden.
  */
-function knopNaam(plaats: GatPlaats, basis: Basisprofiel): string {
-  if (plaats === "vlak") return "langsgat";
-  return plaatsLabel(plaats, basis).replace(/^door (het|de) /, "");
+function plaatsSleutel(plaats: GatPlaats, basis: Basisprofiel): string {
+  const koker = isKoker(basis);
+  const hoeklijn = basis.soort === "Angle";
+  switch (plaats) {
+    case "lijf":
+      return hoeklijn ? "longLeg" : koker ? "leftWall" : "web";
+    case "flensBoven":
+      return koker ? "topWall" : "topFlange";
+    case "flensOnder":
+      return hoeklijn ? "shortLeg" : koker ? "bottomWall" : "bottomFlange";
+    case "wand":
+      return "tubeWall";
+    case "vlak":
+      return "section";
+  }
 }
 
-const GAT_UITLEG =
-  "Een gat door een plaat laat in het doorsnedevlak een spleet over de volle plaatdikte achter: de netto " +
-  "doorsnede ter plaatse van het gat. Een lijfgat splitst de doorsnede in twee T's — I_w vervalt dan en I_t telt op.";
+/** Volledige plaats, bv. "door het lijf" — voor de tooltip en de gatkaart. */
+function plaatsTekst(plaats: GatPlaats, basis: Basisprofiel): string {
+  return i18next.t(`check:profileEditor.holes.place.${plaatsSleutel(plaats, basis)}`);
+}
+
+/**
+ * Knopnaam voor een plaats: zonder voorzetsel, zodat de drie ＋-knoppen naast
+ * de kop passen. De volledige plaats staat in de tooltip en op de gatkaart zelf.
+ */
+function knopNaam(plaats: GatPlaats, basis: Basisprofiel): string {
+  if (plaats === "vlak") return i18next.t("check:profileEditor.holes.longHole");
+  return i18next.t(`check:profileEditor.holes.placeShort.${plaatsSleutel(plaats, basis)}`);
+}
 
 interface Props {
   ontwerp: GatOntwerp;
@@ -40,6 +64,8 @@ interface Props {
 }
 
 export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer }: Props) {
+  const { t } = useTranslation("check");
+  const GAT_UITLEG = t("profileEditor.holes.help");
   const basis = ontwerp.basis;
   const reeks = reeksVanProfiel(basis.naam) ?? REEKSEN[0].id;
   const plaatsen = toegestanePlaatsen(basis);
@@ -68,11 +94,11 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
 
   return (
     <>
-      <div className="pe-kop">Basisprofiel</div>
+      <div className="pe-kop">{t("profileEditor.holes.baseProfile")}</div>
       <div className="pe-profielkeuze">
         <select
           value={reeks}
-          title="Profielreeks"
+          title={t("profileEditor.holes.seriesTitle")}
           onChange={(e) => {
             const eerste = profielenVanReeks(e.target.value)[0];
             if (eerste) kiesProfiel(eerste);
@@ -80,11 +106,11 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
         >
           {REEKSEN.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
         </select>
-        <select value={basis.naam} title="Profielmaat" onChange={(e) => kiesProfiel(e.target.value)}>
+        <select value={basis.naam} title={t("profileEditor.holes.sizeTitle")} onChange={(e) => kiesProfiel(e.target.value)}>
           {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{profielLabel(n)}</option>)}
         </select>
       </div>
-      <div className="pe-maatregel" title="Buitenmaten en wanddikten van het gekozen catalogusprofiel.">
+      <div className="pe-maatregel" title={t("profileEditor.holes.dimensionsTitle")}>
         h = {fmtMaat(basis.h)} · b = {fmtMaat(basis.b)} · t_w = {fmtMaat(basis.tw)} · t_f = {fmtMaat(basis.tf)} · r = {fmtMaat(basis.r)} mm
       </div>
 
@@ -93,7 +119,7 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
         van de kop én van elke ＋-knop: uit beeld, niet uit de app.
       */}
       <div className="pe-kop pe-kop-rij">
-        <span title={GAT_UITLEG}>Gaten{ontwerp.gaten.length > 0 ? ` (${ontwerp.gaten.length})` : ""}</span>
+        <span title={GAT_UITLEG}>{t("profileEditor.holes.holes")}{ontwerp.gaten.length > 0 ? ` (${ontwerp.gaten.length})` : ""}</span>
         <span className="pe-knoppen">
           {plaatsen.map((p) => (
             <button
@@ -101,7 +127,7 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
               type="button"
               className="pe-tknop pe-tknop-mini"
               onClick={() => voegToe(p)}
-              title={`Gat ${plaatsLabel(p, basis)} toevoegen. ${GAT_UITLEG}`}
+              title={t("profileEditor.holes.addTitle", { plaats: plaatsTekst(p, basis), help: GAT_UITLEG })}
             >
               ＋ {knopNaam(p, basis)}
             </button>
@@ -109,14 +135,14 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
         </span>
       </div>
 
-      {ontwerp.gaten.length === 0 && <div className="pe-leeg">Nog geen gaten — voeg er hierboven een toe.</div>}
+      {ontwerp.gaten.length === 0 && <div className="pe-leeg">{t("profileEditor.holes.empty")}</div>}
 
       <div className="pe-lijst">
         {ontwerp.gaten.map((g, i) => {
           const fout = controleerGat(g, basis);
           const bereik = vrijePlaatbereiken(basis, g.plaats)
             .map(([a, b]) => `${fmtMaat(a)}–${fmtMaat(b)}`)
-            .join(" of ");
+            .join(t("profileEditor.holes.rangeOr"));
           return (
             <div
               key={g.id}
@@ -125,15 +151,15 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
             >
               <div className="pe-item-kop">
                 <span>
-                  Gat {i + 1} <span className="pe-item-sub">{plaatsLabel(g.plaats, basis)}</span>
+                  {t("profileEditor.holes.holeN", { n: i + 1 })} <span className="pe-item-sub">{plaatsTekst(g.plaats, basis)}</span>
                 </span>
-                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(g.id); }} title="Dit gat verwijderen">
+                <button type="button" className="pe-tknop pe-tknop-mini pe-tknop-gevaar" onClick={(e) => { e.stopPropagation(); verwijder(g.id); }} title={t("profileEditor.holes.deleteTitle")}>
                   ✕
                 </button>
               </div>
               <div className="pe-velden">
                 <label className="pe-veld">
-                  <span>plaats</span>
+                  <span>{t("profileEditor.holes.position")}</span>
                   <select
                     value={g.plaats}
                     onChange={(e) => {
@@ -141,47 +167,47 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
                       zetGat(g.id, { ...nieuw, vorm: g.vorm, d: g.d, b: g.b, h: g.h });
                     }}
                   >
-                    {plaatsen.map((p) => <option key={p} value={p}>{plaatsLabel(p, basis)}</option>)}
+                    {plaatsen.map((p) => <option key={p} value={p}>{plaatsTekst(p, basis)}</option>)}
                   </select>
                 </label>
                 <label className="pe-veld">
-                  <span>vorm</span>
+                  <span>{t("profileEditor.holes.shape")}</span>
                   <select value={g.vorm} onChange={(e) => zetGat(g.id, { vorm: e.target.value as Gat["vorm"] })}>
-                    <option value="rond">rond</option>
-                    <option value="rechthoek">rechthoekig</option>
+                    <option value="rond">{t("profileEditor.holes.round")}</option>
+                    <option value="rechthoek">{t("profileEditor.holes.rectangular")}</option>
                   </select>
                 </label>
                 {g.vorm === "rond" ? (
-                  <GetalVeld label="diameter d" eenheid="mm" waarde={g.d} min={0.1} onWijzig={(v) => zetGat(g.id, { d: v })} />
+                  <GetalVeld label={t("profileEditor.holes.diameter")} eenheid="mm" waarde={g.d} min={0.1} onWijzig={(v) => zetGat(g.id, { d: v })} />
                 ) : (
                   <>
                     <GetalVeld
-                      label={g.plaats === "vlak" ? "breedte b (langs y)" : "langs de plaat"}
+                      label={g.plaats === "vlak" ? t("profileEditor.holes.widthB") : t("profileEditor.holes.alongPlate")}
                       eenheid="mm"
                       waarde={g.plaats === "vlak" ? g.b : g.h}
                       min={0.1}
                       onWijzig={(v) => zetGat(g.id, g.plaats === "vlak" ? { b: v } : { h: v })}
                     />
                     {g.plaats === "vlak" && (
-                      <GetalVeld label="hoogte h (langs z)" eenheid="mm" waarde={g.h} min={0.1} onWijzig={(v) => zetGat(g.id, { h: v })} />
+                      <GetalVeld label={t("profileEditor.holes.heightH")} eenheid="mm" waarde={g.h} min={0.1} onWijzig={(v) => zetGat(g.id, { h: v })} />
                     )}
                   </>
                 )}
                 {g.plaats === "lijf" && (
-                  <GetalVeld label="hoogte z (midden)" eenheid="mm" waarde={g.z} titel={`Vrij lijf: z = ${bereik} mm`} onWijzig={(v) => zetGat(g.id, { z: v })} />
+                  <GetalVeld label={t("profileEditor.holes.heightZ")} eenheid="mm" waarde={g.z} titel={t("profileEditor.holes.webRange", { bereik })} onWijzig={(v) => zetGat(g.id, { z: v })} />
                 )}
                 {(g.plaats === "flensBoven" || g.plaats === "flensOnder") && (
-                  <GetalVeld label="positie y (midden)" eenheid="mm" waarde={g.y} titel={`Vrije flens: y = ${bereik} mm`} onWijzig={(v) => zetGat(g.id, { y: v })} />
+                  <GetalVeld label={t("profileEditor.holes.positionY")} eenheid="mm" waarde={g.y} titel={t("profileEditor.holes.flangeRange", { bereik })} onWijzig={(v) => zetGat(g.id, { y: v })} />
                 )}
                 {g.plaats === "wand" && (
-                  <GetalVeld label="hoekpositie φ" eenheid="°" waarde={g.hoekGraden} stap={15} titel="0° = rechts, 90° = boven" onWijzig={(v) => zetGat(g.id, { hoekGraden: v })} />
+                  <GetalVeld label={t("profileEditor.holes.anglePosition")} eenheid="°" waarde={g.hoekGraden} stap={15} titel={t("profileEditor.holes.angleTitle")} onWijzig={(v) => zetGat(g.id, { hoekGraden: v })} />
                 )}
                 {g.plaats === "vlak" && (
                   <>
-                    <GetalVeld label="y (midden)" eenheid="mm" waarde={g.y} onWijzig={(v) => zetGat(g.id, { y: v })} />
-                    <GetalVeld label="z (midden)" eenheid="mm" waarde={g.z} onWijzig={(v) => zetGat(g.id, { z: v })} />
+                    <GetalVeld label={t("profileEditor.holes.yMid")} eenheid="mm" waarde={g.y} onWijzig={(v) => zetGat(g.id, { y: v })} />
+                    <GetalVeld label={t("profileEditor.holes.zMid")} eenheid="mm" waarde={g.z} onWijzig={(v) => zetGat(g.id, { z: v })} />
                     {g.vorm === "rechthoek" && (
-                      <GetalVeld label="draaiing" eenheid="°" waarde={g.hoekGraden} stap={15} onWijzig={(v) => zetGat(g.id, { hoekGraden: v })} />
+                      <GetalVeld label={t("profileEditor.holes.rotation")} eenheid="°" waarde={g.hoekGraden} stap={15} onWijzig={(v) => zetGat(g.id, { hoekGraden: v })} />
                     )}
                   </>
                 )}

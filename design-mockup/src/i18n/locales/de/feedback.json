@@ -19,5 +19,11 @@
   "successTitle": "Vielen Dank!",
   "successMessage": "Ihr Feedback wurde erfolgreich gesendet.",
   "sendAnother": "Weiteres senden",
-  "errorGeneric": "Feedback konnte nicht gesendet werden. Bitte versuchen Sie es erneut."
+  "errorGeneric": "Feedback konnte nicht gesendet werden. Bitte versuchen Sie es erneut.",
+  "submitToGithub": "GitHub-Issue öffnen",
+  "githubSuccessMessage": "Ihr Browser wurde mit einem vorausgefüllten Issue geöffnet. Fügen Sie die Screenshots mit Strg+V in den GitHub-Editor ein und klicken Sie auf 'Submit new issue'.",
+  "attachScreenshot": "Aktuellen Screenshot mitsenden",
+  "screenshotHint": "Der Screenshot wird in Ihre Zwischenablage kopiert — fügen Sie ihn mit Strg+V im GitHub-Editorfenster ein.",
+  "issueScreenshotsNote_one": "**Screenshots:** {{count}} Bild befindet sich in Ihrer Zwischenablage — fügen Sie es oben mit **Strg+V** ein, bevor Sie das Issue absenden.",
+  "issueScreenshotsNote_other": "**Screenshots:** {{count}} Bilder befinden sich in Ihrer Zwischenablage — fügen Sie sie oben mit **Strg+V** ein, bevor Sie das Issue absenden."
 }

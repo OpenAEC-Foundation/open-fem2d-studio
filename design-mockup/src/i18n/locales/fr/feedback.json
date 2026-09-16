@@ -19,5 +19,11 @@
   "successTitle": "Merci !",
   "successMessage": "Votre retour a bien été envoyé.",
   "sendAnother": "En envoyer un autre",
-  "errorGeneric": "L'envoi du retour a échoué. Veuillez réessayer."
+  "errorGeneric": "L'envoi du retour a échoué. Veuillez réessayer.",
+  "submitToGithub": "Ouvrir un ticket GitHub",
+  "githubSuccessMessage": "Votre navigateur s'est ouvert avec un ticket prérempli. Collez la ou les captures d'écran avec Ctrl+V dans l'éditeur GitHub et cliquez sur 'Submit new issue'.",
+  "attachScreenshot": "Joindre la capture d'écran actuelle",
+  "screenshotHint": "La capture d'écran est copiée dans votre presse-papiers — collez-la avec Ctrl+V dans la fenêtre de l'éditeur GitHub.",
+  "issueScreenshotsNote_one": "**Captures d'écran :** {{count}} image se trouve dans votre presse-papiers — collez-la ci-dessus avec **Ctrl+V** avant de soumettre le ticket.",
+  "issueScreenshotsNote_other": "**Captures d'écran :** {{count}} images se trouvent dans votre presse-papiers — collez-les ci-dessus avec **Ctrl+V** avant de soumettre le ticket."
 }

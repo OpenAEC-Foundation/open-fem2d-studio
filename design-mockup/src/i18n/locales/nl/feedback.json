@@ -19,5 +19,11 @@
   "successTitle": "Bedankt!",
   "successMessage": "Uw feedback is succesvol verzonden.",
   "sendAnother": "Nog een verzenden",
-  "errorGeneric": "Feedback verzenden mislukt. Probeer het opnieuw."
+  "errorGeneric": "Feedback verzenden mislukt. Probeer het opnieuw.",
+  "submitToGithub": "Open GitHub issue",
+  "githubSuccessMessage": "Je browser is geopend met een vooringevulde issue. Plak de screenshot(s) met Ctrl+V in het GitHub-editorscherm en klik op 'Submit new issue'.",
+  "attachScreenshot": "Huidige schermafbeelding meesturen",
+  "screenshotHint": "De screenshot wordt op je klembord gezet — plak hem met Ctrl+V in het GitHub-editorvenster.",
+  "issueScreenshotsNote_one": "**Screenshots:** {{count}} afbeelding(en) staan op je klembord — plak ze hierboven met **Ctrl+V** voordat je het issue indient.",
+  "issueScreenshotsNote_other": "**Screenshots:** {{count}} afbeelding(en) staan op je klembord — plak ze hierboven met **Ctrl+V** voordat je het issue indient."
 }
