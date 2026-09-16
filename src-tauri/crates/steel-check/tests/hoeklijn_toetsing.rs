@@ -72,6 +72,7 @@ fn hoeklijn(naam: &str, l_m: f64, n_kn: f64) -> BeamCheckResult {
         staafstand_notities: None,
         staafeinden: None,
         staaf_notities: None,
+        profile_end: None,
     })
 }
 

@@ -197,4 +197,30 @@ pub struct TimberBeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub staaf_notities: Option<Vec<String>>,
+    /// Breedte b aan het EIND van de staaf (x = L) van een VERLOPENDE staaf;
+    /// [`Self::width_mm`] is dan de breedte aan het begin (x = 0).
+    ///
+    /// Samen met [`Self::height_end_mm`]: ontbreken ze allebei (of zijn ze
+    /// gelijk aan begin), dan is de staaf prismatisch en verandert er niets
+    /// aan de bestaande toetsing, tot op het laatste getal. Staat er één van
+    /// beide, dan houdt de andere maat zijn beginwaarde.
+    ///
+    /// De KERN bepaalt per krachtpunt de plaatselijke rechthoek b(x) × h(x),
+    /// toetst elke doorsnedetoets van §6.1 daarop — met k_h van §3.2(3)/3.3(3)
+    /// uit de PLAATSELIJKE hoogte — en rekent de stabiliteitstoetsen van
+    /// §6.3.2 en §6.3.3 veilig-zijdig met de kleinste doorsnede in het veld.
+    /// Zie `crate::verlopend`.
+    ///
+    /// Een samengestelde doorsnede (`custom_section`) kan niet verlopen: dan
+    /// wordt geweigerd met reden.
+    #[serde(default)]
+    #[ts(optional)]
+    pub width_end_mm: Option<f64>,
+    /// Hoogte h aan het EIND van de staaf (x = L); zie [`Self::width_end_mm`].
+    ///
+    /// Dit is de maat waar het bij een afgezaagde balklaag om gaat: de
+    /// rekenhoogte verloopt over de overspanning, en k_h verloopt mee.
+    #[serde(default)]
+    #[ts(optional)]
+    pub height_end_mm: Option<f64>,
 }

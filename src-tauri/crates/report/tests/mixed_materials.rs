@@ -91,6 +91,8 @@ fn steel_beam(beam_id: u32, uc: f64) -> BeamCheckResult {
         uc_max: uc,
         status: CheckStatus::Ok,
         governing_check_id: "comp".into(),
+        // Prismatische proefstaaf: geen verlopend profiel.
+        verloop: None,
     }
 }
 
@@ -107,6 +109,8 @@ fn timber_beam(beam_id: u32, uc: f64) -> TimberBeamCheckResult {
         governing_check_id: "bending".into(),
         k_mod_per_load_duration: vec![],
         governing_combination_id: None,
+        // Prismatische proefstaaf: geen verlopend profiel.
+        verloop: None,
     }
 }
 

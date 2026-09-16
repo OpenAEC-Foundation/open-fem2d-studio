@@ -4,6 +4,7 @@ import type { KmodPerLoadDuration } from "./KmodPerLoadDuration";
 import type { LoadDurationClass } from "./LoadDurationClass";
 import type { NamedCheck } from "../steel/NamedCheck";
 import type { ServiceClass } from "./ServiceClass";
+import type { VerloopRapport } from "../steel/VerloopRapport";
 
 /**
  * Volledig toetsresultaat van één houten staaf.
@@ -33,4 +34,13 @@ k_mod_per_load_duration?: Array<KmodPerLoadDuration>,
  * van k_mod afhangt. `None` zonder belastingduur per combinatie, of als
  * geen enkele sterktetoets een unity check groter dan nul had.
  */
-governing_combination_id?: number, };
+governing_combination_id?: number, 
+/**
+ * Alleen bij een VERLOPENDE staaf (`width_end_mm`/`height_end_mm` in de
+ * invoer): de zes toetsdoorsneden, het maatgevende punt en de doorsneden
+ * waarmee de stabiliteitstoetsen zijn gerekend. Zelfde vorm als bij staal
+ * — het rapport kent voor het verloop maar één weergave. Bij hout blijven
+ * `tw_mm`/`tf_mm` en `klasse` leeg. Afwezig bij een prismatische staaf,
+ * en dan ook niet geserialiseerd.
+ */
+verloop?: VerloopRapport, };

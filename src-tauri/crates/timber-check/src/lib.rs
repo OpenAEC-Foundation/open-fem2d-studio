@@ -16,6 +16,7 @@ pub mod input;
 pub mod orchestrator;
 pub mod result;
 pub mod clt; // kruislaaghout: CltBeamCheckInput → CltBeamCheckResult, toets per lamel
+pub mod verlopend; // verlopende rechthoek b(x) × h(x), toets per rekenpunt
 
 pub use belastingduur::{CombinationLoadDuration, KmodPerLoadDuration};
 pub use input::TimberBeamCheckInput;

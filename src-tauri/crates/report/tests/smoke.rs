@@ -73,6 +73,8 @@ fn dummy_beam(beam_id: u32, profile: &str, uc: f64) -> BeamCheckResult {
             CheckStatus::NotOk
         },
         governing_check_id: "comp".into(),
+        // Prismatische proefstaaf: geen verlopend profiel.
+        verloop: None,
     }
 }
 

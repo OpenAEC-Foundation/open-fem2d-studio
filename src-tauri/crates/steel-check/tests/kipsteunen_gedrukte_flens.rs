@@ -83,6 +83,7 @@ fn ligger(teken: f64, aan_de_bovenflens: bool) -> BeamCheckResult {
         staafstand_notities: None,
         staafeinden: None,
         staaf_notities: None,
+        profile_end: None,
     })
 }
 
@@ -231,6 +232,7 @@ fn doorgaande_ligger_met(m_eind_knm: f64, top: Vec<f64>, bot: Vec<f64>) -> BeamC
         staafstand_notities: None,
         staafeinden: None,
         staaf_notities: None,
+        profile_end: None,
     })
 }
 
@@ -399,6 +401,7 @@ fn invoer_met_stand(teken: f64, stand: Option<mechanics::Staafstand>) -> BeamChe
         staafstand_notities: None,
         staafeinden: None,
         staaf_notities: None,
+        profile_end: None,
     }
 }
 

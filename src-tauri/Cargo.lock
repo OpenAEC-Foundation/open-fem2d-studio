@@ -3936,6 +3936,7 @@ dependencies = [
  "nen-en-1993-1-1-stability",
  "section-properties",
  "serde",
+ "serde_json",
  "steel-profiles",
  "ts-rs",
 ]

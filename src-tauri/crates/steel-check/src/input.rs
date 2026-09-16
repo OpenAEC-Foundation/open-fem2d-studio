@@ -247,6 +247,25 @@ pub struct BeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub staaf_notities: Option<Vec<String>>,
+    /// Profiel aan het EIND van de staaf (x = L) van een VERLOPENDE staaf;
+    /// [`Self::profile_name`] is dan het profiel aan het begin (x = 0). De
+    /// maten h, b, t_w en t_f verlopen lineair tussen de twee, en de doorsnede
+    /// telt over de hele staaf als GELAST I-profiel zonder afrondingsstraal
+    /// (ontwerpbesluit van 15 september 2026, §2): knikkromme en kipkromme voor
+    /// gelaste profielen, tabel 6.2 en 6.5.
+    ///
+    /// De KERN bepaalt per krachtpunt de plaatselijke doorsnede en toetst
+    /// elke doorsnedetoets op elk punt; de stabiliteitstoetsen rekenen met de
+    /// kleinste doorsnede in het betreffende veld. Zie `crate::verlopend`.
+    ///
+    /// Beide profielen moeten I/H-profielen uit de catalogus zijn; een koker,
+    /// buis, hoeklijn, U-profiel, een I-profiel met toelopende flenzen of een
+    /// eigen doorsnede (`custom_section`) wordt geweigerd met reden. `None`,
+    /// leeg of gelijk aan `profile_name` = prismatisch: dan verandert er
+    /// niets aan de bestaande toetsing, tot op het laatste getal.
+    #[serde(default)]
+    #[ts(optional)]
+    pub profile_end: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

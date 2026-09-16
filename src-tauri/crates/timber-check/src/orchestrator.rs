@@ -463,6 +463,32 @@ fn toets_per_klasse(k: &Keten, groepen: &[Groep]) -> PerKlasse {
 }
 
 pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
+    // -1. VERLOPENDE STAAF? Dan gaat hij langs een eigen weg
+    //     (`crate::verlopend`), die deze functie per rekenpunt opnieuw
+    //     aanroept met de PLAATSELIJKE rechthoek. Zonder eindmaten — en dat is
+    //     elke bestaande staaf — valt deze afslag weg en loopt alles hieronder
+    //     ongewijzigd door: een prismatische staaf verandert geen enkel getal.
+    match crate::verlopend::bepaal_verloop(&input) {
+        Ok(None) => {}
+        Ok(Some(v)) => return crate::verlopend::check_timber_beam_verlopend(input, v),
+        Err(reden) => {
+            return TimberBeamCheckResult {
+                beam_id: input.beam_id,
+                section_name: format!("{} x {}", input.width_mm, input.height_mm),
+                strength_class: input.strength_class.clone(),
+                service_class: input.service_class,
+                load_duration: input.load_duration,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!("ERROR: {reden}"),
+                k_mod_per_load_duration: vec![],
+                governing_combination_id: None,
+                verloop: None,
+            }
+        }
+    }
+
     // 0. De doorsnede. Lukt dat niet, dan STOPT de toetsing van deze staaf met
     //    de reden erbij -- er wordt geen vervangende doorsnede verzonnen.
     let (section, section_name) = match doorsnede_uit(&input) {
@@ -484,6 +510,8 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
                 governing_check_id: format!("ERROR: {reden}"),
                 k_mod_per_load_duration: vec![],
                 governing_combination_id: None,
+                // Prismatische staaf: geen verloopgegevens.
+                verloop: None,
             }
         }
     };
@@ -507,6 +535,8 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
                 ),
                 k_mod_per_load_duration: vec![],
                 governing_combination_id: None,
+                // Prismatische staaf: geen verloopgegevens.
+                verloop: None,
             }
         }
     };
@@ -577,6 +607,9 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
         governing_check_id,
         k_mod_per_load_duration,
         governing_combination_id,
+        // Prismatische staaf: geen verloopgegevens, en dan ook niet
+        // geserialiseerd (zie TimberBeamCheckResult::verloop).
+        verloop: None,
     }
 }
 
