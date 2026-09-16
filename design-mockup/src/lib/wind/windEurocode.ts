@@ -506,3 +506,147 @@ export function overkappingCoefficienten(
   const rijBoven = f === 0 ? onder.alpha : boven.alpha;
   return { ok: true, tabel, bron, rijOnder, rijBoven, coefficienten };
 }
+
+// ── 10. Wrijving, geschakelde overkappingen, kolommen — §7.3(7)/(9), §7.5–7.7 ─
+
+/**
+ * Oppervlakteruwheid voor de wrijvingscoëfficiënt c_fr.
+ * Bron: NEN-EN 1991-1-4 §7.5(2), tabel 7.10 (afgelezen van de tabelpagina):
+ *   glad (bijvoorbeeld staal, glad beton)                    c_fr = 0,01
+ *   ruw (bijvoorbeeld ruw beton, beteerde boorden)           c_fr = 0,02
+ *   zeer ruw (bijvoorbeeld rimpels, ribben, kronkelingen)    c_fr = 0,04
+ * De nationale bijlage wijzigt §7.5 niet (geen NB-bepaling bij 7.5).
+ */
+export type Oppervlakteruwheid = "glad" | "ruw" | "zeerRuw";
+
+export const TABEL_710_CFR: Record<Oppervlakteruwheid, number> = {
+  glad: 0.01,
+  ruw: 0.02,
+  zeerRuw: 0.04,
+};
+
+export const TABEL_710_OMSCHRIJVING: Record<Oppervlakteruwheid, string> = {
+  glad: "glad (bijvoorbeeld staal, glad beton)",
+  ruw: "ruw (bijvoorbeeld ruw beton, beteerde boorden)",
+  zeerRuw: "zeer ruw (bijvoorbeeld rimpels, ribben, kronkelingen)",
+};
+
+export const WRIJVING_BRON = "NEN-EN 1991-1-4 §7.3(7), §7.5, tabel 7.10, figuur 7.22";
+
+/**
+ * Tabel 7.8 — reductiefactoren ψ_mc voor geschakelde overkappingen, "voor
+ * alle φ" (afgelezen van de tabelpagina, per cel):
+ *   overkapping 1 (eerste)               op maximaal 1,0 ; op minimaal 0,8
+ *   overkapping 2 (tweede)               op maximaal 0,9 ; op minimaal 0,7
+ *   overkapping 3 (derde en volgende)    op maximaal 0,7 ; op minimaal 0,7
+ * "Op maximaal" = op de maximale (neerwaartse) kracht- en drukcoëfficiënten,
+ * "op minimaal" = op de minimale (opwaartse).
+ */
+export const TABEL_78_PSI_MC: readonly { rang: 1 | 2 | 3; locatie: string; max: number; min: number }[] = [
+  { rang: 1, locatie: "eerste overkapping", max: 1.0, min: 0.8 },
+  { rang: 2, locatie: "tweede overkapping", max: 0.9, min: 0.7 },
+  { rang: 3, locatie: "derde en volgende overkapping", max: 0.7, min: 0.7 },
+];
+
+export interface GeschakeldeReductie {
+  ok: boolean;
+  reden?: string;
+  /** Rangnummer in tabel 7.8 (1, 2 of 3). */
+  rang: 1 | 2 | 3;
+  locatie: string;
+  psiMax: number;
+  psiMin: number;
+}
+
+/**
+ * ψ_mc voor overkapping `positie` (1…aantal) in een rij van `aantal`
+ * tweezijdig hellende overkappingen (§7.3(9), figuur 7.18).
+ *
+ * WAAROM VAN BEIDE KANTEN GETELD: figuur 7.18 nummert een rij van zeven
+ * overkappingen als 1, 2, 3, 3, 3, 2, 1. De tabelwaarden gelden voor alle
+ * windrichtingen, dus de wind kan van beide kanten komen en elke eindoverkapping
+ * is een "eerste". Het rangnummer is daarom min(positie, aantal + 1 − positie),
+ * begrensd op 3.
+ *
+ * Eén overkapping is niet geschakeld: dan geldt tabel 7.8 niet en is de
+ * aanroeper verantwoordelijk om niet te reduceren (zie de generator).
+ */
+export function geschakeldeReductie(aantal: number, positie: number): GeschakeldeReductie {
+  const weiger = (reden: string): GeschakeldeReductie =>
+    ({ ok: false, reden, rang: 1, locatie: "", psiMax: 1, psiMin: 1 });
+  if (!Number.isInteger(aantal) || aantal < 2) {
+    return weiger("Tabel 7.8 geldt voor geschakelde overkappingen: vul een aantal van 2 of meer in.");
+  }
+  if (!Number.isInteger(positie) || positie < 1 || positie > aantal) {
+    return weiger(`De positie van deze overkapping ligt tussen 1 en ${aantal} (figuur 7.18).`);
+  }
+  const rang = Math.min(3, positie, aantal + 1 - positie) as 1 | 2 | 3;
+  const rij = TABEL_78_PSI_MC.find((r) => r.rang === rang)!;
+  return { ok: true, rang, locatie: rij.locatie, psiMax: rij.max, psiMin: rij.min };
+}
+
+export const GESCHAKELD_BRON = "NEN-EN 1991-1-4 §7.3(6)/(9), tabel 7.8, figuur 7.18";
+
+/**
+ * Doorsnedevorm van de kolommen van een open overkapping, voor c_f,0:
+ *  • "scherphoekig" — I-, H-, U-, L- en T-profielen en platen (figuur 7.25),
+ *    §7.7(1): c_f = c_f,0 · ψ_λ met c_f,0 = 2,0. De NB-tekst bij 7.7(1)
+ *    opmerking 1: "moet voor alle elementen met doorsneden met scherpe randen
+ *    2 zijn aangehouden", tenzij nader onderzoek een lagere waarde geeft.
+ *  • "rechthoekig" — massieve of kokervormige rechthoekige doorsnede, §7.6(1):
+ *    c_f = c_f,0 · ψ_r · ψ_λ met c_f,0 uit figuur 7.23.
+ * Cirkelvormig (§7.9.2, figuur 7.28) ontbreekt bewust: zie de generator.
+ */
+export type KolomDoorsnede = "scherphoekig" | "rechthoekig";
+
+export const CF0_SCHERPHOEKIG = 2.0;
+
+/**
+ * Figuur 7.23 — c_f,0 van rechthoekige doorsneden met scherpe hoeken, als de
+ * gelabelde snijpunten van de grafiek (afgelezen van de figuurpagina): de
+ * lijn loopt vlak op 2,0 tot d/b = 0,2, stijgt naar 2,4 bij d/b = 0,7, daalt
+ * naar 1,0 bij d/b = 5 en 0,9 bij d/b = 10, en blijft daarna vlak op 0,9. De
+ * hulplijnen van de figuur geven de tussenwaarden 2,35 (d/b = 0,6), 2,1
+ * (d/b = 1) en 1,65 (d/b = 2).
+ *
+ * WAAROM LOGARITMISCH INTERPOLEREN: de d/b-as van figuur 7.23 is
+ * logaritmisch (de afstand 0,1→0,2 is gelijk aan 1→2 en 10→20), en de
+ * stukken zijn daarop rechte lijnen. Nagerekend: de rechte van (0,7; 2,4) naar
+ * (5; 1,0) op een log-as gaat door 2,146 bij d/b = 1 en 1,652 bij d/b = 2 —
+ * de gelabelde 2,1 en 1,65; die van (0,2; 2,0) naar (0,7; 2,4) door 2,351 bij
+ * 0,6 — de gelabelde 2,35. Tussen de gelabelde punten wordt daarom lineair in
+ * log(d/b) geïnterpoleerd; op een gelabeld punt is het de afgelezen waarde.
+ */
+export const FIGUUR_723_CF0: readonly (readonly [dOverB: number, cf0: number])[] = [
+  [0.2, 2.0], [0.6, 2.35], [0.7, 2.4], [1, 2.1], [2, 1.65], [5, 1.0], [10, 0.9],
+];
+
+/** c_f,0 uit figuur 7.23 bij d/b (d in de windrichting, b loodrecht erop). */
+export function cf0Rechthoekig(dOverB: number): number {
+  const p = FIGUUR_723_CF0;
+  if (dOverB <= p[0][0]) return p[0][1];
+  if (dOverB >= p[p.length - 1][0]) return p[p.length - 1][1];
+  for (let k = 0; k < p.length - 1; k++) {
+    const [x0, y0] = p[k], [x1, y1] = p[k + 1];
+    if (dOverB === x0) return y0;
+    if (dOverB === x1) return y1;
+    if (dOverB > x0 && dOverB < x1) {
+      const f = Math.log(dOverB / x0) / Math.log(x1 / x0);
+      return y0 + (y1 - y0) * f;
+    }
+  }
+  return p[p.length - 1][1];
+}
+
+/**
+ * §7.6(3): plaatachtige doorsneden (d/b < 0,2) "kunnen" bij bepaalde
+ * aanstroomrichtingen tot 25 % hogere c_f geven. De generator rekent die
+ * toename aan de veilige kant mee (factor 1,25) en meldt dat.
+ */
+export const PLAATACHTIG_GRENS_DB = 0.2;
+export const PLAATACHTIG_TOESLAG = 1.25;
+
+export const KOLOM_BRON: Record<KolomDoorsnede, string> = {
+  scherphoekig: "NEN-EN 1991-1-4 §7.7(1), (7.11), figuur 7.25; c_f,0 = 2,0 (NB)",
+  rechthoekig: "NEN-EN 1991-1-4 §7.6(1), (7.9), figuur 7.23",
+};

@@ -187,7 +187,9 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
       caseId: idVan.get(l.gevalSleutel)!,
       beamId: l.beamId,
       q: l.q,
-      qDir: "z" as const,
+      // Wrijving langs het dak (§7.3(7)) werkt langs de staafas; al het andere
+      // loodrecht erop.
+      qDir: l.richting === "axiaal" ? ("x" as const) : ("z" as const),
       qCoord: "local" as const,
       ...(l.startFrac !== undefined ? { startFrac: l.startFrac, endFrac: l.endFrac } : {}),
       // Vrijstaand dak: paragraaf, tabel, α, φ en coëfficiënt voor de

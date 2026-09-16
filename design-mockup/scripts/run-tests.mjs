@@ -333,6 +333,11 @@ const BUNDEL_TESTS = new Set([
   // dezelfde tabelcellen, zones en c_f-gevallen leveren, en de gebouwgevallen
   // moeten daar net zo bit-identiek blijven als in de bron.
   "wind-vrijstaand-dak",
+  // Vrijstaand dak, uitbreiding (issue #16: wrijving, tabel 7.8, kolommen):
+  // zelfde modules als hierboven. Tegen de bundel omdat de sidecar dezelfde
+  // horizontale gevallen en ψ_mc moet leveren, en de bestaande gevallen daar
+  // net zo bit-identiek moeten blijven.
+  "wind-vrijstaand-uitbreiding",
 ]);
 
 /**
