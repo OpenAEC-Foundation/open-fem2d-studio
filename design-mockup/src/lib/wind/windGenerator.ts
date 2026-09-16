@@ -1181,7 +1181,8 @@ function genereerVrijstaandDak(
   ) => {
     gevallen.push({ sleutel, naam, richting, cpi: 0 });
     const regels: VlakRegel[] = [];
-    let F = 0, Fx = 0, Fz = 0;
+    // Resultante per dakvlak: bij een zadeldak een per helling (figuur 7.17).
+    const res = new Map<string, { F: number; Fx: number; Fz: number }>();
     for (const s of belast) {
       const fr = deel(s.g, s.van, s.tot);
       if (!fr) continue;
@@ -1200,9 +1201,12 @@ function genereerVrijstaandDak(
       const lengte_m = (s.g.L_mm / 1000) * (b - a);
       const kracht = w * breedte_m * lengte_m;
       const fm = (a + b) / 2;
-      F += kracht;
-      Fx += kracht * (s.g.x1 + (s.g.x2 - s.g.x1) * fm) / 1000;
-      Fz += kracht * (s.g.z1 + (s.g.z2 - s.g.z1) * fm) / 1000;
+      const vlakSleutel = xNok === null ? "dak" : midX(s.g) < xNok ? "links" : "rechts";
+      const r = res.get(vlakSleutel) ?? { F: 0, Fx: 0, Fz: 0 };
+      r.F += kracht;
+      r.Fx += kracht * (s.g.x1 + (s.g.x2 - s.g.x1) * fm) / 1000;
+      r.Fz += kracht * (s.g.z1 + (s.g.z2 - s.g.z1) * fm) / 1000;
+      res.set(vlakSleutel, r);
       if (Math.abs(q) < 1e-12) continue;
       lasten.push({
         gevalSleutel: sleutel, beamId: s.g.beam.id, q,
@@ -1214,10 +1218,13 @@ function genereerVrijstaandDak(
         omschrijving: s.omschrijving,
       });
     }
+    const resultanten = [...res.values()]
+      .filter((r) => Math.abs(r.F) > 1e-12)
+      .map((r) => ({ x_m: r.Fx / r.F, z_m: r.Fz / r.F, F_kN: r.F }))
+      .sort((p, q) => p.x_m - q.x_m);
     perGeval.push({
       sleutel, naam, regels,
-      ...(sleutel.includes(":cf:") && Math.abs(F) > 1e-12
-        ? { resultanten: [{ x_m: Fx / F, z_m: Fz / F, F_kN: F }] } : {}),
+      ...(sleutel.includes(":cf:") && resultanten.length > 0 ? { resultanten } : {}),
     });
   };
 

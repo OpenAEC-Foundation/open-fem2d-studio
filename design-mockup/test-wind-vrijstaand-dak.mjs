@@ -321,6 +321,11 @@ log("\n[5] Zadeldak — handberekening Z");
   check("  getal", -cfMin[0].q, -2.53191, 0.01);
   const res3 = res.samenvatting.perGeval.find((p) => p.sleutel === "luifel:cf:max:links").resultanten[0];
   check("resultante linkerdakvlak in het midden: x = 2,00 m (figuur 7.17)", res3.x_m, 2.0);
+  // Beide dakvlakken: één resultante per helling, F = q_p·0,4·4·(4/cos 15°).
+  const beide = res.samenvatting.perGeval.find((p) => p.sleutel === "luifel:cf:max:beide").resultanten;
+  checkExact("beide dakvlakken: twee resultanten", beide.length, 2);
+  checkTrue("  op x = 2,00 en 6,00 m", Math.abs(beide[0].x_m - 2) < 1e-9 && Math.abs(beide[1].x_m - 6) < 1e-9);
+  check("  F per dakvlak = q_p·0,4·4·4,14110 m", beide[0].F_kN, qp * 0.4 * 4 * 4 / Math.cos(15 * graad));
   checkTrue("omschrijving noemt tabel 7.7 en figuur 7.17",
     cfB[0].omschrijving.startsWith("§7.3 tabel 7.7 (α = 15,0°, φ = 0,00)") && cfB[0].omschrijving.includes("fig. 7.17"));
 

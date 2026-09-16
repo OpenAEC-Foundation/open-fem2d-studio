@@ -8,6 +8,11 @@
  * afleidingen, de tabellen en de normkanttekeningen blijven beschikbaar
  * maar staan ingeklapt: wie wil controleren klapt ze open.
  *
+ * Bij een vrijstaand dak (§7.3) wisselt het venster van gedaante: geen
+ * gevels, geen c_pi en geen windrichtingen (tabel 7.6/7.7 gelden voor alle
+ * richtingen), wel de dakvorm, de blokkering φ met een tekeningetje van wat
+ * φ betekent, en de hoogte h.
+ *
  * Pas bij "Genereren" wordt er iets in het model geschreven.
  */
 import { useMemo, useState, type ReactNode } from "react";
@@ -17,7 +22,10 @@ import {
   type TerreinCategorie, type Windgebied,
 } from "./windEurocode";
 import type { WindGeneratorApi } from "../../stores/windStore";
-import { DoorsnedeSchema, PlattegrondSchema, KLEUR_DRUK, KLEUR_WIND, KLEUR_ZUIGING, ROL_KLEUR } from "./WindSchema";
+import {
+  BlokkeringSchema, DoorsnedeSchema, PlattegrondSchema,
+  KLEUR_DRUK, KLEUR_RESULTANTE, KLEUR_WIND, KLEUR_ZUIGING, ROL_KLEUR, ZONE_KLEUR,
+} from "./WindSchema";
 import "./WindGeneratorDialog.css";
 
 const nl = (v: number, d: number) => v.toFixed(d).replace(".", ",");
@@ -83,11 +91,17 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
   const geval = gevallen[Math.min(gevalIndex, Math.max(0, gevallen.length - 1))] ?? null;
   const richtingVanGeval = geval
     ? (res?.gevallen.find((g) => g.sleutel === geval.sleutel)?.richting ?? null)
-    : (i.richtingLinks ? "links" : i.richtingRechts ? "rechts" : i.richtingHaaks ? "haaks" : null);
+    : i.vorm === "vrijstaandDak" ? "alle"
+      : (i.richtingLinks ? "links" : i.richtingRechts ? "rechts" : i.richtingHaaks ? "haaks" : null);
   const fouten = res?.meldingen.filter((m) => m.niveau === "fout") ?? [];
   const overige = res?.meldingen.filter((m) => m.niveau !== "fout") ?? [];
-  const toonGevelhoogte = geo !== null && !geo.heeftGevels;
+  const vrijstaand = i.vorm === "vrijstaandDak";
+  const toonGevelhoogte = !vrijstaand && geo !== null && !geo.heeftGevels;
   const e_m = geo ? berekenE(i.gebouwlengte_m, geo.h_m) : undefined;
+  const vrijGeo = geo?.vrijstaand ?? null;
+  const tabLabel = (naam: string) => vrijstaand
+    ? naam.replace("Wind vrijstaand dak ", "")
+    : naam.replace("Wind ", "").replace("wind ", "");
 
   const richtingKnop = (sleutel: "richtingLinks" | "richtingRechts" | "richtingHaaks", tekst: string, titel: string) => (
     <button
@@ -113,6 +127,20 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
           <div className="wgd-cols">
             {/* ── Invoer ──────────────────────────────────────────────── */}
             <div>
+              <div className="wgd-section">
+                <div className="wgd-section-title">{t("wind.secForm")}</div>
+                <div className="wgd-toggles">
+                  <button type="button" className={`wgd-toggle${!vrijstaand ? " aan" : ""}`}
+                    onClick={() => set({ vorm: "gebouw" })} aria-pressed={!vrijstaand}>
+                    {t("wind.formBuilding")}
+                  </button>
+                  <button type="button" className={`wgd-toggle${vrijstaand ? " aan" : ""}`}
+                    onClick={() => set({ vorm: "vrijstaandDak" })} aria-pressed={vrijstaand} title={t("wind.formHint")}>
+                    {t("wind.formCanopy")}
+                  </button>
+                </div>
+              </div>
+
               <div className="wgd-section">
                 <div className="wgd-section-title">{t("wind.secPressure")}</div>
                 <div className="wgd-row">
@@ -153,7 +181,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
               </div>
 
               <div className="wgd-section">
-                <div className="wgd-section-title">{t("wind.secFrame")}</div>
+                <div className="wgd-section-title">{t(vrijstaand ? "wind.secFrameCanopy" : "wind.secFrame")}</div>
                 <PlattegrondSchema
                   gebouwlengte_m={i.gebouwlengte_m}
                   d_m={geo?.d_m ?? 10}
@@ -164,6 +192,10 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                   richtingRechts={i.richtingRechts}
                   richtingHaaks={i.richtingHaaks}
                   e_m={e_m}
+                  vrijstaand={vrijGeo ? {
+                    nokFractie: vrijGeo.xNok_m !== null && geo && geo.d_m > 0
+                      ? (vrijGeo.xNok_m - geo.xLinks_m) / geo.d_m : null,
+                  } : undefined}
                   breedtePx={320}
                 />
                 <div className="wgd-toggles">
@@ -194,6 +226,36 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                 {toonGevelhoogte && <div className="wgd-hint">{t("wind.gevelhoogteHint")}</div>}
               </div>
 
+              {vrijstaand && (
+                <div className="wgd-section">
+                  <div className="wgd-section-title">
+                    {t("wind.secCanopy")}
+                    {vrijGeo && <span className="wgd-section-sub">{` α = ${nl(vrijGeo.alpha_graden, 1).replace("-", "−")}° (${t("wind.canopySlope")})`}</span>}
+                  </div>
+                  <div className="wgd-toggles">
+                    <button type="button" className={`wgd-toggle${i.vrijstaandDakvorm === "lessenaar" ? " aan" : ""}`}
+                      onClick={() => set({ vrijstaandDakvorm: "lessenaar" })}>
+                      {t("wind.canopyMono")}
+                    </button>
+                    <button type="button" className={`wgd-toggle${i.vrijstaandDakvorm === "zadel" ? " aan" : ""}`}
+                      onClick={() => set({ vrijstaandDakvorm: "zadel" })}>
+                      {t("wind.canopyDuo")}
+                    </button>
+                  </div>
+                  <BlokkeringSchema phi={i.blokkering_phi} dakvorm={i.vrijstaandDakvorm} breedtePx={320} />
+                  <div className="wgd-getallen">
+                    <Getal label={t("wind.blockage")} value={i.blokkering_phi} step={0.1} eenheid=""
+                      onChange={(v) => set({ blokkering_phi: v ?? 0 })} />
+                    <Getal label={t("wind.canopyHeight")} value={i.vrijstaandHoogte_m} step={0.1}
+                      leeg={geo ? nl(geo.modelhoogte_m, 2) : t("wind.canopyHeightEmpty")}
+                      onChange={(v) => set({ vrijstaandHoogte_m: v })} />
+                  </div>
+                  <div className="wgd-hint">{t("wind.blockageHint")}</div>
+                  <div className="wgd-hint">{t("wind.canopyDirections")}</div>
+                </div>
+              )}
+
+              {!vrijstaand && (
               <div className="wgd-section">
                 <div className="wgd-section-title">{t("wind.secDirections")}</div>
                 <div className="wgd-toggles">
@@ -217,8 +279,9 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                   )}
                 </div>
               </div>
+              )}
 
-              {geo?.heeftHellendDak && (
+              {!vrijstaand && geo?.heeftHellendDak && (
                 <div className="wgd-section">
                   <div className="wgd-section-title">
                     {t("wind.secSlopedRoof")}
@@ -264,7 +327,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                           className={`wgd-tab${gv === geval ? " actief" : ""}`}
                           onClick={() => setGevalIndex(k)}
                         >
-                          {gv.naam.replace("Wind ", "").replace("wind ", "")}
+                          {tabLabel(gv.naam)}
                         </button>
                       ))}
                     </div>
@@ -274,12 +337,17 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                     richting={richtingVanGeval}
                     regels={geval?.regels ?? []}
                     gevelhoogte_m={i.gevelhoogte_m}
+                    resultanten={vrijstaand ? (geval?.resultanten ?? []) : []}
                     breedtePx={560}
                   />
                   <div className="wgd-legenda">
-                    <span><i style={{ background: ROL_KLEUR.gevelLinks }} />{t("wind.legendWall")}</span>
+                    {!vrijstaand && <span><i style={{ background: ROL_KLEUR.gevelLinks }} />{t("wind.legendWall")}</span>}
                     <span><i style={{ background: ROL_KLEUR.dakPlat }} />{t("wind.legendRoof")}</span>
-                    <span><i style={{ background: ROL_KLEUR.overstek }} />{t("wind.legendOverhang")}</span>
+                    {!vrijstaand && <span><i style={{ background: ROL_KLEUR.overstek }} />{t("wind.legendOverhang")}</span>}
+                    {vrijstaand && (i.vrijstaandDakvorm === "zadel" ? ["A", "B", "C", "D"] as const : ["A", "B", "C"] as const).map((z) => (
+                      <span key={z}><i style={{ background: ZONE_KLEUR[z] }} />{`${t("wind.colZone")} ${z}`}</span>
+                    ))}
+                    {vrijstaand && <span><i style={{ background: KLEUR_RESULTANTE }} />{t("wind.legendResultant")}</span>}
                     <span><i style={{ background: KLEUR_DRUK }} />{t("wind.legendPressure")}</span>
                     <span><i style={{ background: KLEUR_ZUIGING }} />{t("wind.legendSuction")}</span>
                     <span><i style={{ background: KLEUR_WIND }} />{t("wind.legendWind")}</span>
@@ -303,7 +371,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                     <thead>
                       <tr>
                         <th>{t("wind.colBeam")}</th><th>{t("wind.colZone")}</th>
-                        <th>c_pe</th><th>c_pi</th>
+                        <th>{vrijstaand ? t("wind.colCoef") : "c_pe"}</th>{!vrijstaand && <th>c_pi</th>}
                         <th>{t("wind.colW")}</th><th>{t("wind.colQ")}</th>
                         <th>{t("wind.colSource")}</th>
                       </tr>
@@ -314,7 +382,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                           <td className="num">{r.beamId}</td>
                           <td>{r.zone}</td>
                           <td className="num">{nl(r.cpe, 2)}</td>
-                          <td className="num">{nl(r.cpi, 2)}</td>
+                          {!vrijstaand && <td className="num">{nl(r.cpi, 2)}</td>}
                           <td className="num">{nl(r.w_kNm2, 3)}</td>
                           <td className="num">{nl(r.q_kNm, 3)}</td>
                           <td className="wgd-bron">{r.bron}</td>
