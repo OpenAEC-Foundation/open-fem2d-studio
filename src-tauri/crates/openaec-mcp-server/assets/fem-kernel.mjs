@@ -17555,6 +17555,67 @@ var ZMAX_M = 200;
 function berekenE(b_m, h_m) {
   return Math.min(b_m, 2 * h_m);
 }
+var TABEL_76 = [
+  { alpha: 0, cf: [0.2, -0.5, -1.3], zones: { A: [0.5, -0.6, -1.5], B: [1.8, -1.3, -1.8], C: [1.1, -1.4, -2.2] } },
+  { alpha: 5, cf: [0.4, -0.7, -1.4], zones: { A: [0.8, -1.1, -1.6], B: [2.1, -1.7, -2.2], C: [1.3, -1.8, -2.5] } },
+  { alpha: 10, cf: [0.5, -0.9, -1.4], zones: { A: [1.2, -1.5, -1.6], B: [2.4, -2, -2.6], C: [1.6, -2.1, -2.7] } },
+  { alpha: 15, cf: [0.7, -1.1, -1.4], zones: { A: [1.4, -1.8, -1.6], B: [2.7, -2.4, -2.9], C: [1.8, -2.5, -3] } },
+  { alpha: 20, cf: [0.8, -1.3, -1.4], zones: { A: [1.7, -2.2, -1.6], B: [2.9, -2.8, -2.9], C: [2.1, -2.9, -3] } },
+  { alpha: 25, cf: [1, -1.6, -1.4], zones: { A: [2, -2.6, -1.5], B: [3.1, -3.2, -2.5], C: [2.3, -3.2, -2.8] } },
+  { alpha: 30, cf: [1.2, -1.8, -1.4], zones: { A: [2.2, -3, -1.5], B: [3.2, -3.8, -2.2], C: [2.4, -3.6, -2.7] } }
+];
+var TABEL_77 = [
+  { alpha: -20, cf: [0.7, -0.7, -1.3], zones: { A: [0.8, -0.9, -1.5], B: [1.6, -1.3, -2.4], C: [0.6, -1.6, -2.4], D: [1.7, -0.6, -0.6] } },
+  { alpha: -15, cf: [0.5, -0.6, -1.4], zones: { A: [0.6, -0.8, -1.6], B: [1.5, -1.3, -2.7], C: [0.7, -1.6, -2.6], D: [1.4, -0.6, -0.6] } },
+  { alpha: -10, cf: [0.4, -0.6, -1.4], zones: { A: [0.6, -0.8, -1.6], B: [1.4, -1.3, -2.7], C: [0.8, -1.5, -2.6], D: [1.1, -0.6, -0.6] } },
+  { alpha: -5, cf: [0.3, -0.5, -1.3], zones: { A: [0.5, -0.7, -1.5], B: [1.5, -1.3, -2.4], C: [0.8, -1.6, -2.4], D: [0.8, -0.6, -0.6] } },
+  { alpha: 5, cf: [0.3, -0.6, -1.3], zones: { A: [0.6, -0.6, -1.3], B: [1.8, -1.4, -2], C: [1.3, -1.4, -1.8], D: [0.4, -1.1, -1.5] } },
+  { alpha: 10, cf: [0.4, -0.7, -1.3], zones: { A: [0.7, -0.7, -1.3], B: [1.8, -1.5, -2], C: [1.4, -1.4, -1.8], D: [0.4, -1.4, -1.8] } },
+  { alpha: 15, cf: [0.4, -0.8, -1.3], zones: { A: [0.9, -0.9, -1.3], B: [1.9, -1.7, -2.2], C: [1.4, -1.4, -1.6], D: [0.4, -1.8, -2.1] } },
+  { alpha: 20, cf: [0.6, -0.9, -1.3], zones: { A: [1.1, -1.2, -1.4], B: [1.9, -1.8, -2.2], C: [1.5, -1.4, -1.6], D: [0.4, -2, -2.1] } },
+  { alpha: 25, cf: [0.7, -1, -1.3], zones: { A: [1.2, -1.4, -1.4], B: [1.9, -1.9, -2], C: [1.6, -1.4, -1.5], D: [0.5, -2, -2] } },
+  { alpha: 30, cf: [0.9, -1, -1.3], zones: { A: [1.3, -1.4, -1.4], B: [1.9, -1.9, -1.8], C: [1.6, -1.4, -1.4], D: [0.7, -2, -2] } }
+];
+var OVERKAPPING_TABEL_BRON = {
+  lessenaar: "NEN-EN 1991-1-4 \xA77.3, tabel 7.6 (eenzijdig hellende overkapping)",
+  zadel: "NEN-EN 1991-1-4 \xA77.3, tabel 7.7 (tweezijdig hellende overkapping)"
+};
+function overkappingCoefficienten(dakvorm, alpha_graden, phi) {
+  const tabel = dakvorm === "lessenaar" ? "7.6" : "7.7";
+  const rijen = dakvorm === "lessenaar" ? TABEL_76 : TABEL_77;
+  const bron = OVERKAPPING_TABEL_BRON[dakvorm];
+  const graden = (x) => `${x.toFixed(1).replace(".", ",").replace("-", "\u2212")}\xB0`;
+  const weiger = (reden) => ({ ok: false, reden, tabel, bron, rijOnder: NaN, rijBoven: NaN, coefficienten: [] });
+  if (!(phi >= 0 && phi <= 1)) {
+    return weiger("De blokkering \u03C6 ligt tussen 0 (leeg eronder) en 1 (volledig geblokkeerd), \xA77.3(2).");
+  }
+  const a = Math.abs(alpha_graden - Math.round(alpha_graden)) < 1e-6 ? Math.round(alpha_graden) : alpha_graden;
+  if (dakvorm === "lessenaar" && (a < 0 || a > 30)) {
+    return weiger(`Tabel 7.6 geeft dakhellingen van 0\xB0 tot 30\xB0; deze helling is ${graden(a)}.`);
+  }
+  if (dakvorm === "zadel" && (a < -20 || a > 30 || a > -5 && a < 5)) {
+    return weiger(
+      `Tabel 7.7 geeft dakhellingen van \u221220\xB0 tot \u22125\xB0 en van +5\xB0 tot +30\xB0; deze helling is ${graden(a)}. Tussen \u22125\xB0 en +5\xB0 staat er geen rij, en daartussen wordt niet ge\xEFnterpoleerd.`
+    );
+  }
+  let i = 0;
+  while (i < rijen.length - 2 && !(a >= rijen[i].alpha && a <= rijen[i + 1].alpha)) i++;
+  const onder = rijen[i];
+  const boven = rijen[i + 1];
+  const f = (a - onder.alpha) / (boven.alpha - onder.alpha);
+  const mix = (x, y) => f === 0 ? x : f === 1 ? y : x + (y - x) * f;
+  const namen = dakvorm === "lessenaar" ? ["c_f", "A", "B", "C"] : ["c_f", "A", "B", "C", "D"];
+  const coefficienten = namen.map((naam) => {
+    const o = naam === "c_f" ? onder.cf : onder.zones[naam];
+    const b = naam === "c_f" ? boven.cf : boven.zones[naam];
+    const max = mix(o[0], b[0]), min0 = mix(o[1], b[1]), min1 = mix(o[2], b[2]);
+    const minPhi = phi === 0 ? min0 : phi === 1 ? min1 : min0 + phi * (min1 - min0);
+    return { naam, max, min0, min1, minPhi };
+  });
+  const rijOnder = f === 1 ? boven.alpha : onder.alpha;
+  const rijBoven = f === 0 ? onder.alpha : boven.alpha;
+  return { ok: true, tabel, bron, rijOnder, rijBoven, coefficienten };
+}
 
 // src/lib/wind/windGenerator.ts
 var STANDAARD_WIND_INSTELLINGEN = {
@@ -17576,13 +17637,18 @@ var STANDAARD_WIND_INSTELLINGEN = {
   cpeDakLij: null,
   cpeDakHaaks: null,
   combinatiesGenereren: true,
-  gevelhoogte_m: null
+  gevelhoogte_m: null,
+  vorm: "gebouw",
+  vrijstaandDakvorm: "lessenaar",
+  blokkering_phi: 0,
+  vrijstaandHoogte_m: null
 };
 var nl7 = (v, d) => v.toFixed(d).replace(".", ",");
 var RICHTING_LABEL = {
   links: "wind van links",
   rechts: "wind van rechts",
-  haaks: "wind haaks op het spant"
+  haaks: "wind haaks op het spant",
+  alle: "alle windrichtingen"
 };
 function staafGeo(beam, nodes) {
   const a = nodes.find((n) => n.id === beam.from);
@@ -17639,6 +17705,7 @@ function genereerWindbelasting(model, inst) {
     return fout("Er is nog geen constructie om wind op te zetten.");
   }
   const geos = model.beams.map((b) => staafGeo(b, model.nodes)).filter((g) => g !== null).sort((a, b) => a.beam.id - b.beam.id);
+  if (inst.vorm === "vrijstaandDak") return genereerVrijstaandDak(model, inst, geos, meldingen);
   const zs = model.nodes.map((n) => n.z);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const modelhoogte_m = (maxZ - minZ) / 1e3;
@@ -17707,17 +17774,7 @@ function genereerWindbelasting(model, inst) {
   if (inst.stuwdrukBron === "handmatig" && !(inst.qpHandmatig_kNm2 > 0)) {
     return fout("Vul een stuwdruk groter dan 0 kN/m\xB2 in, of kies \u201Cberekenen\u201D.");
   }
-  if (stuwdruk.handmatig) {
-    meldingen.push({
-      niveau: "info",
-      tekst: `De stuwdruk is handmatig opgegeven (${nl7(stuwdruk.qp_kNm2, 3)} kN/m\xB2); de generator heeft hem niet zelf afgeleid.`
-    });
-  } else {
-    meldingen.push({
-      niveau: "waarschuwing",
-      tekst: "De stuwdruk is berekend met de ruwheidslengtes uit EN 1991-1-4 tabel 4.1. De Nederlandse nationale bijlage geeft de extreme stuwdruk ook rechtstreeks in tabelvorm per windgebied, terreinsoort en hoogte; die waarde kan afwijken. Houdt u die tabel aan, kies dan \u201Cstuwdruk handmatig\u201D en voer de waarde uit de nationale bijlage in."
-    });
-  }
+  meldingen.push(stuwdrukMelding(stuwdruk));
   meldingen.push({
     niveau: "info",
     tekst: `Referentiehoogte z_e = ${nl7(ze_m, 2)} m (bouwhoogte) voor ALLE vlakken. Volgens NEN-EN 1991-1-4 \xA77.2.2 (figuur 7.4) mag dat wanneer h \u2264 b; bij een hoger gebouw is \xE9\xE9n strook op z_e = h de veilige kant, want de stuwdruk is daar het grootst.`
@@ -17964,6 +18021,405 @@ function genereerWindbelasting(model, inst) {
       "Er is geen enkele staaf met een belastingtype dat wind draagt (gevel, dak of overstek). Stel de belastingtypen in bij de staafeigenschappen."
     );
   }
+  const combinaties = combinatiesMetMeldingen(model, inst, gevallen, meldingen);
+  return {
+    ok: true,
+    meldingen,
+    gevallen,
+    lasten,
+    combinaties,
+    samenvatting: {
+      hoogte_m: h_m,
+      spanwijdte_m: d_m,
+      hOverD: h_m / d_m,
+      belastingbreedte_m: breedte_m,
+      stuwdruk,
+      perGeval
+    },
+    geometrie
+  };
+}
+var VRIJSTAAND_SLEUTEL_PREFIX = "luifel:";
+var VRIJSTAAND_UITGANGSPUNT = "Wind op een vrijstaand dak (open overkapping) volgens NEN-EN 1991-1-4 \xA77.3: referentiehoogte z_e = h (\xA77.3(8)); nettodrukco\xEBffici\xEBnten c_p,net en globale krachtco\xEBffici\xEBnten c_f uit tabel 7.6 (lessenaarsdak) of 7.7 (zadel- of kieldak), lineair ge\xEFnterpoleerd tussen \u03C6 = 0 en \u03C6 = 1 (\xA77.3(3)); c_f aangrijpend zoals figuur 7.16/7.17 (\xA77.3(6)). Positief = netto neerwaarts.";
+function vrijstaandDakUitgangspunten(loadCases, loads) {
+  const gevallen = loadCases.filter((c) => c.gegenereerd?.bron === "wind" && c.gegenereerd.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX));
+  if (gevallen.length === 0) return "";
+  const regels = [VRIJSTAAND_UITGANGSPUNT];
+  for (const c of gevallen) {
+    const teksten = [...new Set(loads.filter((l) => l.caseId === c.id && l.gegenereerdDoor === "wind" && (l.omschrijving ?? "").trim() !== "").map((l) => l.omschrijving.trim()))];
+    regels.push(`${c.name}: ${teksten.length > 0 ? teksten.join("; ") : "geen lasten"}`);
+  }
+  return regels.join("\n");
+}
+function genereerVrijstaandDak(model, inst, geos, meldingen) {
+  let geometrie = null;
+  const fout = (tekst) => {
+    meldingen.push({ niveau: "fout", tekst });
+    return { ok: false, meldingen, gevallen: [], lasten: [], combinaties: [], samenvatting: null, geometrie };
+  };
+  const graden = (a) => `${nl7(a, 1).replace("-", "\u2212")}\xB0`;
+  const teken = (v, d) => (v < 0 ? "\u2212" : "+") + nl7(Math.abs(v), d);
+  const DAKROLLEN = ["dakPlat", "dakHellend", "overstek"];
+  const nietVerticaal = geos.filter((g) => g.helling < 75);
+  const isDak = (g) => {
+    if (g.beam.loadRole !== void 0) return DAKROLLEN.includes(g.beam.loadRole);
+    if (g.helling >= 75) return false;
+    const xm = (g.x1 + g.x2) / 2, zm = (g.z1 + g.z2) / 2;
+    return !nietVerticaal.some((o) => {
+      if (o === g) return false;
+      const lo = Math.min(o.x1, o.x2), hi = Math.max(o.x1, o.x2);
+      if (xm < lo - 1 || xm > hi + 1 || hi - lo < 1e-9) return false;
+      const zo = o.z1 + (o.z2 - o.z1) * ((xm - o.x1) / (o.x2 - o.x1));
+      return zo > zm + 5;
+    });
+  };
+  const dak = geos.filter(isDak);
+  if (dak.length === 0) {
+    return fout(
+      "Er is geen dakstaaf gevonden: geen niet-verticale staaf bovenin het model, en geen staaf met belastingtype dak of overstek."
+    );
+  }
+  const dakIds = new Set(dak.map((g) => g.beam.id));
+  const xL = Math.min(...dak.flatMap((g) => [g.x1, g.x2]));
+  const xR = Math.max(...dak.flatMap((g) => [g.x1, g.x2]));
+  const d_m = (xR - xL) / 1e3;
+  if (d_m <= 0) return fout("Het dak heeft geen breedte \u2014 wind is niet te bepalen.");
+  const zs = model.nodes.map((n) => n.z);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const modelhoogte_m = (maxZ - minZ) / 1e3;
+  const stijging = (g) => {
+    const [xa, za, xb, zb] = g.x1 <= g.x2 ? [g.x1, g.z1, g.x2, g.z2] : [g.x2, g.z2, g.x1, g.z1];
+    return Math.atan2(zb - za, xb - xa) * 180 / Math.PI;
+  };
+  const midX = (g) => (g.x1 + g.x2) / 2;
+  const HELLING_TOL = 0.5;
+  const SPREIDING_TOL = 2;
+  let alpha;
+  let xNok = null;
+  const dakvorm = inst.vrijstaandDakvorm;
+  if (dakvorm === "lessenaar") {
+    const hellend = dak.filter((g) => Math.abs(stijging(g)) > HELLING_TOL);
+    if (hellend.some((g) => stijging(g) > 0) && hellend.some((g) => stijging(g) < 0)) {
+      return fout(
+        "Het dak loopt deels op en deels af: dat is geen lessenaarsdak. Kies \u201Czadeldak\u201D (tabel 7.7) als het een nok of kiel heeft."
+      );
+    }
+    const hellingen = dak.map((g) => Math.abs(stijging(g)));
+    if (Math.max(...hellingen) - Math.min(...hellingen) > SPREIDING_TOL) {
+      return fout(
+        `De dakstaven hebben hellingen van ${graden(Math.min(...hellingen))} tot ${graden(Math.max(...hellingen))}. Tabel 7.6 kent \xE9\xE9n dakhelling \u03B1 per overkapping; een geknikt dak staat er niet in.`
+      );
+    }
+    alpha = Math.max(...hellingen);
+  } else {
+    const punten = dak.flatMap((g) => [{ x: g.x1, z: g.z1 }, { x: g.x2, z: g.z2 }]);
+    const zTop = Math.max(...punten.map((p) => p.z));
+    const zBodem = Math.min(...punten.map((p) => p.z));
+    const gemX = (ps) => ps.reduce((s, p) => s + p.x, 0) / ps.length;
+    const xTop = gemX(punten.filter((p) => Math.abs(p.z - zTop) < 1));
+    const xBodem = gemX(punten.filter((p) => Math.abs(p.z - zBodem) < 1));
+    const rand = (xR - xL) * 0.05;
+    const vlakken = (x) => ({
+      links: dak.filter((g) => midX(g) < x),
+      rechts: dak.filter((g) => midX(g) > x)
+    });
+    const past = (x, tekenLinks) => {
+      if (x - xL <= rand || xR - x <= rand) return false;
+      const v2 = vlakken(x);
+      return v2.links.length > 0 && v2.rechts.length > 0 && v2.links.every((g) => Math.sign(stijging(g)) === tekenLinks && Math.abs(stijging(g)) > HELLING_TOL) && v2.rechts.every((g) => Math.sign(stijging(g)) === -tekenLinks && Math.abs(stijging(g)) > HELLING_TOL);
+    };
+    let tekenAlpha;
+    if (past(xTop, 1)) {
+      xNok = xTop;
+      tekenAlpha = 1;
+    } else if (past(xBodem, -1)) {
+      xNok = xBodem;
+      tekenAlpha = -1;
+    } else {
+      return fout(
+        "Voor een zadeldak (tabel 7.7) moet het dak uit twee dakvlakken bestaan die naar een nok oplopen of naar een kiel aflopen. Dat is in dit model niet te vinden; kies \u201Clessenaarsdak\u201D (tabel 7.6) als het dak \xE9\xE9n kant op helt."
+      );
+    }
+    const v = vlakken(xNok);
+    const hL = v.links.map((g) => Math.abs(stijging(g)));
+    const hR = v.rechts.map((g) => Math.abs(stijging(g)));
+    const alle = [...hL, ...hR];
+    if (Math.max(...alle) - Math.min(...alle) > SPREIDING_TOL) {
+      return fout(
+        `De dakvlakken hebben hellingen van ${graden(Math.min(...alle))} tot ${graden(Math.max(...alle))}. Tabel 7.7 gaat uit van \xE9\xE9n dakhelling \u03B1 voor beide dakvlakken; een ongelijk of geknikt zadeldak staat er niet in.`
+      );
+    }
+    alpha = tekenAlpha * Math.max(...alle);
+  }
+  const hInvoer = inst.vrijstaandHoogte_m;
+  const h_m = hInvoer !== null && hInvoer > 0 ? hInvoer : modelhoogte_m;
+  const b_m = inst.gebouwlengte_m;
+  const y_m = inst.positieSpant === "kopgevelspant" ? 0 : inst.afstandTotKopgevel_m;
+  const inZoneB = y_m < b_m / 10;
+  const d_mm = xR - xL;
+  const zoneOp = (x) => {
+    if (inZoneB) return "B";
+    if (x - xL < d_mm / 10 || xR - x < d_mm / 10) return "C";
+    if (xNok !== null && Math.abs(x - xNok) < d_mm / 10) return "D";
+    return "A";
+  };
+  const grenzen = [...new Set([
+    xL,
+    xR,
+    xL + d_mm / 10,
+    xR - d_mm / 10,
+    ...xNok !== null ? [xNok - d_mm / 10, xNok + d_mm / 10] : []
+  ].filter((x) => x >= xL && x <= xR))].sort((p, q) => p - q);
+  const zones = [];
+  for (let k = 0; k < grenzen.length - 1; k++) {
+    if (grenzen[k + 1] - grenzen[k] < 1e-6) continue;
+    const zone = zoneOp((grenzen[k] + grenzen[k + 1]) / 2);
+    const laatste = zones[zones.length - 1];
+    if (laatste && laatste.zone === zone) laatste.tot = grenzen[k + 1];
+    else zones.push({ zone, van: grenzen[k], tot: grenzen[k + 1] });
+  }
+  geometrie = {
+    h_m,
+    modelhoogte_m,
+    d_m,
+    xLinks_m: xL / 1e3,
+    xRechts_m: xR / 1e3,
+    heeftHellendDak: Math.abs(alpha) > 5,
+    heeftGevels: false,
+    kapZonderGevel: false,
+    dakhelling_graden: Math.abs(alpha),
+    // In de tekening is een niet-dakstaaf (kolom, schoor) geen gevel: hij
+    // krijgt de grijze kleur van een binnenstaaf.
+    staven: geos.map((g) => ({
+      beamId: g.beam.id,
+      rol: dakIds.has(g.beam.id) ? g.helling > 5 ? "dakHellend" : "dakPlat" : "binnen",
+      x1: g.x1 / 1e3,
+      z1: g.z1 / 1e3,
+      x2: g.x2 / 1e3,
+      z2: g.z2 / 1e3
+    })),
+    vrijstaand: {
+      dakvorm,
+      alpha_graden: alpha,
+      phi: inst.blokkering_phi,
+      b_m,
+      y_m,
+      inZoneB,
+      xNok_m: xNok !== null ? xNok / 1e3 : null,
+      zones: zones.map((z) => ({ zone: z.zone, van_m: z.van / 1e3, tot_m: z.tot / 1e3 })),
+      dakstaven: dak.map((g) => g.beam.id)
+    }
+  };
+  if (!(inst.hohSpant_m > 0)) return fout("Vul een h.o.h.-afstand van de spanten in (> 0 m).");
+  if (!(b_m > 0)) return fout("Vul de lengte b van de overkapping haaks op het spant in (> 0 m).");
+  if (!(h_m > 0)) {
+    return fout(
+      "Het model heeft geen hoogte (alleen het dak is getekend). Vul de hoogte h van het dak boven maaiveld in; die is ook de referentiehoogte z_e (\xA77.3(8))."
+    );
+  }
+  if (hInvoer !== null && hInvoer > 0 && hInvoer < modelhoogte_m - 1e-6) {
+    return fout(
+      `De opgegeven hoogte h = ${nl7(hInvoer, 2)} m is lager dan het model zelf (${nl7(modelhoogte_m, 2)} m). Vul de hoogte van het dak boven maaiveld in, of laat het veld leeg als de kolommen tot op de grond getekend zijn.`
+    );
+  }
+  const opz = overkappingCoefficienten(dakvorm, alpha, inst.blokkering_phi);
+  if (!opz.ok) return fout(opz.reden);
+  const breedte_m = inst.belastingbreedteOverride_m !== null && inst.belastingbreedteOverride_m > 0 ? inst.belastingbreedteOverride_m : inst.positieSpant === "kopgevelspant" ? inst.hohSpant_m / 2 : inst.hohSpant_m;
+  if (inst.stuwdrukBron === "handmatig" && !(inst.qpHandmatig_kNm2 > 0)) {
+    return fout("Vul een stuwdruk groter dan 0 kN/m\xB2 in, of kies \u201Cberekenen\u201D.");
+  }
+  if (h_m > ZMAX_M) {
+    return fout(`De hoogte (${nl7(h_m, 1)} m) ligt boven z_max = ${ZMAX_M} m; de snelheidsprofielformules van \xA74.3.2 gelden daar niet meer.`);
+  }
+  const stuwdruk = inst.stuwdrukBron === "handmatig" ? handmatigeStuwdruk(inst.qpHandmatig_kNm2, h_m) : berekenStuwdruk(inst.windgebied, inst.terreincategorie, h_m);
+  const qp = stuwdruk.qp_kNm2;
+  const tabelTekst = `\xA77.3 tabel ${opz.tabel} (\u03B1 = ${graden(alpha)}, \u03C6 = ${nl7(inst.blokkering_phi, 2)})`;
+  const rijTekst = opz.rijOnder === opz.rijBoven ? `rij \u03B1 = ${graden(opz.rijOnder)}` : `lineair tussen de rijen \u03B1 = ${graden(opz.rijOnder)} en ${graden(opz.rijBoven)}`;
+  meldingen.push({
+    niveau: "info",
+    tekst: `Vrijstaand dak (open overkapping, NEN-EN 1991-1-4 \xA77.3): ${dakvorm === "lessenaar" ? "lessenaarsdak, tabel 7.6" : `${alpha < 0 ? "kieldak" : "zadeldak"}, tabel 7.7`}, \u03B1 = ${graden(alpha)} (${rijTekst}), \u03C6 = ${nl7(inst.blokkering_phi, 2)}. Referentiehoogte z_e = h = ${nl7(h_m, 2)} m (\xA77.3(8))` + (hInvoer !== null && hInvoer > 0 ? " \u2014 opgegeven." : " \u2014 de hoogte van het model.")
+  });
+  meldingen.push(stuwdrukMelding(stuwdruk));
+  if (h_m >= CSCD_GRENSHOOGTE_M) {
+    meldingen.push({
+      niveau: "waarschuwing",
+      tekst: `De hoogte is ${nl7(h_m, 1)} m. De generator rekent met c_s\xB7c_d = 1,0; dat mag zonder meer alleen onder ${CSCD_GRENSHOOGTE_M} m (${CSCD_BRON}). Bepaal c_s\xB7c_d volgens \xA76.3 en verhoog de lasten zo nodig zelf.`
+    });
+  }
+  meldingen.push({
+    niveau: "info",
+    tekst: inZoneB ? `Het spant ligt op ${nl7(y_m, 2)} m van het kopse eind, binnen b/10 = ${nl7(b_m / 10, 2)} m: de c_p,net-gevallen gebruiken zone B over de hele breedte.` : `Het spant ligt op ${nl7(y_m, 2)} m van het kopse eind, voorbij b/10 = ${nl7(b_m / 10, 2)} m: zone C over d/10 = ${nl7(d_m / 10, 2)} m aan beide dakranden` + (xNok !== null ? `, zone D over d/5 = ${nl7(d_m / 5, 2)} m rond de ${alpha < 0 ? "kiel" : "nok"}` : "") + ", zone A daartussen."
+  });
+  meldingen.push({
+    niveau: "info",
+    tekst: "c_p,net en c_f uit tabel 7.6/7.7 gelden voor alle windrichtingen (\xA77.3(3)); de knoppen voor de windrichting en de inwendige druk c_pi doen bij een vrijstaand dak niet mee. c_p,net is het grootste lokale drukverschil en hoort bij dakbedekking en bevestigingen, c_f bij de resulterende kracht (\xA77.3(5)); de generator maakt beide."
+  });
+  meldingen.push({
+    niveau: "waarschuwing",
+    tekst: "Niet gegenereerd: de wrijvingskracht langs het dak (\xA77.3(7), \xA77.5), de reductie van geschakelde overkappingen (\xA77.3(9), tabel 7.8), een dubbele huid (\xA77.3(6)) en de wind op de kolommen zelf. Zijn die van belang, voeg ze dan zelf toe."
+  });
+  const coef = new Map(opz.coefficienten.map((c) => [c.naam, c]));
+  const cf = coef.get("c_f");
+  const cpNetOpwaarts = {};
+  const aangepast = [];
+  for (const c of opz.coefficienten) {
+    if (c.naam === "c_f") continue;
+    cpNetOpwaarts[c.naam] = Math.min(c.minPhi, c.min0);
+    if (c.min0 < c.minPhi - 1e-12) aangepast.push(`${c.naam}: ${teken(c.min0, 2)} i.p.v. ${teken(c.minPhi, 3)}`);
+  }
+  if (aangepast.length > 0) {
+    meldingen.push({
+      niveau: "info",
+      tekst: `\xA77.3(4): aan de lijzijde van de blokkering gelden de c_p,net-waarden voor \u03C6 = 0. Omdat niet bekend is waar de blokkering staat, gebruikt het opwaartse c_p,net-geval per zone de ongunstigste van beide \u2014 zone ${aangepast.join("; ")}.`
+    });
+  }
+  const gevallen = [];
+  const lasten = [];
+  const perGeval = [];
+  const dakRol = (g) => g.helling > 5 ? "dakHellend" : "dakPlat";
+  const deel = (g, van, tot) => {
+    const lo = Math.min(g.x1, g.x2), hi = Math.max(g.x1, g.x2);
+    if (hi - lo < 1e-9) return van <= lo && lo <= tot ? [0, 1] : null;
+    const a = Math.max(lo, van), b = Math.min(hi, tot);
+    if (b - a <= 1e-9) return null;
+    const f = (x) => (x - g.x1) / (g.x2 - g.x1);
+    const fa = Math.max(0, Math.min(1, Math.min(f(a), f(b))));
+    const fb = Math.max(0, Math.min(1, Math.max(f(a), f(b))));
+    return fb - fa <= 1e-9 ? null : [fa, fb];
+  };
+  const maakGeval = (sleutel, naam, richting2, belast) => {
+    gevallen.push({ sleutel, naam, richting: richting2, cpi: 0 });
+    const regels = [];
+    const res = /* @__PURE__ */ new Map();
+    for (const s of belast) {
+      const fr = deel(s.g, s.van, s.tot);
+      if (!fr) continue;
+      const [a, b] = fr;
+      const vol = a <= 1e-9 && b >= 1 - 1e-9;
+      const n = dakNormaal(s.g);
+      const w = qp * s.c * s.factor;
+      const q = drukNaarLokaleLijnlast(w, breedte_m, s.g, n.nx, n.nz);
+      const deelTekst = vol ? "" : ` (${nl7(a, 2)}\u2013${nl7(b, 2)} van de staaf)`;
+      regels.push({
+        beamId: s.g.beam.id,
+        rol: dakRol(s.g),
+        zone: s.zone + deelTekst,
+        cpe: s.c,
+        cpi: 0,
+        w_kNm2: w,
+        q_kNm: q,
+        bron: s.bron,
+        ...vol ? {} : { startFrac: a, endFrac: b }
+      });
+      const lengte_m = s.g.L_mm / 1e3 * (b - a);
+      const kracht = w * breedte_m * lengte_m;
+      const fm = (a + b) / 2;
+      const vlakSleutel = xNok === null ? "dak" : midX(s.g) < xNok ? "links" : "rechts";
+      const r = res.get(vlakSleutel) ?? { F: 0, Fx: 0, Fz: 0 };
+      r.F += kracht;
+      r.Fx += kracht * (s.g.x1 + (s.g.x2 - s.g.x1) * fm) / 1e3;
+      r.Fz += kracht * (s.g.z1 + (s.g.z2 - s.g.z1) * fm) / 1e3;
+      res.set(vlakSleutel, r);
+      if (Math.abs(q) < 1e-12) continue;
+      lasten.push({
+        gevalSleutel: sleutel,
+        beamId: s.g.beam.id,
+        q,
+        ...vol ? {} : { startFrac: a, endFrac: b },
+        toelichting: `Staaf ${s.g.beam.id}, ${s.zone}${deelTekst}: w = ${nl7(qp, 3)}\xB7${s.factor !== 1 ? `${nl7(s.factor, 0)}\xB7` : ""}(${teken(s.c, 3)}) = ${teken(w, 3)} kN/m\xB2, q = w\xB7${nl7(breedte_m, 2)} m = ${nl7(Math.abs(q), 3)} kN/m ${w >= 0 ? "neerwaarts" : "opwaarts"}`,
+        omschrijving: s.omschrijving
+      });
+    }
+    const resultanten = [...res.values()].filter((r) => Math.abs(r.F) > 1e-12).map((r) => ({ x_m: r.Fx / r.F, z_m: r.Fz / r.F, F_kN: r.F })).sort((p, q) => p.x_m - q.x_m);
+    perGeval.push({
+      sleutel,
+      naam,
+      regels,
+      ...sleutel.includes(":cf:") && resultanten.length > 0 ? { resultanten } : {}
+    });
+  };
+  const zoneBelasting = (opwaarts) => dak.flatMap((g) => zones.map((z) => {
+    const c = opwaarts ? cpNetOpwaarts[z.zone] : coef.get(z.zone).max;
+    const van = z === zones[0] ? Number.NEGATIVE_INFINITY : z.van;
+    const tot = z === zones[zones.length - 1] ? Number.POSITIVE_INFINITY : z.tot;
+    return {
+      g,
+      van,
+      tot,
+      zone: `zone ${z.zone}`,
+      c,
+      factor: 1,
+      bron: `NEN-EN 1991-1-4 ${tabelTekst}, zone ${z.zone}, c_p,net ${opwaarts ? "minimaal" : "maximaal"}` + (opwaarts ? " (\xA77.3(3)/(4))" : ""),
+      omschrijving: `${tabelTekst}: zone ${z.zone}, c_p,net = ${teken(c, 2)}`
+    };
+  }));
+  const NAAM = "Wind vrijstaand dak";
+  maakGeval(`${VRIJSTAAND_SLEUTEL_PREFIX}cpnet:max`, `${NAAM} c_p,net neerwaarts`, "alle", zoneBelasting(false));
+  maakGeval(`${VRIJSTAAND_SLEUTEL_PREFIX}cpnet:min`, `${NAAM} c_p,net opwaarts`, "alle", zoneBelasting(true));
+  for (const [soort, c, woord] of [["max", cf.max, "neerwaarts"], ["min", cf.minPhi, "opwaarts"]]) {
+    if (dakvorm === "lessenaar") {
+      for (const richting2 of ["links", "rechts"]) {
+        const [van, tot] = richting2 === "links" ? [Number.NEGATIVE_INFINITY, xL + d_mm / 2] : [xR - d_mm / 2, Number.POSITIVE_INFINITY];
+        maakGeval(
+          `${VRIJSTAAND_SLEUTEL_PREFIX}cf:${soort}:${richting2}`,
+          `${NAAM} c_f ${woord}, van ${richting2}`,
+          richting2,
+          dak.map((g) => ({
+            g,
+            van,
+            tot,
+            zone: "loefhelft, 2\xB7c_f",
+            c,
+            factor: 2,
+            bron: `NEN-EN 1991-1-4 ${tabelTekst}, c_f ${soort === "max" ? "maximaal" : "minimaal"}; resultante op d/4 van de loefrand (figuur 7.16) als 2\xB7c_f over de loefhelft`,
+            omschrijving: `${tabelTekst}: c_f = ${teken(c, 2)}, resultante op d/4 van de loefrand (fig. 7.16)`
+          }))
+        );
+      }
+    } else {
+      const vlak = (kant) => dak.filter((g) => kant === "beide" || (kant === "links" ? midX(g) < xNok : midX(g) > xNok)).map((g) => ({
+        g,
+        van: Number.NEGATIVE_INFINITY,
+        tot: Number.POSITIVE_INFINITY,
+        zone: midX(g) < xNok ? "linkerdakvlak, c_f" : "rechterdakvlak, c_f",
+        c,
+        factor: 1,
+        bron: `NEN-EN 1991-1-4 ${tabelTekst}, c_f ${soort === "max" ? "maximaal" : "minimaal"}; resultante in het midden van het dakvlak (\xA77.3(6), figuur 7.17)`,
+        omschrijving: `${tabelTekst}: c_f = ${teken(c, 2)}, in het midden van het dakvlak (fig. 7.17)`
+      }));
+      maakGeval(`${VRIJSTAAND_SLEUTEL_PREFIX}cf:${soort}:beide`, `${NAAM} c_f ${woord}, beide dakvlakken`, "alle", vlak("beide"));
+      maakGeval(`${VRIJSTAAND_SLEUTEL_PREFIX}cf:${soort}:links`, `${NAAM} c_f ${woord}, alleen linkerdakvlak`, "alle", vlak("links"));
+      maakGeval(`${VRIJSTAAND_SLEUTEL_PREFIX}cf:${soort}:rechts`, `${NAAM} c_f ${woord}, alleen rechterdakvlak`, "alle", vlak("rechts"));
+    }
+  }
+  const overig = geos.filter((g) => !dakIds.has(g.beam.id));
+  if (overig.length > 0) {
+    meldingen.push({
+      niveau: "info",
+      tekst: `Als dak belast: staaf ${dak.map((g) => g.beam.id).join(", ")}. Niet belast (kolom, schoor of ander onderdeel): staaf ${overig.map((g) => g.beam.id).join(", ")}.`
+    });
+  }
+  if (lasten.length === 0) return fout("Er is geen enkele windlast ontstaan op de dakstaven.");
+  const combinaties = combinatiesMetMeldingen(model, inst, gevallen, meldingen);
+  return {
+    ok: true,
+    meldingen,
+    gevallen,
+    lasten,
+    combinaties,
+    samenvatting: {
+      hoogte_m: h_m,
+      spanwijdte_m: d_m,
+      hOverD: h_m / d_m,
+      belastingbreedte_m: breedte_m,
+      stuwdruk,
+      perGeval,
+      vrijstaand: { dakvorm, alpha_graden: alpha, phi: inst.blokkering_phi, opzoeking: opz, cpNetOpwaarts }
+    },
+    geometrie
+  };
+}
+function combinatiesMetMeldingen(model, inst, gevallen, meldingen) {
   const combinaties = [];
   if (inst.combinatiesGenereren) {
     const eigen = model.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
@@ -17982,21 +18438,18 @@ function genereerWindbelasting(model, inst) {
       tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: \u03B3 uit NEN-EN 1990 ${f.bron}, \u03C8 uit tabel NB.2\u2013A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in de parti\xEBle factoren zelf en wordt nergens nog eens toegepast.`
     });
   }
+  return combinaties;
+}
+function stuwdrukMelding(stuwdruk) {
+  if (stuwdruk.handmatig) {
+    return {
+      niveau: "info",
+      tekst: `De stuwdruk is handmatig opgegeven (${nl7(stuwdruk.qp_kNm2, 3)} kN/m\xB2); de generator heeft hem niet zelf afgeleid.`
+    };
+  }
   return {
-    ok: true,
-    meldingen,
-    gevallen,
-    lasten,
-    combinaties,
-    samenvatting: {
-      hoogte_m: h_m,
-      spanwijdte_m: d_m,
-      hOverD: h_m / d_m,
-      belastingbreedte_m: breedte_m,
-      stuwdruk,
-      perGeval
-    },
-    geometrie
+    niveau: "waarschuwing",
+    tekst: "De stuwdruk is berekend met de ruwheidslengtes uit EN 1991-1-4 tabel 4.1. De Nederlandse nationale bijlage geeft de extreme stuwdruk ook rechtstreeks in tabelvorm per windgebied, terreinsoort en hoogte; die waarde kan afwijken. Houdt u die tabel aan, kies dan \u201Cstuwdruk handmatig\u201D en voer de waarde uit de nationale bijlage in."
   };
 }
 function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAARD_GEVOLGKLASSE) {
@@ -18074,7 +18527,7 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
 function handtekeningVanGeneratie(gevallen, lasten, combinaties) {
   const r = (v) => Number(v.toPrecision(12)).toString();
   const g = gevallen.map((c2) => `${c2.sleutel}|${c2.naam}`).join(";");
-  const l = lasten.map((x) => `${x.gevalSleutel}|${x.beamId}|${r(x.q)}|${x.startFrac !== void 0 ? r(x.startFrac) : "-"}|${x.endFrac !== void 0 ? r(x.endFrac) : "-"}`).join(";");
+  const l = lasten.map((x) => `${x.gevalSleutel}|${x.beamId}|${r(x.q)}|${x.startFrac !== void 0 ? r(x.startFrac) : "-"}|${x.endFrac !== void 0 ? r(x.endFrac) : "-"}${x.omschrijving !== void 0 ? `|${x.omschrijving}` : ""}`).join(";");
   const c = combinaties.map((x) => `${x.naam}|${x.type}|${x.windSleutel}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p, q) => p[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`).join(";");
   return `G[${g}]L[${l}]C[${c}]`;
 }
@@ -18088,7 +18541,11 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
     q: l.q ?? 0,
     startFrac: l.startFrac,
     endFrac: l.endFrac,
-    toelichting: ""
+    toelichting: "",
+    // Alleen bij de gevallen van een vrijstaand dak — daar schrijft de
+    // generator zelf een omschrijving; een omschrijving die de gebruiker bij
+    // een gegenereerde gebouwlast zette, verandert de handtekening niet.
+    ...l.omschrijving !== void 0 && (sleutelVanId.get(l.caseId) ?? "").startsWith(VRIJSTAAND_SLEUTEL_PREFIX) ? { omschrijving: l.omschrijving } : {}
   }));
   const gCombi = combinaties.filter((c) => c.name.startsWith(WIND_COMBI_PREFIX)).map((c) => {
     const windEntry = [...c.factors.entries()].find(([id]) => gegenereerdeIds.has(id));
@@ -22108,6 +22565,7 @@ export {
   NU_BETON,
   NU_STAAL,
   OUDE_STANDAARDSET,
+  OVERKAPPING_TABEL_BRON,
   PARTIELE_FACTOREN,
   PLAAT_MESH_TYPEN,
   PLAAT_OPENING_MIN_AFSTAND_MM,
@@ -22137,6 +22595,8 @@ export {
   STEEL_GRADES,
   SUPPORTED_TIMBER_GRADES,
   TABEL_71_BRON,
+  TABEL_76,
+  TABEL_77,
   TERREIN_CATEGORIEEN,
   TIMBER_E90_MEAN,
   TIMBER_E_MEAN,
@@ -22144,6 +22604,8 @@ export {
   TIMBER_RHO_MEAN,
   VERLOOP_SEGMENTEN,
   VERTICAAL_VANAF_GRADEN,
+  VRIJSTAAND_SLEUTEL_PREFIX,
+  VRIJSTAAND_UITGANGSPUNT,
   WINDGEBIEDEN,
   WIND_COMBI_PREFIX,
   Z0_II,
@@ -22256,6 +22718,7 @@ export {
   ontbrekendeStandaardcombinaties,
   ontleedPlaatClt,
   openCombinatieStaat,
+  overkappingCoefficienten,
   parseRechthoek,
   parseTimberRectMm,
   plaatMateriaalLabel,
@@ -22317,6 +22780,7 @@ export {
   voegBelastinggevalToe,
   voegCombinatieToe,
   volgendVrijId,
+  vrijstaandDakUitgangspunten,
   wijzigBelastinggeval,
   wijzigCombinatie,
   windCombinatiesVoor,
