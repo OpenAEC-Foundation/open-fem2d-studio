@@ -5,6 +5,7 @@
   "statusOk": "OK",
   "statusNotOk": "Not OK",
   "statusNa": "N/A",
+  "nietUitgevoerd": "Not performed",
   "total": "Members",
   "run": "Run checks",
   "running": "Running checks…",

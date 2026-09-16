@@ -170,6 +170,20 @@ function MemberCard({ result, focusToken }: {
         </div>
       </button>
 
+      {/* Toetsen die NIET uitgevoerd konden worden (basisaudit ruw 55). Ze
+          staan BUITEN het openklapbare deel: de badge zegt "n.v.t." en dan
+          hoort er zonder klikken bij te staan wat er niet getoetst is. De reden
+          zelf staat in de notes van die toets, een klik verderop. */}
+      {"niet_uitgevoerd" in result
+        && Array.isArray((result as { niet_uitgevoerd?: unknown[] }).niet_uitgevoerd)
+        && (result as { niet_uitgevoerd: { titel: string }[] }).niet_uitgevoerd.length > 0 && (
+        <div className="cp-card-onuitgevoerd">
+          {t("nietUitgevoerd")}:{" "}
+          {(result as { niet_uitgevoerd: { titel: string }[] }).niet_uitgevoerd
+            .map((n) => n.titel).join(", ")}
+        </div>
+      )}
+
       {open && (
         <div className="cp-card-body">
           {isStressCheckResult(result) && <SpanningFiguur r={result} />}

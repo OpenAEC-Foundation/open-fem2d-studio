@@ -5,6 +5,7 @@
   "statusOk": "OK",
   "statusNotOk": "Niet OK",
   "statusNa": "N.v.t.",
+  "nietUitgevoerd": "Niet uitgevoerd",
   "total": "Staven",
   "run": "Toetsing uitvoeren",
   "running": "Bezig met toetsen…",
