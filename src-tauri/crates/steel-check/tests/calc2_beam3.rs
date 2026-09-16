@@ -206,6 +206,31 @@ fn calc2_beam3_governing_not_ok() {
 /// externe referentie-berekening toe, en daarmee dalen alle UC's evenredig:
 /// uc_max 1,0379 -> 1,0148 (referentie: 1,01 op de buigingstoets). De
 /// doorsnede blijft NotOk en de maatgevende toets blijft 6.2.5_bending_y.
+/// September 2026 (f) — bijlage B en tabel 3.1 (basisaudit nr 7, 17, 36).
+/// Drie wijzigingen, alle drie per veld nagelopen en met de hand nagerekend
+/// (formules van tabel B.1/B.2/B.3, invoer uit deze snapshot zelf):
+///  * 6.3.3 rekent niet meer met een vaste C_m = 0,6 en tabel B.1, maar met
+///    C_my, C_mz en C_mLT uit tabel B.3 (uit het momentenverloop van
+///    respectievelijk de staaf, de staaf om z en het maatgevende kipveld) en,
+///    voor een open doorsnede met χ_LT < 1, k_zy uit tabel B.2. De variabelen
+///    C_my, C_mz en C_mLT komen erbij en de notities beschrijven de rij van
+///    tabel B.3 en de gebruikte tabel voor k_zy.
+///  * Elke gerekende toets met f_y in haar formule krijgt de notitie van
+///    tabel 3.1 (dikteklasse t ≤ 40 mm; f_y en f_u ongewijzigd voor deze
+///    doorsnede).
+///  * Geen enkele weerstand, χ, λ̄, M_cr of doorbuiging verandert.
+/// Getallen (HFRHS 200×200×16, gesloten → tabel B.1, klasse 1, λ̄_y = 0,7141,
+/// λ̄_z = 0,2380, n_y = 0,0249, n_z = 0,0182):
+///   C_my = 0,4 — de momentenlijn van combinatie 2 loopt van 187,33 (x = 2402)
+///   via 187,10 (x = 2431) naar −126,68 (x = 5000): monotoon, ψ = −0,676; rij
+///   1 geeft 0,6 − 0,27 = 0,33 → ondergrens 0,4, en rij 2 met het gemiddelde
+///   moment 31,97 (α_s = 0,171) geeft 0,337 → 0,4. Dubbele kromming is minder
+///   ongunstig dan de oude vaste 0,6, en dat is precies wat tabel B.3 zegt.
+///   k_yy = 0,4·(1 + 0,5141·0,0249) = 0,4051 (was 0,6077), k_zy = 0,6·k_yy =
+///   0,2431, k_zz = 1 + (2·0,2380 − 0,6)·0,0182 = 0,9977, k_yz = 0,5986.
+///   6.61 = 0,0249 + 0,4051·187,33/184,59 = 0,4361 (was 0,6416); 6.62 = 0,2649.
+///   uc_max blijft 1,0148 op 6.2.5. Bij 6.3.1 komt de notitie dat de koker
+///   als warmvervaardigd (EN 10210, kromme a) is aangenomen (nr 36).
 #[test]
 fn calc2_beam3_snapshot() {
     insta::assert_json_snapshot!("calc2_beam3", run());

@@ -9,7 +9,7 @@ pub fn check_combined_n_my(
     n_ed_kn: f64, n_b_rd_y_kn: f64,
     m_y_ed_knm: f64, m_b_rd_knm: f64,
     m_z_ed_knm: f64, m_z_rd_knm: f64,
-    factors: InteractionFactors,
+    factors: &InteractionFactors,
     force_state: ForceStateSnapshot,
 ) -> StabilityCalc {
     let term_n = n_ed_kn / n_b_rd_y_kn;
@@ -26,6 +26,11 @@ pub fn check_combined_n_my(
         variables: vec![
             NamedValue { symbol: "k_{yy}".to_string(), value: factors.k_yy, unit: "-".to_string() },
             NamedValue { symbol: "k_{yz}".to_string(), value: factors.k_yz, unit: "-".to_string() },
+            // De equivalente momentverdelingsfactoren waaruit k_yy en k_yz
+            // volgen (bijlage B, tabel B.3); zonder deze twee is k_ij niet na
+            // te rekenen.
+            NamedValue { symbol: "C_{my}".to_string(), value: factors.cm_y, unit: "-".to_string() },
+            NamedValue { symbol: "C_{mz}".to_string(), value: factors.cm_z, unit: "-".to_string() },
         ],
         intermediate_values: vec![
             NamedValue { symbol: "term_N".to_string(), value: term_n, unit: "-".to_string() },
@@ -38,7 +43,7 @@ pub fn check_combined_n_my(
         unit: "-".to_string(),
         uc: Some(UnityCheck { ed: uc, rd: 1.0, uc, formula_latex: "Sum of terms".to_string() }),
         status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
-        notes: vec![],
+        notes: factors.toelichting.clone(),
     }
 }
 
@@ -46,7 +51,7 @@ pub fn check_combined_n_mz(
     n_ed_kn: f64, n_b_rd_z_kn: f64,
     m_y_ed_knm: f64, m_b_rd_knm: f64,
     m_z_ed_knm: f64, m_z_rd_knm: f64,
-    factors: InteractionFactors,
+    factors: &InteractionFactors,
     force_state: ForceStateSnapshot,
 ) -> StabilityCalc {
     let term_n = n_ed_kn / n_b_rd_z_kn;
@@ -63,6 +68,12 @@ pub fn check_combined_n_mz(
         variables: vec![
             NamedValue { symbol: "k_{zy}".to_string(), value: factors.k_zy, unit: "-".to_string() },
             NamedValue { symbol: "k_{zz}".to_string(), value: factors.k_zz, unit: "-".to_string() },
+            // k_zy komt bij een kipgevoelige staaf uit tabel B.2 met C_mLT,
+            // anders uit tabel B.1 met C_my; k_zz uit C_mz. Alle drie erbij,
+            // zodat de lezer beide tabellen kan narekenen.
+            NamedValue { symbol: "C_{my}".to_string(), value: factors.cm_y, unit: "-".to_string() },
+            NamedValue { symbol: "C_{mz}".to_string(), value: factors.cm_z, unit: "-".to_string() },
+            NamedValue { symbol: "C_{mLT}".to_string(), value: factors.cm_lt, unit: "-".to_string() },
         ],
         intermediate_values: vec![
             NamedValue { symbol: "term_N".to_string(), value: term_n, unit: "-".to_string() },
@@ -75,6 +86,6 @@ pub fn check_combined_n_mz(
         unit: "-".to_string(),
         uc: Some(UnityCheck { ed: uc, rd: 1.0, uc, formula_latex: "Sum of terms".to_string() }),
         status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
-        notes: vec![],
+        notes: factors.toelichting.clone(),
     }
 }

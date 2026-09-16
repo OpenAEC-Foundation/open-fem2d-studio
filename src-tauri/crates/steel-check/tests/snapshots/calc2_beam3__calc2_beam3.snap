@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam3.rs
-assertion_line: 199
+assertion_line: 211
 expression: run()
 ---
 {
@@ -57,7 +57,9 @@ expression: run()
             "formula_latex": "N_{Ed} / N_{c,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -109,7 +111,9 @@ expression: run()
             "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -161,7 +165,9 @@ expression: run()
             "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -213,7 +219,9 @@ expression: run()
             "formula_latex": "V_{z,Ed} / V_{c,z,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -265,7 +273,9 @@ expression: run()
             "formula_latex": "V_{y,Ed}/V_{c,y,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -703,7 +713,7 @@ expression: run()
               "value": 0.49,
               "unit": "-",
               "notes": [
-                "Tabel 6.2 via de profieldatabase: bij HFRHS200X200X16 staat knikkromme 'c' om de eerste as en 'c' om de tweede as.",
+                "Tabel 6.2, rij 'buisprofielen, warmvervaardigd': knikkromme 'c' om de eerste as en 'c' om de tweede as bij HFRHS200X200X16. Aanname: dit profiel is een WARMVERVAARDIGDE koker of buis volgens EN 10210 (hoekstraal 1,5·t), zoals alle kokers en buizen in de catalogus; daarvoor geeft NEN-EN 1993-1-1 tabel 6.2 knikkromme a (bij S460 a0; de kern houdt a aan, wat aan de veilige kant ligt). Is het werkelijke profiel KOUDGEVORMD volgens EN 10219, dan geldt kromme c (α = 0,49) en een iets kleinere doorsnede, en is deze knikweerstand tot circa 25 % te hoog; die reeks staat niet in de catalogus.",
                 "Tabel 6.1: knikkromme a0 / a / b / c / d → imperfectiefactor α = 0,13 / 0,21 / 0,34 / 0,49 / 0,76."
               ]
             },
@@ -912,7 +922,7 @@ expression: run()
               "value": 0.49,
               "unit": "-",
               "notes": [
-                "Tabel 6.2 via de profieldatabase: bij HFRHS200X200X16 staat knikkromme 'c' om de eerste as en 'c' om de tweede as.",
+                "Tabel 6.2, rij 'buisprofielen, warmvervaardigd': knikkromme 'c' om de eerste as en 'c' om de tweede as bij HFRHS200X200X16. Aanname: dit profiel is een WARMVERVAARDIGDE koker of buis volgens EN 10210 (hoekstraal 1,5·t), zoals alle kokers en buizen in de catalogus; daarvoor geeft NEN-EN 1993-1-1 tabel 6.2 knikkromme a (bij S460 a0; de kern houdt a aan, wat aan de veilige kant ligt). Is het werkelijke profiel KOUDGEVORMD volgens EN 10219, dan geldt kromme c (α = 0,49) en een iets kleinere doorsnede, en is deze knikweerstand tot circa 25 % te hoog; die reeks staat niet in de catalogus.",
                 "Tabel 6.1: knikkromme a0 / a / b / c / d → imperfectiefactor α = 0,13 / 0,21 / 0,34 / 0,49 / 0,76."
               ]
             },
@@ -1061,7 +1071,9 @@ expression: run()
             "Om de y-as (in het vlak): L_cr,y = 5000 mm (opgegeven), λ̄_y = 0,714, knikkromme c (α = 0,49), χ_y = 0,7160, N_b,Rd,y = 1935,1 kN, UC = 0,025.",
             "Om de z-as (uit het vlak): L_cr,z = 1667 mm (opgegeven), λ̄_z = 0,238, knikkromme c (α = 0,49), χ_z = 0,9806, N_b,Rd,z = 2650,5 kN, UC = 0,018.",
             "Maatgevend is knik om de y-as (in het vlak): N_b,Rd = 1935,1 kN.",
-            "Knik om de z-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: de toets met χ is daarvoor altijd nodig."
+            "Knik om de z-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: de toets met χ is daarvoor altijd nodig.",
+            "Aanname: dit profiel is een WARMVERVAARDIGDE koker of buis volgens EN 10210 (hoekstraal 1,5·t), zoals alle kokers en buizen in de catalogus; daarvoor geeft NEN-EN 1993-1-1 tabel 6.2 knikkromme a (bij S460 a0; de kern houdt a aan, wat aan de veilige kant ligt). Is het werkelijke profiel KOUDGEVORMD volgens EN 10219, dan geldt kromme c (α = 0,49) en een iets kleinere doorsnede, en is deze knikweerstand tot circa 25 % te hoog; die reeks staat niet in de catalogus.",
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
           ]
         }
       }
@@ -1620,7 +1632,8 @@ expression: run()
           "notes": [
             "Tabel 6.5 kent voor deze doorsnede geen rij — zij noemt alleen gewalste en gelaste I-profielen. Aangehouden is kipkromme d met α_LT = 0,76 (tabel 6.3), de ongunstigste rij van de tabel. Dat is een expliciete veilig-zijdige keuze buiten de tabel om, geen normwaarde.",
             "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig.",
-            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 2402 tot x = 5000 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
+            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 2402 tot x = 5000 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten.",
+            "Tabel 3.1: dikste element t = 16 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
           ]
         }
       }
@@ -1649,12 +1662,22 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{yy}",
-              "value": 0.607687441251397,
+              "value": 0.4051249608342647,
               "unit": "-"
             },
             {
               "symbol": "k_{yz}",
-              "value": 0.35918815529611575,
+              "value": 0.5986469254935263,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{my}",
+              "value": 0.4,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mz}",
+              "value": 1.0,
               "unit": "-"
             }
           ],
@@ -1666,7 +1689,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.6167115309082104,
+              "value": 0.41114102060547364,
               "unit": "-"
             },
             {
@@ -1676,16 +1699,20 @@ expression: run()
             }
           ],
           "deelstappen": [],
-          "value": 0.6416344735586481,
+          "value": 0.43606396325591135,
           "unit": "-",
           "uc": {
-            "ed": 0.6416344735586481,
+            "ed": 0.43606396325591135,
             "rd": 1.0,
-            "uc": 0.6416344735586481,
+            "uc": 0.43606396325591135,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "C_my tabel B.3: de momentenlijn loopt monotoon van 187,33 naar -126,67 kNm maar wijkt van de rechte lijn af (grootste afwijking 3,28 kNm); zo'n verloop heeft geen eigen rij. Aangehouden is de grootste van rij 1 (ψ = -0,676, C_m = 0,400) en rij 2 met het gemiddelde moment over het veld als veldmoment (M_s = 31,97 kNm, α_s = 0,171, gelijkmatig verdeelde belasting, C_m = 0,400): C_m = 0,400.",
+            "C_mz tabel B.3: geen buigend moment over dit veld, C_m = 1,0 aangehouden (rekent niet mee omdat de momentterm nul is).",
+            "k_ij volgens tabel B.1 (staaf niet gevoelig voor vervormingen door torsie): k_zy = 0,6·k_yy = 0,243."
+          ]
         }
       }
     },
@@ -1713,12 +1740,27 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{zy}",
-              "value": 0.36461246475083814,
+              "value": 0.24307497650055881,
               "unit": "-"
             },
             {
               "symbol": "k_{zz}",
-              "value": 0.5986469254935263,
+              "value": 0.9977448758225438,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{my}",
+              "value": 0.4,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mz}",
+              "value": 1.0,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mLT}",
+              "value": 0.655250600714259,
               "unit": "-"
             }
           ],
@@ -1730,7 +1772,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.3700269185449262,
+              "value": 0.24668461236328415,
               "unit": "-"
             },
             {
@@ -1740,16 +1782,20 @@ expression: run()
             }
           ],
           "deelstappen": [],
-          "value": 0.38822268884284017,
+          "value": 0.2648803826611982,
           "unit": "-",
           "uc": {
-            "ed": 0.38822268884284017,
+            "ed": 0.2648803826611982,
             "rd": 1.0,
-            "uc": 0.38822268884284017,
+            "uc": 0.2648803826611982,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "C_my tabel B.3: de momentenlijn loopt monotoon van 187,33 naar -126,67 kNm maar wijkt van de rechte lijn af (grootste afwijking 3,28 kNm); zo'n verloop heeft geen eigen rij. Aangehouden is de grootste van rij 1 (ψ = -0,676, C_m = 0,400) en rij 2 met het gemiddelde moment over het veld als veldmoment (M_s = 31,97 kNm, α_s = 0,171, gelijkmatig verdeelde belasting, C_m = 0,400): C_m = 0,400.",
+            "C_mz tabel B.3: geen buigend moment over dit veld, C_m = 1,0 aangehouden (rekent niet mee omdat de momentterm nul is).",
+            "k_ij volgens tabel B.1 (staaf niet gevoelig voor vervormingen door torsie): k_zy = 0,6·k_yy = 0,243."
+          ]
         }
       }
     },

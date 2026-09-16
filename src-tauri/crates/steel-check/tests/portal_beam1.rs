@@ -251,6 +251,31 @@ fn portal_beam1_governing_ok() {
 /// bijbehorende UC's) zijn ONgewijzigd en worden hierboven nog steeds
 /// afgedwongen. N_b,Rd verandert niet, omdat voor deze ligger de z-as
 /// maatgevend is en die al op kromme c stond.
+/// September 2026 (f) — bijlage B en tabel 3.1 (basisaudit nr 7, 17, 36).
+/// Drie wijzigingen, alle drie per veld nagelopen en met de hand nagerekend
+/// (formules van tabel B.1/B.2/B.3, invoer uit deze snapshot zelf):
+///  * 6.3.3 rekent niet meer met een vaste C_m = 0,6 en tabel B.1, maar met
+///    C_my, C_mz en C_mLT uit tabel B.3 (uit het momentenverloop van
+///    respectievelijk de staaf, de staaf om z en het maatgevende kipveld) en,
+///    voor een open doorsnede met χ_LT < 1, k_zy uit tabel B.2. De variabelen
+///    C_my, C_mz en C_mLT komen erbij en de notities beschrijven de rij van
+///    tabel B.3 en de gebruikte tabel voor k_zy.
+///  * Elke gerekende toets met f_y in haar formule krijgt de notitie van
+///    tabel 3.1 (dikteklasse t ≤ 40 mm; f_y en f_u ongewijzigd voor deze
+///    doorsnede).
+///  * Geen enkele weerstand, χ, λ̄, M_cr of doorbuiging verandert.
+/// Getallen (UNP 350, klasse 1, λ̄_y = 0,4137, λ̄_z = 1,9719, n_y = 0,0115,
+/// n_z = 0,0510, χ_LT = 0,6966 → tabel B.2, M_b,Rd = 145,660 kNm):
+///   C_my  = 0,4644 — rij 1: M(0) = 66,04, M(3900) = −194,80, ψ = −0,339.
+///   C_mLT = 0,5822 — kipveld 0–5000 met M(5000) vastgehouden op −194,80:
+///                    monotoon met bolling, gemiddelde −93,07, α_s = 0,478 →
+///                    0,2 + 0,382 = 0,582 > rij 1.
+///   k_yy = 0,4644·(1 + 0,2137·0,0115) = 0,4655 (was 0,6015)
+///   k_zy = max(1 − 0,1·1,9719·0,0510/0,3322; 1 − 0,1·0,0510/0,3322) = 0,9846 (was 0,3609)
+///   k_zz = 1 + (2·1,9719 − 0,6)·0,0510 = 1,0714, k_yz = 0,6429
+///   6.61 = 0,0115 + 0,4655·194,80/145,66 = 0,6341 (was 0,8159)
+///   6.62 = 0,0510 + 0,9846·194,80/145,66 = 1,3678 (was 0,5337) → maatgevend
+///   boven de kip (1,3373); de ligger bleef al NotOk.
 #[test]
 fn portal_beam1_snapshot() {
     insta::assert_json_snapshot!("portal_beam1", run());

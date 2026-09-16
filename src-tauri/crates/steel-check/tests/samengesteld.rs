@@ -227,10 +227,23 @@ const TOETSEN: [&str; 12] = [
 ///   6.3.3_eq_6_61  0,472378214 → gewalst 0,472378214 · gelast 0,485912280
 ///   6.3.3_eq_6_62  0,386063500 → gewalst 0,386063500 · gelast 0,394183940
 /// Het GEWALSTE (database)pad is dus bit-identiek gebleven; alleen het inline
-/// pad wordt strenger. uc_max blijft 0,666 (doorbuiging) en de maatgevende
-/// toets blijft dezelfde, dus de conclusie van de test — het inline pad
-/// introduceert geen tweede rekenwijze — staat nog steeds overeind: het is
-/// dezelfde formule met de doorsnede-eigen tabelrij.
+/// pad wordt strenger. De conclusie van de test — het inline pad introduceert
+/// geen tweede rekenwijze — staat overeind: het is dezelfde formule met de
+/// doorsnede-eigen tabelrij.
+///
+/// September 2026 (bijlage B, basisaudit nr 7): C_m komt niet meer vast op
+/// 0,6 maar uit tabel B.3, en k_zy bij een kipgevoelige staaf uit tabel B.2.
+/// Deze invoer heeft één krachtpunt (x = 3000), dus het momentenverloop is
+/// onbekend en de kern houdt een constant moment aan: C_my = C_mz = C_mLT =
+/// 1,0. Daarmee (λ̄_y = 0,4110, λ̄_z = 0,7048, n_y = 400/3109,10 = 0,1287,
+/// n_z = 400/2224,33 = 0,1798, klasse 1):
+///   k_yy = 1,0·(1 + (0,4110 − 0,2)·0,1287) = 1,0375
+///   k_zy = max(1 − 0,1·0,7048·0,1798/0,75; 1 − 0,1·0,1798/0,75) = 0,9798
+///   6.61  gewalst 0,1287 + 1,0375·220/398,43 = 0,7015 · gelast 0,7241
+///   6.62  gewalst 0,1798 + 0,9798·220/398,43 = 0,7208 · gelast 0,7421
+/// (vóór: 0,4724/0,4859 en 0,3861/0,3942). Vgl. 6.62 is nu maatgevend boven
+/// de doorbuiging (0,666), op beide paden, en dus verschilt uc_max tussen de
+/// paden precies zoveel als M_b,Rd (398,43 tegen 383,34 kNm) verschilt.
 #[test]
 fn inline_heb300_wijkt_alleen_af_op_de_kipkromme_van_tabel_6_5() {
     let profiel = steel_profiles::db()
@@ -259,7 +272,11 @@ fn inline_heb300_wijkt_alleen_af_op_de_kipkromme_van_tabel_6_5() {
     assert_eq!(uit_db.classification, uit_inline.classification);
     assert_eq!(uit_db.checks.len(), uit_inline.checks.len());
     assert_eq!(uit_db.governing_check_id, uit_inline.governing_check_id);
-    assert_relative_eq!(uit_db.uc_max, uit_inline.uc_max, max_relative = 1e-12);
+    assert_eq!(uit_db.governing_check_id, "6.3.3_eq_6_62");
+    // Vgl. 6.62 deelt door M_b,Rd en verschilt dus tussen de paden; zie de
+    // docstring voor de handrekening.
+    assert_relative_eq!(uit_db.uc_max, 0.720831, max_relative = 1e-5);
+    assert_relative_eq!(uit_inline.uc_max, 0.742133, max_relative = 1e-5);
 
     // De drie toetsen die door χ_LT lopen; al het andere moet gelijk blijven.
     const VIA_CHI_LT: [&str; 3] = ["6.3.2_ltb", "6.3.3_eq_6_61", "6.3.3_eq_6_62"];
@@ -336,6 +353,13 @@ fn databasepad_blijft_ongewijzigd() {
     //   6.3.3_eq_6_62       0,438619204384099
     //   deflection_w_fin    0,666  · deflection_w_add 0,200 · uc_max 0,666
     //
+    // September 2026 (bijlage B, basisaudit nr 7): 6.3.3 rekent met C_m uit
+    // tabel B.3 en k_zy uit tabel B.2. Met één krachtpunt is C_m = 1,0
+    // (constant moment) in plaats van de oude vaste 0,6, dus
+    //   6.3.3_eq_6_61       0,701527  (= 0,12865 + 1,03751·220/398,43)
+    //   6.3.3_eq_6_62       0,720831  (= 0,17983 + 0,97979·220/398,43)
+    // en uc_max 0,720831 op vgl. 6.62. Alle andere waarden staan onveranderd.
+    //
     // Sept 2026, na de kipreparatie: alle negen waarden hierboven staan
     // ONVERANDERD. Nagerekend waarom, want dat is geen toeval:
     //  * β en B* — de envelop heeft één punt (x = 3000), dus beide eindmomenten
@@ -398,8 +422,10 @@ fn databasepad_blijft_ongewijzigd() {
     // 3/1 000 deel van ℓ_rep = 18,0 mm → UC = 8/18 = 0,444.
     assert_relative_eq!(uc_van(check(&r, "deflection_w_fin")).unwrap(), 0.666, max_relative = 1e-12);
     assert_relative_eq!(uc_van(check(&r, "deflection_w_add")).unwrap(), 8.0 / 18.0, max_relative = 1e-12);
-    assert_relative_eq!(r.uc_max, 0.666, max_relative = 1e-12);
-    assert_eq!(r.governing_check_id, "deflection_w_fin");
+    assert_relative_eq!(uc_van(check(&r, "6.3.3_eq_6_61")).unwrap(), 0.701527, max_relative = 1e-5);
+    assert_relative_eq!(uc_van(check(&r, "6.3.3_eq_6_62")).unwrap(), 0.720831, max_relative = 1e-5);
+    assert_relative_eq!(r.uc_max, 0.720831, max_relative = 1e-5);
+    assert_eq!(r.governing_check_id, "6.3.3_eq_6_62");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -421,11 +447,22 @@ fn databasepad_blijft_ongewijzigd() {
 ///   6.3.2_ltb 0,784580 → 0,989411
 ///   uc_max    0,919959 → 0,996396 (maatgevend blijft 6.3.3 vgl. 6.62)
 ///
-/// De ligger voldoet dus nog, maar met 0,4 % marge in plaats van 8 %. Dat is
-/// geen toevalligheid die weggepoetst mag worden: het is de uitkomst van de
-/// tabelrij die bij deze doorsnede hoort. Verschuift de profieldata of de
-/// digitalisering van de NB-figuren nog een fractie, dan slaat `status` om naar
-/// `NotOk` — en dan is dát het juiste antwoord, geen regressie.
+/// De ligger voldeed toen nog, met 0,4 % marge in plaats van 8 %. Dat was
+/// geen toevalligheid die weggepoetst mocht worden, en de docstring zei het al:
+/// verschuift er nog iets, dan slaat `status` om naar `NotOk` en is dát het
+/// juiste antwoord.
+///
+/// September 2026 (bijlage B, basisaudit nr 7) is dat gebeurd. Deze invoer
+/// heeft één krachtpunt, dus de kern houdt een constant moment aan
+/// (C_my = C_mLT = 1,0 in plaats van de oude vaste 0,6). Met λ̄_y = 0,3129,
+/// λ̄_z = 1,4157, n_y = 500/2211,24 = 0,2261, n_z = 500/797,23 = 0,6272 en
+/// M_b,Rd = 202,14 kNm:
+///   k_yy = 1 + (0,3129 − 0,2)·0,2261 = 1,0366
+///   k_zy = max(1 − 0,1·1,4157·0,6272/0,75; 1 − 0,1·0,6272/0,75) = 0,9164
+///   6.61 = 0,2261 + 1,0366·200/202,14 = 1,2517
+///   6.62 = 0,6272 + 0,9164·200/202,14 = 1,5338 (maatgevend; vóór 0,9964)
+/// De ligger voldoet dus niet meer; de weerstandstoetsen hieronder staan
+/// onveranderd.
 #[test]
 fn gelaste_i_levert_handrekenbare_uc_voor_n_v_en_m() {
     // N = 500 kN druk, V_z = 150 kN, M_y = 200 kNm.
@@ -433,7 +470,9 @@ fn gelaste_i_levert_handrekenbare_uc_voor_n_v_en_m() {
 
     // Lijf c/t = 400/10 = 40 en flensuitkraging c/t = 95/15 = 6,33: klasse 1.
     assert_eq!(r.classification, CrossSectionClass::Class1);
-    assert_eq!(r.status, CheckStatus::Ok);
+    assert_eq!(r.status, CheckStatus::NotOk);
+    assert_eq!(r.governing_check_id, "6.3.3_eq_6_62");
+    assert_relative_eq!(r.uc_max, 1.533848, max_relative = 1e-5);
     assert_eq!(r.profile_name, "gelaste I 430-200×15-400×10");
 
     // 6.2.4  N_Rd = A·f_y/γ_M0 = 10 000·235/1,0 = 2 350 000 N = 2350 kN
@@ -547,16 +586,22 @@ fn flens_dikker_dan_40_mm_krijgt_knikkromme_c_en_d() {
     let r = check_beam(invoer("", Some(dikke_flens), -500.0, 0.0, 200.0));
     let knik = check(&r, "6.3.1_buckling");
 
-    assert_relative_eq!(tussenwaarde(knik, r"\bar{\lambda}_y"), 0.302579, max_relative = 1e-4);
-    assert_relative_eq!(tussenwaarde(knik, r"\bar{\lambda}_z"), 1.211904, max_relative = 1e-4);
+    // September 2026 (tabel 3.1, basisaudit nr 17): t_f = 50 mm > 40 mm geeft
+    // f_y = 215 in plaats van 235, dus λ̄ = √(A·f_y/N_cr) krimpt met
+    // √(215/235) = 0,95652: 0,302579 → 0,289417 en 1,211904 → 1,159187.
+    assert_relative_eq!(tussenwaarde(knik, r"\bar{\lambda}_y"), 0.289417, max_relative = 1e-4);
+    assert_relative_eq!(tussenwaarde(knik, r"\bar{\lambda}_z"), 1.159187, max_relative = 1e-4);
+    assert!(notities_van(knik).iter().any(|n| n.contains("40 mm < t ≤ 80 mm") && n.contains("215")));
 
     // t_f = 50 mm > 40 mm ⇒ tabel 6.2 schuift op naar kromme c (y-y, α = 0,49)
-    // en kromme d (z-z, α = 0,76):
-    //   χ_y = 0,94783   (met kromme b zou hier 0,96316 staan)
-    //   χ_z = 0,37144   (met kromme c zou hier 0,42813 staan)
-    assert_relative_eq!(tussenwaarde(knik, r"\chi_y"), 0.947831, max_relative = 1e-4);
-    assert_relative_eq!(tussenwaarde(knik, r"\chi_z"), 0.371441, max_relative = 1e-4);
-    assert!((tussenwaarde(knik, r"\chi_z") - 0.428128).abs() > 1e-3);
+    // en kromme d (z-z, α = 0,76). Met λ̄_y = 0,289417 en λ̄_z = 1,159187:
+    //   Φ_y = 0,5·(1 + 0,49·0,089417 + 0,083762) = 0,563788 → χ_y = 0,95454
+    //         (met kromme b zou hier 0,96790 staan)
+    //   Φ_z = 0,5·(1 + 0,76·0,959187 + 1,343715) = 1,536349 → χ_z = 0,39298
+    //         (met kromme c zou hier 0,45372 staan)
+    assert_relative_eq!(tussenwaarde(knik, r"\chi_y"), 0.954543, max_relative = 1e-4);
+    assert_relative_eq!(tussenwaarde(knik, r"\chi_z"), 0.392983, max_relative = 1e-4);
+    assert!((tussenwaarde(knik, r"\chi_z") - 0.453720).abs() > 1e-3);
 }
 
 #[test]
