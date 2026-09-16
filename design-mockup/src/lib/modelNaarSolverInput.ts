@@ -313,6 +313,11 @@ export function plaatNaarSolverInput(p: Plate): NonNullable<MultiInput["plates"]
     // Alleen aanwezig als er een cache is: een rechthoek draagt er geen, en
     // dan blijft de invoer van zo'n model byte-gelijk aan voorheen.
     ...(d.meshCache ? { meshCache: d.meshCache } : {}),
+    // Elementkeuze en openingen (stap 2): alleen mee als ze gezet zijn, om
+    // dezelfde reden — een plaat zonder keuze en zonder openingen levert
+    // exact dezelfde solverinvoer als vóór stap 2.
+    ...(d.meshType ? { meshType: d.meshType } : {}),
+    ...(d.openingen && d.openingen.length > 0 ? { openingen: d.openingen } : {}),
   };
 }
 

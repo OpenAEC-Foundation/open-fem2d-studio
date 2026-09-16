@@ -82,6 +82,8 @@ export const fileSaveIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0
 export const selectIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l7 17 2.5-7.5L20 10z"/></svg>`;
 export const barIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="5" cy="12" r="3" stroke-width="2"/><line x1="8" y1="12" x2="16" y2="12" stroke-width="2.4" stroke-linecap="round"/><circle cx="19" cy="12" r="3" stroke-width="2"/></svg>`;
 export const nodeIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>`;
+/** Opening in een plaat: de plaatomtrek met een uitgespaarde rechthoek erin. */
+export const openingIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1" stroke-width="2"/><rect x="8" y="8" width="8" height="8" stroke-width="2" stroke-dasharray="2 2"/></svg>`;
 export const plateIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1" stroke-width="2"/><line x1="4" y1="9" x2="20" y2="9" stroke-width="1" stroke-dasharray="2 2"/><line x1="4" y1="14" x2="20" y2="14" stroke-width="1" stroke-dasharray="2 2"/><line x1="9" y1="4" x2="9" y2="20" stroke-width="1" stroke-dasharray="2 2"/><line x1="14" y1="4" x2="14" y2="20" stroke-width="1" stroke-dasharray="2 2"/></svg>`;
 export const gridIcon = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg>`;
 

@@ -172,6 +172,16 @@ const BUNDEL_TESTS = new Set([
   // óók tegen de bundel: het is de proef dat de MCP dezelfde knoopkrachten en
   // dezelfde koppeling rekent als de app.
   "plaat-randlasten",
+  // Vierhoekmesher en openingen (stap 2): raster met Quad4/CST, de keuring
+  // van een cache met vierhoeken, het rasterpad met rechthoekige openingen
+  // (ook via de MCP zonder cache) en de O-grid-cache rond een 16-hoek. Praten
+  // met `engine`, `femTypes`, `PlaatMesher` (pure kern, in de barrel),
+  // `bouwMultiInput`, `valideerModel`, `projectFile` en de in-proces sidecar
+  // — allemaal in de barrel. Horen juist óók tegen de bundel: de MCP moet een
+  // opening precies zo meshen als de app, anders rekent de sidecar stil een
+  // dichte wand.
+  "plaat-vierhoeken",
+  "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",
   "qrichting",
@@ -311,6 +321,10 @@ const ALLEEN_BRON = new Map([
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],
   ["plaat-gewicht", "vraagt een extra kernmodule (PlateLoads)"],
+  [
+    "plaat-openingen-store",
+    "test de modelcontrole (lib/modelControle) en het meereizen van openingen bij verplaatsen, roteren, spiegelen en kopiëren in de zustand-store; geen van beide hoort in de barrel",
+  ],
   [
     "materiaal-dubbelzinnig",
     "bewaakt dat een korte naam als \"C30\" overal hout is en nooit stil beton (basisaudit nr 16); leest daarvoor de modelcontrole (lib/modelControle) en de betonstijfheidslus (lib/betonStijfheid), die allebei buiten de barrel staan",

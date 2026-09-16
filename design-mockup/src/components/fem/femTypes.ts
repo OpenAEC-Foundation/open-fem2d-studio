@@ -11,6 +11,13 @@ import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
 import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
 import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
+// De mesher zelf blijft in de kern; hier alleen zijn typen en drie pure
+// meetkundehulpjes (geen WASM, geen DOM — de sidecarbundel mag ze zien).
+import type { PlaatMeshSoort, PlaatMeshType } from "../../core/fem/PlaatMesher";
+export type { PlaatMeshSoort, PlaatMeshType };
+import {
+  PLAAT_OPENING_MIN_AFSTAND_MM, afstandTotLijnstuk, puntInPolygoon,
+} from "../../core/fem/PlaatMesher";
 
 export type Tool =
   | "select"
@@ -18,6 +25,7 @@ export type Tool =
   | "addBeam"
   | "addSubNode"
   | "addPlate"
+  | "addOpening"            // opening in een plaat: rechthoek slepen binnen de plaat
   | "addPinned"
   | "addFixed"
   | "addXRoller"
@@ -481,14 +489,52 @@ export interface PlaatMeshCache {
   signature: string;
   /** Meshknopen in modelcoördinaten (mm; z omhoog, zoals Node). */
   points: { x: number; z: number }[];
-  /** CST-driehoeken als drietallen puntindices (0-based in `points`). */
+  /**
+   * CST-driehoeken als drietallen puntindices (0-based in `points`). Mag leeg
+   * zijn wanneer het net uit louter vierhoeken bestaat.
+   */
   triangles: [number, number, number][];
+  /**
+   * Quad4-vierhoeken als viertallen puntindices, tegen de klok in en convex
+   * (stap 2: vierhoekmesher). Ontbreekt in caches van vóór september 2026:
+   * die bevatten alleen driehoeken.
+   */
+  quads?: [number, number, number, number][];
+  /**
+   * Wat de mesher opleverde: "driehoeken", "vierhoeken" of "gemengd" (de
+   * koppeling van driehoeken tot vierhoeken lukte niet overal). Ontbreekt =
+   * driehoeken (oude cache).
+   */
+  meshSoort?: PlaatMeshSoort;
   /**
    * Per polygonrand (index i = rand van hoek i naar hoek i+1, cyclisch):
    * de puntindices van de meshknopen op die rand, geordend langs de rand.
    * Gebruikt voor randlasten via rand-index (P4.3).
    */
   edgeNodeIndices: number[][];
+  /**
+   * Per opening (volgorde van `Plate.openingen`), per openingsrand (rand j
+   * van openingshoek j naar j+1) de puntindices van de meshknopen op die
+   * rand. De engine keurt hiermee dat het net de opening werkelijk volgt.
+   * Ontbreekt bij een plaat zonder openingen.
+   */
+  openingEdgeNodeIndices?: number[][][];
+}
+
+/**
+ * Opening (sparing) in een plaat: een polygoon van hoekpunten in
+ * modelcoördinaten (mm), volledig binnen de omtrek en los van de rand en van
+ * andere openingen (zie `valideerPlaatOpeningen`). Bewust coördinaten en geen
+ * knoop-id's: een opening is geen constructieknoop waar een staaf of
+ * oplegging aan kan hangen, en hij reist zo als geheel met de plaat mee bij
+ * kopiëren en verplaatsen. Het rekenmesh laat de opening vrij en legt knopen
+ * op de openingsrand.
+ */
+export interface PlaatOpening {
+  /** Uniek binnen de plaat. */
+  id: number;
+  /** Hoekpunten in omtrekvolgorde (mm), minstens drie. */
+  punten: PlaatPunt[];
 }
 
 export interface Plate {
@@ -517,7 +563,21 @@ export interface Plate {
    * canvas (re)gegenereerd wanneer de signature niet meer klopt.
    */
   meshCache?: PlaatMeshCache;
+  /**
+   * Elementkeuze van het rekenmesh (stap 2). Ontbreekt = de standaard voor
+   * de vorm, zodat geen bestaand getal verandert: een asgelijnde rechthoek
+   * (met asgelijnde rechthoekige openingen) rekende altijd al met het
+   * Quad4-raster en houdt "vierhoeken"; elke andere vorm rekende met
+   * CST-driehoeken uit de CDT en houdt "driehoeken". Zie
+   * `effectiefPlaatMeshType`.
+   */
+  meshType?: PlaatMeshType;
+  /** Openingen in de plaat (stap 2). Ontbreekt of leeg = geen openingen. */
+  openingen?: PlaatOpening[];
 }
+
+/** De elementkeuzes die een plaat kan dragen — ook de poort en het MCP-schema lezen deze lijst. */
+export const PLAAT_MESH_TYPEN: readonly PlaatMeshType[] = ["driehoeken", "vierhoeken"];
 
 /** Defaults voor de optionele rekenvelden van een plaat (staal, 20 mm). */
 export const PLATE_DEFAULTS = {
@@ -665,8 +725,140 @@ export function valideerPlaatPolygoon(punten: PlaatPunt[], tolMm = 1): string | 
  * en invalideert daarmee de cache; materiaal-/diktewijzigingen bewust níét
  * (die staan los van de meshgeometrie).
  */
-export function berekenPlaatMeshSignatuur(punten: PlaatPunt[], meshSizeMm: number): string {
-  return `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
+export function berekenPlaatMeshSignatuur(
+  punten: PlaatPunt[], meshSizeMm: number,
+  opties?: { openingen?: PlaatPunt[][]; meshType?: PlaatMeshType },
+): string {
+  let s = `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
+  // Openingen en elementkeuze horen bij de meshgeometrie en zitten dus in de
+  // handtekening — maar alleen als ze er zijn, zodat de handtekening van een
+  // plaat zonder openingen en zonder keuze bit-gelijk blijft aan vroeger en
+  // caches in bestaande projectbestanden geldig blijven.
+  if (opties?.openingen && opties.openingen.length > 0) {
+    s += `|o${opties.openingen.map((o) => o.map((p) => `${p.x},${p.z}`).join(";")).join("/")}`;
+  }
+  if (opties?.meshType) s += `|t${opties.meshType}`;
+  return s;
+}
+
+/** Handtekening van een plaat, uit zijn eigen velden (openingen + elementkeuze inbegrepen). */
+export function plaatMeshSignatuurVan(
+  p: Pick<Plate, "meshSize" | "meshType" | "openingen">, punten: PlaatPunt[],
+): string {
+  const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize! : PLATE_DEFAULTS.meshSize;
+  return berekenPlaatMeshSignatuur(punten, meshSize, {
+    openingen: (p.openingen ?? []).map((o) => o.punten),
+    meshType: p.meshType,
+  });
+}
+
+// ── Openingen en elementkeuze ────────────────────────────────────────────────
+
+/**
+ * Rekent de plaat via het synchrone RASTERPAD (rechthoekgrid, ook in de
+ * sidecar zonder cache)? Dat kan alleen als de omtrek een asgelijnde
+ * rechthoek is én elke opening een asgelijnde rechthoek: dan lopen de
+ * gridlijnen precies door de openingsranden. Elke andere vorm — een
+ * polygoonplaat, of een rechthoek met een schuine of veelhoekige opening —
+ * gaat door de CDT met een meshcache.
+ */
+export function plaatRekentAlsRaster(
+  punten: PlaatPunt[], openingen: PlaatPunt[][] = [], tolMm = 1,
+): boolean {
+  if (punten.length !== 4 || !isAsgelijndeRechthoek(punten, tolMm)) return false;
+  return openingen.every((o) => o.length === 4 && isAsgelijndeRechthoek(o, tolMm));
+}
+
+/**
+ * De elementkeuze waarmee de plaat werkelijk rekent: de eigen keuze, of
+ * anders de standaard voor de vorm (rasterpad → vierhoeken, CDT-pad →
+ * driehoeken — de gedragingen van vóór stap 2, zodat een plaat zonder keuze
+ * dezelfde getallen houdt).
+ */
+export function effectiefPlaatMeshType(
+  p: Pick<Plate, "meshType" | "openingen">, punten: PlaatPunt[], tolMm = 1,
+): PlaatMeshType {
+  if (p.meshType) return p.meshType;
+  return plaatRekentAlsRaster(punten, (p.openingen ?? []).map((o) => o.punten), tolMm)
+    ? "vierhoeken" : "driehoeken";
+}
+
+/**
+ * Validatie van de openingen van een plaat (pure functie, gedeeld door de
+ * tekentool, de modelcontrole, de MCP-poort en de engine). Retourneert een
+ * Nederlandse foutmelding of null. Regels:
+ *  - elke opening is zelf een geldige polygoon (`valideerPlaatPolygoon`);
+ *  - elke hoek ligt binnen de omtrek, op minstens
+ *    PLAAT_OPENING_MIN_AFSTAND_MM van elke omtrekrand, en geen omtrekhoek
+ *    ligt in de opening; openingsranden kruisen de omtrek niet;
+ *  - openingen liggen los van elkaar: geen hoek van de één in de ander, geen
+ *    kruisende randen, en minstens dezelfde afstand tussen hun randen.
+ * Een opening die de omtrek of een andere opening raakt, wordt geweigerd —
+ * een strook van een paar millimeter draagt niets en geeft flinterelementen.
+ */
+export function valideerPlaatOpeningen(
+  omtrek: PlaatPunt[], openingen: PlaatPunt[][], tolMm = 1,
+): string | null {
+  const minAfstand = PLAAT_OPENING_MIN_AFSTAND_MM;
+  const n = omtrek.length;
+  const randen = (poly: PlaatPunt[]): [PlaatPunt, PlaatPunt][] =>
+    poly.map((a, i) => [a, poly[(i + 1) % poly.length]]);
+  const omtrekRanden = randen(omtrek);
+  for (let k = 0; k < openingen.length; k++) {
+    const op = openingen[k];
+    const naam = `Opening ${k + 1}`;
+    const vormFout = valideerPlaatPolygoon(op, tolMm);
+    if (vormFout) return `${naam}: ${vormFout}`;
+    for (let h = 0; h < op.length; h++) {
+      const p = op[h];
+      if (!puntInPolygoon(p.x, p.z, omtrek)) {
+        return `${naam} ligt niet binnen de plaat: hoek ${h + 1} (${p.x}, ${p.z}) ligt buiten of op de omtrek.`;
+      }
+      for (let r = 0; r < n; r++) {
+        const d = afstandTotLijnstuk(p, omtrekRanden[r][0], omtrekRanden[r][1]);
+        if (d < minAfstand) {
+          return `${naam} raakt de omtrek van de plaat: hoek ${h + 1} ligt ${Math.round(d)} mm van rand ` +
+            `${r + 1}. Houd minstens ${minAfstand} mm afstand tot de rand.`;
+        }
+      }
+    }
+    for (let r = 0; r < n; r++) {
+      if (puntInPolygoon(omtrek[r].x, omtrek[r].z, op)) {
+        return `${naam} omsluit hoek ${r + 1} van de plaat — een opening moet binnen de omtrek liggen.`;
+      }
+    }
+    for (const [a, b] of randen(op)) {
+      for (let r = 0; r < n; r++) {
+        if (segmentenSnijden(a, b, omtrekRanden[r][0], omtrekRanden[r][1])) {
+          return `${naam} snijdt rand ${r + 1} van de plaat — een opening moet binnen de omtrek liggen.`;
+        }
+      }
+    }
+  }
+  for (let k = 0; k < openingen.length; k++) {
+    for (let m = k + 1; m < openingen.length; m++) {
+      const A = openingen[k], B = openingen[m];
+      const paar = `Opening ${k + 1} en opening ${m + 1}`;
+      if (A.some((p) => puntInPolygoon(p.x, p.z, B)) || B.some((p) => puntInPolygoon(p.x, p.z, A))) {
+        return `${paar} overlappen elkaar — voeg ze samen tot één opening of schuif ze uit elkaar.`;
+      }
+      for (const [a, b] of randen(A)) {
+        for (const [c, d] of randen(B)) {
+          if (segmentenSnijden(a, b, c, d)) {
+            return `${paar} snijden elkaar — voeg ze samen tot één opening of schuif ze uit elkaar.`;
+          }
+        }
+      }
+      let dMin = Infinity;
+      for (const p of A) for (const [c, d] of randen(B)) dMin = Math.min(dMin, afstandTotLijnstuk(p, c, d));
+      for (const p of B) for (const [a, b] of randen(A)) dMin = Math.min(dMin, afstandTotLijnstuk(p, a, b));
+      if (dMin < minAfstand) {
+        return `${paar} raken elkaar (${Math.round(dMin)} mm tussenruimte) — houd minstens ` +
+          `${minAfstand} mm afstand of voeg ze samen tot één opening.`;
+      }
+    }
+  }
+  return null;
 }
 
 // ── Plaatrand-adressering: één regel voor engine, validatie, canvas en rapport ──

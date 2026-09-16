@@ -886,7 +886,7 @@ fn schema_meshcache() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "description": "Voorgebouwd CDT-mesh van een polygoonplaat, zoals het projectbestand hem bewaart. Klopt de `signature` niet met de geometrie, of ontbreken of kloppen de randknopen niet, dan weigert de engine met een Nederlandse melding in plaats van te benaderen.",
+        "description": "Voorgebouwd CDT-mesh van een polygoonplaat (of van een rechthoek met een niet-rechthoekige opening), zoals het projectbestand hem bewaart. De `signature` dekt hoeken, meshSize, openingen en elementkeuze. Klopt zij niet met de geometrie, of ontbreken of kloppen de randknopen niet, dan weigert de engine met een Nederlandse melding in plaats van te benaderen.",
         "required": ["signature", "points", "triangles", "edgeNodeIndices"],
         "properties": {
             "signature": { "type": "string" },
@@ -895,13 +895,48 @@ fn schema_meshcache() -> Value {
                 "additionalProperties": false,
                 "required": ["x", "z"],
                 "properties": { "x": { "type": "number" }, "z": { "type": "number" } } } },
-            "triangles": { "type": "array", "items": {
+            "triangles": { "type": "array",
+                "description": "CST-driehoeken als drietallen puntindices; mag leeg zijn bij een net van louter vierhoeken.",
+                "items": {
                 "type": "array", "minItems": 3, "maxItems": 3,
                 "items": { "type": "integer", "minimum": 0 } } },
+            "quads": { "type": "array",
+                "description": "Quad4-vierhoeken als viertallen puntindices (convex; de engine normaliseert de omloopzin en weigert een niet-convexe vierhoek).",
+                "items": {
+                "type": "array", "minItems": 4, "maxItems": 4,
+                "items": { "type": "integer", "minimum": 0 } } },
+            "meshSoort": { "type": "string", "enum": ["driehoeken", "vierhoeken", "gemengd"],
+                "description": "Wat de mesher opleverde; \"gemengd\" = vierhoeken waar de koppeling van driehoeken lukte, elders driehoeken." },
             "edgeNodeIndices": { "type": "array",
                 "description": "Per plaatrand (rand i loopt van hoek i naar hoek i+1) de indices in `points` van de meshknopen op die rand, van hoek tot hoek. Precies één lijst per hoek van de plaat; zonder deze lijsten kan geen randlast, randpuntlast of staafaansluiting zijn rand vinden.",
                 "items": {
-                "type": "array", "minItems": 2, "items": { "type": "integer", "minimum": 0 } } }
+                "type": "array", "minItems": 2, "items": { "type": "integer", "minimum": 0 } } },
+            "openingEdgeNodeIndices": { "type": "array",
+                "description": "Per opening (volgorde van `openingen`), per openingsrand de indices van de meshknopen op die rand, van hoek tot hoek. Verplicht zodra de plaat openingen heeft: zo keurt de engine dat het net de opening werkelijk volgt.",
+                "items": { "type": "array", "items": {
+                    "type": "array", "minItems": 2, "items": { "type": "integer", "minimum": 0 } } } }
+        }
+    })
+}
+
+fn schema_openingen() -> Value {
+    json!({
+        "type": "array",
+        "description": "Openingen (sparingen) in de plaat: polygonen in mm, volledig binnen de omtrek, minstens 10 mm van de rand en van elkaar. Een opening die de omtrek raakt of een andere opening overlapt, wordt geweigerd met reden. Rechthoekige openingen in een rechthoekige plaat meshet de engine zelf (raster); elke andere vorm vereist een `meshCache`.",
+        "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "punten"],
+            "properties": {
+                "id": { "type": "integer", "description": "Uniek binnen de plaat." },
+                "punten": { "type": "array", "minItems": 3,
+                    "description": "Hoekpunten in omtrekvolgorde (mm).",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["x", "z"],
+                        "properties": { "x": { "type": "number" }, "z": { "type": "number" } } } }
+            }
         }
     })
 }
@@ -909,7 +944,7 @@ fn schema_meshcache() -> Value {
 fn schema_plates() -> Value {
     json!({
         "type": "array",
-        "description": "Platen (schijven). Een asgelijnde rechthoek rekent zonder meer; een polygoon vereist een geldige `meshCache` uit een projectbestand — zonder cache volgt een expliciete weigering en geen benadering.",
+        "description": "Platen (wandschijven, in het vlak belast). Een asgelijnde rechthoek — ook met asgelijnde rechthoekige openingen — rekent zonder meer via het raster; elke andere vorm vereist een geldige `meshCache` uit een projectbestand — zonder cache volgt een expliciete weigering en geen benadering.",
         "items": {
             "type": "object",
             "additionalProperties": false,
@@ -923,7 +958,10 @@ fn schema_plates() -> Value {
                 "nu": { "type": "number", "description": "Dwarscontractie, default 0,3." },
                 "rho": { "type": "number", "exclusiveMinimum": 0, "description": "kg/m3, default 7850." },
                 "meshSize": { "type": "number", "exclusiveMinimum": 0, "description": "mm, default 500." },
-                "meshCache": schema_meshcache()
+                "meshCache": schema_meshcache(),
+                "meshType": { "type": "string", "enum": ["driehoeken", "vierhoeken"],
+                    "description": "Elementkeuze: \"vierhoeken\" = Quad4 (bilineair), \"driehoeken\" = CST (constante rek). Ontbreekt = de standaard voor de vorm: rechthoekraster vierhoeken, CDT-mesh driehoeken — precies de getallen van vóór deze keuze." },
+                "openingen": schema_openingen()
             }
         }
     })
@@ -1300,6 +1338,51 @@ mod tests {
         assert!(poort.contains("profileEnd") && poort.contains("profile"), "{poort:?}");
         assert_eq!(schema, poort, "schema_beams en BEAM_VELDEN lopen uiteen");
         assert_eq!(items["additionalProperties"], json!(false));
+    }
+
+    /// `schema_plates` en `schema_meshcache` zijn de spiegel van `PLATE_VELDEN`
+    /// en `MESHCACHE_VELDEN`, de plaatpoort van de sidecar
+    /// (`design-mockup/src/mcp/valideerModel.ts`). Dezelfde bewaking als bij
+    /// de staven: een veld dat aan één kant bijkomt (september 2026:
+    /// `meshType`, `openingen`, `quads`, `meshSoort`, `openingEdgeNodeIndices`)
+    /// valt hier op, zodat het schema nooit een veld belooft dat de poort
+    /// weigert of andersom.
+    #[test]
+    fn schema_plates_en_meshcache_spiegelen_de_plaatpoort_van_de_sidecar() {
+        let pad = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../design-mockup/src/mcp/valideerModel.ts");
+        let bron = std::fs::read_to_string(&pad)
+            .unwrap_or_else(|e| panic!("{} niet leesbaar: {e}", pad.display()));
+        let poort = |naam: &str| -> std::collections::BTreeSet<String> {
+            let start = bron
+                .find(&format!("const {naam} = ["))
+                .unwrap_or_else(|| panic!("{naam} staat niet (meer) in valideerModel.ts"));
+            let rest = &bron[start..];
+            let blok = &rest[..rest.find("] as const;").unwrap_or_else(|| panic!("{naam} is niet gesloten"))];
+            // GEEN `.skip(1)` hier: `OPENING_VELDEN` staat op ÉÉN regel
+            // (`const OPENING_VELDEN = ["id", "punten"] as const;`), en de eerste
+            // regel overslaan gaf daar een LEGE verzameling — de spiegeltest
+            // zou dan een lijst vergelijken met niets. Bij een lijst over
+            // meerdere regels bevat de openingsregel geen aanhalingstekens en
+            // levert hij vanzelf niets op, dus dit werkt voor beide vormen.
+            blok.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .flat_map(|l| l.split('"').skip(1).step_by(2).map(str::to_owned).collect::<Vec<_>>())
+                .collect()
+        };
+        let sleutels = |v: &Value| -> std::collections::BTreeSet<String> {
+            v["properties"].as_object().expect("properties").keys().cloned().collect()
+        };
+        let platen = &schema_plates()["items"];
+        assert_eq!(sleutels(platen), poort("PLATE_VELDEN"), "schema_plates en PLATE_VELDEN lopen uiteen");
+        assert_eq!(platen["additionalProperties"], json!(false));
+        assert_eq!(platen["properties"]["meshType"]["enum"], json!(["driehoeken", "vierhoeken"]));
+        let cache = schema_meshcache();
+        assert_eq!(sleutels(&cache), poort("MESHCACHE_VELDEN"), "schema_meshcache en MESHCACHE_VELDEN lopen uiteen");
+        assert_eq!(cache["additionalProperties"], json!(false));
+        let opening = &schema_openingen()["items"];
+        assert_eq!(sleutels(opening), poort("OPENING_VELDEN"), "schema_openingen en OPENING_VELDEN lopen uiteen");
+        assert_eq!(opening["additionalProperties"], json!(false));
     }
 
     /// E, A en I mogen niet los op een staaf: de doorsnede volgt uit

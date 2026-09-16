@@ -30,7 +30,7 @@
  * kanttekening in `mcp/valideerModel.ts`.
  */
 import type { Beam, Load, Node, Plate, Support } from "../components/fem/femTypes";
-import { bepaalPlaatRand } from "../components/fem/femTypes";
+import { bepaalPlaatRand, valideerPlaatOpeningen } from "../components/fem/femTypes";
 import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "./materiaalDubbelzinnig";
 
 /**
@@ -53,6 +53,8 @@ export type BevindingSoort =
   | "losseKnoop"
   /** Plaatlast waarvan de rand of de positie niet te bepalen is. */
   | "plaatlast"
+  /** Opening buiten de plaat, rakend aan de omtrek, of over een andere opening. */
+  | "opening"
   /** Materiaalnaam die hout én de korte naam van een betonklasse is ("C30"). */
   | "dubbelzinnigMateriaal";
 
@@ -96,7 +98,7 @@ export interface ControleModel {
     checkConfig?: { betonKorf?: unknown } | null;
   })[];
   supports?: Pick<Support, "nodeId">[];
-  plates?: Pick<Plate, "id" | "nodeIds">[];
+  plates?: Pick<Plate, "id" | "nodeIds" | "openingen">[];
   /**
    * Optioneel: de lasten, voor de controle op plaatlasten. Ontbreekt het veld,
    * dan blijft die controle achterwege en is de uitkomst gelijk aan vroeger.
@@ -193,6 +195,36 @@ export function zoekPlaatlastFouten(model: ControleModel): Bevinding[] {
         tekst:
           `Puntlast ${l.id} op plaat ${plaat.id} heeft geen positie langs de rand. ` +
           "Geef de afstand vanaf de beginhoek op.",
+      });
+    }
+  }
+  return uit;
+}
+
+/**
+ * Openingen die niet kunnen: buiten de plaat, rakend aan de omtrek (minder
+ * dan PLAAT_OPENING_MIN_AFSTAND_MM) of over een andere opening heen. DEZELFDE
+ * regel als de tekentool, de engine en de MCP-poort (`valideerPlaatOpeningen`),
+ * maar al zichtbaar terwijl je tekent: sleept de gebruiker een hoekknoop van
+ * de plaat naar binnen, dan ligt een opening ineens buiten de omtrek, en dat
+ * hoort hier te staan en niet pas als melding na "Berekenen". Geen
+ * herstelactie: welke opening weg of anders moet, weet alleen de gebruiker.
+ */
+export function zoekOpeningFouten(model: ControleModel): Bevinding[] {
+  const uit: Bevinding[] = [];
+  for (const p of model.plates ?? []) {
+    if (!p.openingen || p.openingen.length === 0) continue;
+    const hoeken = p.nodeIds.map((id) => model.nodes.find((n) => n.id === id));
+    if (hoeken.some((h) => !h)) continue;       // een ontbrekende hoek meldt de plaat zelf
+    const fout = valideerPlaatOpeningen(
+      hoeken.map((h) => ({ x: h!.x, z: h!.z })),
+      p.openingen.map((o) => o.punten),
+      CONTROLE_TOL_MM,
+    );
+    if (fout) {
+      uit.push({
+        soort: "opening", ernst: "fout", nodeIds: [...p.nodeIds],
+        tekst: `Plaat ${p.id}: ${fout}`,
       });
     }
   }
@@ -413,6 +445,7 @@ export function controleerModel(
     ...zoekKnopenOpStaaf(model, tolMm),
     ...zoekDubbeleKnopen(model, tolMm),
     ...zoekPlaatlastFouten(model),
+    ...zoekOpeningFouten(model),
     ...materiaal.filter((m) => m.ernst === "fout"),
   ];
   const alGemeld = new Set<number>();

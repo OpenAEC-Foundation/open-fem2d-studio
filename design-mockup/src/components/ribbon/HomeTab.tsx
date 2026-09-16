@@ -11,6 +11,7 @@ import {
   barIcon,
   nodeIcon,
   plateIcon,
+  openingIcon,
   gridIcon,
   bcPinnedIcon,
   bcXRollerIcon,
@@ -184,6 +185,15 @@ export default function HomeTab({
               size="small"
               active={femTool === "addPlate"}
               onClick={() => setTool("addPlate")}
+            />
+          </RibbonButtonStack>
+          <RibbonButtonStack>
+            <RibbonButton
+              icon={openingIcon}
+              label={t("home.opening")}
+              size="small"
+              active={femTool === "addOpening"}
+              onClick={() => setTool("addOpening")}
             />
           </RibbonButtonStack>
           <RibbonButtonStack>

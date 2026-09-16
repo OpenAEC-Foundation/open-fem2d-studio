@@ -218,7 +218,19 @@ export interface IfcRekenmodelInput {
    * hoekknopen kan niet getekend worden en wordt alleen geteld, zodat de
    * beperkingenlijst hem eerlijk meldt.
    */
-  plates?: { id: number; nodeIds?: number[]; thickness?: number; E?: number; nu?: number; rho?: number; meshSize?: number }[];
+  plates?: {
+    id: number; nodeIds?: number[]; thickness?: number; E?: number; nu?: number; rho?: number; meshSize?: number;
+    /**
+     * Elementkeuze en openingen (stap 2). Een opening wordt een binnenlus
+     * (IfcFaceBound) van hetzelfde IfcFaceSurface: zo blijft het vlak één
+     * vlaklid met een gat erin. IfcOpeningElement/IfcRelVoidsElement bestaat
+     * alleen voor IfcElement en niet voor een IfcStructuralItem, dus die weg
+     * is er voor een vlaklid niet. De openingen staan ook in de Description
+     * en in de eigenschappenset.
+     */
+    meshType?: string;
+    openingen?: { id: number; punten: { x: number; z: number }[] }[];
+  }[];
   /** Staat de eigen-gewichtsberekening aan? Alleen voor de beperkingenlijst. */
   eigenGewicht?: boolean;
   /** Aantal belastingcombinaties. Alleen voor de beperkingenlijst. */
@@ -747,15 +759,27 @@ export function bouwIfcRekenmodel(
     if (ids.length < 3) continue;
     const lus = w.ent("IFCPOLYLOOP", lijst(ids.map((id) => puntPerKnoop.get(id)!)));
     const rand = w.ent("IFCFACEOUTERBOUND", ref(lus), ".T.");
+    // Openingen als BINNENLUSSEN van hetzelfde vlak (IfcFaceBound met eigen
+    // punten — een opening hangt aan geen knoop). Zie het commentaar bij
+    // `plates` in IfcRekenmodelInput voor waarom niet IfcOpeningElement.
+    const openingen = (plaat.openingen ?? []).filter((o) => (o.punten?.length ?? 0) >= 3);
+    const binnenLussen = openingen.map((o) => {
+      const punten = o.punten.map((q) => w.ent("IFCCARTESIANPOINT",
+        `(${meter(q.x)},0.,${meter(q.z)})`));
+      const binnenLus = w.ent("IFCPOLYLOOP", lijst(punten));
+      return w.ent("IFCFACEBOUND", ref(binnenLus), ".T.");
+    });
     const vlak = w.ent("IFCPLANE", ref(vlakAssen));
-    const vlakStuk = w.ent("IFCFACESURFACE", lijst([rand]), ref(vlak), ".T.");
+    const vlakStuk = w.ent("IFCFACESURFACE", lijst([rand, ...binnenLussen]), ref(vlak), ".T.");
     const topo = w.ent("IFCTOPOLOGYREPRESENTATION",
       ref(context), "'Reference'", "'Face'", lijst([vlakStuk]));
     const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
     const dikteMm = plaat.thickness ?? 20;
+    const openingTekst = openingen.length === 0 ? ""
+      : `, ${openingen.length} ${openingen.length === 1 ? "opening" : "openingen"}`;
     const member = w.ent("IFCSTRUCTURALSURFACEMEMBER",
       w.guid(`plaat:${plaat.id}`), "$", stepString(`Plaat ${plaat.id}`),
-      stepString(`wandschijf t = ${nl(dikteMm, 0)} mm`), "$", "$", ref(vorm),
+      stepString(`wandschijf t = ${nl(dikteMm, 0)} mm${openingTekst}`), "$", "$", ref(vorm),
       ".SHELL.", `IFCPOSITIVELENGTHMEASURE(${reeel(dikteMm / 1000)})`);
     for (const id of ids) {
       w.ent("IFCRELCONNECTSSTRUCTURALMEMBER",
@@ -770,6 +794,13 @@ export function bouwIfcRekenmodel(
       eMaat("Dichtheid", "IFCMASSDENSITYMEASURE", plaat.rho ?? 7850),
       eMaat("Meshgrootte", "IFCPOSITIVELENGTHMEASURE", (plaat.meshSize ?? 500) / 1000),
       eLabel("Hoekknopen", ids.join(", ")),
+      // Elementkeuze en openingen (stap 2) — alleen als ze er zijn, zodat het
+      // bestand van een plaat zonder beide byte-gelijk blijft aan voorheen.
+      ...(plaat.meshType ? [eLabel("Elementtype", plaat.meshType)] : []),
+      ...(openingen.length > 0
+        ? [eLabel("Openingen", openingen.map((o) =>
+            `${o.id}: ${o.punten.map((q) => `(${nl(q.x, 0)}, ${nl(q.z, 0)})`).join(" ")}`).join("; "))]
+        : []),
     ];
     schrijfEigenschappen(w, "OpenFEM2D_Plaat", `plaat:${plaat.id}`, eig, [member]);
     plaatInfo.set(plaat.id, { member, nodeIds: ids, knopen: knoopPerId, vertexPerKnoop });

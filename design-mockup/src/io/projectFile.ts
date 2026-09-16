@@ -43,6 +43,13 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      automatisch mee met de bestaande arrays; oude bestanden zonder deze
  *      velden laden ongewijzigd, en een bestand met verouderde cache wordt
  *      bij het openen door het canvas geregenereerd (signatuurcontrole).
+ *      Stap 2 van het platenspoor (september 2026, optioneel — geen
+ *      versie-bump): `Plate.meshType` ("driehoeken" | "vierhoeken"; ontbreekt
+ *      = de standaard voor de vorm, dus dezelfde getallen als voorheen),
+ *      `Plate.openingen` (polygonen in mm binnen de omtrek) en in de
+ *      meshcache `quads`, `meshSoort` en `openingEdgeNodeIndices`. De
+ *      handtekening van een cache zonder openingen en zonder keuze is
+ *      ongewijzigd, zodat bestaande caches geldig blijven.
  *      Eveneens optioneel binnen v2: `analysetype` (drie standen) en
  *      `betonSegmentLengteMm`. `nonlinearEnabled` BLIJFT geschreven worden en
  *      blijft leidend zolang `analysetype` ontbreekt — zie

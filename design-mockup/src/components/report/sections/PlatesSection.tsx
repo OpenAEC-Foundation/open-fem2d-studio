@@ -9,7 +9,7 @@
  * kg/m³.
  */
 import { useTranslation } from "react-i18next";
-import { withPlateDefaults, type Plate } from "../../fem/femTypes";
+import { withPlateDefaults, effectiefPlaatMeshType, type Plate, type Node } from "../../fem/femTypes";
 import type { SolverResult } from "../../fem/solver/types";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
@@ -33,9 +33,24 @@ function plateElemCount(
   return null;
 }
 
+/** Maten van een opening voor de tabel: "b × h mm" bij een rechthoek, anders het aantal hoeken. */
+function openingOmschrijving(punten: { x: number; z: number }[]): string {
+  const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+  const b = Math.max(...xs) - Math.min(...xs), h = Math.max(...zs) - Math.min(...zs);
+  return punten.length === 4 ? `${fmtNum(b, 0)} × ${fmtNum(h, 0)} mm` : `${punten.length}-hoek`;
+}
+
+/** Elementkeuze zoals de plaat werkelijk rekent (eigen keuze of de standaard voor de vorm). */
+function meshTypeTekst(p: Plate, nodes: Node[]): string {
+  const hoeken = p.nodeIds.map((id) => nodes.find((n) => n.id === id));
+  if (hoeken.some((h) => !h)) return "—";
+  const soort = effectiefPlaatMeshType(p, hoeken.map((h) => ({ x: h!.x, z: h!.z })));
+  return p.meshType ? soort : `${soort} (standaard)`;
+}
+
 export default function PlatesSection() {
   const { t } = useTranslation("ribbon");
-  const { plates, combinationResults, caseResults } = useReportData();
+  const { plates, nodes, combinationResults, caseResults } = useReportData();
 
   const sorted = [...plates].sort((a, b) => a.id - b.id);
 
@@ -59,7 +74,9 @@ export default function PlatesSection() {
                 <th className="rpt-num">ν [—]</th>
                 <th className="rpt-num">ρ [kg/m³]</th>
                 <th className="rpt-num">{t("report.colMeshSize", "Meshgrootte [mm]")}</th>
+                <th>{t("report.colMeshType", "Elementen (type)")}</th>
                 <th className="rpt-num">{t("report.colElemCount", "Elementen")}</th>
+                <th>{t("report.colOpenings", "Openingen")}</th>
               </tr>
             </thead>
             <tbody>
@@ -75,7 +92,13 @@ export default function PlatesSection() {
                     <td className="rpt-num">{fmtNum(d.nu!, 2)}</td>
                     <td className="rpt-num">{fmtNum(d.rho!, 0)}</td>
                     <td className="rpt-num">{fmtNum(d.meshSize!, 0)}</td>
+                    <td>{meshTypeTekst(p, nodes)}</td>
                     <td className="rpt-num">{nElems !== null ? nElems : "—"}</td>
+                    <td>
+                      {p.openingen && p.openingen.length > 0
+                        ? p.openingen.map((o) => `${o.id}: ${openingOmschrijving(o.punten)}`).join("; ")
+                        : t("report.noOpenings", "geen")}
+                    </td>
                   </tr>
                 );
               })}
@@ -84,7 +107,7 @@ export default function PlatesSection() {
           <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
             {t(
               "report.plateKindNote",
-              "Platen rekenen mee als wandschijf (membraan, in het vlak); het rekenmesh wordt bij elke berekening opnieuw uit de meshgrootte gegenereerd.",
+              "Platen rekenen mee als wandschijf (membraan, in het vlak); het rekenmesh wordt bij elke berekening opnieuw uit de meshgrootte gegenereerd. Vierhoeken zijn bilineaire Quad4-elementen, driehoeken CST-elementen (constante rek); een polygoonplaat met vierhoeken kan een gemengd net geven waar de koppeling van driehoeken niet lukt. Openingen blijven vrij van elementen; het net legt knopen op de openingsrand.",
             )}
           </p>
           <p className="rpt-note" style={{ marginTop: "1mm" }}>
