@@ -7527,6 +7527,11 @@ var SPIEGELREGELS_TOETSCONFIG = {
   loadDuration: "gelijk",
   // Een afstand, geen positie.
   ltbSupportSpacing_m: "gelijk",
+  // Een factor, een schakelaar en een ZIJDE (druk/trek) in de
+  // referentierichting: geen van drie hangt aan de tekenrichting.
+  kCr: "gelijk",
+  performLtbCheck: "gelijk",
+  ltbLoadPosition: "gelijk",
   // Boven en onder zijn ZIJDEN in de referentierichting, geen posities.
   betonKorf: "gelijk",
   betonMilieuklasse: "gelijk",
@@ -8799,6 +8804,28 @@ function mapLoadDuration(d) {
       return "MediumTerm";
   }
 }
+function mapLtbLoadPosition(p) {
+  switch (p) {
+    case "compressionEdge":
+      return "CompressionEdge";
+    case "tensionEdge":
+      return "TensionEdge";
+    case "centreOfGravity":
+    default:
+      return "CentreOfGravity";
+  }
+}
+var K_CR_STANDAARD = 1;
+function kCrUitConfig(cfg) {
+  const k = cfg.kCr;
+  if (k === void 0) return { kCr: K_CR_STANDAARD };
+  if (typeof k !== "number" || !Number.isFinite(k) || k <= 0 || k > 1) {
+    return {
+      fout: `k_cr = ${String(k)} ligt buiten (0, 1] \u2014 b_ef = k_cr \xB7 b (EN 1995-1-1 6.1.7, 6.13a) kan niet nul, negatief of groter dan de breedte zijn; leeg = 1,0 (NB bij 6.1.7)`
+    };
+  }
+  return { kCr: k };
+}
 function timberDeflectionNumerators(cls, customN) {
   switch (cls) {
     case "roof":
@@ -8997,6 +9024,11 @@ function buildTimberCheckInputs(ruweData) {
     );
     const cfg = beam.checkConfig ?? {};
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
+    const kCr = kCrUitConfig(cfg);
+    if ("fout" in kCr) {
+      skipped.push({ beamId: beam.id, reason: kCr.fout });
+      continue;
+    }
     const duurPerCombinatie = data.loadCases ? belastingduurPerCombinatie({
       combinaties: ulsCombos,
       loadCases: data.loadCases,
@@ -9080,30 +9112,39 @@ function buildTimberCheckInputs(ruweData) {
       // σ_m,crit.
       ltb_segment_length_m: Number.isFinite(cfg.ltbSupportSpacing_m) && cfg.ltbSupportSpacing_m > 0 ? cfg.ltbSupportSpacing_m : 0,
       ltb_load_case: "UniformLoad",
-      ltb_load_position: "CentreOfGravity",
+      // Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a): aan de
+      // drukzijde l_ef + 2h, aan de trekzijde l_ef − 0,5h. Leeg = zwaartepunt,
+      // het gedrag van vóór dit veld. Een dak of vloer op de bovenrand van een
+      // vrij opgelegde ligger is een last aan de drukzijde — de ongunstige
+      // kant, en dus een keuze die de constructeur zelf maakt.
+      ltb_load_position: mapLtbLoadPosition(cfg.ltbLoadPosition),
       ltb_effective_length_override_m: 0,
-      perform_ltb_check: true,
+      // Kiptoets art. 6.3.3 aan/uit. `false` = de gedrukte rand is over de
+      // volle lengte zijdelings gesteund en de opleggingen laten geen torsie
+      // toe, zodat k_crit = 1,0 (art. 6.3.3(5)); buiging is dan al getoetst
+      // in 6.1.6 en druk in 6.3.2. De kern laat de toets dan niet stil weg
+      // maar zet hem als "niet van toepassing" met deze reden in het
+      // resultaat. Leeg = aan, het gedrag van vóór dit veld.
+      perform_ltb_check: cfg.performLtbCheck ?? true,
       // Scheurfactor voor dwarskracht, b_ef = k_cr · b uit EN 1995-1-1+A2
       // (6.13a). De Eurocode beveelt 0,67 aan voor gezaagd en gelijmd
       // gelamineerd hout, maar laat de keuze uitdrukkelijk aan de nationale
       // bijlage. NEN-EN 1995-1-1/NB:2013 bij 6.1.7 schrijft voor liggers met
       // een prismatische doorsnede k_cr = 1,0 voor; de 0,8 daar geldt alleen
-      // voor I- en T-profielen met een dun lijf, en deze toetsing rekent
-      // uitsluitend met rechthoekige doorsneden.
+      // voor I- en T-profielen met een dun lijf.
       //
-      // Dus: 1,0 is hier de normwaarde. Naar 0,67 gaan zou de
-      // dwarskrachtcapaciteit een derde lager maken dan de norm toestaat.
+      // Dus: 1,0 is de normwaarde en de standaard (`K_CR_STANDAARD`). Wie
+      // met de aanbevolen 0,67 wil rekenen, zet dat in `cfg.kCr`; de kern
+      // vermeldt de gebruikte waarde met bron in de dwarskrachttoets. Een
+      // waarde buiten (0, 1] is hierboven al geweigerd (`kCrUitConfig`).
       //
-      // LET OP — dit geldt alleen voor de RECHTHOEK. Sinds een eigen
-      // doorsnede hier ook binnenkomt, is de zin "deze toetsing rekent
-      // uitsluitend met rechthoekige doorsneden" niet meer waar. Voor een
-      // samengestelde doorsnede leest de NB k_cr af uit de verhouding
-      // lijfdikte / flensbreedte (0,8 zodra het lijf dunner is dan de halve
-      // flens), en die verhouding kent deze bouwer niet — de kern wél. De
-      // kern negeert dit veld daarom bij een niet-rechthoekige doorsnede en
-      // bepaalt k_cr zelf; zie `shear::k_cr_nb` en de toelichting bij
-      // `check_timber_beam`.
-      k_cr: 1,
+      // LET OP — dit geldt alleen voor de RECHTHOEK. Voor een samengestelde
+      // doorsnede leest de NB k_cr af uit de verhouding lijfdikte /
+      // flensbreedte (0,8 zodra het lijf dunner is dan de halve flens), en
+      // die verhouding kent deze bouwer niet — de kern wél. De kern negeert
+      // dit veld daarom bij een niet-rechthoekige doorsnede en bepaalt k_cr
+      // zelf; zie `shear::k_cr_nb` en de toelichting bij `check_timber_beam`.
+      k_cr: kCr.kCr,
       load_sharing: false,
       deflection_inst_mm: wInstMm,
       // Zakking onder de quasi-blijvende BGT-combinatie (G + Σ ψ₂,i · Q_k,i),
@@ -9257,6 +9298,11 @@ function buildCltCheckInputs(ruweData) {
       continue;
     }
     const cfg = beam.checkConfig ?? {};
+    const kCr = kCrUitConfig(cfg);
+    if ("fout" in kCr) {
+      skipped.push({ beamId: beam.id, reason: kCr.fout });
+      continue;
+    }
     const duurPerCombinatie = data.loadCases ? belastingduurPerCombinatie({
       combinaties: ulsCombos,
       loadCases: data.loadCases,
@@ -9271,8 +9317,10 @@ function buildCltCheckInputs(ruweData) {
       load_duration_per_combination: duurPerCombinatie,
       length_m: lengthMm / 1e3,
       forces_envelope: buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults),
-      // NB bij 6.1.7: k_cr = 1,0 voor liggers met een prismatische doorsnede.
-      k_cr: 1,
+      // NB bij 6.1.7: k_cr = 1,0 voor liggers met een prismatische doorsnede;
+      // een opgegeven `cfg.kCr` gaat door, buiten (0, 1] is hierboven al
+      // geweigerd. Dezelfde regel als in de houtbouwer (`kCrUitConfig`).
+      k_cr: kCr.kCr,
       load_sharing: false
     });
   }
@@ -18084,8 +18132,15 @@ var CHECKCONFIG_VELDEN = [
   // De kipsteunafstand van hout (EN 1995-1-1 art. 6.3.3). De UI schrijft hem
   // weg en `timberCheckBuilder` leest hem, maar hij stond hier niet: elk
   // houtmodel met een kipsteunafstand werd langs de MCP-weg geweigerd.
-  "ltbSupportSpacing_m"
+  "ltbSupportSpacing_m",
+  // De drie houtkeuzen van september 2026: scheurfactor k_cr (6.1.7),
+  // kiptoets aan/uit (6.3.3(5)) en het aangrijpingspunt van de belasting
+  // (tabel 6.1). Tot dan zaten ze vast in de houtbouwer.
+  "kCr",
+  "performLtbCheck",
+  "ltbLoadPosition"
 ];
+var LTB_LASTPOSITIES = ["centreOfGravity", "compressionEdge", "tensionEdge"];
 var KOLOM_VELDEN = [
   "bracing",
   "buckling_length",
@@ -18404,6 +18459,14 @@ function keurCheckConfig(waarde, cpad) {
   keurGetal(cc.deflectionAddLimitNumerator, `${cpad}.deflectionAddLimitNumerator`, fouten, { positief: true });
   keurGetal(cc.preCamber_mm, `${cpad}.preCamber_mm`, fouten);
   keurGetal(cc.ltbSupportSpacing_m, `${cpad}.ltbSupportSpacing_m`, fouten, { positief: true });
+  keurGetal(cc.kCr, `${cpad}.kCr`, fouten, { positief: true });
+  if (isGetal(cc.kCr) && cc.kCr > 1) {
+    fouten.push(`${cpad}.kCr: moet ten hoogste 1 zijn (b_ef = k_cr \xB7 b), maar is ${cc.kCr}.`);
+  }
+  if (cc.performLtbCheck !== void 0 && typeof cc.performLtbCheck !== "boolean") {
+    fouten.push(`${cpad}.performLtbCheck: moet true of false zijn, maar is ${JSON.stringify(cc.performLtbCheck)}.`);
+  }
+  keurEnum(cc.ltbLoadPosition, LTB_LASTPOSITIES, `${cpad}.ltbLoadPosition`, fouten);
   keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
   keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
   if (cc.serviceClass !== void 0 && ![1, 2, 3].includes(cc.serviceClass)) {
@@ -19941,6 +20004,7 @@ export {
   G,
   GEBRUIKSCATEGORIEEN,
   GEVOLGKLASSEN,
+  K_CR_STANDAARD,
   K_FI,
   K_I,
   LABEL_ZUIVER_STAAL,
@@ -20048,11 +20112,13 @@ export {
   isSteelProfile,
   isWindgeneratorCombinatie,
   isZuivereStaalconstructie,
+  kCrUitConfig,
   keurCheckConfig,
   klasseUitKenmerk,
   liftSpringK,
   mapDeflectionClass,
   mapLoadDuration,
+  mapLtbLoadPosition,
   mapServiceClass,
   matchSupportedTimberGrade,
   matenOpPositie,
