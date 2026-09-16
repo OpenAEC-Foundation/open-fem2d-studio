@@ -1116,6 +1116,23 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       skipped.push({ beamId: beam.id, reason: verloop.reden });
       continue;
     }
+    // Het EINDprofiel kan een eigen gelaste doorsnede zijn: zo laat het
+    // splitsen van een verlopende stalen staaf de tussendoorsnede achter
+    // (`verloopSplitsen.ts`). Die staat in geen catalogus, dus haar maten
+    // moeten als doorsnede meereizen; de kern leest ze terug met
+    // `maten_van_gelaste_i`. Zonder dit veld zou de kern de naam niet kunnen
+    // opzoeken en de staaf weigeren — splitsen zou de toetsing dan breken.
+    const eigenEind =
+      verloop.status === "verlopend" && isEigenProfiel(beam.profileEnd)
+        ? zoekEigenDoorsnede(beam.profileEnd)
+        : undefined;
+    if (verloop.status === "verlopend" && isEigenProfiel(beam.profileEnd) && !eigenEind) {
+      skipped.push({
+        beamId: beam.id,
+        reason: `eigen doorsnede "${eigenNaamVan(beam.profileEnd)}" als eindprofiel is niet (meer) bewaard — open de profieleditor en bewaar hem opnieuw`,
+      });
+      continue;
+    }
 
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
 
@@ -1165,6 +1182,7 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       // `toetsdataInReferentierichting` heeft ze bij een gespiegelde staaf al
       // verwisseld.
       ...(verloop.status === "verlopend" ? { profile_end: (beam.profileEnd ?? "").trim() } : {}),
+      ...(eigenEind ? { custom_section_end: naarCustomSection(eigenEind) } : {}),
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,

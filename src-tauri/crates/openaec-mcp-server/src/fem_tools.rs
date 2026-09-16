@@ -887,7 +887,7 @@ fn schema_beams() -> Value {
                 "profile": { "type": "string",
                     "description": "Profielnaam uit de catalogus ('HEA160', 'IPE300') of een houtrechthoek ('96x450'). Default \"HEA160\". Bij een verlopend profiel: het profiel aan het BEGIN (knoop `from`)." },
                 "profileEnd": { "type": "string",
-                    "description": "Optioneel: profiel aan het EINDE (knoop `to`) van een verlopende staaf; de maten verlopen lineair van `profile` naar `profileEnd`. Beide moeten van dezelfde doorsnedesoort zijn: rechthoek↔rechthoek (hout, '96x450' → '96x300') of I/H↔I/H uit de staalcatalogus ('IPE300' → 'IPE200', gerekend als gelast I-profiel). Kokers, buizen, hoeklijnen, U-profielen, kruislaaghout, beton en eigen doorsneden kennen geen verloop; een model met platen evenmin. Weggelaten of gelijk aan `profile` = prismatisch." },
+                    "description": "Optioneel: profiel aan het EINDE (knoop `to`) van een verlopende staaf; de maten verlopen lineair van `profile` naar `profileEnd`. Beide moeten van dezelfde doorsnedesoort zijn: rechthoek↔rechthoek (hout, '96x450' → '96x300') of I/H↔I/H uit de staalcatalogus ('IPE300' → 'IPE200', gerekend als gelast I-profiel). Kokers, buizen, hoeklijnen, U-profielen, kruislaaghout en beton kennen geen verloop; een model met platen evenmin. Een eigen doorsnede ('EIGEN:…') mag alleen als zij een gelast, dubbelsymmetrisch I-profiel uit drie platen is — zo bewaart het splitsen van een verlopende staaf de tussendoorsnede. Weggelaten of gelijk aan `profile` = prismatisch." },
                 "releases": schema_releases(),
                 "checkConfig": schema_checkconfig(),
                 "loadRole": { "type": "string",

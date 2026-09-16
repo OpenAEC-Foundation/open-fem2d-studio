@@ -92,6 +92,7 @@ fn staaf(
         staafeinden: None,
         staaf_notities: None,
         profile_end: eind.map(|s| s.to_string()),
+        custom_section_end: None,
     }
 }
 
@@ -359,4 +360,102 @@ fn eigen_doorsnede_met_eindprofiel_wordt_geweigerd() {
     });
     let r = check_beam(invoer);
     assert!(r.governing_check_id.contains("eigen doorsnede"), "reden: {}", r.governing_check_id);
+}
+
+/// Het EIND van een verloop mag ook een GELASTE dubbelsymmetrische I uit drie
+/// platen zijn, opgegeven als `custom_section_end`.
+///
+/// Waarom dat pad bestaat: splitst men een verlopende stalen staaf, dan staat
+/// op de splitsplaats een doorsnede die in geen enkele catalogus voorkomt. Die
+/// reist als gelaste doorsnede mee. Zonder dit pad zou het splitsen van een
+/// verlopende staaf haar onrekenbaar maken — precies wat het niet mag.
+///
+/// De proef: geef als eind de gelaste I met exact de maten van IPE 200. De
+/// kern rekent een verloop sowieso al als gelaste I zonder afrondingsstraal,
+/// dus dit moet tot op het laatste getal dezelfde uitkomst geven als het
+/// eindprofiel "IPE200" uit de catalogus. Dat is de scherpste vergelijking die
+/// er is: gelijk, niet "ongeveer gelijk".
+#[test]
+fn een_gelaste_i_als_eindprofiel_geeft_dezelfde_uitkomst_als_het_catalogusprofiel() {
+    let punten = [(0.0, buiging(0.0)), (3000.0, buiging(60.0)), (6000.0, buiging(0.0))];
+    let uit_catalogus = check_beam(staaf("IPE300", Some("IPE200"), 6000.0, &punten));
+
+    // IPE 200: h 200, b 100, t_w 5,6, t_f 8,5 (dezelfde maten die de kern uit
+    // de catalogus haalt; zie de kop van dit bestand).
+    let (h, b, tw, tf) = (200.0_f64, 100.0_f64, 5.6_f64, 8.5_f64);
+    let hw = h - 2.0 * tf;
+    let z_flens = (h - tf) / 2.0;
+    let mut invoer = staaf("IPE300", Some("gelast eind"), 6000.0, &punten);
+    invoer.custom_section_end = Some(CustomSection {
+        naam: "Gelast I 200x100x5,6x8,5".to_string(),
+        lamellen: vec![
+            CustomLamella {
+                b_mm: hw,
+                t_mm: tw,
+                y_mm: 0.0,
+                z_mm: 0.0,
+                alpha_rad: std::f64::consts::FRAC_PI_2,
+            },
+            CustomLamella { b_mm: b, t_mm: tf, y_mm: 0.0, z_mm: -z_flens, alpha_rad: 0.0 },
+            CustomLamella { b_mm: b, t_mm: tf, y_mm: 0.0, z_mm: z_flens, alpha_rad: 0.0 },
+        ],
+        gesloten_cellen: vec![],
+        eigenschappen: None,
+        vorm: CustomDoorsnedevorm::GelasteIDubbelsymmetrisch,
+    });
+    let uit_platen = check_beam(invoer);
+
+    assert_eq!(
+        uit_platen.status, uit_catalogus.status,
+        "een gelaste I met de maten van IPE 200 hoort dezelfde status te geven"
+    );
+    assert_eq!(
+        uit_platen.governing_check_id, uit_catalogus.governing_check_id,
+        "dezelfde maatgevende toets"
+    );
+    assert_relative_eq!(uit_platen.uc_max, uit_catalogus.uc_max, max_relative = 1e-12);
+
+    let a = uit_platen.verloop.as_ref().expect("verlooprapport");
+    let c = uit_catalogus.verloop.as_ref().expect("verlooprapport");
+    assert_eq!(a.toetsdoorsneden.len(), c.toetsdoorsneden.len());
+    for (x, y) in a.toetsdoorsneden.iter().zip(c.toetsdoorsneden.iter()) {
+        assert_relative_eq!(x.x_mm, y.x_mm, max_relative = 1e-12);
+        assert_relative_eq!(x.maten.h_mm, y.maten.h_mm, max_relative = 1e-12);
+        assert_relative_eq!(x.maten.b_mm, y.maten.b_mm, max_relative = 1e-12);
+        assert_relative_eq!(x.area_mm2, y.area_mm2, max_relative = 1e-12);
+        assert_relative_eq!(x.w_y_mm3, y.w_y_mm3, max_relative = 1e-12);
+    }
+    // De NAAM verschilt wél, en dat hoort: het rapport moet laten zien dat het
+    // eind een gelaste doorsnede is en niet een catalogusprofiel.
+    assert_eq!(a.eind_naam, "Gelast I 200x100x5,6x8,5");
+    assert_eq!(c.eind_naam, "IPE 200");
+}
+
+/// Een eigen doorsnede die GEEN gelaste dubbelsymmetrische I is, wordt ook als
+/// EINDprofiel geweigerd — met de reden, niet stil benaderd door het
+/// beginprofiel over de hele staaf aan te houden.
+#[test]
+fn een_eigen_doorsnede_die_geen_gelaste_i_is_wordt_als_eindprofiel_geweigerd() {
+    let punten = [(0.0, buiging(0.0)), (3000.0, buiging(50.0))];
+    let mut invoer = staaf("IPE300", Some("koker"), 3000.0, &punten);
+    invoer.custom_section_end = Some(CustomSection {
+        naam: "plaatje".to_string(),
+        lamellen: vec![CustomLamella {
+            b_mm: 200.0,
+            t_mm: 10.0,
+            y_mm: 0.0,
+            z_mm: 0.0,
+            alpha_rad: 0.0,
+        }],
+        gesloten_cellen: vec![],
+        eigenschappen: None,
+        vorm: CustomDoorsnedevorm::Onbekend,
+    });
+    let r = check_beam(invoer);
+    assert!(
+        r.governing_check_id.contains("eigen doorsnede")
+            && r.governing_check_id.contains("eindprofiel"),
+        "reden: {}",
+        r.governing_check_id
+    );
 }

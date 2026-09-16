@@ -178,6 +178,29 @@ pub fn maten_naar_doorsnede(m: Maten, naam: &str) -> CustomSection {
     }
 }
 
+/// De vier hoofdmaten van een opgegeven doorsnede die een GELASTE,
+/// dubbelsymmetrische I uit drie platen is — `None` zodra ze dat niet is.
+///
+/// Het omgekeerde van [`maten_naar_doorsnede`], en met opzet even streng als
+/// [`CustomSection::is_dubbelsymmetrische_gelaste_i`]: die whitelist bepaalt of
+/// de doorsnede de gelaste behandeling KRIJGT, en hier worden haar maten
+/// teruggelezen. Wie de één verruimt zonder de ander, laat de kern rekenen met
+/// maten die niet bij de getoetste vorm horen.
+pub fn maten_van_gelaste_i(cs: &CustomSection) -> Option<Maten> {
+    if !cs.is_dubbelsymmetrische_gelaste_i() {
+        return None;
+    }
+    let liggend: Vec<&CustomLamella> =
+        cs.lamellen.iter().filter(|l| l.alpha_rad.sin().abs() < 1e-9).collect();
+    let lijf = cs.lamellen.iter().find(|l| l.alpha_rad.cos().abs() < 1e-9)?;
+    let flens = liggend.first()?;
+    let h = lijf.b_mm + 2.0 * flens.t_mm;
+    if !(h > 0.0 && flens.b_mm > 0.0 && lijf.t_mm > 0.0 && flens.t_mm > 0.0) {
+        return None;
+    }
+    Some(Maten { h_mm: h, b_mm: flens.b_mm, tw_mm: lijf.t_mm, tf_mm: flens.t_mm })
+}
+
 /// Is deze staaf verlopend, en zo ja met welke twee doorsneden?
 ///
 /// `Ok(None)` = prismatisch: geen eindprofiel, een leeg eindprofiel, of
@@ -199,13 +222,6 @@ pub fn bepaal_verloop(input: &BeamCheckInput) -> Result<Option<Verloop>, String>
     };
     if eind == input.profile_name.trim() {
         return Ok(None);
-    }
-    if input.custom_section.is_some() {
-        return Err(format!(
-            "verlopend profiel wordt voor een eigen doorsnede niet ondersteund: de staaf heeft \
-             zowel een eigen doorsnede als een eindprofiel \"{eind}\". Een verloop loopt van \
-             I/H-profiel naar I/H-profiel uit de catalogus"
-        ));
     }
     let maten_van = |naam: &str, rol: &str| -> Result<(String, Maten), String> {
         let p = db().find(naam).ok_or_else(|| {
@@ -243,8 +259,29 @@ pub fn bepaal_verloop(input: &BeamCheckInput) -> Result<Option<Verloop>, String>
             },
         ))
     };
-    let (begin_naam, begin) = maten_van(input.profile_name.trim(), "beginprofiel")?;
-    let (eind_naam, eind) = maten_van(eind, "eindprofiel")?;
+    // Een uiteinde mag ook een GELASTE dubbelsymmetrische I uit drie platen
+    // zijn (zie `custom_section_end`). Dat is dezelfde vorm waarmee dit
+    // bestand een verlopende staaf sowieso al rekent, dus er komt geen tweede
+    // rekenmodel bij: alleen een tweede manier om de maten aan te leveren.
+    let van_custom = |cs: &CustomSection, rol: &str| -> Result<(String, Maten), String> {
+        maten_van_gelaste_i(cs).map(|m| (cs.naam.clone(), m)).ok_or_else(|| {
+            format!(
+                "verlopend profiel wordt voor deze doorsnede niet ondersteund: de eigen doorsnede \
+                 \"{}\" van het {rol} is geen gelast, dubbelsymmetrisch I-profiel uit drie platen \
+                 (lijf plus twee gelijke flenzen). Alleen zo'n doorsnede en een I/H-profiel uit de \
+                 catalogus kunnen een uiteinde van een verloop zijn",
+                cs.naam
+            )
+        })
+    };
+    let (begin_naam, begin) = match &input.custom_section {
+        Some(cs) => van_custom(cs, "beginprofiel")?,
+        None => maten_van(input.profile_name.trim(), "beginprofiel")?,
+    };
+    let (eind_naam, eind) = match &input.custom_section_end {
+        Some(cs) => van_custom(cs, "eindprofiel")?,
+        None => maten_van(eind, "eindprofiel")?,
+    };
     // Twee schrijfwijzen van hetzelfde profiel ("IPE 300" en "IPE300") zijn
     // geen verloop.
     if begin_naam == eind_naam {
@@ -322,6 +359,9 @@ fn deelvraag(
     );
     let mut deel = input.clone();
     deel.profile_end = None;
+    // Ook het EINDveld wissen: de deelvraag is prismatisch, en een achtergebleven
+    // `custom_section_end` zou haar opnieuw als verlopend laten lezen.
+    deel.custom_section_end = None;
     deel.custom_section = Some(maten_naar_doorsnede(maten, &naam));
     deel.forces_envelope = envelope;
     Deelvraag { x_mm, t, maten, resultaat: check_beam(deel) }
