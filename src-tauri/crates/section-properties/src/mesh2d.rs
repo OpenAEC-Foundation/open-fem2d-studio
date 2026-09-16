@@ -80,6 +80,10 @@ pub struct Mesh2D {
     pub lussen: Vec<Randlus>,
     /// De gevraagde elementgrootte waarmee deze mesh is gemaakt.
     pub h_mm: f64,
+    /// `true` als het randherstel is afgebroken omdat het aantal ingevoegde
+    /// tussenpunten zijn bovengrens bereikte (zie [`genereer`]). De mesh is
+    /// dan niet randconform en de torsiegrootheden zijn niet te vertrouwen.
+    pub randherstel_onvolledig: bool,
 }
 
 impl Mesh2D {
@@ -681,7 +685,20 @@ pub fn genereer(d: &Doorsnede, h: f64) -> Mesh2D {
     }
 
     // ── Randherstel ─────────────────────────────────────────────────────────
-    for _ronde in 0..24 {
+    //
+    // Elke ronde voegt op elke ontbrekende randzijde een middenpunt in. Op een
+    // gewone contour is dat na een paar ronden klaar; op een zelfsnijdende of
+    // ontaarde contour (flens dikker dan de halve hoogte, negatieve maten)
+    // blijven zijden ontbreken en verdubbelt het aantal punten per ronde: bij
+    // 24 ronden groeide het geheugen tot boven een gigabyte (basisaudit nr
+    // 35). Daarom een bovengrens op het TOTAAL aantal ingevoegde punten: evenveel
+    // als er randknopen zijn, met een ondergrens voor kleine contouren. Een
+    // geldige contour blijft daar ver onder; wie erboven komt, krijgt een
+    // mesh met `randherstel_onvolledig = true` in plaats van een hangend proces.
+    let max_invoegingen = n_rand.max(256);
+    let mut invoegingen = 0usize;
+    let mut randherstel_onvolledig = false;
+    'herstel: for _ronde in 0..24 {
         let zijden = dt.zijden();
         let mut ontbreekt = false;
         for (knopen, _, _) in lussen.iter_mut() {
@@ -694,6 +711,17 @@ pub fn genereer(d: &Doorsnede, h: f64) -> Mesh2D {
                 let sleutel = ((a + 3).min(b + 3), (a + 3).max(b + 3));
                 if !zijden.contains(&sleutel) {
                     ontbreekt = true;
+                    if invoegingen >= max_invoegingen {
+                        randherstel_onvolledig = true;
+                        // De lus die nu half is herschreven, afmaken zonder
+                        // nieuwe punten, en daarna stoppen.
+                        for &rest in &knopen[i + 1..] {
+                            nieuw.push(rest);
+                        }
+                        *knopen = nieuw;
+                        break 'herstel;
+                    }
+                    invoegingen += 1;
                     let (pa, pb) = (genorm_of(&dt, a), genorm_of(&dt, b));
                     let m = [0.5 * (pa[0] + pb[0]), 0.5 * (pa[1] + pb[1])];
                     let idx = dt.nieuw_punt(m);
@@ -787,7 +815,7 @@ pub fn genereer(d: &Doorsnede, h: f64) -> Mesh2D {
         })
         .collect();
 
-    let mut mesh = Mesh2D { punten: nieuwe_punten, driehoeken, lussen, h_mm: h };
+    let mut mesh = Mesh2D { punten: nieuwe_punten, driehoeken, lussen, h_mm: h, randherstel_onvolledig };
     let op_rand: HashSet<u32> = mesh.lussen.iter().flat_map(|l| l.knopen.iter().copied()).collect();
     strijk_glad(&mut mesh, &op_rand, 4);
     mesh
