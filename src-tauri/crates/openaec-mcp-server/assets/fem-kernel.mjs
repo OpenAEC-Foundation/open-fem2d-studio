@@ -5542,8 +5542,20 @@ var ANALYSETYPE_OMSCHRIJVING = {
   tweedeOrdeGeometrisch: "Tweede orde, geometrisch niet-lineair (P-\u0394): elke combinatie wordt met gefactoreerde lasten en geometrische stijfheid apart opgelost.",
   tweedeOrdeFysisch: "Tweede orde, geometrisch \xE9n fysisch niet-lineair: als P-\u0394, maar de betonstaven krijgen per segment de secans-EI uit de rekenkern (NEN-EN 1992-1-1 5.8.6). Zonder betonstaven m\xE9t wapeningskorf is de uitkomst gelijk aan 2e orde (P-\u0394)."
 };
+var AnalysetypeOnbekendFout = class extends Error {
+  constructor(gelezen) {
+    super(
+      `Het bestand noemt analysetype "${gelezen}"; deze versie kent ` + ANALYSETYPEN.map((a) => `"${a}"`).join(", ") + ". Er wordt niet geraden welke van de drie bedoeld is: dat zou een andere berekening opleveren dan er bewaard is, met het etiket van een berekening die niet gedraaid heeft."
+    );
+    this.gelezen = gelezen;
+    this.name = "AnalysetypeOnbekendFout";
+  }
+};
 function analysetypeUitBestand(analysetype, nonlinearEnabled) {
-  if (analysetype !== void 0 && ANALYSETYPEN.includes(analysetype)) {
+  if (analysetype !== void 0 && analysetype !== null && analysetype !== "") {
+    if (!ANALYSETYPEN.includes(analysetype)) {
+      throw new AnalysetypeOnbekendFout(analysetype);
+    }
     return analysetype;
   }
   return nonlinearEnabled ? "tweedeOrdeGeometrisch" : "eersteOrde";
@@ -19091,21 +19103,46 @@ function kenmerkUitBestand(raw) {
     gevolgklasse: k.gevolgklasse
   };
 }
+var ProjectBestandFout = class extends Error {
+  constructor(redenen) {
+    super(redenen.join(" "));
+    this.redenen = redenen;
+    this.name = "ProjectBestandFout";
+  }
+};
 function combinationsFromFile(raw) {
   if (!Array.isArray(raw)) return void 0;
-  return raw.map((c) => {
+  const redenen = [];
+  const uit = raw.map((c, i) => {
     const standaard = kenmerkUitBestand(c.standaard);
+    const naam = `combinatie ${c.name ?? `#${i + 1}`} (id ${c.id})`;
+    if (c.type !== "uls" && c.type !== "sls") {
+      redenen.push(
+        `In ${naam} staat type ${JSON.stringify(c.type)}; alleen "uls" (uiterste grenstoestand) en "sls" (bruikbaarheid) bestaan. Er wordt niet geraden: het verschil bepaalt of de combinatie in de sterktetoets of in de doorbuigingstoets terechtkomt.`
+      );
+    }
+    const factors = /* @__PURE__ */ new Map();
+    for (const [caseId, f] of Object.entries(c.factors ?? {})) {
+      const getal4 = typeof f === "number" ? f : Number(f);
+      if (!Number.isFinite(getal4)) {
+        redenen.push(
+          `In ${naam} is de factor van belastinggeval ${caseId} ${JSON.stringify(f)}; dat is geen getal. Een decimale KOMMA hoort een punt te zijn (1.5, niet 1,5); anders zou er met NaN gerekend worden en zou de hele combinatie leeg uitkomen.`
+        );
+        continue;
+      }
+      factors.set(Number(caseId), getal4);
+    }
     return {
       id: c.id,
       name: c.name,
       type: c.type === "sls" ? "sls" : "uls",
       formula: c.formula ?? "",
-      factors: new Map(
-        Object.entries(c.factors ?? {}).map(([caseId, f]) => [Number(caseId), Number(f)])
-      ),
+      factors,
       ...standaard ? { standaard } : {}
     };
   });
+  if (redenen.length > 0) throw new ProjectBestandFout(redenen);
+  return uit;
 }
 function serializeProject(state) {
   const file = {
@@ -19116,6 +19153,40 @@ function serializeProject(state) {
   };
   return JSON.stringify(file, null, 2);
 }
+var VERPLICHTE_LIJSTEN = [
+  "nodes",
+  "beams",
+  "supports",
+  "plates",
+  "loads",
+  "loadCases"
+];
+var BEKENDE_TOPVELDEN = [
+  "format",
+  "version",
+  "savedAt",
+  ...VERPLICHTE_LIJSTEN,
+  "activeLoadCaseId",
+  "selfWeightEnabled",
+  "nonlinearEnabled",
+  "analysetype",
+  "betonSegmentLengteMm",
+  "combinations",
+  "idTellers",
+  "combinatiesVervangenBijOpenen",
+  "structuralGrid",
+  "scheefstandEnabled",
+  "scheefstandNoemer",
+  "scheefstandRichting",
+  "scheefstandBron",
+  "scheefstandHoogteM",
+  "scheefstandAantalElementen",
+  "eigenDoorsneden",
+  "eigenCltOpbouwen",
+  "projectInfo",
+  "windInstellingen",
+  "rapport"
+];
 function deserializeProject(text) {
   const parsed = JSON.parse(text);
   if (parsed.format !== "open-fem2d-studio-v2") {
@@ -19127,6 +19198,17 @@ function deserializeProject(text) {
   if (parsed.version > PROJECT_FORMAT_VERSION) {
     throw new Error(`Bestand is opgeslagen met nieuwere versie (${parsed.version}) \u2014 werk je app bij`);
   }
+  const redenen = [];
+  for (const veld of VERPLICHTE_LIJSTEN) {
+    if (!Array.isArray(parsed[veld])) {
+      redenen.push(
+        `Het bestand mist de lijst \`${veld}\`` + (parsed[veld] === void 0 ? "" : ` (er staat ${JSON.stringify(parsed[veld])})`) + ". Elk projectbestand draagt nodes, beams, supports, plates, loads en loadCases; een lege lijst mag, het veld weglaten niet."
+      );
+    }
+  }
+  if (redenen.length > 0) throw new ProjectBestandFout(redenen);
+  analysetypeUitBestand(parsed.analysetype, parsed.nonlinearEnabled);
+  combinationsFromFile(parsed.combinations);
   return parsed;
 }
 
@@ -19431,7 +19513,16 @@ var BEAM_VELDEN = [
   // Eindprofiel van een verlopende staaf (ontwerp 15 september 2026, §4.1);
   // `profile` is dan het beginprofiel. Zelfde spiegel in `schema_beams`
   // (openaec-mcp-server/src/fem_tools.rs), bewaakt door een Rust-test.
-  "profileEnd"
+  "profileEnd",
+  // Verende aansluiting (`BeamEindVeren`) en staaf op bedding (`BeamBedding`).
+  // Allebei schrijft de app ze in het projectbestand en rekent de kern ermee;
+  // ze stonden hier niet, dus een geldig model met een verende aansluiting of
+  // een staaf op bedding — de referentie R26 — werd langs de MCP-weg en de
+  // toetsbrug geweigerd met "onbekend veld". Dat is de omgekeerde fout van
+  // waar deze lijst voor is: niet een tikfout tegenhouden, maar een geldig
+  // model weigeren, waarna de drie wegen verschillende antwoorden geven.
+  "veren",
+  "bedding"
 ];
 var RELEASE_VELDEN = [
   "startTx",
@@ -19440,6 +19531,30 @@ var RELEASE_VELDEN = [
   "endTx",
   "endTz",
   "endRy"
+];
+var VEER_VELDEN = [
+  "startTx",
+  "startTz",
+  "startRy",
+  "endTx",
+  "endTz",
+  "endRy"
+];
+var BEDDING_VELDEN = ["k", "b"];
+var ZONE_LANGS_VELDEN = [
+  "side",
+  "row",
+  "x_start_mm",
+  "x_end_mm",
+  "bar_shape",
+  "casting_position"
+];
+var ZONE_BEUGEL_VELDEN = [
+  "x_start_mm",
+  "x_end_mm",
+  "spacing_mm",
+  "legs",
+  "diameter_mm"
 ];
 var CHECKCONFIG_VELDEN = [
   "bucklingLengthY_m",
@@ -19460,6 +19575,10 @@ var CHECKCONFIG_VELDEN = [
   "betonStaaltak",
   "betonKolom",
   "spanningSigmaZ",
+  // De wapeningszones per stuk (`ReinforcementZones`, §9.2.1.3 en §9.2.2). De
+  // korfeditor schrijft ze en `betonCheckBuilder` leest ze; ze stonden hier
+  // niet, dus elke betonstaaf met zones werd langs de MCP-weg geweigerd.
+  "betonZones",
   // De kipsteunafstand van hout (EN 1995-1-1 art. 6.3.3). De UI schrijft hem
   // weg en `timberCheckBuilder` leest hem, maar hij stond hier niet: elk
   // houtmodel met een kipsteunafstand werd langs de MCP-weg geweigerd.
@@ -19674,6 +19793,106 @@ function keurGetal(waarde, pad, fouten, { positief = false } = {}) {
     fouten.push(`${pad}: moet groter dan nul zijn, maar is ${waarde}.`);
   }
 }
+function keurVeren(waarde, pad, fouten) {
+  if (waarde === void 0) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object met veerstijfheden per staafeinde zijn.`);
+    return;
+  }
+  keurVelden(waarde, VEER_VELDEN, pad, fouten);
+  for (const veld of VEER_VELDEN) {
+    const v = waarde[veld];
+    if (v === void 0 || v === null) continue;
+    if (!isGetal(v) || v <= 0) {
+      fouten.push(
+        `${pad}.${veld}: moet een getal > 0 zijn (kN/mm, of kNm/rad bij een rotatieveer), maar is ${JSON.stringify(v)}. Laat het veld WEG als er geen veer is; een veer met stijfheid nul is een scharnier en hoort in \`releases\`.`
+      );
+    }
+  }
+}
+function keurBedding(waarde, pad, fouten) {
+  if (waarde === void 0) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object met \`k\` (kN/m\xB3) en \`b\` (mm) zijn.`);
+    return;
+  }
+  keurVelden(waarde, BEDDING_VELDEN, pad, fouten);
+  for (const veld of BEDDING_VELDEN) {
+    if (waarde[veld] === void 0) {
+      fouten.push(
+        `${pad}.${veld} ontbreekt; een bedding heeft zowel de beddingsconstante \`k\` (kN/m\xB3) als de contactbreedte \`b\` (mm) nodig.`
+      );
+      continue;
+    }
+    keurGetal(waarde[veld], `${pad}.${veld}`, fouten, { positief: true });
+  }
+}
+function keurZones(waarde, pad, fouten) {
+  if (waarde === void 0) return;
+  if (!isObject(waarde)) {
+    fouten.push(`${pad}: moet een object met \`longitudinal\` en \`stirrups\` zijn.`);
+    return;
+  }
+  keurVelden(waarde, ["longitudinal", "stirrups"], pad, fouten);
+  for (const lijst of ["longitudinal", "stirrups"]) {
+    const zones = waarde[lijst];
+    if (zones === void 0) continue;
+    if (!Array.isArray(zones)) {
+      fouten.push(`${pad}.${lijst}: moet een array zijn.`);
+      continue;
+    }
+    zones.forEach((z, i) => {
+      const zpad = `${pad}.${lijst}[${i}]`;
+      if (!isObject(z)) return void fouten.push(`${zpad}: moet een object zijn.`);
+      keurVelden(
+        z,
+        lijst === "longitudinal" ? ZONE_LANGS_VELDEN : ZONE_BEUGEL_VELDEN,
+        zpad,
+        fouten
+      );
+      for (const veld of ["x_start_mm", "x_end_mm"]) {
+        if (z[veld] === void 0) {
+          fouten.push(`${zpad}.${veld} ontbreekt; een zone heeft een begin en een einde.`);
+        } else {
+          keurGetal(z[veld], `${zpad}.${veld}`, fouten);
+        }
+      }
+      if (isGetal(z.x_start_mm) && isGetal(z.x_end_mm) && !(z.x_start_mm < z.x_end_mm)) {
+        fouten.push(
+          `${zpad}: de zone begint niet v\xF3\xF3r zijn einde (x_start_mm ${z.x_start_mm}, x_end_mm ${z.x_end_mm}). Een lege of omgekeerde zone is geen wapening.`
+        );
+      }
+      if (lijst === "longitudinal") {
+        keurEnum(z.side, ["Bottom", "Top"], `${zpad}.side`, fouten);
+        keurEnum(z.bar_shape, ["Recht", "AndersDanRecht"], `${zpad}.bar_shape`, fouten);
+        keurEnum(
+          z.casting_position,
+          ["Onderzijde", "Bovenzijde", "Glijbekisting", "GoedAangetoond"],
+          `${zpad}.casting_position`,
+          fouten
+        );
+        const rij = z.row;
+        if (rij === void 0) {
+          fouten.push(`${zpad}.row ontbreekt; een langswapeningszone heeft aantal en diameter nodig.`);
+        } else if (!isObject(rij)) {
+          fouten.push(`${zpad}.row: moet een object met \`count\` en \`diameter_mm\` zijn.`);
+        } else {
+          keurVelden(rij, ["count", "diameter_mm"], `${zpad}.row`, fouten);
+          keurGetal(rij.count, `${zpad}.row.count`, fouten, { positief: true });
+          keurGetal(rij.diameter_mm, `${zpad}.row.diameter_mm`, fouten, { positief: true });
+        }
+      } else {
+        for (const veld of ["spacing_mm", "legs", "diameter_mm"]) {
+          if (z[veld] === void 0) {
+            fouten.push(`${zpad}.${veld} ontbreekt; een beugelzone heeft afstand, benen en diameter nodig.`);
+          } else {
+            keurGetal(z[veld], `${zpad}.${veld}`, fouten, { positief: true });
+          }
+        }
+      }
+    });
+  }
+}
 function keurKorf(waarde, pad, fouten) {
   if (waarde === void 0) return;
   if (!isObject(waarde)) {
@@ -19827,6 +20046,7 @@ function keurCheckConfig(waarde, cpad) {
   keurGetal(cc.betonStroken, `${cpad}.betonStroken`, fouten, { positief: true });
   keurGetal(cc.spanningSigmaZ, `${cpad}.spanningSigmaZ`, fouten);
   keurKorf(cc.betonKorf, `${cpad}.betonKorf`, fouten);
+  keurZones(cc.betonZones, `${cpad}.betonZones`, fouten);
   keurKolom(cc.betonKolom, `${cpad}.betonKolom`, fouten);
   return fouten;
 }
@@ -19895,6 +20115,8 @@ function controleerVelden(rauw) {
         }
       }
     }
+    keurVeren(b.veren, `${pad}.veren`, fouten);
+    keurBedding(b.bedding, `${pad}.bedding`, fouten);
     if (b.checkConfig !== void 0) {
       fouten.push(...keurCheckConfig(b.checkConfig, `${pad}.checkConfig`));
     }
@@ -20688,6 +20910,15 @@ function leesScheefstand(rauw, model, opgegevenNoemer) {
 function alsGevolgklasse(x) {
   return GEVOLGKLASSEN.includes(x) ? x : null;
 }
+function leesAnalysetype(waarde) {
+  if (waarde === void 0 || waarde === null) return null;
+  if (typeof waarde !== "string" || !ANALYSETYPEN.includes(waarde)) {
+    throw new InvoerFout(
+      `\`analysetype\` is ${JSON.stringify(waarde)}; bekend zijn ` + ANALYSETYPEN.map((a) => `"${a}"`).join(", ") + ". Een onbekend analysetype wordt geweigerd, niet stil als tweede orde gerekend."
+    );
+  }
+  return waarde;
+}
 function leesModel(payload) {
   const heeftModel = payload.model !== void 0;
   const heeftProject = payload.project !== void 0;
@@ -20736,6 +20967,7 @@ function leesModel(payload) {
       beams: bestand.beams ?? [],
       combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
       nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
+      analysetypeUitBestand: leesAnalysetype(bestand.analysetype),
       formatVersion: bestand.version,
       gevolgklasseUitBestand: alsGevolgklasse(
         bestand.projectInfo?.uitgangspunten?.gevolgklasse
@@ -20781,6 +21013,7 @@ function leesModel(payload) {
     beams,
     combinatiesUitBestand: null,
     nonlinearUitBestand: null,
+    analysetypeUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
     idTellersUitBestand: void 0,
@@ -20993,7 +21226,13 @@ function rekenDoor(payload) {
     gelezen.model.scheefstandRichting
   );
   const profileDb = leesProfielen(payload);
-  const nonlinear = gelezen.nonlinearUitBestand !== null ? gelezen.nonlinearUitBestand : payload.nonlinear === true;
+  const analysetype = gelezen.analysetypeUitBestand !== null ? gelezen.analysetypeUitBestand : gelezen.nonlinearUitBestand !== null ? gelezen.nonlinearUitBestand ? "tweedeOrdeGeometrisch" : "eersteOrde" : payload.nonlinear === true ? "tweedeOrdeGeometrisch" : "eersteOrde";
+  if (analysetype === "tweedeOrdeFysisch") {
+    throw new InvoerFout(
+      'Het projectbestand staat op "2e orde + fysisch" (tweedeOrdeFysisch): de betonstaven krijgen daarbij per segment de secans-EI uit de betonkern (NEN-EN 1992-1-1 5.8.6). Die lus draait alleen in de app en niet langs deze weg. Er wordt NIET stil als geometrische tweede orde gerekend; zet het analysetype op "tweedeOrdeGeometrisch" als dat de bedoeling is.'
+    );
+  }
+  const nonlinear = analysetype !== "eersteOrde";
   const detail = payload.detail ?? "samenvatting";
   if (detail !== "samenvatting" && detail !== "stations") {
     throw new InvoerFout(
@@ -21021,7 +21260,6 @@ function rekenDoor(payload) {
     throw new ModelFout(String(err?.message ?? err));
   }
   const solveMs = Date.now() - start;
-  const analysetype = nonlinear ? "tweedeOrdeGeometrisch" : "eersteOrde";
   const stabiliteit = bepaalAlphaCr(multiInput, combinaties, combinationResults);
   const stabiliteitMeldingen = stabiliteitsMeldingen(
     stabiliteit,
@@ -21305,6 +21543,9 @@ function opLoadProject(payload) {
     combinations_source: bron,
     gevolgklasse: klasse.klasse,
     nonlinear_enabled: gelezen.nonlinearUitBestand,
+    // Het analysetype zoals het bestand het draagt; `null` bij een bestand van
+    // vóór het veld (dan telt `nonlinear_enabled`) en bij een los model.
+    analysetype: gelezen.analysetypeUitBestand,
     counts: {
       nodes: m.nodes.length,
       beams: m.beams.length,
@@ -21423,6 +21664,7 @@ export {
   ANALYSETYPEN,
   ANALYSETYPE_LABEL,
   ANALYSETYPE_OMSCHRIJVING,
+  AnalysetypeOnbekendFout,
   BEAM_LOAD_ROLES,
   BEAM_LOAD_ROLE_LABEL,
   CONCRETE_E_CM,
