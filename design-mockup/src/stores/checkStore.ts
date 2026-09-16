@@ -63,6 +63,7 @@ import {
 import { buildSpanningCheckInputs } from "../lib/spanningCheckBuilder";
 import { isVrijMateriaal } from "../lib/vrijMateriaal";
 import type { NationaleBijlageCode } from "../lib/normAanduidingen";
+import { kolomMetKruipcoefficient } from "../lib/kruipcoefficient";
 
 /**
  * Roep de Rust-rekenkern aan, waar de app ook draait.
@@ -171,6 +172,14 @@ export interface CheckRunData {
    * orde onder de grens een kanttekening mee bij elke op druk belaste staaf.
    */
   stabiliteit?: StabiliteitVoorToets;
+  /**
+   * De kruipcoëfficiënt φ(∞,t₀) van het PROJECT (art. 3.1.4), dezelfde waarde
+   * die de fysisch niet-lineaire lus als `standaardPhiInfT0` krijgt. De
+   * kolomtoets gebruikt hem voor elke staaf met een §5.8-blok zonder eigen
+   * waarde (`korvenUitStaven`), zodat de gebruiker φ niet twee keer opgeeft.
+   * `undefined` = niet opgegeven; de kern meldt dat dan.
+   */
+  standaardPhiInfT0?: number;
 }
 
 interface CheckState {
@@ -278,7 +287,15 @@ export async function getConcreteClasses(): Promise<string[]> {
  * niet in deze map en wordt door de betonbouwer met reden overgeslagen —
  * er is geen stille standaardkorf.
  */
-export function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
+export function korvenUitStaven(
+  beams: Beam[],
+  /**
+   * φ(∞,t₀) van het project (art. 3.1.4). Vult `phi_inf_t0` van het §5.8-blok
+   * aan waar de staaf zelf geen waarde heeft — dezelfde voorrangsregel als de
+   * BGT-stijfheidslus, uit `lib/kruipcoefficient.ts`.
+   */
+  standaardPhiInfT0?: number | null,
+): Map<number, BetonStaafConfig> {
   const korven = new Map<number, BetonStaafConfig>();
   for (const b of beams) {
     const cfg = b.checkConfig;
@@ -296,8 +313,10 @@ export function korvenUitStaven(beams: Beam[]): Map<number, BetonStaafConfig> {
       // §5.8. Het blok gaat als GEHEEL door naar de bouwer en van daar naar de
       // kern; hier wordt het niet uitgepakt. Ontbreekt het, dan blijft het
       // `undefined` en meldt de kern dat §5.8 niet is getoetst — met de reden,
-      // en zonder een aangenomen schoring of kniklengte.
-      kolom: cfg.betonKolom,
+      // en zonder een aangenomen schoring of kniklengte. Alleen φ(∞,t₀) wordt
+      // aangevuld met de projectwaarde als de staaf er zelf geen heeft; zonder
+      // blok maakt de projectwaarde van de staaf geen kolom.
+      kolom: kolomMetKruipcoefficient(cfg.betonKolom, standaardPhiInfT0),
     });
   }
   return korven;
@@ -357,7 +376,7 @@ export const useCheckStore = create<CheckState>((set) => ({
       const beffUitkomsten = await bepaalBeffPerStaaf(data, roepKern);
       const beton = buildBetonCheckInputs({
         ...data,
-        korven: korvenUitStaven(data.beams),
+        korven: korvenUitStaven(data.beams, data.standaardPhiInfT0),
         supportedClasses: concreteClasses,
         bEffPerStaaf: bEffWaardenPerStaaf(beffUitkomsten),
       });

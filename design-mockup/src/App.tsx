@@ -1503,6 +1503,10 @@ function App() {
         alphaCr: opts?.outputs?.stabiliteit ?? fem.stabiliteit ?? [],
         scheefstandAan: fem.scheefstandEnabled,
       },
+      // φ(∞,t₀) van het project, dezelfde bron als `standaardPhiInfT0` van de
+      // fysisch niet-lineaire lus: de kolomtoets (§5.8.3.1 A, §5.8.4 (5.19))
+      // leest hem voor elke staaf zonder eigen waarde in het §5.8-blok.
+      standaardPhiInfT0: fem.betonKruipcoefficient ?? undefined,
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 

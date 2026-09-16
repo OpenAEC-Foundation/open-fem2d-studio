@@ -32,6 +32,15 @@ tweede_orde_verwaarloosbaar?: boolean,
  */
 phi_ef?: number, 
 /**
+ * φ_ef om de z-as zoals in de algemene methode voor e₂ gebruikt: 0 als
+ * §5.8.4(4) dat toestaat, anders (5.19) of — zonder quasi-blijvende
+ * combinatie — φ(∞,t₀) als bovengrens. `None` = onbekend omdat φ(∞,t₀)
+ * niet is opgegeven; moet e₂ om z worden meegenomen, dan zijn ook
+ * `e_2_z_mm`, `m_edz_knm` en `interactie_5_39` `None` en zeggen de
+ * toetsen waarom.
+ */
+phi_ef_z?: number, 
+/**
  * λ_z = l₀,z/i_z om de z-as. `None` als de tweede as niet kon.
  */
 lambda_z?: number, 

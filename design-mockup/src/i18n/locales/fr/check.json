@@ -845,7 +845,7 @@
       "l0Custom": "saisir l₀ manuellement…",
       "l0Info": "l₀ = {{l0}} m pour une longueur libre l = {{l}} m.",
       "casesFgHint": "Les cas f) et g) de la figure 5.7 — encastrement partiel — ne sont pas proposés : ils nécessitent la souplesse relative k = (θ/M)·(EI/l) de chaque extrémité de barre, qui ne peut pas être lue dans un modèle de portique. Calculez (5.15) ou (5.16) vous-même puis choisissez « saisir l₀ manuellement ».",
-      "phiHint": "Valeur finale du coefficient de fluage selon l'art. 3.1.4. Vide = non renseigné ; l'art. 3.1.4 n'est pas calculé ici, car il nécessite l'humidité relative, le rayon moyen h₀, la classe de ciment et l'âge t₀ au premier chargement. Sans cette valeur, φ_ef reste inconnu et 5.8.3.1(1) utilise A = 0,7 — ce n'est pas le côté de la sécurité mais la valeur pour φ_ef ≈ 2,14. Autour de l'axe z, e₂ est alors déterminé sans fluage, ce que le rapport signale également.",
+      "phiHint": "Valeur finale du coefficient de fluage selon l'art. 3.1.4. Vide = non renseigné ; l'art. 3.1.4 n'est pas calculé ici, car il nécessite l'humidité relative, le rayon moyen h₀, la classe de ciment et l'âge t₀ au premier chargement. Vide = la valeur de projet de φ(∞,t₀) s'applique. Si elle manque aussi, φ_ef reste inconnu : 5.8.3.1(1) utilise alors A = 0,7 — pas le côté de la sécurité mais la valeur pour φ_ef ≈ 2,14 — et autour de l'axe z le moment n'est pas validé tant que e₂ compte (5.8.4(1)P). Si φ(∞,t₀) est connu mais la combinaison quasi permanente manque, φ(∞,t₀) sert de borne supérieure de φ_ef.",
       "zAxisHeader": "Autour de l'axe z (perpendiculaire au plan) — art. 5.8.9",
       "bracingZ": "Contreventement autour de z",
       "sameAsPlaneWith": "— identique au plan ({{schoring}}) —",

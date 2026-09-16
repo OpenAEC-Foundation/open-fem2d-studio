@@ -59,7 +59,11 @@ buckling_length: Kniklengtekeuze,
  * cementklasse en de ouderdom t₀ bij eerste belasting, geen van alle
  * invoer van een raamwerkmodel. Zonder φ(∞,t₀) blijft φ_ef onbekend en
  * staat §5.8.3.1(1) A = 0,7 toe; dat is GEEN veilige kant maar de waarde
- * bij φ_ef ≈ 2,14, en dat wordt gemeld.
+ * bij φ_ef ≈ 2,14, en dat wordt gemeld. Om de z-as, waar deze toets e₂
+ * zelf bepaalt, geeft de norm voor φ_ef geen standaardwaarde (§5.8.4(1)P,
+ * §5.8.6(4)); telt e₂ daar mee, dan wordt het moment om z zonder φ(∞,t₀)
+ * niet goedgekeurd. In de app vult de projectwaarde dit veld aan als de
+ * staaf zelf geen waarde heeft (`lib/kruipcoefficient.ts`).
  */
 phi_inf_t0?: number, 
 /**

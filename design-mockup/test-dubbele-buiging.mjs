@@ -200,7 +200,12 @@ if (!existsSync(TOETSBRUG)) {
       top: { count: 2, diameter_mm: 16 }, bottom: { count: 2, diameter_mm: 16 },
     },
     length_m: l_m,
-    column: { bracing: "Geschoord", buckling_length: A, ...kolom },
+    // φ(∞,t₀) = 0 UITDRUKKELIJK OPGEGEVEN. Deze handberekeningen zijn zonder
+    // kruip afgeleid. Zonder φ(∞,t₀) wordt e₂ om z niet meer stil met φ_ef = 0
+    // bepaald (art. 5.8.4(1)P): dan is het moment om z een ondergrens en keurt
+    // de kern het niet goed. "Geen kruip" (0) is een opgegeven waarde, "niet
+    // opgegeven" niet; het gedrag zonder waarde staat in test-kolomtoets.mjs.
+    column: { bracing: "Geschoord", buckling_length: A, phi_inf_t0: 0, ...kolom },
     forces_envelope: [0, l_m * 500, l_m * 1000].map((x) => ({
       combination_id: 1, position_mm: x,
       forces: { n_ed: -n_kn, vy_ed: 0, vz_ed: 0, mt_ed: 0, my_ed: my, mz_ed: mz },

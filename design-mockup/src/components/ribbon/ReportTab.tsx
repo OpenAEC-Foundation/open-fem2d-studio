@@ -179,7 +179,7 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting }
             beams: lastRunData.beams,
             combinations: lastRunData.combinations,
             combinationResults: lastRunData.combinationResults,
-            korven: korvenUitStaven(lastRunData.beams),
+            korven: korvenUitStaven(lastRunData.beams, lastRunData.standaardPhiInfT0),
             supportedClasses: await getConcreteClasses(),
             bEffPerStaaf: bEffWaardenPerStaaf(beff),
           });
