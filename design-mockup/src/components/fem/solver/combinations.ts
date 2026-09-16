@@ -212,7 +212,9 @@ export interface Envelope {
  * uiterlijk van de constructie. In DEZE app is dat concreet:
  *
  *   6.14 karakteristiek  → de doorbuigingstoets van staal én hout
- *                          (steelCheckBuilder, timberCheckBuilder)
+ *                          (steelCheckBuilder, timberCheckBuilder), en bij
+ *                          een verticale stalen staaf de zijdelingse eis
+ *                          van NEN-EN 1990 A1.4.3(7)
  *   6.15 frequent        → de SCHEURBEHEERSING van beton, §7.3
  *                          (betonCheckBuilder → `sls_frequent_envelope`).
  *                          Tot september 2026 las geen enkele toets deze
@@ -225,10 +227,19 @@ export interface Envelope {
  *                          (`deflection_quasi_perm_mm`) en, via de BGT-tak met
  *                          tension stiffening, de betonstijfheid
  *
- * Staat er alleen staal in het model, dan leveren deze twee combinaties dus
- * rekentijd, tabelkolommen en rapportregels op waar niets mee gedaan wordt.
- * `selecteerCombinaties` (lib/combinatieSelectie.ts) laat ze dan weg — met
- * zichtbare reden, en uitsluitend zolang ze ONGEWIJZIGD zijn.
+ * MAAR OOK STAAL LEEST 6.15 EN 6.16 zodra een staaf de vloer- of dakeis
+ * krijgt: A1.4.3(3) meet w₂ + w₃ van een vloer bij de frequente combinatie en
+ * A1.4.3(4) w_max bij de quasi-blijvende, "bij zowel vloeren als daken" — los
+ * van kruip. De staalbouwer weegt alle drie de uitdrukkingen. Tot september
+ * 2026 (issue #10) stond hier dat staal ze nooit leest; daardoor viel in een
+ * stalen ligger de quasi-blijvende combinatie met ψ₂·Q weg.
+ *
+ * Alleen een model met UITSLUITEND staal en UITSLUITEND overwegend verticale
+ * staven zonder gekozen doorbuigingsklasse (zijdelingse eis, A1.4.3(7))
+ * levert met deze twee combinaties dus rekentijd, tabelkolommen en
+ * rapportregels op waar niets mee gedaan wordt. `selecteerCombinaties`
+ * (lib/combinatieSelectie.ts) laat ze dan weg — met zichtbare reden, en
+ * uitsluitend zolang ze ONGEWIJZIGD zijn.
  *
  * MET ÉÉN UITZONDERING, sinds september 2026: de opstelling van 6.16b zonder
  * veranderlijke gevallen is "alleen de blijvende belasting", en daar leest de

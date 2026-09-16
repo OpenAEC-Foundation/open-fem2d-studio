@@ -858,8 +858,11 @@ function rekenDoor(payload: Record<string, unknown>) {
   const combinatieBron = gelezenCombinaties.bron;
   const alleCombinaties = gelezenCombinaties.lijst;
   // Dezelfde selectie als de app (lib/combinatieSelectie): bij een zuivere
-  // staalconstructie vallen de ongewijzigde standaardcombinaties 6.15b en
-  // 6.16b af, want geen enkele staaltoets leest ze. Dat gebeurt HIER en niet
+  // staalconstructie waarin geen staaf een vloer- of dakeis krijgt (alleen
+  // overwegend verticale staven zonder doorbuigingsklasse) vallen de
+  // ongewijzigde standaardcombinaties 6.15b en 6.16b af, want geen enkele
+  // staaltoets leest ze dan. De knopen gaan mee: zonder knopen is de stand
+  // van een staaf niet te zien en blijft alles staan. Dat gebeurt HIER en niet
   // in de app-laag, zodat een MCP-solve niet meer combinaties oplevert dan de
   // app toont — hetzelfde model hoort langs elke weg hetzelfde antwoord te
   // geven. Wat er wegvalt staat in `combinations_skipped` en in `warnings`.
@@ -867,7 +870,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     alleCombinaties,
     gelezen.beams,
     gelezen.model.plates,
-    { loadCases: gelezen.model.loadCases, gevolgklasse },
+    { loadCases: gelezen.model.loadCases, gevolgklasse, nodes: gelezen.model.nodes },
   );
   // Met een scheefstand elke combinatie in twee varianten, één per richting —
   // dezelfde ontvouwing als de app (basisaudit nr 28).
@@ -1282,7 +1285,7 @@ function opValidate(payload: Record<string, unknown>) {
   const { klasse } = leesGevolgklasse(payload, gelezen);
   const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse);
   const actief = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
-    loadCases: gelezen.model.loadCases, gevolgklasse: klasse,
+    loadCases: gelezen.model.loadCases, gevolgklasse: klasse, nodes: gelezen.model.nodes,
   }).actief;
   const uitkomst = valideerModel(gelezen.rauw, {
     combinaties: actief, alleCombinaties: lijst, gevolgklasse: klasse,

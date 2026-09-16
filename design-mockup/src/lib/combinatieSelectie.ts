@@ -6,23 +6,61 @@
  * De standaardset (`normcombinaties.ts`) wordt afgeleid uit de belastinggevallen
  * en de gevolgklasse — niet uit het materiaal: er is op dat moment geen reden
  * om op staal of hout te beslissen. Twee soorten daarin — de frequente (6.15b)
- * en de quasi-blijvende (6.16b) BGT-combinatie — worden bij een zuivere
- * staalconstructie door geen enkele toets gelezen (zie `SOORTEN_BUITEN_STAAL`
- * in solver/combinations.ts). Ze kosten dan rekentijd en vullen de
- * combinatielijst, de resultatentabellen en het rapport met kolommen waar
- * niets mee gedaan wordt.
+ * en de quasi-blijvende (6.16b) BGT-combinatie — worden bij een stalen model
+ * ZONDER vloer- of dakeis door geen enkele toets gelezen (zie
+ * `SOORTEN_BUITEN_STAAL` in solver/combinations.ts). Ze kosten dan rekentijd
+ * en vullen de combinatielijst, de resultatentabellen en het rapport met
+ * kolommen waar niets mee gedaan wordt.
  *
- * 6.15 HEEFT SINDS SEPTEMBER 2026 EEN AFNEMER. Toen deze module werd
- * geschreven las geen enkele toets de frequente combinatie; ze bleef alleen
- * staan omdat een houten of betonnen staaf haar terug zou kunnen vragen.
- * Inmiddels vraagt zij haar werkelijk: §7.3 van EN 1992-1-1 toetst de
+ * WAAROM "ZUIVER STAAL" ALLEEN NIET MEER GENOEG IS (september 2026, issue #10)
+ * Deze module liet 6.15b en 6.16b weg in ELKE zuivere staalconstructie. De
+ * reden stond in de commit die dat invoerde: "de doorbuigingstoets van staal
+ * gebruikt de karakteristieke (6.14)". Staal kent geen kruip, dus van de
+ * quasi-blijvende combinatie leek niets af te hangen. Die reden is achterhaald:
+ * de staalbouwer weegt sinds september 2026 de zakking uit ALLE drie
+ * BGT-uitdrukkingen die NEN-EN 1990 A1.4.3 aanwijst, omdat de norm ze per
+ * criterium voorschrijft, los van kruip:
+ *
+ *  - A1.4.3(3): w₂ + w₃ "bij de frequente belastingscombinatie (uitdrukking
+ *    6.15b)" voor vloeren, "bij de karakteristieke belastingscombinatie
+ *    (uitdrukking 6.14b)" voor overige daken;
+ *  - A1.4.3(4) (EN-tekst): "Indien het uiterlijk van de constructie wordt
+ *    beschouwd, behoort de quasi-blijvende combinatie (uitdrukking 6.16b) te
+ *    zijn gebruikt", met in de NB w_max ≤ ℓ_rep/250 "bij zowel vloeren als
+ *    daken";
+ *  - 6.5.3(2) c): de quasi-blijvende combinatie ΣG + Σψ₂·Q "wordt normaliter
+ *    gebruikt voor langetermijneffecten en voor het uiterlijk van de
+ *    constructie" — dat tweede deel geldt voor staal net zo goed.
+ *
+ * Dat staal geen kruip kent maakt w₂ (het lange-duurdeel) nul, niet de
+ * combinatie overbodig: w_max blijft de zakking onder ΣG + Σψ₂·Q. Viel 6.16b
+ * weg, dan hield de toets alleen "6.16b — zonder Q" over. Gemeten: IPE 200
+ * S235, L = 5000 mm, G = 2,0 kN/m, Q = 3,0 kN/m (categorie A, ψ₂ = 0,3), met
+ * alleen de quasi-blijvende combinaties in de lijst: de toets zag 3,995 mm
+ * (alleen G) waar 5,793 mm (G + 0,3·Q) hoort.
+ *
+ * GEKOZEN: de vraag is nu "vraagt een staaf in dit model een doorbuigingsgrens
+ * die 6.15b of 6.16b leest?". In een zuivere staalconstructie is dat zo zodra
+ * één staaf de vloer-/dakeis van A1.4.3(3)/(4) krijgt — elke staaf behalve een
+ * overwegend verticale zonder gekozen doorbuigingsklasse, die de zijdelingse
+ * eis van A1.4.3(7) krijgt, en die noemt alleen de karakteristieke combinatie.
+ * Dezelfde regel als `bepaalDoorbuigingsInvoer` in de staalbouwer, met
+ * dezelfde functie (`isOverwegendVerticaal`), zodat de selectie nooit een
+ * combinatie weglaat die de toets daarna zoekt. Zonder knopen is niet te zien
+ * of een staaf verticaal staat, en dan blijft alles staan.
+ *
+ * NIET GEKOZEN: alleen 6.16b terugbrengen en 6.15b blijven weglaten. Dan houdt
+ * de w_add-toets van een vloer (A1.4.3(3), frequente combinatie) precies
+ * hetzelfde gat: haalt de gebruiker de karakteristieke combinaties weg, dan
+ * zou w₂ + w₃ stil uit de quasi-blijvende komen, die lichter is.
+ *
+ * 6.15 HEEFT OOK BIJ BETON EEN AFNEMER. §7.3 van EN 1992-1-1 toetst de
  * scheurwijdte van beton onder de FREQUENTE combinatie, want de nationale
  * bijlage bij 7.3.1(5) vervangt tabel 7.1N door een tabel waarvan alle
  * kolommen die combinatie noemen (de EN-tekst noemt daar de quasi-blijvende).
  * Weglaten bij een model MET beton zou dus geen overbodige kolom besparen maar
- * de scheurwijdtetoets kosten — en die zou dan met een reden als "niet
- * uitgevoerd" in het rapport komen. Dat is precies waarom de vraag hier "is
- * ALLES staal" is en niet "zit er hout in".
+ * de scheurwijdtetoets kosten. Dat is waarom de eerste vraag "is ALLES staal"
+ * blijft en niet "zit er hout in".
  *
  * DE OPLOSSING, EN WAAROM HIJ HIER STAAT
  * Deze module is een ZUIVERE functie van (combinaties, staven, platen) naar
@@ -54,7 +92,8 @@
  * haar: zij levert w₁, en zonder w₁ wordt de bijkomende doorbuiging w₂ + w₃
  * gelijk aan de volledige zakking (NEN-EN 1990:2002/NB:2019 A1.4.3(2), figuur
  * NB.1). Die ene opstelling wordt hier daarom nooit overgeslagen; de volledige
- * 6.16b en de frequente 6.15b nog wel.
+ * 6.16b en de frequente 6.15b alleen in een stalen model zonder vloer- of
+ * dakeis (zie hierboven).
  *
  * ALLES WAT NIET AANTOONBAAR STAAL IS, HOUDT ZE
  * De vraag is niet "zit er hout in" maar "is ALLES staal". Een model zonder
@@ -63,7 +102,7 @@
  * gevallen blijven de combinaties staan. Een overbodige combinatie kost
  * rekentijd; een ontbrekende kost een toets.
  */
-import type { Beam, Plate } from "../components/fem/femTypes";
+import type { Beam, Node, Plate } from "../components/fem/femTypes";
 import { PLATE_DEFAULTS } from "../components/fem/femTypes";
 import {
   SOORTEN_BUITEN_STAAL,
@@ -81,6 +120,7 @@ import {
 import { materiaalVanStaaf } from "./variantInvoer";
 import { bepaalPlaatStijfheid } from "./plaatMateriaal";
 import { blijvendeBgtCombinaties } from "./blijvendeZakking";
+import { isOverwegendVerticaal } from "./steelCheckBuilder";
 
 /** Eén combinatie die niet is doorgerekend, met de reden erbij. */
 export interface OvergeslagenCombinatie {
@@ -123,10 +163,14 @@ export function redenZuiverStaal(combo: LoadCombination): string {
       : "de kruipvervorming van hout en de BGT-tak van beton";
   return (
     `"${combo.name}" (NEN-EN 1990 uitdrukking ${uitdrukking}) is niet ` +
-    `doorgerekend: elke staaf in dit model is staal. De doorbuigingstoets van ` +
-    `staal gebruikt de karakteristieke BGT-combinatie (6.14); deze combinatie ` +
-    `voedt ${gebruiker}. Voeg een houten of betonnen staaf toe — of wijzig de ` +
-    `combinatie zelf — en hij wordt weer meegenomen.`
+    `doorgerekend: elke staaf in dit model is staal en staat overwegend ` +
+    `verticaal zonder gekozen doorbuigingsklasse. Zo'n staaf krijgt de ` +
+    `zijdelingse eis van NEN-EN 1990 A1.4.3(7), bij de karakteristieke ` +
+    `BGT-combinatie (6.14b); de vloer- en dakeisen van A1.4.3(3)/(4), die de ` +
+    `frequente en de quasi-blijvende combinatie vragen, gelden hier nergens. ` +
+    `Deze combinatie voedt verder ${gebruiker}. Voeg een ligger, een houten of ` +
+    `betonnen staaf toe, kies bij een staaf een doorbuigingsklasse — of wijzig ` +
+    `de combinatie zelf — en hij wordt weer meegenomen.`
   );
 }
 
@@ -201,6 +245,36 @@ export interface SelectieOpties {
   loadCases?: readonly GevalInvoer[];
   /** De gevolgklasse van het project; ontbreekt → CC2. */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * De knopen van het model: nodig om te zien of een staaf overwegend
+   * verticaal staat (en dus geen vloer-/dakeis krijgt). Ontbreekt dit, dan is
+   * dat niet te zien en blijven 6.15b en 6.16b staan — een overbodige
+   * combinatie kost rekentijd, een ontbrekende een toets.
+   */
+  nodes?: readonly Node[];
+}
+
+/**
+ * Vraagt minstens één staaf een doorbuigingsgrens die de frequente (6.15b) of
+ * de quasi-blijvende (6.16b) combinatie leest?
+ *
+ * Dat is de vloer-/dakeis van NEN-EN 1990:2002/NB:2019 A1.4.3(3)/(4): w₂ + w₃
+ * bij de frequente combinatie voor vloeren (A1.4.3(3)), w_max bij de
+ * quasi-blijvende "bij zowel vloeren als daken" (A1.4.3(4)). Welke staaf die
+ * eis krijgt, beslist `bepaalDoorbuigingsInvoer` in de staalbouwer: elke staaf,
+ * behalve een overwegend verticale zonder gekozen doorbuigingsklasse — die
+ * krijgt de zijdelingse eis van A1.4.3(7), alleen bij de karakteristieke
+ * combinatie. Hier staat letterlijk dezelfde voorwaarde, met dezelfde functie.
+ *
+ * Zonder knopen: `true`. Niet te zien is geen bewijs van "niet nodig".
+ */
+export function vraagtVloerDakEis(beams: Beam[], nodes?: readonly Node[]): boolean {
+  if (!nodes) return true;
+  return beams.some(
+    (b) =>
+      b.checkConfig?.deflectionClass !== undefined ||
+      !isOverwegendVerticaal(b, nodes as Node[]),
+  );
 }
 
 /**
@@ -217,6 +291,11 @@ export function selecteerCombinaties(
   if (!isZuivereStaalconstructie(beams, plates)) {
     return { actief: combinations, overgeslagen: [], redenPerId };
   }
+  // Een stalen staaf met een vloer- of dakeis leest 6.14b, 6.15b én 6.16b
+  // (A1.4.3(3)/(4)); dan valt er niets weg. Zie de kop, en issue #10.
+  if (vraagtVloerDakEis(beams, opties.nodes)) {
+    return { actief: combinations, overgeslagen: [], redenPerId };
+  }
 
   const gevallen = opties.loadCases ?? STANDAARD_BELASTINGGEVALLEN;
   const standaardSet = genereerStandaardCombinaties(
@@ -231,8 +310,9 @@ export function selecteerCombinaties(
   // zij levert w₁, de zakking onder alleen de blijvende belasting, die
   // NEN-EN 1990:2002/NB:2019 A1.4.3(2) van w_tot aftrekt om w₂ + w₃ te krijgen
   // (figuur NB.1). Zou zij hier wegvallen, dan kreeg de w_add-toets de volle
-  // zakking terug — de fout die in september 2026 juist is gerepareerd. De
-  // volledige 6.16b (mét ψ₂·Q) en de frequente 6.15b blijven wél weg.
+  // zakking terug — de fout die in september 2026 juist is gerepareerd. Wie
+  // hier komt is een stalen model ZONDER vloer- of dakeis; alleen daarin
+  // blijven de volledige 6.16b (mét ψ₂·Q) en de frequente 6.15b weg.
   const blijvendeSleutels = new Set(
     blijvendeBgtCombinaties(
       standaardSet.map((c, i) => ({ ...c, id: i + 1 })),

@@ -1435,8 +1435,9 @@ export interface FemStore {
   combinations: LoadCombination[];
   /**
    * De combinaties die dit model werkelijk nodig heeft (afgeleid uit
-   * `combinations` + het model). Bij een zuivere staalconstructie vallen de
-   * ongewijzigde standaardcombinaties 6.15 en 6.16 hier af; zie
+   * `combinations` + het model). Bij een zuivere staalconstructie zonder
+   * vloer- of dakeis (alleen verticale staven) vallen de ongewijzigde
+   * standaardcombinaties 6.15 en 6.16 hier af; zie
    * lib/combinatieSelectie.ts. Alles wat rekent, toetst of resultaten toont
    * gebruikt DEZE lijst — opslaan en bewerken gebruikt `combinations`.
    */
@@ -1956,7 +1957,7 @@ export function useFemStore(opties?: {
   }, [nodes, beams, supports, plates, analysetype]);
   const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
     useMemo(() => {
-      const selectie = selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse });
+      const selectie = selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse, nodes });
       return {
         actief: metEindtoestandVarianten(
           metScheefstandRichtingen(selectie.actief, scheefstandEnabled, scheefstandRichting),
@@ -1964,7 +1965,7 @@ export function useFemStore(opties?: {
         ),
         overgeslagen: selectie.overgeslagen,
       };
-    }, [combinations, beams, plates, loadCases, gevolgklasse, scheefstandEnabled, scheefstandRichting, eindstijfheid]);
+    }, [combinations, beams, plates, nodes, loadCases, gevolgklasse, scheefstandEnabled, scheefstandRichting, eindstijfheid]);
   /**
    * De VOLLEDIGE lijst in dezelfde ontvouwing als `actieveCombinaties` — voor
    * het rapport, dat ook opsomt wat niet is doorgerekend en de resultaten op

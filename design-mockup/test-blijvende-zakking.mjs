@@ -8,8 +8,9 @@
 //       andere factor dan 1,0; en geen belastinggevallen meegegeven.
 //   [4] Staal: dezelfde w₁ in de staalbouwer, en de ZEEG blijft erbuiten.
 //   [5] Staal zonder blijvende combinatie: 0 met notitie.
-//   [6] Een zuivere staalconstructie houdt de blijvende BGT-combinatie in de
-//       selectie (de volledige 6.16b en de frequente 6.15b vallen wél weg).
+//   [6] Een stalen ligger houdt ALLE BGT-combinaties in de selectie, ook de
+//       volledige 6.16b met ψ₂·Q en de frequente 6.15b (issue #10), en de
+//       doorbuigingstoets ziet de quasi-blijvende zakking 5,793 mm.
 //   [7] De MCP-weg (`check_fem_model`): dezelfde getallen voor hout en staal.
 //
 // ── NORM ─────────────────────────────────────────────────────────────────────
@@ -45,6 +46,16 @@
 //     w_add = 9,988 − 3,995 = 5,993 mm → UC = 5,993/15,0 = 0,3995
 //     (vloer: 3/1 000 · ℓ_rep = 15,0 mm, NB A1.4.3(3) tweede streepje)
 //   Met w₁ = 0: UC = 9,988/15,0 = 0,6659.
+//
+// STAAL, QUASI-BLIJVEND (issue #10). Categorie A: ψ₂ = 0,3 (NB tabel
+//   NB.2–A1.1); uitdrukking 6.16b ΣG + Σψ₂·Q = 2,0 + 0,3 · 3,0 = 2,9 kN/m.
+//     w_qp = 5 · 2,9 · 5000⁴ / (384 · 210 000 · 19,4·10⁶)
+//          = 5 · 2,9 · 6,25·10¹⁴ / 1,564416·10¹⁵ = 5,793 mm
+//   Zonder ψ₂·Q (alleen G, wat de selectie in zuiver staal overliet): 3,995 mm.
+//   Staan alleen de quasi-blijvende combinaties in de lijst (de gebruiker
+//   haalde 6.14b en 6.15b weg), dan is 6.16b maatgevend:
+//     w_fin = 5,793 mm → UC = 5,793 / (5000/333) = 0,3858
+//     w_add = 5,793 − 3,995 = 1,798 mm → UC = 1,798 / 15,0 = 0,1199
 //
 // Draaien met: npx tsx test-blijvende-zakking.mjs
 //         of : node scripts/run-tests.mjs --filter=blijvende-zakking
@@ -100,6 +111,7 @@ const hAdd = hFin - hPerm;
 const STAAL = { L: 5000, E: 210000, I: 19.4e6, G: 2.0, Q: 3.0 };
 const sTot = wUniform(STAAL.G + STAAL.Q, STAAL.L, STAAL.E, STAAL.I);
 const sPerm = wUniform(STAAL.G, STAAL.L, STAAL.E, STAAL.I);
+const sQp = wUniform(STAAL.G + 0.3 * STAAL.Q, STAAL.L, STAAL.E, STAAL.I);
 
 // Zelfcontrole van de handwaarden tegen de getallen in de kop.
 dicht("hand hout w_fin = 21,554", hFin, 21.554, 5e-4);
@@ -107,6 +119,7 @@ dicht("hand hout w₁ = 4,193", hPerm, 4.193, 5e-4);
 dicht("hand hout w_add = 17,361", hAdd, 17.361, 5e-4);
 dicht("hand staal w_tot = 9,988", sTot, 9.988, 5e-4);
 dicht("hand staal w₁ = 3,995", sPerm, 3.995, 5e-4);
+dicht("hand staal w_qp = w(2,9) = 5,793", sQp, 5.793, 5e-4);
 
 // ── Modellen en bouwers ─────────────────────────────────────────────────────
 function ligger({ materiaal, profiel, L, G, Q, checkConfig }) {
@@ -128,7 +141,9 @@ function ligger({ materiaal, profiel, L, G, Q, checkConfig }) {
 function reken(m, filter = () => true, extraCombinaties = []) {
   const { perCase } = solveAllCases(bouwMultiInput(m));
   const alle = [...defaultCombinations(m.loadCases), ...extraCombinaties];
-  const sel = selecteerCombinaties(alle, m.beams, m.plates, { loadCases: m.loadCases });
+  // Met de knopen, zoals de store en de sidecar: zonder knopen is niet te
+  // zien of een staaf een vloer- of dakeis krijgt (zie combinatieSelectie).
+  const sel = selecteerCombinaties(alle, m.beams, m.plates, { loadCases: m.loadCases, nodes: m.nodes });
   const combinations = sel.actief.filter(filter);
   const combinationResults = new Map(combinations.map((c) => [c.id, combineResults(c, perCase)]));
   return { perCase, sel, combinations, combinationResults };
@@ -297,15 +312,43 @@ log("\n[5] Staal ZONDER blijvende BGT-combinatie: 0 met melding");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-log("\n[6] Zuivere staalconstructie: de blijvende BGT-combinatie blijft in de selectie");
+log("\n[6] Stalen ligger: de volledige 6.16b (met ψ₂·Q) blijft, en de toets ziet 5,793 mm (issue #10)");
 // ─────────────────────────────────────────────────────────────────────────
+// NEN-EN 1990 A1.4.3(4): "Indien het uiterlijk van de constructie wordt
+// beschouwd, behoort de quasi-blijvende combinatie (uitdrukking 6.16b) te zijn
+// gebruikt"; de NB begrenst w_max daar "bij zowel vloeren als daken". Tot
+// september 2026 liet de selectie die combinatie in een zuivere
+// staalconstructie weg — staal kent geen kruip — en hield alleen G over.
 {
-  const { sel } = staal(staalModel);
+  const { sel, res } = staal(staalModel);
   const namen = sel.actief.map((c) => c.name);
-  const weg = sel.overgeslagen.map((c) => c.naam);
-  ok("'BGT quasi-blijvend 6.16b — zonder Q' blijft actief", namen.includes("BGT quasi-blijvend 6.16b — zonder Q"), namen.join(" | "));
-  ok("de volledige 6.16b valt weg", weg.includes("BGT quasi-blijvend 6.16b"), weg.join(" | "));
-  ok("de frequente 6.15b valt weg", weg.some((n) => /6\.15b/.test(n)));
+  ok("'BGT quasi-blijvend 6.16b' (met ψ₂·Q) blijft actief", namen.includes("BGT quasi-blijvend 6.16b"), namen.join(" | "));
+  ok("'BGT quasi-blijvend 6.16b — zonder Q' blijft actief", namen.includes("BGT quasi-blijvend 6.16b — zonder Q"));
+  ok("de frequente 6.15b blijft actief (A1.4.3(3), w₂ + w₃ van een vloer)", namen.some((n) => /6\.15b/.test(n)));
+  ok("er wordt niets overgeslagen", sel.overgeslagen.length === 0, sel.overgeslagen.map((o) => o.naam).join(" | "));
+
+  // Met de volledige set blijft het veilige maximum maatgevend (6.14b), maar
+  // de quasi-blijvende zakking staat met haar eigen getal in de verantwoording.
+  const inv = res.inputs[0];
+  dicht("met alle combinaties: w = max = 9,988 mm (6.14b)", inv.deflection_actual_max_mm, -sTot, 1e-3);
+  const noot = inv.deflection_notes.find((n) => n.startsWith("w is de grootste zakking"));
+  ok("de verantwoording noemt 'BGT quasi-blijvend 6.16b' met −5,79 mm",
+    /"BGT quasi-blijvend 6\.16b" \(6\.16b\) -5,79 mm/.test(noot ?? ""), (noot ?? "").slice(0, 400));
+
+  // Alleen de quasi-blijvende combinaties in de lijst: dan is 6.16b met ψ₂·Q
+  // maatgevend. Vóór de reparatie zag de toets hier 3,995 mm (alleen G).
+  const alleenQp = (c) => c.type !== "sls" || /quasi-blijvend/.test(c.name);
+  const invQp = staal(staalModel, { filter: alleenQp }).res.inputs[0];
+  dicht("alleen quasi-blijvend: w = w(G + 0,3·Q) = 5,793 mm (was 3,995)", invQp.deflection_actual_max_mm, -sQp, 1e-3);
+  dicht("alleen quasi-blijvend: w₁ = 3,995 mm", invQp.deflection_permanent_mm, -sPerm, 1e-3);
+  if (heeftKern) {
+    const r = kern("check_steel_beams", [invQp])[0];
+    const fin = toets(r, "deflection_w_fin"), add = toets(r, "deflection_w_add");
+    dicht("kern w_fin = 5,793 mm", fin.uc.ed, sQp, 2e-3);
+    dicht("kern UC w_fin = 5,793 · 333 / 5000 = 0,3858", fin.uc.uc, 0.3858, 2e-4);
+    dicht("kern w_add = 5,793 − 3,995 = 1,798 mm", add.uc.ed, sQp - sPerm, 2e-3);
+    dicht("kern UC w_add = 1,798 / 15,0 = 0,1199", add.uc.uc, 0.1199, 2e-4);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -365,6 +408,10 @@ if (!existsSync(MCP_SERVER)) {
     const r = inhoud(s).results?.[0];
     dicht("MCP staal: w₁ in de toetsinvoer (de selectie liet de combinatie staan)", inv?.deflection_permanent_mm, -sPerm, 1e-3);
     if (r) dicht("MCP staal: UC w_add = 0,3995", toets(r, "deflection_w_add").uc.uc, 0.3995, 2e-4);
+    ok("MCP staal: de quasi-blijvende 6.16b met ψ₂·Q is doorgerekend en gewogen (−5,79 mm)",
+      (inv?.deflection_notes ?? []).some((n) => /"BGT quasi-blijvend 6\.16b" \(6\.16b\) -5,79 mm/.test(n)));
+    ok("MCP staal: geen combinatie overgeslagen", (inhoud(s).combinations_skipped ?? []).length === 0,
+      JSON.stringify(inhoud(s).combinations_skipped ?? null));
   }
 }
 
