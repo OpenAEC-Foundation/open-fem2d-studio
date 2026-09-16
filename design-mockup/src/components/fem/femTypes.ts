@@ -1289,6 +1289,80 @@ export function plaatRandLabel(adres: PlaatRandAdres): string {
   return "rand onbekend";
 }
 
+/**
+ * Bovengrens (mm, exclusief) van "bijna op de plaatrand" voor een staafeinde.
+ *
+ * ONDERGRENS: binnen 1 mm koppelt de engine een staafeinde aan de rand (de
+ * knooptolerantie `TOL_MM` van het rekenmesh, dezelfde voor omtrek en
+ * openingen, en `CONTROLE_TOL_MM` van de modelcontrole).
+ *
+ * BOVENGRENS 50 mm: de kleinste rasterstap die het canvas toelaat is 50 mm
+ * (instelling "raster", min = 50). Een afstand tussen 1 en 50 mm tot een
+ * plaatrand ontstaat dus niet door bewust op een ánder rasterpunt te tekenen,
+ * maar door vrij tekenen, een verschoven plaathoek of afronding in een
+ * ingelezen model — precies de gevallen waarin een aansluiting bedoeld was.
+ * Een staaf die op 50 mm of meer van een plaat ophoudt, is een geldige
+ * constructiekeuze en wordt niet gemeld. De grens geldt voor de omtrek en
+ * voor openingsranden gelijk: voor het membraan is er geen verschil.
+ */
+export const STAAFEINDE_BIJ_RAND_MM = 50;
+
+/** De dichtstbijzijnde rand van een plaat bij een punt, met een leesbare naam. */
+export interface NabijePlaatrand {
+  /** Kortste afstand (mm) tot het randlijnstuk, eindpunten meegeteld. */
+  afstand: number;
+  /** Rand-index (0-based): omtrekhoek i → i+1, of openingshoek j → j+1. */
+  edgeIndex: number;
+  /** Aanwezig bij een openingsrand. */
+  openingId?: number;
+  /** "rand 3 van de omtrek" of "rand 1 van opening 7". */
+  naam: string;
+}
+
+/**
+ * De rand van de plaat (omtrek of een opening) die het dichtst bij (x, z) ligt.
+ * Null als de plaat minder dan drie hoeken heeft. Bij gelijke afstand wint de
+ * omtrek, en daarbinnen de laagste index — deterministisch.
+ */
+export function dichtstbijzijndePlaatrand(
+  punt: PlaatPunt,
+  hoeken: PlaatPunt[],
+  openingen: readonly { id: number; punten: PlaatPunt[] }[] = [],
+): NabijePlaatrand | null {
+  if (hoeken.length < 3) return null;
+  let beste: NabijePlaatrand | null = null;
+  const bekijk = (lus: PlaatPunt[], maak: (i: number, d: number) => NabijePlaatrand) => {
+    for (let i = 0; i < lus.length; i++) {
+      const d = afstandTotLijnstuk(punt, lus[i], lus[(i + 1) % lus.length]);
+      if (!beste || d < beste.afstand) beste = maak(i, d);
+    }
+  };
+  bekijk(hoeken, (i, d) => ({ afstand: d, edgeIndex: i, naam: `rand ${i + 1} van de omtrek` }));
+  for (const o of openingen) {
+    if (!o || !Array.isArray(o.punten) || o.punten.length < 3) continue;
+    bekijk(o.punten, (i, d) => ({
+      afstand: d, edgeIndex: i, openingId: o.id,
+      naam: plaatRandLabel({ openingId: o.id, edgeIndex: i }),
+    }));
+  }
+  return beste;
+}
+
+/**
+ * De melding voor een vrij staafeinde dat bijna op een plaatrand ligt — één
+ * tekst voor engine, modelcontrole en MCP-droogloop. Begint met "Plaat N" zodat
+ * de MCP-foutafbeelding hem als modelmelding herkent. `knoop` is de naam van
+ * de knoop ("knoop 30").
+ */
+export function staafeindeBijPlaatrandTekst(plateId: number, knoop: string, rand: NabijePlaatrand): string {
+  const mm = Math.round(rand.afstand * 10) / 10;
+  return `Plaat ${plateId}: het vrije staafeinde op ${knoop} ligt ` +
+    `${String(mm).replace(".", ",")} mm van ${rand.naam}. Een staafeinde wordt alleen ` +
+    "binnen 1 mm aan een plaatrand gekoppeld; zo dichtbij is een aansluiting vrijwel zeker " +
+    "bedoeld, maar zonder koppeling hangt de staaf los. Leg de knoop op de rand, of zet " +
+    `hem minstens ${STAAFEINDE_BIJ_RAND_MM} mm van de plaat af als hij los hoort te staan.`;
+}
+
 // Terugkanaal voor mesh-REGENERATIE (P4.2): het canvas regenereert de CDT-
 // cache bij een geometrie-/meshSize-wijziging, maar krijgt van App.tsx geen
 // store-mutator daarvoor aangereikt (App.tsx valt buiten deze fase). De

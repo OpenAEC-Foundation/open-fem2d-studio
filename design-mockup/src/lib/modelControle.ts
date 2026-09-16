@@ -30,7 +30,11 @@
  * kanttekening in `mcp/valideerModel.ts`.
  */
 import type { Beam, Load, LoadCase, Node, Plate, Support } from "../components/fem/femTypes";
-import { bepaalPlaatlastRand, valideerPlaatOpeningen } from "../components/fem/femTypes";
+import {
+  bepaalPlaatlastRand, dichtstbijzijndePlaatrand, staafeindeBijPlaatrandTekst,
+  valideerPlaatOpeningen, STAAFEINDE_BIJ_RAND_MM, type NabijePlaatrand,
+} from "../components/fem/femTypes";
+import { puntInPolygoon } from "../core/fem/PlaatMesher";
 // De lastmapping zelf is de enige waarheid over "telt deze last mee": de
 // controle MEET met `bouwMultiInput` in plaats van de if/else-keten na te
 // schrijven. Zie `teltLastMee` hieronder.
@@ -65,7 +69,9 @@ export type BevindingSoort =
   /** Materiaalnaam die hout én de korte naam van een betonklasse is ("C30"). */
   | "dubbelzinnigMateriaal"
   /** Last die het bestand wél draagt maar die geen solverinvoer oplevert. */
-  | "stilleLast";
+  | "stilleLast"
+  /** Staafknoop tussen 1 en 50 mm van een plaatrand (omtrek of opening): niet gekoppeld. */
+  | "staafeindeBijPlaatrand";
 
 /**
  * Bewerking die de bevinding opheft. De store voert hem uit; de controle
@@ -382,15 +388,19 @@ export function zoekVrijeUiteinden(model: ControleModel): Bevinding[] {
   // rekenknoop van de rand, dan deelt het die knoop; ligt het ertussen, dan
   // koppelt de engine het kinematisch aan de rand (lineaire interpolatie).
   // Zo'n knoop is dus geen vrij uiteinde, en de waarschuwing zou de
-  // gebruiker naar een gebrek sturen dat er niet is.
+  // gebruiker naar een gebrek sturen dat er niet is. Dat geldt voor de
+  // omtrek én voor de rand van een opening (issue #13): de engine koppelt
+  // beide op dezelfde manier.
   const opPlaatrand = (x: number, z: number): boolean =>
     (model.plates ?? []).some((p) => {
       const hoeken = (p.nodeIds ?? []).map((id) => model.nodes.find((k) => k.id === id));
       if (hoeken.length < 3 || hoeken.some((h) => !h)) return false;
-      return hoeken.some((a, i) => {
-        const b = hoeken[(i + 1) % hoeken.length]!;
-        return puntOpLijnstuk(a!, b, x, z, CONTROLE_TOL_MM);
-      });
+      const lussen = [
+        hoeken as { x: number; z: number }[],
+        ...(p.openingen ?? []).map((o) => o.punten).filter((o) => Array.isArray(o) && o.length >= 3),
+      ];
+      return lussen.some((lus) => lus.some((a, i) =>
+        puntOpLijnstuk(a, lus[(i + 1) % lus.length], x, z, CONTROLE_TOL_MM)));
     });
 
   const uit: Bevinding[] = [];
@@ -408,6 +418,66 @@ export function zoekVrijeUiteinden(model: ControleModel): Bevinding[] {
         `Knoop ${n.id} is een vrij uiteinde van staaf ${staaf?.id ?? "?"} ` +
         "zonder oplegging. Bedoeld als uitkraging? Zo niet: sluit hem aan of " +
         "geef hem een oplegging.",
+    });
+  }
+  return uit;
+}
+
+/**
+ * Staafknopen die BIJNA op een plaatrand liggen: verder dan `tolMm` (daar
+ * koppelt de engine) maar dichter dan `STAAFEINDE_BIJ_RAND_MM` (femTypes, met
+ * de verantwoording van die 50 mm). Omtrek en openingsranden gelijk.
+ *
+ * FOUT voor een VRIJ staafeinde (één staaf, geen oplegging) BUITEN het
+ * plaatmateriaal — naast de omtrek of in een opening. De engine koppelt het
+ * niet en weigert het met dezelfde tekst; hier staat het al terwijl je tekent.
+ *
+ * WAARSCHUWING in de andere gevallen. Een knoop die ook aan iets anders
+ * vastzit, kan bewust naast de plaat staan. En een vrij einde BINNEN het
+ * plaatmateriaal kan op een rekenknoop van een fijn net vallen — dat weet
+ * alleen het mesh; valt het ernaast, dan weigert de engine met reden. Deze
+ * controle mag niet strenger zijn dan de engine.
+ */
+export function zoekStaafeindenBijPlaatrand(
+  model: ControleModel,
+  tolMm: number = CONTROLE_TOL_MM,
+): Bevinding[] {
+  const platen = (model.plates ?? []).flatMap((p) => {
+    const hoeken = (p.nodeIds ?? []).map((id) => model.nodes.find((k) => k.id === id));
+    if (hoeken.length < 3 || hoeken.some((h) => !h)) return [];
+    const openingen = (Array.isArray(p.openingen) ? p.openingen : [])
+      .filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten) && o.punten.length >= 3);
+    return [{ id: p.id, hoeken: hoeken.map((h) => ({ x: h!.x, z: h!.z })), openingen }];
+  });
+  if (platen.length === 0) return [];
+  const graad = knoopGraden(model);
+  const gesteund = new Set((model.supports ?? []).map((s) => s.nodeId));
+  const uit: Bevinding[] = [];
+  for (const n of model.nodes) {
+    const g = graad.get(n.id) ?? 0;
+    if (g === 0) continue;
+    let dichtst: { plaat: (typeof platen)[number]; rand: NabijePlaatrand } | null = null;
+    for (const plaat of platen) {
+      const rand = dichtstbijzijndePlaatrand({ x: n.x, z: n.z }, plaat.hoeken, plaat.openingen);
+      if (rand && (!dichtst || rand.afstand < dichtst.rand.afstand)) dichtst = { plaat, rand };
+    }
+    if (!dichtst || !(dichtst.rand.afstand > tolMm && dichtst.rand.afstand < STAAFEINDE_BIJ_RAND_MM)) continue;
+    const { plaat, rand } = dichtst;
+    const inMateriaal = puntInPolygoon(n.x, n.z, plaat.hoeken)
+      && !plaat.openingen.some((o) => puntInPolygoon(n.x, n.z, o.punten));
+    const vrij = g === 1 && !gesteund.has(n.id);
+    const staaf = model.beams.find((b) => b.from === n.id || b.to === n.id);
+    const mm = String(Math.round(rand.afstand * 10) / 10).replace(".", ",");
+    uit.push({
+      soort: "staafeindeBijPlaatrand",
+      ernst: vrij && !inMateriaal ? "fout" : "waarschuwing",
+      nodeIds: [n.id],
+      beamId: staaf?.id,
+      tekst: vrij
+        ? staafeindeBijPlaatrandTekst(plaat.id, `knoop ${n.id}`, rand)
+        : `Plaat ${plaat.id}: knoop ${n.id} ligt ${mm} mm van ${rand.naam} en wordt niet aan ` +
+          "die rand gekoppeld (dat gebeurt alleen binnen 1 mm). Bedoeld als aansluiting? Leg de " +
+          `knoop op de rand. Zo niet, dan is ${STAAFEINDE_BIJ_RAND_MM} mm of meer afstand duidelijker.`,
     });
   }
   return uit;
@@ -590,6 +660,7 @@ export function controleerModel(
   tolMm: number = CONTROLE_TOL_MM,
 ): Bevinding[] {
   const materiaal = zoekDubbelzinnigMateriaal(model);
+  const bijRand = zoekStaafeindenBijPlaatrand(model, tolMm);
   const fouten = [
     ...zoekKnopenOpStaaf(model, tolMm),
     ...zoekDubbeleKnopen(model, tolMm),
@@ -598,13 +669,17 @@ export function controleerModel(
     ...zoekPlaatMateriaalFouten(model),
     ...zoekStilleLasten(model),
     ...materiaal.filter((m) => m.ernst === "fout"),
+    ...bijRand.filter((b) => b.ernst === "fout"),
   ];
   const alGemeld = new Set<number>();
   for (const f of fouten) for (const id of f.nodeIds) alGemeld.add(id);
   const waarschuwingen = [
-    ...zoekVrijeUiteinden(model),
+    // Een vrij einde dat al als "bijna op de plaatrand" gemeld is: één
+    // oorzaak, één regel — die melding zegt meer.
+    ...zoekVrijeUiteinden(model).filter((w) => !bijRand.some((b) => b.nodeIds[0] === w.nodeIds[0])),
     ...zoekLosseKnopen(model),
     ...materiaal.filter((m) => m.ernst === "waarschuwing"),
+    ...bijRand.filter((b) => b.ernst === "waarschuwing"),
   ].filter((w) => !w.nodeIds.some((id) => alGemeld.has(id)));
   const opNummer = (a: Bevinding, b: Bevinding) =>
     (a.nodeIds[0] ?? 0) - (b.nodeIds[0] ?? 0) || (a.beamId ?? 0) - (b.beamId ?? 0);

@@ -34,6 +34,7 @@ import {
 import {
   valideerPlaatPolygoon, berekenPlaatMeshSignatuur, bepaalPlaatlastRand,
   plaatRekentAlsRaster, effectiefPlaatMeshType, valideerPlaatOpeningen, PLAAT_MESH_TYPEN,
+  dichtstbijzijndePlaatrand, staafeindeBijPlaatrandTekst, STAAFEINDE_BIJ_RAND_MM,
 } from "../femTypes";
 import type { PlaatMeshCache, PlaatPunt } from "../femTypes";
 import { bepaalPlaatStijfheid, type PlaatStijfheid } from "../../../lib/plaatMateriaal";
@@ -1269,14 +1270,27 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
     } else {
       kandidaten = info.region.edges[rand.naam!].nodeIds;
     }
+    return ordenOpRand(plateId, kandidaten, rand.van, rand.naar, rand.lengte, wat);
+  };
+
+  /**
+   * De kandidaat-randknopen geordend van `van` naar `naar` (mm), met hun
+   * afstand `s` (m) vanaf `van` en de randlengte `L` (m). Gedeeld door de
+   * lasten (via een adres) en de randkoppeling (per opening op volgorde, zie
+   * daar waarom zonder adres).
+   */
+  const ordenOpRand = (
+    plateId: number, kandidaten: number[],
+    van: PlaatPunt, naar: PlaatPunt, lengte: number, wat: string,
+  ): { nodeIds: number[]; s: number[]; L: number } => {
     // Ordenen op de projectie langs van → naar (m). De randlijsten van het
     // grid en van de cache liggen al op de rand (gecontroleerd bij het
     // inlezen van de cache); ordenen maakt de richting van de fracties
     // onafhankelijk van de volgorde waarin een mesher ze opsomde.
-    const ax = rand.van.x / 1000, az = rand.van.z / 1000;
-    const L = rand.lengte / 1000;
-    const ex = (rand.naar.x - rand.van.x) / rand.lengte;
-    const ez = (rand.naar.z - rand.van.z) / rand.lengte;
+    const ax = van.x / 1000, az = van.z / 1000;
+    const L = lengte / 1000;
+    const ex = (naar.x - van.x) / lengte;
+    const ez = (naar.z - van.z) / lengte;
     const rij = [...new Set(kandidaten)].map((nid) => {
       const nd = mesh.getNode(nid);
       return { nid, s: nd ? (nd.x - ax) * ex + (nd.y - az) * ez : NaN };
@@ -1339,9 +1353,49 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
       for (const adres of adressen) {
         rijen.push({ plateId: info.plateId, nodeIds: randKnopenVan(info.plateId, adres, "een plaatrand").nodeIds });
       }
+      // OPENINGSRANDEN (issue #13). Een staaf die op de rand van een sparing
+      // eindigt — een stijl of kolom in een raamopening — hangt op precies
+      // dezelfde manier aan het membraan als een staaf op de omtrek: de
+      // randverplaatsing is ook daar lineair tussen twee randknopen. Dezelfde
+      // koppeling dus, met de randknopen die ook de lasten op een openingsrand
+      // gebruiken (`openingEdgeNodeIds`, raster én CDT).
+      //
+      // Per opening op VOLGORDE en niet via het adres `openingId`: een
+      // dubbel openings-id maakt een last-adres dubbelzinnig (en wordt dan
+      // geweigerd), maar de meetkunde van elke opening blijft eenduidig. Via
+      // het adres zou een model met een dubbel id dat vandaag rekent, en waar
+      // geen staaf op een openingsrand staat, ineens geweigerd worden.
+      //
+      // De rijen van de openingen komen NA die van de omtrek: de keuze per
+      // plaat hieronder houdt bij gelijke afstand de eerste, zodat een
+      // staafknoop op de omtrek precies dezelfde koppeling houdt als vóór
+      // deze uitbreiding.
+      info.openingen.forEach((o, oi) => {
+        const n = o.punten.length;
+        for (let j = 0; j < n; j++) {
+          const wat = `rand ${j + 1} van opening ${o.id}`;
+          const lijst = info.openingEdgeNodeIds[oi]?.[j];
+          if (!lijst) {
+            throw new Error(
+              `Plaat ${info.plateId}: ${wat} heeft geen rekenknopen in het rekenmesh. Wijzig de ` +
+              "plaat zodat het mesh opnieuw wordt gemaakt.");
+          }
+          const van = o.punten[j], naar = o.punten[(j + 1) % n];
+          const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
+          rijen.push({ plateId: info.plateId, nodeIds: ordenOpRand(info.plateId, lijst, van, naar, lengte, wat).nodeIds });
+        }
+      });
     }
     const staafKnopen = new Set<number>();
-    for (const be of mesh.beamElements.values()) for (const nid of be.nodeIds) staafKnopen.add(nid);
+    // Aantal staafelementen per knoop: 1 = een vrij staafeinde (na het
+    // splitsen van staven hangt een tussenknoop aan twee elementen).
+    const staafGraad = new Map<number, number>();
+    for (const be of mesh.beamElements.values()) {
+      for (const nid of be.nodeIds) {
+        staafKnopen.add(nid);
+        staafGraad.set(nid, (staafGraad.get(nid) ?? 0) + 1);
+      }
+    }
     const TOL_M = TOL_MM / 1000;
     for (const nid of staafKnopen) {
       if (plaatKnopen.has(nid)) continue;           // al een randknoop: gedeeld
@@ -1365,7 +1419,30 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
           if (!oud || d < oud.d) perPlaat.set(rij.plateId, { a: na.id, b: nb.id, t, d });
         }
       }
-      if (perPlaat.size === 0) continue;
+      if (perPlaat.size === 0) {
+        // BIJNA OP DE RAND (issue #13). Een VRIJ staafeinde (één staaf, geen
+        // oplegging) dat net naast een plaatrand ophoudt, is vrijwel zeker als
+        // aansluiting bedoeld. Stil koppelen mag niet — buiten de tolerantie
+        // ligt de knoop aantoonbaar niet op de rand, en welke rand bedoeld is
+        // weet alleen de gebruiker — en stil los laten geeft een staaf die de
+        // plaat niet belast of een kale singuliere matrix. Dus weigeren, met
+        // de rand en de afstand erbij. De grens `STAAFEINDE_BIJ_RAND_MM` en de
+        // tekst staan in femTypes: de modelcontrole en de MCP-droogloop
+        // melden hetzelfde al vóór het rekenen.
+        const c = nd.constraints;
+        const vrij = staafGraad.get(nid) === 1 && !c.x && !c.y && !c.rotation;
+        if (vrij) {
+          let dichtst: { plateId: number; rand: NonNullable<ReturnType<typeof dichtstbijzijndePlaatrand>> } | null = null;
+          for (const info of plateInfo) {
+            const rand = dichtstbijzijndePlaatrand({ x: nd.x * 1000, z: nd.y * 1000 }, info.hoeken, info.openingen);
+            if (rand && (!dichtst || rand.afstand < dichtst.rand.afstand)) dichtst = { plateId: info.plateId, rand };
+          }
+          if (dichtst && dichtst.rand.afstand > TOL_MM && dichtst.rand.afstand < STAAFEINDE_BIJ_RAND_MM) {
+            throw new Error(staafeindeBijPlaatrandTekst(dichtst.plateId, knoopNaam(nid), dichtst.rand));
+          }
+        }
+        continue;
+      }
       const [[eerstePlaat, k0], ...rest] = [...perPlaat.entries()];
       for (const [pid, k] of rest) {
         const zelfde =

@@ -195,6 +195,32 @@ export function rasterLijnen(lo: number, hi: number, dwingend: number[], meshSiz
   return uit;
 }
 
+/**
+ * De dwingende knooplijnen die NIET binnen 1 mm van de plaatrand, van een
+ * openingsrand of van een eerdere knooplijn liggen.
+ *
+ * WAAROM. Het rekenmesh voegt punten binnen 1 mm samen (de knooptolerantie
+ * van `findNodeAt`, dezelfde als `TOL_MM` in de engine). Een knoop op 1000,5
+ * naast een openingsrand op 1000 gaf daardoor twee gridlijnen die tot één
+ * knooprij samenvielen: een vak met oppervlak nul en een weigering "schijf-
+ * element … is niet op te bouwen" (gemeten, issue #13). Zo'n knoop ligt
+ * binnen de tolerantie OP die rand; de randkoppeling van de engine hangt hem
+ * daar aan, dus een eigen gridlijn is overbodig. Lijnen die verder dan 1 mm
+ * van elkaar liggen blijven ongemoeid, zodat elk mesh dat vandaag bestaat
+ * bit-gelijk blijft.
+ */
+function knoopLijnenBuitenTol(lo: number, hi: number, openingLijnen: number[], knoopLijnen: number[] | undefined): number[] {
+  const TOL = 1;
+  const genomen = [lo, hi, ...openingLijnen];
+  const uit: number[] = [];
+  for (const v of [...(knoopLijnen ?? [])].sort((a, b) => a - b)) {
+    if (genomen.some((w) => Math.abs(w - v) <= TOL && w !== v)) continue;
+    genomen.push(v);
+    uit.push(v);
+  }
+  return uit;
+}
+
 /** Asgelijnde bbox van een polygoon. */
 function bbox(p: PlatMeshPunt[]): { minX: number; maxX: number; minZ: number; maxZ: number } {
   const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
@@ -227,8 +253,10 @@ export interface RasterMesh extends PlatMesh {
 export function genereerRasterMesh(inv: RasterMeshInvoer): RasterMesh {
   const { minX, maxX, minZ, maxZ, meshSize, meshType } = inv;
   const openingRects = inv.openingen.map(bbox);
-  const xs = rasterLijnen(minX, maxX, [...openingRects.flatMap((r) => [r.minX, r.maxX]), ...(inv.dwingendX ?? [])], meshSize);
-  const zs = rasterLijnen(minZ, maxZ, [...openingRects.flatMap((r) => [r.minZ, r.maxZ]), ...(inv.dwingendZ ?? [])], meshSize);
+  const openingX = openingRects.flatMap((r) => [r.minX, r.maxX]);
+  const openingZ = openingRects.flatMap((r) => [r.minZ, r.maxZ]);
+  const xs = rasterLijnen(minX, maxX, [...openingX, ...knoopLijnenBuitenTol(minX, maxX, openingX, inv.dwingendX)], meshSize);
+  const zs = rasterLijnen(minZ, maxZ, [...openingZ, ...knoopLijnenBuitenTol(minZ, maxZ, openingZ, inv.dwingendZ)], meshSize);
   const nx = xs.length - 1, nz = zs.length - 1;
 
   // Welke vakken bestaan: het midden van het vak mag in geen opening liggen.

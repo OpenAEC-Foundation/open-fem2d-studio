@@ -169,7 +169,7 @@ export default function PlatesSection() {
           <p className="rpt-note" style={{ marginTop: "1mm" }}>
             {t(
               "report.plateLoadNote",
-              "Randlasten (ook deel- en trapeziumlasten) en puntlasten op een plaatrand worden volgens de lineaire vormfuncties van de randelementen omgezet in knoopkrachten op de randknopen; een staafeinde dat tussen twee randknopen op een plaatrand ligt, wordt kinematisch aan die rand gekoppeld (lineaire interpolatie).",
+              "Randlasten (ook deel- en trapeziumlasten) en puntlasten op een plaatrand worden volgens de lineaire vormfuncties van de randelementen omgezet in knoopkrachten op de randknopen; een staafeinde dat tussen twee randknopen op een plaatrand ligt — de omtrek of de rand van een opening — wordt kinematisch aan die rand gekoppeld (lineaire interpolatie). Een vrij staafeinde tussen 1 en 50 mm van een plaatrand wordt niet gekoppeld maar geweigerd.",
             )}
           </p>
         </>

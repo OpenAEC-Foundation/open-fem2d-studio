@@ -964,7 +964,7 @@ fn schema_meshcache() -> Value {
 fn schema_openingen() -> Value {
     json!({
         "type": "array",
-        "description": "Openingen (sparingen) in de plaat: polygonen in mm, volledig binnen de omtrek, minstens 10 mm van de rand en van elkaar. Een opening die de omtrek raakt of een andere opening overlapt, wordt geweigerd met reden. Rechthoekige openingen in een rechthoekige plaat meshet de engine zelf (raster); elke andere vorm vereist een `meshCache`.",
+        "description": "Openingen (sparingen) in de plaat: polygonen in mm, volledig binnen de omtrek, minstens 10 mm van de rand en van elkaar. Een opening die de omtrek raakt of een andere opening overlapt, wordt geweigerd met reden. Rechthoekige openingen in een rechthoekige plaat meshet de engine zelf (raster); elke andere vorm vereist een `meshCache`. Een staafeinde op de rand van een opening wordt net als op de omtrek aan die rand gekoppeld (ook tussen twee randknopen); een vrij staafeinde tussen 1 en 50 mm van een plaatrand wordt geweigerd met rand en afstand.",
         "items": {
             "type": "object",
             "additionalProperties": false,
