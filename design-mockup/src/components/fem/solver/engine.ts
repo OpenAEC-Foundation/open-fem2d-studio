@@ -314,7 +314,7 @@ function applySupportToMesh(mesh: AnyMesh, meshNodeId: number, support: SolverIn
  * hetzelfde pad zowel één-geval-meshes (factor 1/0) als GEFACTOREERDE
  * combinatie-meshes voor de 2e-orde-berekening.
  */
-function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: number) => number): {
+export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: number) => number): {
   mesh: AnyMesh;
   nodeIdMap: Map<number, number>;
   beamIdMap: Map<number, number>;
@@ -2023,8 +2023,56 @@ export function solve(input: SolverInput): SolverResult {
   );
 }
 
-export function solveAllCases(input: MultiInput): MultiLcResult {
-  const perCase = new Map<number, SolverResult>();
+// ── Scheefstand in beide richtingen ─────────────────────────────────────────
+//
+// EN 1993-1-1 5.3.2(2) eist de initiële scheefstand "in de meest ongunstige
+// richting"; 5.3.2(8) noemt alle relevante richtingen, één per keer. Tot
+// september 2026 rekende de motor één vaste richting (+x tenzij de gebruiker
+// −x koos) voor álle combinaties (basisaudit nr 28). Op een symmetrisch
+// portaal scheelt dat per staaf 2 à 4 %; bij een excentrisch belaste kolom
+// (console van 100 mm, P = 400 kN) 23 % in eerste en 36 % in tweede orde.
+//
+// Daarom lost `solveAllCases` elk belastinggeval nu TWEEMAAL op: met de
+// opgegeven richting (de "primaire", onder het gewone geval-id) en met de
+// tegengestelde richting (onder id + SCHEEFSTAND_ID_OFFSET). De combinaties
+// worden door `metScheefstandRichtingen` (combinations.ts) ontvouwd in twee
+// varianten met een eigen richting; `combineResults` kiest per variant de
+// juiste set gevallen, en de omhullende en de toetsing nemen zo per staaf de
+// ongunstigste. Zonder scheefstand verandert er niets.
+
+/** Verschuiving van het geval-id waaronder de tegengestelde richting staat. */
+export const SCHEEFSTAND_ID_OFFSET = 1_000_000;
+
+const SCHEEFSTAND_KEY = "__femScheefstandRichtingen";
+
+/** Wat `solveAllCases` aan een perCase-Map hangt als er een scheefstand is. */
+export interface ScheefstandRichtingen {
+  /** De richting van de resultaten onder het gewone geval-id. */
+  primair: 1 | -1;
+  /** De id-verschuiving van de tegengestelde richting. */
+  offset: number;
+}
+
+/** De scheefstandrichtingen die in deze perCase-Map zitten; `undefined` = geen scheefstand. */
+export function getScheefstandRichtingen(
+  perCase: Map<number, SolverResult>,
+): ScheefstandRichtingen | undefined {
+  return (perCase as any)[SCHEEFSTAND_KEY];
+}
+
+/**
+ * Alleen de resultaten onder de gewone geval-id's — voor wie de Map per
+ * belastinggeval toont of wegschrijft. De tegengestelde richting hoort daar
+ * niet als "extra geval" tussen te staan.
+ */
+export function gevalResultaten(perCase: Map<number, SolverResult>): Map<number, SolverResult> {
+  const sr = getScheefstandRichtingen(perCase);
+  if (!sr) return perCase;
+  return new Map([...perCase].filter(([id]) => id < sr.offset));
+}
+
+/** Lost elk belastinggeval van `input` op en zet het onder `id + idOffset`. */
+function losGevallenOp(input: MultiInput, perCase: Map<number, SolverResult>, idOffset: number): void {
   for (const c of input.cases) {
     const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(input, (caseId) => (caseId === c.id ? 1 : 0));
     // Een leeg belastinggeval (bijv. Q/S/W zonder ingevoerde lasten — de
@@ -2046,10 +2094,26 @@ export function solveAllCases(input: MultiInput): MultiLcResult {
       throw metKnoopnummer(e, nodeIdMap, plateInfo);
     }
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
-    perCase.set(c.id, eisEindigeUitkomst(
+    perCase.set(c.id + idOffset, eisEindigeUitkomst(
       convertResult(mesh, engineResult, nodeIdMap, beamIdMap, input.supports, plateInfo, nodeIndex, beamSegments, segmentUitvoer),
       ` in belastinggeval "${c.name}"`,
     ));
+  }
+}
+
+export function solveAllCases(input: MultiInput): MultiLcResult {
+  const perCase = new Map<number, SolverResult>();
+  losGevallenOp(input, perCase, 0);
+  if (input.scheefstand) {
+    // De tegengestelde richting, onder verschoven id's — zie het blok
+    // "Scheefstand in beide richtingen" hierboven.
+    const tegen: MultiInput = {
+      ...input,
+      scheefstand: { ...input.scheefstand, richting: (-input.scheefstand.richting) as 1 | -1 },
+    };
+    losGevallenOp(tegen, perCase, SCHEEFSTAND_ID_OFFSET);
+    const sr: ScheefstandRichtingen = { primair: input.scheefstand.richting, offset: SCHEEFSTAND_ID_OFFSET };
+    (perCase as any)[SCHEEFSTAND_KEY] = sr;
   }
   return { perCase };
 }
@@ -2094,6 +2158,12 @@ export interface SecondOrderCombo {
   id: number;
   name: string;
   factors: Map<number, number>;
+  /**
+   * De scheefstandrichting van deze combinatievariant (zie
+   * `metScheefstandRichtingen` in combinations.ts). Ontbreekt = de richting
+   * van de invoer.
+   */
+  scheefstandRichting?: 1 | -1;
 }
 
 interface SecondOrderState {
@@ -2181,8 +2251,16 @@ export function solveCombinationSecondOrder(
   input: MultiInput,
   combo: SecondOrderCombo,
 ): SolverResult | null {
+  // De scheefstandrichting van DEZE combinatievariant: de tweede-orde-som is
+  // per combinatie, dus hier is de plek waar de tegengestelde richting het
+  // model in gaat (basisaudit nr 28).
+  const invoer: MultiInput =
+    input.scheefstand && combo.scheefstandRichting !== undefined &&
+    combo.scheefstandRichting !== input.scheefstand.richting
+      ? { ...input, scheefstand: { ...input.scheefstand, richting: combo.scheefstandRichting } }
+      : input;
   const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(
-    input,
+    invoer,
     (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
   );
 
@@ -2226,7 +2304,7 @@ export function solveCombinationSecondOrder(
     const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
     return eisEindigeUitkomst(
       convertResult(
-        mesh, engineResult, nodeIdMap, beamIdMap, input.supports,
+        mesh, engineResult, nodeIdMap, beamIdMap, invoer.supports,
         heeftPlaten ? plateInfo : undefined, nodeIndex, beamSegments, segmentUitvoer,
       ),
       ` in combinatie "${combo.name}"`,

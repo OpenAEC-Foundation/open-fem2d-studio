@@ -277,6 +277,16 @@ fn uitgangspunten(g: &Kipgegevens) -> Deelstap {
              grootste λ̄_LT en daarmee de kleinste χ_LT, in lijn met NB.NB.2(1), dat bij 6.3.3 \
              de kleinste χ_LT van de afzonderlijke velden voorschrijft."
         ));
+    } else if v.uitkraging {
+        notes.push(
+            "UITKRAGING (tabel NB.NB.1 geval 5). Eén staafeind is vrij: geen oplegging en geen \
+             aansluitende staaf. Dat eind is geen gaffel, en NB.NB.4.3 kent geen kipveld dat \
+             bij een vrij eind eindigt. Getoetst is daarom de VERVANGENDE ligger: het \
+             spiegelbeeld van de uitkraging om haar ingeklemde eind, een ligger van 2·L tussen \
+             twee gaffels. L_g = L_st = L_kip = 2·L hierboven zijn die vervangende lengte; de \
+             uitkraaglengte zelf is de helft ervan."
+                .to_string(),
+        );
     } else {
         notes.push(
             "Er is geen kipsteun aan de gedrukte flens: de ligger heeft één kipveld, van \
@@ -284,13 +294,24 @@ fn uitgangspunten(g: &Kipgegevens) -> Deelstap {
                 .to_string(),
         );
     }
-    notes.push(
-        "De staafeinden zijn als gaffels (vorkopleggingen) aangenomen. Op die aanname \
-         berust de hele keten: NB.NB.4.3 kent alleen kipvelden tussen twee gaffels, tussen \
-         één gaffel en één kipsteun, of tussen twee kipsteunen, en het aantal kipsteunen \
-         hierboven volgt uit het aantal kipvelden min één."
-            .to_string(),
-    );
+    if v.uitkraging {
+        notes.push(
+            "Het ingeklemde eind is als gaffel aangenomen (torsie verhinderd, welving vrij); \
+             het vrije eind kan zijdelings verplaatsen en torderen. Kipsteunen op de \
+             uitkraging zijn NIET meegeteld: voor een veld tussen een kipsteun en een vrij \
+             eind geeft NB.NB.4.3 geen regel, en de volle vervangende lengte is de veilige \
+             kant."
+                .to_string(),
+        );
+    } else {
+        notes.push(
+            "De staafeinden zijn als gaffels (vorkopleggingen) aangenomen. Op die aanname \
+             berust de hele keten: NB.NB.4.3 kent alleen kipvelden tussen twee gaffels, tussen \
+             één gaffel en één kipsteun, of tussen twee kipsteunen, en het aantal kipsteunen \
+             hierboven volgt uit het aantal kipvelden min één."
+                .to_string(),
+        );
+    }
     notes.push(
         "q en z_a zijn uitgangspunten, geen gemeten grootheden. q is de equivalente \
          gelijkmatig verdeelde belasting die bij de momentenlijn van dit kipveld hoort \
@@ -360,6 +381,9 @@ fn b_ster_stap(g: &Kipgegevens) -> Deelstap {
                 .to_string(),
         );
     }
+    if v.uitkraging {
+        notes.push(UITKRAGING_GEEN_BETA_B_STER.to_string());
+    }
 
     stap(
         "b_ster",
@@ -397,13 +421,16 @@ fn beta_stap(g: &Kipgegevens) -> Deelstap {
          constant moment (enkelvoudige kromming), β = −1 bij de scherpste tekenwisseling."
             .to_string(),
     ];
-    if onbepaald {
+    if onbepaald && !v.uitkraging {
         notes.push(
             "Beide eindmomenten zijn nul (zuivere veldbelasting), dus de breuk is \
              onbepaald. Aangehouden is β = 0 — de waarde waar bij B* = 0 alle β-rijen van \
              figuur NB.NB.5 samenkomen, zodat de keuze daar geen invloed op C₁ heeft."
                 .to_string(),
         );
+    }
+    if v.uitkraging {
+        notes.push(UITKRAGING_GEEN_BETA_B_STER.to_string());
     }
 
     stap(
@@ -449,8 +476,35 @@ fn negatieve_b_ster_notitie(b_ster: f64) -> Option<String> {
     )
 }
 
+/// De kanttekening bij β en B* van het vervangende veld van een uitkraging.
+const UITKRAGING_GEEN_BETA_B_STER: &str =
+    "Uitkraging: tabel NB.NB.1 geval 5 geeft C₁ en C₂ rechtstreeks, zonder β of B*. Beide \
+     zijn hier op 0 gezet en rekenen nergens in mee.";
+
+/// De C₁- en C₂-waarden van tabel NB.NB.1 geval 5 (uitkraging), als tekst.
+const UITKRAGING_TABEL_NB_1: &str =
+    "Uitkraging: niet afgelezen uit figuur NB.NB.5/NB.NB.6 maar rechtstreeks uit tabel \
+     NB.NB.1, geval 5, dat voor de vervangende ligger van 2·L de waarden C₁ = 1,0 en \
+     C₂ = 0 geeft — de waarden van het constante moment, de ongunstigste rij van de tabel. \
+     De figuren gelden voor een ligger tussen gaffels met eindmomenten en veldbelasting; \
+     een uitkraging is dat niet.";
+
 fn c1_stap(g: &Kipgegevens) -> Deelstap {
     let v = g.v;
+    if v.uitkraging {
+        return stap(
+            "c1",
+            "Momentenfactor C₁",
+            "C_1",
+            "NB.NB.4.3(2), tabel NB.NB.1 geval 5",
+            r"C_1 = 1{,}0".to_string(),
+            String::new(),
+            vec![],
+            Some(v.c1),
+            "-",
+            vec![UITKRAGING_TABEL_NB_1.to_string()],
+        );
+    }
     let mut notes = vec![
         "Bilineair geïnterpoleerd uit figuur NB.NB.5 — C₁ bij gelijkmatig verdeelde \
          belasting met eindmomenten — op het raster β = −1,0 … +1,0 in stappen van 0,5 en \
@@ -481,6 +535,20 @@ fn c1_stap(g: &Kipgegevens) -> Deelstap {
 
 fn c2_tabel_stap(g: &Kipgegevens) -> Deelstap {
     let v = g.v;
+    if v.uitkraging {
+        return stap(
+            "c2_tabel",
+            "Belastingfactor C₂ uit de tabel",
+            "C_{2,tabel}",
+            "NB.NB.4.3(2), tabel NB.NB.1 geval 5",
+            r"C_{2,tabel} = 0".to_string(),
+            String::new(),
+            vec![],
+            Some(v.c2_tabel),
+            "-",
+            vec![UITKRAGING_TABEL_NB_1.to_string()],
+        );
+    }
     let mut notes = vec![
         "Bilineair geïnterpoleerd uit figuur NB.NB.6, op hetzelfde raster als C₁ en \
          verankerd op tabel NB.NB.1: C₂ = 0,45 bij B* = 0 en C₂ = 0 bij B* = 1. Deze \
@@ -524,6 +592,13 @@ fn c2_stap(g: &Kipgegevens) -> Deelstap {
          negatief maken."
             .to_string(),
     ];
+    if g.v.uitkraging {
+        notes.push(
+            "Uitkraging: C₂ = 0 volgens tabel NB.NB.1 geval 5, dus het aangrijpingspunt \
+             z_a heeft hier geen invloed op M_cr."
+                .to_string(),
+        );
+    }
     let z_a_max = nb_annex::z_a_max_nb(p.h_mm, p.tf_mm);
     if g.z_a_mm > z_a_max * (1.0 + 1e-9) {
         notes.push(format!(
@@ -575,6 +650,21 @@ fn c2_stap(g: &Kipgegevens) -> Deelstap {
 fn l_kip_stap(g: &Kipgegevens) -> Deelstap {
     let v = g.v;
     if v.tussen_gaffels {
+        let mut notes = vec![
+            "Dit kipveld ligt tussen TWEE GAFFELS; NB.NB.4.3 geeft dan L_kip = L_st. De \
+             formule (1,4 − 0,8·β)·L_st geldt alleen tussen één gaffel en één kipsteun \
+             of tussen twee kipsteunen. Zou zij hier tóch worden toegepast, dan gaf \
+             β = 0 een L_kip van 1,4·L_st en daarmee een ruim 30 % te lage M_cr."
+                .to_string(),
+        ];
+        if v.uitkraging {
+            notes.push(format!(
+                "Uitkraging: L_st is de vervangende lengte 2·L = {} mm van het spiegelbeeld \
+                 tussen twee gaffels (tabel NB.NB.1 geval 5); de uitkraaglengte zelf is {} mm.",
+                nl(v.l_st_mm, 0),
+                nl(v.l_st_mm / 2.0, 0)
+            ));
+        }
         return stap(
             "l_kip",
             "Vervangende ongesteunde kiplengte",
@@ -585,13 +675,7 @@ fn l_kip_stap(g: &Kipgegevens) -> Deelstap {
             vec![nv("L_{st}", v.l_st_mm, "mm")],
             Some(v.l_kip_mm),
             "mm",
-            vec![
-                "Dit kipveld ligt tussen TWEE GAFFELS; NB.NB.4.3 geeft dan L_kip = L_st. De \
-                 formule (1,4 − 0,8·β)·L_st geldt alleen tussen één gaffel en één kipsteun \
-                 of tussen twee kipsteunen. Zou zij hier tóch worden toegepast, dan gaf \
-                 β = 0 een L_kip van 1,4·L_st en daarmee een ruim 30 % te lage M_cr."
-                    .to_string(),
-            ],
+            notes,
         );
     }
 

@@ -95,6 +95,7 @@ fn veld(m_midden_knm: f64) -> Vec<Kipveld> {
         m_eind_knm: 0.0,
         m_midden_knm,
         tussen_gaffels: true,
+        uitkraging: false,
     }]
 }
 
@@ -533,6 +534,7 @@ fn veld_met(m_begin: f64, m_midden: f64, m_eind: f64) -> Vec<Kipveld> {
         m_eind_knm: m_eind,
         m_midden_knm: m_midden,
         tussen_gaffels: true,
+        uitkraging: false,
     }]
 }
 

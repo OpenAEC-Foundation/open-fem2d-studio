@@ -115,6 +115,16 @@ pub struct Kipveld {
     /// begrensd. Dan geldt L_kip = L_st; anders de formule met β. Zie
     /// [`nb_annex::l_kip`].
     pub tussen_gaffels: bool,
+    /// `true` voor het kipveld van een UITKRAGING: een staaf met één vrij
+    /// staafeind (geen oplegging, geen aansluitende staaf). Zo'n eind is geen
+    /// gaffel, en NB.NB.4.3 kent geen kipveld dat bij een vrij eind eindigt.
+    /// De aanroeper geeft dan de VERVANGENDE ligger op: het spiegelbeeld om het
+    /// ingeklemde eind, dus `l_st_mm` = 2·L tussen twee gaffels, met
+    /// `tussen_gaffels = true`. Voor dat veld gelden niet de figuren
+    /// NB.NB.5/NB.NB.6 maar tabel NB.NB.1 geval 5: C₁ = 1,0 en C₂ = 0 — de
+    /// waarden van het constante moment, de ongunstigste rij van de tabel. β
+    /// en B* spelen dan geen rol en staan op 0.
+    pub uitkraging: bool,
 }
 
 impl Kipveld {
@@ -258,6 +268,9 @@ pub(crate) struct Veldresultaat {
     /// `true` als L_kip = L_st gold (veld tussen twee gaffels), `false` als de
     /// formule met β is toegepast. Bepaalt welke tak het rapport toont.
     tussen_gaffels: bool,
+    /// `true` als dit het vervangende veld van een uitkraging is (tabel
+    /// NB.NB.1 geval 5); zie [`Kipveld::uitkraging`].
+    uitkraging: bool,
     /// De twee eindmomenten van dit veld (kNm), in de nummering van NB.NB.4.3.
     m_klein_knm: f64,
     m_groot_knm: f64,
@@ -346,11 +359,21 @@ fn maatgevend_kipveld(
 ) -> (Veldresultaat, Vec<Veldresultaat>) {
     let aantal_velden = velden.len().max(1);
     let bereken = |index: usize, veld: &Kipveld| {
-        let (beta, m_groot_knm) = veld.beta_en_grootste_eindmoment();
+        let (beta_veld, m_groot_knm) = veld.beta_en_grootste_eindmoment();
         let (m_klein_knm, _) = veld.eindmomenten_knm();
-        let b_ster = nb_annex::b_ster(m_groot_knm * 1e6, q_equiv_n_per_mm, veld.l_st_mm);
-        let (c1, c2_tabel) = nb_annex::c1_c2_factors(beta, b_ster);
-        let c2 = nb_annex::c2_gecorrigeerd(c2_tabel, z_a_mm, h_mm, tf_mm);
+        // Een uitkraging valt buiten de figuren NB.NB.5/NB.NB.6: tabel
+        // NB.NB.1 geval 5 geeft C₁ = 1,0 en C₂ = 0 voor de vervangende
+        // ligger van 2·L, ongeacht de momentenlijn. β en B* rekenen dan
+        // nergens in mee en staan op 0, zodat het rapport ze niet als
+        // afgelezen toont.
+        let (beta, b_ster, c1, c2_tabel, c2) = if veld.uitkraging {
+            (0.0, 0.0, 1.0, 0.0, 0.0)
+        } else {
+            let b_ster = nb_annex::b_ster(m_groot_knm * 1e6, q_equiv_n_per_mm, veld.l_st_mm);
+            let (c1, c2_tabel) = nb_annex::c1_c2_factors(beta_veld, b_ster);
+            let c2 = nb_annex::c2_gecorrigeerd(c2_tabel, z_a_mm, h_mm, tf_mm);
+            (beta_veld, b_ster, c1, c2_tabel, c2)
+        };
         let l_kip_mm = veld.l_kip_mm(beta);
         let c = nb_annex::c_coefficient(c1, l_g_mm, l_kip_mm, s_mm, c2);
         let momenten_knm = [veld.m_begin_knm, veld.m_midden_knm, veld.m_eind_knm];
@@ -366,6 +389,7 @@ fn maatgevend_kipveld(
             l_st_mm: veld.l_st_mm,
             l_kip_mm,
             tussen_gaffels: veld.tussen_gaffels,
+            uitkraging: veld.uitkraging,
             m_klein_knm,
             m_groot_knm,
             m_midden_knm: veld.m_midden_knm,
@@ -388,6 +412,7 @@ fn maatgevend_kipveld(
         m_eind_knm: 0.0,
         m_midden_knm: 0.0,
         tussen_gaffels: true,
+        uitkraging: false,
     };
     let alle: Vec<Veldresultaat> = if velden.is_empty() {
         vec![bereken(0, &leeg)]

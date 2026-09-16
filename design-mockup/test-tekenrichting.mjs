@@ -574,10 +574,20 @@ else {
     const c = toetsVan(u.res, "6.3.2_ltb").kind.data;
     const vars = (c.deelstappen ?? []).flatMap((d) => d.variables ?? []);
     // Over de hele hoogte M ≤ 0 (van −45 aan de voet tot 0 aan de kop): overal
-    // is de ONDERflens (rechts) gedrukt. De onderflenssteun op 900 mm telt, de
-    // bovenflenssteun op 1800 mm niet: velden 900 en 2100, L_st = 2100 mm.
-    ok(`staal, ${richting}: één steun aan de gedrukte flens`, vars.find((v) => /n_\{kipsteunen\}/.test(v.symbol))?.value === 1);
-    dicht(`staal, ${richting}: L_st = 2100 mm`, vars.find((v) => v.symbol === "L_{st}")?.value, 2100, 1e-9);
+    // is de ONDERflens (rechts) gedrukt. De onderflenssteun op 900 mm zit aan
+    // de gedrukte flens, de bovenflenssteun op 1800 mm niet.
+    //
+    // De kop van deze kolom is VRIJ (geen oplegging, geen aansluitende staaf):
+    // sinds september 2026 (basisaudit, kipgedrag bij een vrij eind) toetst de
+    // kern hem als uitkraging volgens tabel NB.NB.1 geval 5 — de vervangende
+    // ligger van 2·L = 6000 mm zonder tussenliggende kipsteunen — in plaats van
+    // de kop als gaffel te nemen (dat gaf velden van 900 en 2100 mm). Welke
+    // steun aan de gedrukte flens zat, staat nog in de kanttekening: precies
+    // één, de onderflenssteun, in beide tekenrichtingen.
+    ok(`staal, ${richting}: uitkraging — één kipveld, geen tussensteun`, vars.find((v) => /n_\{kipsteunen\}/.test(v.symbol))?.value === 0);
+    dicht(`staal, ${richting}: L_st = 2·L = 6000 mm (NB.NB.1 geval 5)`, vars.find((v) => v.symbol === "L_{st}")?.value, 6000, 1e-9);
+    ok(`staal, ${richting}: de kanttekening telt één steun aan de gedrukte flens (niet meegeteld)`,
+      (c.notes ?? []).some((n) => n.includes("De 1 kipsteun(en) aan de gedrukte flens")));
     const zijden = (c.notes ?? []).find((n) => n.startsWith("Flenzen in wereldtermen"));
     ok(`staal, ${richting}: de afleiding zegt dat de bovenflens LINKS en de onderflens RECHTS is`,
       !!zijden && zijden.includes("LINKERflens") && zijden.includes("RECHTERflens"));

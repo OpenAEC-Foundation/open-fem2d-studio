@@ -67,9 +67,11 @@ interface ReportTabProps {
    * aanname te noemen die nergens is toegepast.
    */
   scheefstandToelichting?: string;
+  /** Het analysetype en α_cr per combinatie, zoals App.tsx het opstelt (basisaudit nr 27). */
+  analyseToelichting?: string;
 }
 
-export default function ReportTab({ scheefstandToelichting }: ReportTabProps) {
+export default function ReportTab({ scheefstandToelichting, analyseToelichting }: ReportTabProps) {
   const { t } = useTranslation("ribbon");
 
   const pageSize = useReportStore((s) => s.pageSize);
@@ -217,6 +219,7 @@ export default function ReportTab({ scheefstandToelichting }: ReportTabProps) {
         // alleen als hij werkelijk is toegepast; een lege tekst laat het
         // hoofdstuk Uitgangspunten vanzelf weg.
         scheefstandToelichting,
+        analyseToelichting,
       });
       const bytes = await genereerRapportPdf(invoer);
       const { save } = await import("@tauri-apps/plugin-dialog");

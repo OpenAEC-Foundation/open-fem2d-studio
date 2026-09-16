@@ -34,7 +34,11 @@ import type {
   SolverResult, NodalDisp, NodalReaction, ElementForces,
   PlateResult, PlateElementStress,
 } from "./types";
-import { getSecondOrderState, solveCombinationSecondOrder } from "./engine";
+import {
+  getScheefstandRichtingen,
+  getSecondOrderState,
+  solveCombinationSecondOrder,
+} from "./engine";
 import {
   genereerStandaardCombinaties,
   STANDAARD_BELASTINGGEVALLEN,
@@ -63,6 +67,63 @@ export interface LoadCombination {
    * behalve dat de factor van een verwijderd belastinggeval eruit verdwijnt.
    */
   standaard?: StandaardHerkomst;
+  /**
+   * De richting van de initiële scheefstand in deze combinatie: +1 = +x,
+   * −1 = −x. Gezet door `metScheefstandRichtingen`, dat elke combinatie in
+   * twee varianten ontvouwt zodra er een scheefstand is; ontbreekt = de
+   * richting van de solverinvoer. Wordt niet opgeslagen: het projectbestand
+   * draagt de ononvouwen lijst.
+   */
+  scheefstandRichting?: 1 | -1;
+}
+
+/**
+ * Verschuiving van het combinatie-id van de variant met de tegengestelde
+ * scheefstandrichting. De primaire variant houdt het oorspronkelijke id, zodat
+ * alles wat op dat id zoekt (resultaatkiezer, rapport) blijft werken.
+ */
+export const SCHEEFSTAND_COMBO_OFFSET = 1_000_000;
+
+/** Kort label van een scheefstandrichting, voor combinatienamen. */
+export function scheefstandRichtingLabel(richting: 1 | -1): string {
+  return richting === 1 ? "+x" : "−x";
+}
+
+/**
+ * Elke combinatie in twee varianten: met de scheefstand in de primaire en in
+ * de tegengestelde richting (EN 1993-1-1 5.3.2(2): "in de meest ongunstige
+ * richting"; 5.3.2(8)). De omhullende en de toetsing nemen daarna per staaf
+ * de ongunstigste van de twee; welke dat was, staat in de naam.
+ *
+ * `aan = false` (geen scheefstand) geeft de lijst ongewijzigd terug; een
+ * combinatie die al een richting draagt wordt niet nog eens ontvouwd.
+ */
+export function metScheefstandRichtingen(
+  combinations: LoadCombination[],
+  aan: boolean,
+  primair: 1 | -1 = 1,
+): LoadCombination[] {
+  if (!aan) return combinations;
+  const uit: LoadCombination[] = [];
+  for (const c of combinations) {
+    if (c.scheefstandRichting !== undefined) {
+      uit.push(c);
+      continue;
+    }
+    const tegen = (-primair) as 1 | -1;
+    uit.push({
+      ...c,
+      scheefstandRichting: primair,
+      name: `${c.name} (scheefstand ${scheefstandRichtingLabel(primair)})`,
+    });
+    uit.push({
+      ...c,
+      id: c.id + SCHEEFSTAND_COMBO_OFFSET,
+      scheefstandRichting: tegen,
+      name: `${c.name} (scheefstand ${scheefstandRichtingLabel(tegen)})`,
+    });
+  }
+  return uit;
 }
 
 export interface EnvelopeElementSpan {
@@ -223,13 +284,22 @@ export function combineResults(
   }
 
   // ── 1e-orde-pad: lineaire superpositie ──────────────────────────────────
+  //
+  // Met een scheefstand staan de gevallen tweemaal in de Map: onder hun eigen
+  // id met de primaire richting en onder id + offset met de tegengestelde.
+  // Een combinatievariant met de tegengestelde richting leest de tweede set;
+  // een combinatie zonder richting (of met de primaire) de eerste.
+  const sr = getScheefstandRichtingen(perCase);
+  const tegen = sr !== undefined && combo.scheefstandRichting !== undefined &&
+    combo.scheefstandRichting !== sr.primair;
+  const idVan = (caseId: number): number => (tegen ? caseId + sr!.offset : caseId);
   // Union of all keys across the contributing cases.
   const nodeIds = new Set<number>();
   const beamIds = new Set<number>();
   const reactionIds = new Set<number>();
 
   for (const [caseId] of combo.factors) {
-    const r = perCase.get(caseId);
+    const r = perCase.get(idVan(caseId));
     if (!r) continue;
     r.displacements.forEach((_, id) => nodeIds.add(id));
     r.elements.forEach((_, id) => beamIds.add(id));
@@ -241,7 +311,7 @@ export function combineResults(
   for (const nid of nodeIds) {
     let ux = 0, uz = 0, ry = 0;
     for (const [caseId, factor] of combo.factors) {
-      const r = perCase.get(caseId);
+      const r = perCase.get(idVan(caseId));
       if (!r) continue;
       const d = r.displacements.get(nid);
       if (!d) continue;
@@ -258,7 +328,7 @@ export function combineResults(
   for (const rid of reactionIds) {
     let fx = 0, fz = 0, my = 0;
     for (const [caseId, factor] of combo.factors) {
-      const r = perCase.get(caseId);
+      const r = perCase.get(idVan(caseId));
       if (!r) continue;
       const rxn = r.reactions.get(rid);
       if (!rxn) continue;
@@ -289,7 +359,7 @@ export function combineResults(
     let rotation: number[] = [];
 
     for (const [caseId, factor] of combo.factors) {
-      const r = perCase.get(caseId);
+      const r = perCase.get(idVan(caseId));
       if (!r) continue;
       const ef = r.elements.get(bid);
       if (!ef) continue;
@@ -341,7 +411,7 @@ export function combineResults(
   // elke modelwijziging), dus de volgorde is stabiel.
   const plateIds = new Set<number>();
   for (const [caseId] of combo.factors) {
-    perCase.get(caseId)?.plateElements?.forEach(p => plateIds.add(p.plateId));
+    perCase.get(idVan(caseId))?.plateElements?.forEach(p => plateIds.add(p.plateId));
   }
   let plateElements: PlateResult[] | undefined;
   if (plateIds.size > 0) {
@@ -350,7 +420,7 @@ export function combineResults(
       // Referentiegeometrie: de eerste bijdrage levert corners/elementIds.
       let referentie: PlateResult | undefined;
       for (const [caseId] of combo.factors) {
-        referentie = perCase.get(caseId)?.plateElements?.find(p => p.plateId === pid);
+        referentie = perCase.get(idVan(caseId))?.plateElements?.find(p => p.plateId === pid);
         if (referentie) break;
       }
       if (!referentie) continue;
@@ -363,7 +433,7 @@ export function combineResults(
         nx: 0, ny: 0, nxy: 0,
       }));
       for (const [caseId, factor] of combo.factors) {
-        const bron = perCase.get(caseId)?.plateElements?.find(p => p.plateId === pid);
+        const bron = perCase.get(idVan(caseId))?.plateElements?.find(p => p.plateId === pid);
         if (!bron) continue;
         for (let i = 0; i < n && i < bron.elements.length; i++) {
           const s = bron.elements[i];
@@ -484,6 +554,13 @@ export function computeEnvelope(
   combinations: LoadCombination[],
   perCase: Map<number, SolverResult>,
 ): Envelope {
+  // Een aanroeper die de lijst niet zelf heeft ontvouwd, krijgt hier alsnog
+  // beide scheefstandrichtingen in de omhullende — zo kan de omhullende nooit
+  // stil op één richting berusten.
+  const sr = getScheefstandRichtingen(perCase);
+  if (sr && combinations.every((c) => c.scheefstandRichting === undefined)) {
+    combinations = metScheefstandRichtingen(combinations, true, sr.primair);
+  }
   const elements = new Map<number, EnvelopeElementSpan>();
   const reactions = new Map<number, EnvelopeReaction>();
   let maxDisplacement = 0;

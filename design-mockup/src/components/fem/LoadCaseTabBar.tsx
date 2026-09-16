@@ -102,7 +102,7 @@ export default function LoadCaseTabBar({
   aantalBetonstaven = 0, segmentWaarschuwing = null,
   scheefstandEnabled, setScheefstandEnabled,
   scheefstandNoemer, setScheefstandNoemer,
-  scheefstandRichting, setScheefstandRichting,
+  scheefstandRichting,
   scheefstandBron = "vast", setScheefstandBron,
   scheefstandHoogteM = null, setScheefstandHoogteM,
   scheefstandAantalElementen = null, setScheefstandAantalElementen,
@@ -421,15 +421,19 @@ export default function LoadCaseTabBar({
       )}
 
       {setScheefstandEnabled && scheefstandEnabled && (
-        <span className="lc-tab-phi" title="Richting van de equivalente horizontale krachten">
-          <select
-            className="lc-tab-phi-dir"
-            value={scheefstandRichting ?? 1}
-            onChange={(e) => setScheefstandRichting?.(Number(e.target.value) === -1 ? -1 : 1)}
-          >
-            <option value={1}>+X</option>
-            <option value={-1}>−X</option>
-          </select>
+        <span
+          className="lc-tab-phi"
+          title={
+            "Richting van de equivalente horizontale krachten: BEIDE. Elke " +
+            "combinatie wordt met de scheefstand in +x én in −x doorgerekend " +
+            "(EN 1993-1-1 5.3.2(2): in de meest ongunstige richting); de " +
+            "omhullende en de toetsing nemen per staaf de ongunstigste van de " +
+            "twee, en de combinatienaam noemt de richting. De hier opgeslagen " +
+            `voorkeursrichting (${(scheefstandRichting ?? 1) === 1 ? "+x" : "−x"}) ` +
+            "bepaalt alleen welke variant het oorspronkelijke combinatienummer houdt."
+          }
+        >
+          <span className="lc-tab-phi-label">±x</span>
         </span>
       )}
     </div>

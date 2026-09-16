@@ -45,6 +45,14 @@ import { zetCombinatieResultaat, getSecondOrderInput, zetSolverLogOpvanger } fro
 import { maakSolverLogOpvanger } from "./stores/solverLogStore";
 import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
 import {
+  analyseToelichting as maakAnalyseToelichting,
+  bepaalAlphaCr,
+  stabiliteitsMeldingen,
+  type AlphaCrUitkomst,
+} from "./components/fem/solver/alphaCr";
+import { ANALYSETYPE_LABEL, ANALYSETYPE_OMSCHRIJVING } from "./components/fem/femTypes";
+import type { MultiInput } from "./components/fem/solver/types";
+import {
   betonStavenUitModel,
   losCombinatieFysischOp,
   schatVrijheidsgraden,
@@ -340,6 +348,22 @@ function App() {
       ? scheefstandToelichting(scheefstandUitkomst, scheefstandGeometrie)
       : ""),
     [fem.scheefstandEnabled, scheefstandUitkomst, scheefstandGeometrie]);
+  /**
+   * Het analysetype en α_cr per combinatie, als tekstblok voor het rapport
+   * (basisaudit nr 27): welke berekening er is gedaan en of de norm die
+   * toestaat. Leeg zolang er niet gerekend is; het rapport zwijgt dan.
+   */
+  const analyseTekst = useMemo(
+    () => (fem.stabiliteit
+      ? maakAnalyseToelichting(
+          fem.analysetype,
+          ANALYSETYPE_LABEL[fem.analysetype],
+          ANALYSETYPE_OMSCHRIJVING[fem.analysetype],
+          fem.stabiliteit,
+          fem.scheefstandEnabled,
+        )
+      : ""),
+    [fem.stabiliteit, fem.analysetype, fem.scheefstandEnabled]);
 
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
@@ -355,8 +379,9 @@ function App() {
     // De VOLLEDIGE lijst: het rapport somt ook op wat er NIET is doorgerekend,
     // met de reden erbij (`overgeslagenCombinaties`). Een lezer die zes
     // combinaties ziet waar hij er acht verwacht, moet dat in het rapport zelf
-    // kunnen nazien.
-    combinations: fem.combinations,
+    // kunnen nazien. In dezelfde ontvouwing als de berekening: met een
+    // scheefstand per combinatie een variant per richting.
+    combinations: fem.combinatiesVoorRapport,
     overgeslagenCombinaties: fem.overgeslagenCombinaties,
     gevolgklasse: fem.gevolgklasse,
     // Het rapport vermeldt dat de combinaties bij het openen zijn vervangen.
@@ -376,12 +401,15 @@ function App() {
     // en zij zit als H = φ·V in élke kracht waarop hierna is getoetst. Daarom
     // reist zij mee met de modelgegevens en niet met `combinationResults`.
     scheefstandToelichting: scheefstandTekst,
+    // Het analysetype en α_cr: welke berekening er is gedaan en of de norm
+    // die toestaat (5.2.1(3)). Ook een uitgangspunt, om dezelfde reden.
+    analyseToelichting: analyseTekst,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
-    fem.combinations, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
+    fem.combinatiesVoorRapport, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
-    scheefstandTekst,
+    scheefstandTekst, analyseTekst,
   ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
@@ -1021,6 +1049,38 @@ function App() {
   // dat tabblad meldde daardoor altijd "Geen actieve solver-fouten", ook bij
   // een kolom die in tweede orde knikte.
   const [solverErrorText, setSolverErrorText] = useState<string | null>(null);
+  /**
+   * De blokkerende stabiliteitsmelding van de laatste rekengang: eerste orde
+   * waar α_cr < 10 dat niet toestaat (basisaudit nr 27). Rood in Inzichten,
+   * als melding op het scherm, en in het rapport. null = niets aan de hand.
+   */
+  const [stabiliteitsMelding, setStabiliteitsMelding] = useState<string | null>(null);
+  const gemeldeStabiliteitRef = useRef<string | null>(null);
+  /** De solverinvoer van de laatste rekengang, voor α_cr na de fysisch niet-lineaire ronde. */
+  const laatsteMultiInputRef = useRef<MultiInput | null>(null);
+  /**
+   * α_cr per UGT-combinatie bepalen en de meldingen tonen. Aangeroepen na
+   * elke rekengang; de blokkerende melding wordt niet bij elke live
+   * herberekening opnieuw als toast gemeld, wel bij een andere tekst.
+   */
+  const bepaalStabiliteit = useCallback((
+    multiInput: MultiInput,
+    combinationResults: Map<number, SolverResult>,
+  ): AlphaCrUitkomst[] => {
+    const uitkomsten = bepaalAlphaCr(multiInput, fem.actieveCombinaties, combinationResults);
+    const meldingen = stabiliteitsMeldingen(uitkomsten, fem.analysetype, fem.scheefstandEnabled);
+    const fouten = meldingen.filter((m) => m.niveau === "fout").map((m) => m.tekst);
+    const tekst = fouten.length > 0 ? fouten.join("\n\n") : null;
+    setStabiliteitsMelding(tekst);
+    if (tekst !== null && gemeldeStabiliteitRef.current !== tekst) {
+      gemeldeStabiliteitRef.current = tekst;
+      void import("./io/notify").then(({ notifyWarning }) =>
+        notifyWarning("Stabiliteit: eerste orde niet toegestaan", tekst),
+      );
+    }
+    if (tekst === null) gemeldeStabiliteitRef.current = null;
+    return uitkomsten;
+  }, [fem.actieveCombinaties, fem.analysetype, fem.scheefstandEnabled]);
   const [loadCasesTab, setLoadCasesTab] = useState<"cases" | "combos">("cases");
   // FEM solve trigger — increments on each "Berekenen" click. FemCanvas
   // watches this and re-runs the solver against the current model.
@@ -1081,7 +1141,13 @@ function App() {
         fem.actieveCombinaties.map(c => [c.id, combineResults(c, perCase)])
       );
       const envelope = computeEnvelope(fem.actieveCombinaties, perCase);
-      const outputs = { perCase, combinationResults, envelope };
+      // De kritieke lastfactor per combinatie (basisaudit nr 27): bepaald ná de
+      // rekengang, met de normaalkrachten van de combinatie. Bij eerste orde en
+      // α_cr < 10 volgt de rode melding; zonder deze stap zou een instabiel
+      // portaal met een groene kolom worden getoond.
+      laatsteMultiInputRef.current = multiInput;
+      const stabiliteit = bepaalStabiliteit(multiInput, combinationResults);
+      const outputs = { perCase, combinationResults, envelope, stabiliteit };
       fem.setSolverOutputs(outputs);
       rekenFoutRef.current = null;
       gemeldeRekenfoutRef.current = null;
@@ -1099,6 +1165,7 @@ function App() {
       rekenFoutRef.current = tekst;
       setSolverErrorText(tekst);
       fem.setSolverOutputs(null);
+      setStabiliteitsMelding(null);
       // Live herberekenen na elke modelwijziging zou dezelfde fout telkens
       // opnieuw melden; een andere fout wél.
       if (gemeldeRekenfoutRef.current !== tekst) {
@@ -1109,7 +1176,7 @@ function App() {
       }
       return null;
     }
-  }, [fem, scheefstandUitkomst.noemer]);
+  }, [fem, scheefstandUitkomst.noemer, bepaalStabiliteit]);
 
   /**
    * De fysisch niet-lineaire ronde over de zojuist berekende uitkomsten.
@@ -1244,10 +1311,13 @@ function App() {
       fem.actieveCombinaties.map(c => [c.id, combineResults(c, outputs.perCase)]),
     );
     const envelope = computeEnvelope(fem.actieveCombinaties, outputs.perCase);
-    const verse = { perCase: outputs.perCase, combinationResults, envelope };
+    const stabiliteit = laatsteMultiInputRef.current
+      ? bepaalStabiliteit(laatsteMultiInputRef.current, combinationResults)
+      : undefined;
+    const verse = { perCase: outputs.perCase, combinationResults, envelope, stabiliteit };
     fem.setSolverOutputs(verse);
     return verse;
-  }, [fem, stijfheidZet, stijfheidClear]);
+  }, [fem, stijfheidZet, stijfheidClear, bepaalStabiliteit]);
 
   /**
    * Eén run voor staal én hout: zorgt eerst voor verse combinatieresultaten
@@ -1258,7 +1328,7 @@ function App() {
    */
   const handleRunMemberChecks = useCallback(async (opts?: {
     openPanel?: boolean;
-    outputs?: { combinationResults: Map<number, SolverResult>; perCase?: Map<number, SolverResult> } | null;
+    outputs?: { combinationResults: Map<number, SolverResult>; perCase?: Map<number, SolverResult>; stabiliteit?: AlphaCrUitkomst[] } | null;
   }) => {
     const openPanel = opts?.openPanel ?? true;
     const { notifyInfo, notifyWarning } = await import("./io/notify");
@@ -1301,6 +1371,8 @@ function App() {
       // De doorbuigingstoets onderscheidt hiermee een echt tussensteunpunt van
       // een knoop waar een ligger alleen is doorgeknipt.
       supports: fem.supports,
+      // Een staafeind in een plaat is geen vrij eind (`lib/doorgaandeLijn.ts`).
+      plates: fem.plates,
       // De toetsbouwers zoeken hun combinaties in deze lijst (de karakteristieke
       // BGT voor de doorbuiging, de quasi-blijvende voor de kruip). Ze moet dus
       // gelijklopen met de sleutels van `combinationResults`; een combinatie
@@ -1313,6 +1385,14 @@ function App() {
       // UGT-combinatie af (k_mod, EN 1995-1-1 3.1.3(2)).
       loadCases: fem.loadCases,
       gevallenMetLast: perCase ? [...perCase.keys()] : undefined,
+      // α_cr en het analysetype: bij eerste orde onder de grens zet de bouwer
+      // een kanttekening bij elke op druk belaste staaf met een teruggevallen
+      // kniklengte (basisaudit nr 27).
+      stabiliteit: {
+        analysetype: fem.analysetype,
+        alphaCr: opts?.outputs?.stabiliteit ?? fem.stabiliteit ?? [],
+        scheefstandAan: fem.scheefstandEnabled,
+      },
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 
@@ -1757,7 +1837,7 @@ function App() {
         // secties lezen deze modelstate en volgen elke wijziging direct.
         return <ReportPreview data={reportData} onDetach={handleDetachReport} />;
       case "insights":
-        return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} />;
+        return <InsightsView nodes={fem.nodes} beams={fem.beams} supports={fem.supports} initialMode={insightsMode} solverError={solverErrorText} stabiliteitsMelding={stabiliteitsMelding} />;
       case "viewer":
         return (
           <Suspense fallback={<div className="placeholder"><p>Loading 3D Viewer...</p></div>}>
@@ -1976,6 +2056,7 @@ function App() {
         // PDF-uitdraai. Dezelfde tekst gaat via `reportData` naar het live
         // rapport, zodat het scherm en het papier hetzelfde zeggen.
         scheefstandToelichting={scheefstandTekst}
+        analyseToelichting={analyseTekst}
         onExportIfc={() => { void handleExportIfc(false); }}
         onExportIfcStructural={() => { void handleExportIfc(true); }}
         onValidateIfc={() => { void handleValidateIfc(); }}

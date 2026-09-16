@@ -131,6 +131,8 @@ interface WireReportData {
    * zwijgen in plaats van er een te verzinnen.
    */
   scheefstandToelichting?: string;
+  /** Het analysetype en α_cr als tekstblok; optioneel om dezelfde reden. */
+  analyseToelichting?: string;
 }
 
 /** Toetsresultaten (checkStore) — al JSON-veilig, 1-op-1 mee in het snapshot. */
@@ -251,6 +253,7 @@ function serializeReportData(d: ReportData): WireReportData {
         }
       : null,
     scheefstandToelichting: d.scheefstandToelichting,
+    analyseToelichting: d.analyseToelichting,
   };
 }
 
@@ -289,6 +292,7 @@ function deserializeReportData(w: WireReportData): ReportData {
     // ?? — oudere hoofdvensters sturen dit veld nog niet mee; leeg betekent
     // "geen scheefstand te melden", precies wat de sectie dan toont.
     scheefstandToelichting: w.scheefstandToelichting ?? "",
+    analyseToelichting: w.analyseToelichting ?? "",
   };
 }
 
@@ -500,6 +504,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     data.caseResults,
     data.envelope,
     data.scheefstandToelichting,
+    data.analyseToelichting,
     pageSize,
     orientation,
     hiddenSections,

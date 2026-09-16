@@ -354,6 +354,7 @@ fn invoer(
         concrete_dekkingslijnen: Vec::new(),
         concrete_reinforcement_zones: Vec::new(),
         scheefstand_toelichting: None,
+        analyse_toelichting: None,
     }
 }
 

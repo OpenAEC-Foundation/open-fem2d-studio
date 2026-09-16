@@ -188,4 +188,13 @@ deflection_limit_add: number,
  * is teruggevallen. Zonder dit kanaal zou zo'n terugval onzichtbaar zijn,
  * en een onzichtbare aanname is geen aanname maar een fout in wording.
  */
-deflection_notes: Array<string>, };
+deflection_notes: Array<string>, 
+/**
+ * Toelichtingen bij de STAAF ALS GEHEEL, letterlijk bij de kolomtoets
+ * (art. 6.3.2), de kiptoets (art. 6.3.3) en de eindzakking gezet; rekenen
+ * nergens mee. De bouwer zet hier wat hij van de staaf weet en de kern
+ * niet: dat een door tussenknopen geknipte staaf als één doorgaande lijn
+ * is getoetst, over welke lengte, en welke tussenknopen niet als steun
+ * tellen. `None` of leeg = niets te melden.
+ */
+staaf_notities?: Array<string>, };

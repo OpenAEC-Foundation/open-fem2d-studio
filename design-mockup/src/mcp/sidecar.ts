@@ -38,18 +38,21 @@
  * stderr omgeleid voordat er ook maar één verzoek wordt afgehandeld.
  */
 import {
+  gevalResultaten,
   solveAllCases,
   solveAllCasesNonlinear,
 } from "../components/fem/solver/engine";
 import {
   combineResults,
   computeEnvelope,
+  metScheefstandRichtingen,
   defaultCombinations,
   type LoadCombination,
 } from "../components/fem/solver/combinations";
 import { buildSteelCheckInputs, profileLookupKey } from "../lib/steelCheckBuilder";
 import { buildTimberCheckInputs, matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
 import { buildCltCheckInputs, isCltProfiel } from "../lib/cltCheckBuilder";
+import { alphaCrLabel, bepaalAlphaCr, stabiliteitsMeldingen } from "../components/fem/solver/alphaCr";
 import {
   selecteerCombinaties,
   type OvergeslagenCombinatie,
@@ -791,7 +794,13 @@ function rekenDoor(payload: Record<string, unknown>) {
     gelezen.model.plates,
     { loadCases: gelezen.model.loadCases, gevolgklasse },
   );
-  const combinaties = selectie.actief;
+  // Met een scheefstand elke combinatie in twee varianten, één per richting —
+  // dezelfde ontvouwing als de app (basisaudit nr 28).
+  const combinaties = metScheefstandRichtingen(
+    selectie.actief,
+    gelezen.model.scheefstandEnabled,
+    gelezen.model.scheefstandRichting,
+  );
   const profileDb = leesProfielen(payload);
 
   // Tweede orde: uit het projectbestand als dat er is — een projectbestand
@@ -835,8 +844,20 @@ function rekenDoor(payload: Record<string, unknown>) {
   }
   const solveMs = Date.now() - start;
 
+  // De kritieke lastfactor α_cr per UGT-combinatie (basisaudit nr 27). Bij
+  // eerste orde en α_cr < 10 komt er een FOUT in `warnings`: de norm staat de
+  // berekening dan niet toe, en de toetsinvoer die hieronder wordt gebouwd is
+  // dan geen toetsing.
+  const analysetype = nonlinear ? "tweedeOrdeGeometrisch" : "eersteOrde";
+  const stabiliteit = bepaalAlphaCr(multiInput, combinaties, combinationResults);
+  const stabiliteitMeldingen = stabiliteitsMeldingen(
+    stabiliteit, analysetype, gelezen.model.scheefstandEnabled,
+  );
+
   const gevraagd = gelezen.model.loadCases.map((lc) => lc.id);
-  const opgelost = [...perCase.keys()];
+  // Alleen de gewone geval-id's: de tegengestelde scheefstandrichting staat
+  // onder verschoven id's in de Map en is geen belastinggeval.
+  const opgelost = [...gevalResultaten(perCase).keys()];
   // `solveAllCases` slaat een belastinggeval zonder werkzame last stilzwijgend
   // over. Zonder deze lijst krijgt een client een ontbrekende sleutel die als
   // "nul" leest; daarom staat hij expliciet in het antwoord.
@@ -864,6 +885,10 @@ function rekenDoor(payload: Record<string, unknown>) {
   const staal = buildSteelCheckInputs({
     nodes: gelezen.model.nodes,
     beams: staafSelectie,
+    // Het hele model, ook buiten `beam_ids`: een doorgaande lijn en een vrij
+    // staafeind worden op alle staven herkend (`lib/doorgaandeLijn.ts`).
+    alleBeams: teToetsen,
+    plates: gelezen.model.plates,
     // Nodig om een tussensteunpunt te onderscheiden van een knoop waar een
     // ligger alleen is doorgeknipt; zonder deze lijst zou de doorbuigingstoets
     // dat verschil niet kunnen melden.
@@ -872,6 +897,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     combinationResults,
     profileDb,
     gevolgklasse,
+    stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled },
   });
 
   // Hout en kruislaaghout: DEZELFDE bouwers als de app, met dezelfde filters
@@ -943,6 +969,9 @@ function rekenDoor(payload: Record<string, unknown>) {
   // Wat er bij het inlezen van het projectbestand is vervangen of weggehaald —
   // dezelfde tekst als de melding bij het openen in de app.
   waarschuwingen.push(...gelezenCombinaties.openMeldingen);
+  for (const m of stabiliteitMeldingen) {
+    waarschuwingen.push(m.niveau === "fout" ? `FOUT: ${m.tekst}` : m.tekst);
+  }
   for (const m of meldingenBelastinggevallen({
     loadCases: gelezen.model.loadCases,
     combinations: combinaties,
@@ -973,6 +1002,18 @@ function rekenDoor(payload: Record<string, unknown>) {
     onbekendeIds,
     waarschuwingen,
     formatVersion: gelezen.formatVersion,
+    stabiliteit: {
+      analysis_type: analysetype,
+      alpha_cr: stabiliteit.map((u) => ({
+        combination_id: u.combinatieId,
+        name: u.naam,
+        alpha_cr: u.alphaCr,
+        status: u.status,
+        ...(u.grens !== undefined ? { bound: u.grens } : {}),
+        ...(u.reden !== undefined ? { reason: u.reden } : {}),
+        label: alphaCrLabel(u),
+      })),
+    },
   };
 }
 
@@ -1029,11 +1070,14 @@ function opSolve(payload: Record<string, unknown>) {
         reason: c.reden,
       }),
     ),
-    per_case: mapNaarObject(d.perCase, (r) => vormResultaat(r, d.metStations)),
+    per_case: mapNaarObject(gevalResultaten(d.perCase), (r) => vormResultaat(r, d.metStations)),
     combinations: mapNaarObject(d.combinationResults, (r) =>
       vormResultaat(r, d.metStations),
     ),
     envelope: vormEnvelop(d.envelope),
+    // α_cr per UGT-combinatie; een waarde onder 10 bij eerste orde staat ook
+    // als FOUT in `warnings` (NEN-EN 1993-1-1 5.2.1(3)).
+    stability: d.stabiliteit,
     steel_check_inputs: d.staal.inputs,
     skipped_beams: d.staal.skipped.map((s) => ({
       beam_id: s.beamId,
@@ -1081,6 +1125,7 @@ function opCheck(payload: Record<string, unknown>) {
       solve_ms: d.solveMs,
     },
     units: EENHEDEN,
+    stability: d.stabiliteit,
     steel_check_inputs: d.staal.inputs,
     // Het bestaan van deze twee sleutels zegt de server dat deze bundel hout
     // toetsbaar maakt; een oudere bundel heeft ze niet, en dan meldt de server

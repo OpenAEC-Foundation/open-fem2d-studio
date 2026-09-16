@@ -103,6 +103,8 @@ fn invoer(
         custom_section: None,
         staafstand: None,
         staafstand_notities: None,
+        staafeinden: None,
+        staaf_notities: None,
     }
 }
 

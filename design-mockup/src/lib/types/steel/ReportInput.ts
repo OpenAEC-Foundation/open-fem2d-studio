@@ -116,4 +116,18 @@ concrete_reinforcement_zones?: Array<BetonStaafZones>,
  * het rapport zwijgt er dan over in plaats van een vaste 1/200 te
  * suggereren.
  */
-scheefstand_toelichting?: string, };
+scheefstand_toelichting?: string, 
+/**
+ * Het analysetype en de kritieke lastfactor α_cr per UGT-combinatie, als
+ * tekstblok — woordelijk uit `solver/alphaCr.ts` (`analyseToelichting`).
+ *
+ * Waarom dit in het rapport hoort (basisaudit nr 27): het staalrapport
+ * noemde nergens of de krachten eerste of tweede orde waren, terwijl
+ * NEN-EN 1993-1-1 5.2.1(3) eerste orde alleen bij α_cr ≥ 10 toestaat en
+ * 5.2.2(7)b de terugval van de kniklengte op de systeemlengte aan een
+ * tweede-orde-berekening met imperfecties bindt. Een regel die met "!"
+ * begint is een waarschuwing of fout en wordt rood gezet.
+ *
+ * Leeg of afwezig = niet meegestuurd; het rapport zwijgt dan.
+ */
+analyse_toelichting?: string, };

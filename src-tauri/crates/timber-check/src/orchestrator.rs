@@ -297,7 +297,8 @@ fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> 
     );
     let l_cr_z_mm = kniklengte_z.l_cr_mm;
     let kniklengte_z_samenvatting = kniklengte_z.samenvatting();
-    checks.push(make_stability(check_column_stability(
+    let staaf_notities: Vec<String> = input.staaf_notities.iter().flatten().cloned().collect();
+    let mut kolom = check_column_stability(
         section,
         &ColumnStabilityInput {
             kniklengte_y,
@@ -311,7 +312,9 @@ fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> 
             k_m: km,
         },
         bend_state,
-    )));
+    );
+    kolom.notes.extend(staaf_notities.iter().cloned());
+    checks.push(make_stability(kolom));
 
     // Kipstabiliteit §6.3.3.
     if input.perform_ltb_check {
@@ -371,6 +374,7 @@ fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> 
             "k_c,z in de drukterm van (6.35) is bepaald met {kniklengte_z_samenvatting} — dezelfde \
              kniklengte als in de kolomtoets van art. 6.3.2, waar haar afleiding staat."
         ));
+        kip.notes.extend(staaf_notities.iter().cloned());
         checks.push(make_stability(kip));
     } else {
         // Uitgezet door de invoer: NIET stil weglaten. De toets staat als
@@ -545,6 +549,7 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
     // hij in voorkomt (w_fin = w_inst + k_def · w_qp). w_add volgt uit w_fin en
     // erft de aanname dus, wat in de toelichting zelf hoort te staan.
     fin.notes.extend(input.deflection_notes.iter().cloned());
+    fin.notes.extend(staaf_notities.iter().cloned());
     checks.push(make_resistance(fin));
     checks.push(make_resistance(add));
 

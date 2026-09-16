@@ -103,6 +103,11 @@ export interface ReportData {
    * PDF-uitdraai, waar een leeg veld het hoofdstuk Uitgangspunten weglaat.
    */
   scheefstandToelichting: string;
+  /**
+   * Het analysetype en de kritieke lastfactor α_cr per combinatie, als
+   * tekstblok (basisaudit nr 27). Leeg = niet gerekend.
+   */
+  analyseToelichting: string;
 }
 
 export const EMPTY_REPORT_DATA: ReportData = {
@@ -120,6 +125,7 @@ export const EMPTY_REPORT_DATA: ReportData = {
   caseResults: null,
   envelope: null,
   scheefstandToelichting: "",
+  analyseToelichting: "",
 };
 
 const ReportDataContext = createContext<ReportData>(EMPTY_REPORT_DATA);

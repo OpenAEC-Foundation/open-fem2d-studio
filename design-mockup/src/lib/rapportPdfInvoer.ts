@@ -186,6 +186,12 @@ export interface RapportPdfBronnen {
    * vaste 1/200 te suggereren.
    */
   scheefstandToelichting?: string;
+  /**
+   * Het analysetype en α_cr per combinatie als tekstblok, woordelijk zoals
+   * `solver/alphaCr.analyseToelichting` het opstelt (basisaudit nr 27). Leeg
+   * of afwezig = niet gerekend; het rapport zwijgt dan.
+   */
+  analyseToelichting?: string;
 }
 
 /**
@@ -390,6 +396,9 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   // "Uitgangspunten" op te leveren.
   if (bron.scheefstandToelichting && bron.scheefstandToelichting.trim() !== "") {
     invoer.scheefstand_toelichting = bron.scheefstandToelichting;
+  }
+  if (bron.analyseToelichting && bron.analyseToelichting.trim() !== "") {
+    invoer.analyse_toelichting = bron.analyseToelichting;
   }
   if (spoor) {
     invoer.concrete_stiffness_trace = { ...spoor, staafdoorsneden: doorsneden };

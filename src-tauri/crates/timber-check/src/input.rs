@@ -188,4 +188,13 @@ pub struct TimberBeamCheckInput {
     /// en een onzichtbare aanname is geen aanname maar een fout in wording.
     #[serde(default)]
     pub deflection_notes: Vec<String>,
+    /// Toelichtingen bij de STAAF ALS GEHEEL, letterlijk bij de kolomtoets
+    /// (art. 6.3.2), de kiptoets (art. 6.3.3) en de eindzakking gezet; rekenen
+    /// nergens mee. De bouwer zet hier wat hij van de staaf weet en de kern
+    /// niet: dat een door tussenknopen geknipte staaf als één doorgaande lijn
+    /// is getoetst, over welke lengte, en welke tussenknopen niet als steun
+    /// tellen. `None` of leeg = niets te melden.
+    #[serde(default)]
+    #[ts(optional)]
+    pub staaf_notities: Option<Vec<String>>,
 }

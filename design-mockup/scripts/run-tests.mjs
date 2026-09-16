@@ -96,6 +96,21 @@ const BUNDEL_TESTS = new Set([
   // getallen van buiten dit project.
   "dakconstructie-referentie",
   "doorbuiging-toets",
+  // Een door tussenknopen geknipte staaf als één staaf naar de kern
+  // (`lib/doorgaandeLijn.ts`), en de staafeinden (vrij, doorlopend). Praat
+  // alleen met engine, combinations en de bouwers; hoort óók tegen de bundel
+  // te draaien, want juist de MCP-weg toetste tot september 2026 elk deel los
+  // en nam de tussenknoop als gaffel.
+  "doorgaande-lijn",
+  // Scheefstand in beide richtingen: solveAllCases levert elk geval tweemaal,
+  // metScheefstandRichtingen ontvouwt de combinaties en de omhullende neemt
+  // de ongunstigste richting. Raakt alleen engine en combinations; de
+  // MCP-weg gebruikt dezelfde ontvouwing, dus hoort dit ook tegen de bundel.
+  "scheefstand-richting",
+  // De kritieke lastfactor α_cr en de meldingen (basisaudit nr 27). Raakt
+  // engine, combinations en alphaCr; de sidecar zet de FOUT in `warnings`,
+  // dus hoort dit ook tegen de bundel.
+  "alpha-cr",
   "hoekverdraaiing",
   // Bewaakt dat de kniklengte van een HOUTEN staaf tot in de toetsinvoer
   // komt (buckling_length_y_m/_z_m in TimberBeamCheckInput). Praat alleen met

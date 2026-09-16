@@ -213,12 +213,21 @@ async fn schema_van_check_steel_beam_is_volledig_en_strikt() {
         // De waarschuwing bij een naar links hellende staaf dicht bij 75°, waar
         // de bovenflens van het bovenvlak naar het ondervlak springt.
         "staafstand_notities",
+        // De staafeinden (vrij, doorlopend) en de toelichting bij een
+        // doorgaande lijn; zonder deze velden in het schema neemt de kern een
+        // vrij eind stil als gaffel.
+        "staafeinden",
+        "staaf_notities",
     ] {
         assert!(
             props[veld].is_object(),
             "veld '{veld}' ontbreekt in het schema; een client laat het dan op de standaardwaarde vallen"
         );
     }
+    assert_eq!(
+        props["staafeinden"]["properties"]["begin"]["enum"],
+        json!(["Gaffel", "Vrij", "Doorlopend"])
+    );
 
     // Enums die de kern werkelijk kent. `FloorBrittlePartitions` hoort bij het
     // eerste gedachtestreepje van A1.4.3(3) (vloeren die scheurgevoelige
@@ -793,8 +802,8 @@ async fn schema_van_de_houttools_is_strikt_op_elk_niveau() {
     assert!(staaf["properties"]["custom_section"].is_object(), "custom_section ontbreekt");
     assert_eq!(
         staaf["properties"].as_object().unwrap().len(),
-        26,
-        "het schema van de houten staaf hoort precies de 26 velden van TimberBeamCheckInput te kennen"
+        27,
+        "het schema van de houten staaf hoort precies de 27 velden van TimberBeamCheckInput te kennen \n         (25 + load_duration_per_combination + staaf_notities)"
     );
 
     let clt = tooldefinitie(&mut stdin, &mut reader, 31, "check_clt_beams").await;

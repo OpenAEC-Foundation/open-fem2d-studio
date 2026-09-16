@@ -242,6 +242,20 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(optional)]
     pub scheefstand_toelichting: Option<String>,
+    /// Het analysetype en de kritieke lastfactor α_cr per UGT-combinatie, als
+    /// tekstblok — woordelijk uit `solver/alphaCr.ts` (`analyseToelichting`).
+    ///
+    /// Waarom dit in het rapport hoort (basisaudit nr 27): het staalrapport
+    /// noemde nergens of de krachten eerste of tweede orde waren, terwijl
+    /// NEN-EN 1993-1-1 5.2.1(3) eerste orde alleen bij α_cr ≥ 10 toestaat en
+    /// 5.2.2(7)b de terugval van de kniklengte op de systeemlengte aan een
+    /// tweede-orde-berekening met imperfecties bindt. Een regel die met "!"
+    /// begint is een waarschuwing of fout en wordt rood gezet.
+    ///
+    /// Leeg of afwezig = niet meegestuurd; het rapport zwijgt dan.
+    #[serde(default)]
+    #[ts(optional)]
+    pub analyse_toelichting: Option<String>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -871,12 +885,35 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 /// regel als eigen alinea gezet omdat de opmaakmotor geen harde regeleinden in
 /// één alinea kent; er wordt niets aan de inhoud veranderd.
 fn extend_with_uitgangspunten(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportInput) {
-    let Some(tekst) = input.scheefstand_toelichting.as_ref().filter(|t| !t.trim().is_empty())
-    else {
+    let scheefstand = input.scheefstand_toelichting.as_ref().filter(|t| !t.trim().is_empty());
+    let analyse = input.analyse_toelichting.as_ref().filter(|t| !t.trim().is_empty());
+    if scheefstand.is_none() && analyse.is_none() {
         return;
-    };
+    }
 
     flow.push(Box::new(Paragraph::new("Uitgangspunten", style_h2()).kop()));
+
+    // Eerst de berekeningswijze: welke krachten er zijn bepaald (eerste of
+    // tweede orde) en of de norm dat toestaat — dat gaat aan alles vooraf.
+    if let Some(tekst) = analyse {
+        flow.push(Box::new(
+            Paragraph::new("Berekeningswijze en stabiliteit (α_cr)", style_h3()).kop(),
+        ));
+        flow.push(Box::new(Paragraph::new(
+            "Het analysetype bepaalt of de tweede-orde-effecten in de krachten zitten. NEN-EN 1993-1-1 \
+             5.2.1(3) staat een eerste-orde-berekening alleen toe bij α_cr ≥ 10; de terugval van de \
+             kniklengte op de systeemlengte in de staaftoets (5.2.2(7)b) veronderstelt bovendien \
+             krachten uit een tweede-orde-berekening met imperfecties.",
+            style_body(),
+        )));
+        zet_regels(flow, tekst);
+        flow.push(Box::new(Spacer::from_mm(3.0)));
+    }
+
+    let Some(tekst) = scheefstand else {
+        flow.push(Box::new(Spacer::from_mm(4.0)));
+        return;
+    };
     flow.push(Box::new(
         Paragraph::new("Initiële scheefstand", style_h3()).kop(),
     ));
@@ -887,14 +924,21 @@ fn extend_with_uitgangspunten(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportI
          de toetsingen hieronder zijn gedraaid.",
         style_body(),
     )));
+    zet_regels(flow, tekst);
+    flow.push(Box::new(Spacer::from_mm(4.0)));
+}
+
+/// Een tekstblok regel voor regel, zoals de bouwer het opstelde.
+///
+/// Een regel die met "!" begint is een WAARSCHUWING of FOUT. Die hoort op te
+/// vallen, en niet in dezelfde grijze kleur te verdwijnen als de tussenwaarden
+/// eromheen.
+fn zet_regels(flow: &mut Vec<Box<dyn Flowable>>, tekst: &str) {
     for regel in tekst.lines() {
         if regel.trim().is_empty() {
             flow.push(Box::new(Spacer::from_mm(1.5)));
             continue;
         }
-        // Een regel die met "!" begint is in `scheefstandToelichting` een
-        // WAARSCHUWING. Die hoort op te vallen, en niet in dezelfde grijze
-        // kleur te verdwijnen als de tussenwaarden eromheen.
         let stijl = if regel.starts_with('!') {
             ParagraphStyle { text_color: C_FAIL, ..style_note() }
         } else {
@@ -902,7 +946,6 @@ fn extend_with_uitgangspunten(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportI
         };
         flow.push(Box::new(Paragraph::new(regel.to_string(), stijl)));
     }
-    flow.push(Box::new(Spacer::from_mm(4.0)));
 }
 
 // ── De afleiding van een toets, uitgeschreven ─────────────────────────────────

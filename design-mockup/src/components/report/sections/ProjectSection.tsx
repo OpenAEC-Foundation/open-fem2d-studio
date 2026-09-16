@@ -90,7 +90,7 @@ export default function ProjectSection() {
   // bepaald — dezelfde tekst die de PDF-uitdraai in haar hoofdstuk
   // Uitgangspunten zet. Hier wordt niets herrekend: stond er geen scheefstand
   // op de lasten, dan is de tekst leeg en zwijgt ook dit blok erover.
-  const { beams, scheefstandToelichting, combinations } = useReportData();
+  const { beams, scheefstandToelichting, analyseToelichting, combinations } = useReportData();
 
   // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
   // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
@@ -200,6 +200,15 @@ export default function ProjectSection() {
         // waarop hieronder is getoetst. Staat de schakelaar uit, dan is de
         // tekst leeg en blijft de rij weg; dan is er niets toegepast om te
         // melden, en de PDF-uitdraai laat haar hoofdstuk om dezelfde reden weg.
+        // Het analysetype en α_cr per combinatie (basisaudit nr 27): welke
+        // berekening er is gedaan en of NEN-EN 1993-1-1 5.2.1(3) die toestaat.
+        // Zelfde blokvorm: een "!"-regel is een waarschuwing of fout.
+        if (analyseToelichting.trim() !== "") {
+          rijen.push([
+            t("report.fieldAnalyse", "Berekening en stabiliteit"),
+            <ScheefstandBlok tekst={analyseToelichting} />,
+          ]);
+        }
         if (scheefstandToelichting.trim() !== "") {
           rijen.push([
             t("report.fieldScheefstand", "Initiële scheefstand"),

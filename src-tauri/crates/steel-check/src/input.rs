@@ -49,6 +49,44 @@ pub enum DeflectionClass {
     Custom,
 }
 
+/// Wat er aan één staafeind zit, voor zover de stabiliteitstoetsen ervan
+/// afhangen.
+///
+/// De kiptoets (NB.NB.4.3) en de terugval van de kniklengte nemen een
+/// staafeind als GAFFEL: torsie verhinderd, zijdelings gesteund. Dat is de
+/// aanname van de hele keten, en zij is verdedigbaar bij een oplegging of een
+/// aansluiting op een andere staaf. Twee soorten staafeinden zijn het NIET, en
+/// tot september 2026 werden ze wél zo behandeld (basisaudit, kipgedrag):
+///
+///  * een **vrij** eind — geen oplegging en geen aansluitende staaf: een
+///    uitkraging of een vrijstaande kolom. Een IPE 300 van 3 m als uitkraging
+///    kreeg L_st = 3000 mm (UC_kip 0,406) waar tabel NB.NB.1 geval 5 de
+///    vervangende ligger van 2·L = 6000 mm voorschrijft (UC_kip 0,720);
+///  * een **doorlopend** eind — de staaf loopt zonder oplegging in het
+///    verlengde door in een staaf met een ándere doorsnede of een ander
+///    materiaal. Delen met dezelfde doorsnede voegt de invoerbouwer al samen
+///    tot één staaf; bij een wisselende doorsnede kan dat niet, en dan kan de
+///    kern de kipvelden en de kniklengte niet per deel bepalen. Hij weigert
+///    dan met reden in plaats van het eind stil als gaffel te nemen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
+pub enum Staafeind {
+    /// Oplegging of aansluiting: zijdelings gesteund, torsie verhinderd.
+    Gaffel,
+    /// Geen oplegging en geen aansluitende staaf.
+    Vrij,
+    /// Loopt zonder oplegging door in een staaf met een andere doorsnede.
+    Doorlopend,
+}
+
+/// De twee staafeinden, in de referentierichting van de staaf (begin = x = 0).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
+pub struct Staafeinden {
+    pub begin: Staafeind,
+    pub eind: Staafeind,
+}
+
 /// Invoer van één staaltoetsing.
 ///
 /// `deny_unknown_fields`: een onbekend veld is een **fout**, geen ruis. Zeven
@@ -192,6 +230,23 @@ pub struct BeamCheckInput {
     #[serde(default)]
     #[ts(optional)]
     pub staafstand_notities: Option<Vec<String>>,
+    /// Wat er aan de twee staafeinden zit — zie [`Staafeinden`]. `None` of
+    /// weglaten = beide een gaffel, het gedrag van vóór dit veld.
+    #[serde(default)]
+    #[ts(optional)]
+    pub staafeinden: Option<Staafeinden>,
+    /// Toelichtingen bij de STAAF ALS GEHEEL, die de bouwer van de invoer
+    /// opstelt en die de kern letterlijk bij de kniktoets (6.3.1), de kiptoets
+    /// (6.3.2) en de eindzakking zet. Rekenen nergens mee.
+    ///
+    /// WAAROM. Een staaf die door tussenknopen in delen is geknipt, wordt door
+    /// de invoerbouwer als één doorgaande lijn getoetst; welke delen dat zijn,
+    /// hoe lang de lijn is en welke tussenknopen niet als steun tellen, weet
+    /// alleen de bouwer. Zonder dit kanaal zou de lezer van het rapport een
+    /// staaf van 12 m zien waar het model er twee van 6 m toont, zonder uitleg.
+    #[serde(default)]
+    #[ts(optional)]
+    pub staaf_notities: Option<Vec<String>>,
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

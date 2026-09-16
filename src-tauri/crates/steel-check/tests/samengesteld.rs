@@ -134,6 +134,8 @@ fn invoer(
         custom_section: custom,
         staafstand: None,
         staafstand_notities: None,
+        staafeinden: None,
+        staaf_notities: None,
     }
 }
 

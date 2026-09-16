@@ -99,6 +99,7 @@ fn pdf_van(r: BeamCheckResult, naam: &str) -> String {
         concrete_dekkingslijnen: Vec::new(),
         concrete_reinforcement_zones: Vec::new(),
         scheefstand_toelichting: None,
+        analyse_toelichting: None,
     });
     let pad = std::env::temp_dir().join(naam);
     std::fs::write(&pad, &pdf).expect("de PDF moet weg te schrijven zijn");

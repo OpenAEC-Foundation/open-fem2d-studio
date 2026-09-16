@@ -68,6 +68,8 @@ import {
   deflectionNotesFor,
   extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
+import { voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
+import { alphaCrStaafNotitie, type StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
 import {
   eigenNaamVan,
   isEigenProfiel,
@@ -331,6 +333,12 @@ export interface TimberBuildData {
   beams: Beam[];
   /** Opleggingen; zie `SteelBuildData.supports`. */
   supports?: Support[];
+  /** Alle staven van het model; zie `SteelBuildData.alleBeams`. */
+  alleBeams?: Beam[];
+  /** Platen; zie `SteelBuildData.plates`. */
+  plates?: { nodeIds: number[] }[];
+  /** Analysetype en α_cr; zie `SteelBuildData.stabiliteit`. */
+  stabiliteit?: StabiliteitVoorToets;
   combinations: LoadCombination[];
   combinationResults: Map<number, SolverResult>;
   /** Runtime-lijst uit `list_timber_grades`; leeg → statische fallback. */
@@ -358,10 +366,13 @@ export interface TimberBuildResult {
 }
 
 export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildResult {
-  // Elke staaf in zijn referentierichting — zie `lib/referentierichting.ts`.
-  const data = toetsdataInReferentierichting(ruweData);
+  // Eerst de doorgaande lijnen (een door tussenknopen geknipte staaf als één
+  // staaf), dan elke staaf in zijn referentierichting — zie
+  // `lib/doorgaandeLijn.ts` en `lib/referentierichting.ts`.
+  const lijn = voegDoorgaandeLijnenSamen(ruweData);
+  const data = toetsdataInReferentierichting(lijn.data);
   const inputs: TimberBeamCheckInput[] = [];
-  const skipped: CheckSkip[] = [];
+  const skipped: CheckSkip[] = [...lijn.overgeslagen];
 
   const grades =
     data.supportedGrades && data.supportedGrades.length > 0
@@ -561,6 +572,13 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
           ondergrens: cfg.loadDuration !== undefined ? mapLoadDuration(cfg.loadDuration) : undefined,
         })
       : [];
+    const staafNotities = [...(lijn.notities.get(beam.id) ?? [])];
+    const alphaNotitie = alphaCrStaafNotitie(
+      ruweData.stabiliteit,
+      Math.min(...forcesEnvelope.map((p) => p.forces.n_ed)),
+      Number.isFinite(cfg.bucklingLengthY_m) && (cfg.bucklingLengthY_m as number) > 0,
+    );
+    if (alphaNotitie) staafNotities.push(alphaNotitie);
 
     inputs.push({
       beam_id: beam.id,
@@ -695,6 +713,9 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
         ...instNotes,
         ...wQuasi.notes,
       ],
+      // De toelichting bij een doorgaande lijn die als een staaf is getoetst;
+      // de kern zet hem bij de kolomtoets, de kiptoets en de eindzakking.
+      ...(staafNotities.length > 0 ? { staaf_notities: staafNotities } : {}),
     });
   }
 

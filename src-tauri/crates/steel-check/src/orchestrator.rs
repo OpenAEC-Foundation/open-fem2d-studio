@@ -17,7 +17,7 @@ use nen_en_1993_1_1_stability::{
     StabilityCalc,
     buckling_curve::BucklingCurve,
     column_buckling::{n_b_rd, Knikas, Knikassen},
-    kniklengte::{bepaal_kniklengte, Steunen, Steunrand},
+    kniklengte::{bepaal_kniklengte, Kniklengte, Steunen, Steunrand},
     interaction_factors::{interaction_factors_method_2, cm_uniform_or_psi},
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
@@ -25,7 +25,7 @@ use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel, Kipprofiel, Kipveld};
 use section_properties::SectionProperties;
 use steel_profiles::{db, ProfileKind};
 use crate::input::{
-    BeamCheckInput, CustomDoorsnedevorm, MELDING_AANSLUITING_HOEKPROFIEL,
+    BeamCheckInput, CustomDoorsnedevorm, Staafeind, Staafeinden, MELDING_AANSLUITING_HOEKPROFIEL,
     MELDING_AFSCHUIVING_HOEKPROFIEL, MELDING_BUIGING_HOEKPROFIEL, MELDING_KNIK_HOOFDASSEN,
     MELDING_VORM_NIET_CONTROLEERBAAR, REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD,
     REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_HOEKPROFIEL, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
@@ -711,18 +711,81 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     let assen_info = doorsnede.knikassen;
     let eigen_assen = assen_info.naam_1 == "y" && assen_info.naam_2 == "z";
     let l_staaf_mm = input.length_m * 1000.0;
-    let kniklengte_1 = bepaal_kniklengte(
-        assen_info.naam_1,
-        eigen_assen,
-        input.buckling_length_y_m,
-        l_staaf_mm,
-        None,
-    );
-    let kniklengte_2 = bepaal_kniklengte(
+
+    // ── De staafeinden (basisaudit kip-1/kip-2 en nr 29) ──────────────────
+    //
+    // Beide stabiliteitstoetsen nemen een staafeind als gaffel: zijdelings
+    // gesteund en torsievast. Een VRIJ eind (uitkraging, vrijstaande kolom) is
+    // dat niet, en een DOORLOPEND eind (de staaf loopt zonder oplegging door in
+    // een staaf met een andere doorsnede) evenmin. Zie `Staafeind` voor de
+    // achtergrond; hier de gevolgen: bij een vrij eind wordt de kniklengte
+    // 2·L en de kiptoets die van de vervangende ligger (tabel NB.NB.1 geval 5),
+    // bij een doorlopend eind wordt geweigerd wat niet per deel te bepalen is.
+    let einden = input.staafeinden.unwrap_or(Staafeinden {
+        begin: Staafeind::Gaffel,
+        eind: Staafeind::Gaffel,
+    });
+    let beide_vrij = einden.begin == Staafeind::Vrij && einden.eind == Staafeind::Vrij;
+    let vrij_eind: Option<&'static str> = match (einden.begin, einden.eind) {
+        (Staafeind::Vrij, Staafeind::Vrij) => None,
+        (Staafeind::Vrij, _) => Some("het begin van de staaf (x = 0)"),
+        (_, Staafeind::Vrij) => Some("het eind van de staaf (x = L)"),
+        _ => None,
+    };
+    let doorlopend: Vec<&'static str> = [
+        (einden.begin, "het begin van de staaf (x = 0)"),
+        (einden.eind, "het eind van de staaf (x = L)"),
+    ]
+        .iter()
+        .filter(|(e, _)| *e == Staafeind::Doorlopend)
+        .map(|(_, plaats)| *plaats)
+        .collect();
+    let reden_beide_vrij = "beide staafeinden zijn vrij (geen oplegging en geen aansluitende \
+        staaf): de staaf wordt nergens vastgehouden en is als los onderdeel een mechanisme; \
+        de stabiliteitstoetsen zijn niet uitgevoerd"
+        .to_string();
+    let reden_doorlopend_kip: Option<String> = (!doorlopend.is_empty() && !beide_vrij).then(|| {
+        format!(
+            "de staaf loopt aan {} zonder oplegging in het verlengde door in een staaf met een \
+             andere doorsnede of een ander materiaal. Dat staafeind is geen gaffel, en NB.NB.4.3 \
+             kent alleen kipvelden tussen gaffels en kipsteunen; de kipvelden van een doorgaande \
+             lijn met wisselende doorsnede zijn niet per deel te bepalen. Kip is daarom niet \
+             getoetst: zet op die tussenknoop een kipsteun (aan beide flenzen) of toets de \
+             doorgaande lijn als geheel",
+            doorlopend.join(" en ")
+        )
+    });
+    let opgegeven = |m: f64| m.is_finite() && m > 0.0;
+    let knik_weigering: Option<String> = if beide_vrij {
+        Some(reden_beide_vrij.clone())
+    } else if !doorlopend.is_empty()
+        && !(opgegeven(input.buckling_length_y_m) && opgegeven(input.buckling_length_z_m))
+    {
+        Some(format!(
+            "de staaf loopt aan {} zonder oplegging in het verlengde door in een staaf met een \
+             andere doorsnede of een ander materiaal. De terugval van de kniklengte op de \
+             staaflengte zou dat staafeind als zijdelings gesteund aannemen, en dat is het niet \
+             (basisaudit nr 29: een tussenknoop halveerde zo de kniklengte). Geef L_cr,y én \
+             L_cr,z op voor de doorgaande lijn als geheel; dan wordt de kniktoets uitgevoerd",
+            doorlopend.join(" en ")
+        ))
+    } else {
+        None
+    };
+    // Een vrij eind zonder opgegeven kniklengte: 2·L, niet de staaflengte en
+    // ook niet de afleiding uit de kipsteunen — die veronderstelt gesteunde
+    // staafeinden.
+    let kniklengte_of_vrij = |as_naam: &str, in_vlak: bool, opgegeven_m: f64, steunen: Option<Steunen<'_>>| {
+        match vrij_eind {
+            Some(plaats) if !opgegeven(opgegeven_m) => Kniklengte::vrij_eind(as_naam, l_staaf_mm, in_vlak, plaats),
+            _ => bepaal_kniklengte(as_naam, in_vlak, opgegeven_m, l_staaf_mm, steunen),
+        }
+    };
+    let kniklengte_1 = kniklengte_of_vrij(assen_info.naam_1, eigen_assen, input.buckling_length_y_m, None);
+    let kniklengte_2 = kniklengte_of_vrij(
         assen_info.naam_2,
         false,
         input.buckling_length_z_m,
-        l_staaf_mm,
         eigen_assen.then_some(Steunen {
             boven: &input.lateral_bracing.top_flange_positions,
             onder: &input.lateral_bracing.bottom_flange_positions,
@@ -747,18 +810,35 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     ];
     // De slankheid gaat om de assen die de doorsnede voorschrijft: y-y en z-z,
     // of bij een hoekprofiel de hoofdassen u-u en v-v (par. 1.7(2)).
-    let knik = n_b_rd(p, &grade, &knikassen, comp_state);
-
+    //
     // χ en λ̄ komen als velden mee en worden niet uit `intermediate_values`
     // opgezocht: de symboolnamen dragen de asnaam ("\chi_u" bij een
     // hoekprofiel), en een zoekopdracht op "\chi_y" zou daar stilzwijgend op
     // de standaardwaarde 1,0 uitkomen — een knikreductie die er niet is.
     let n_pl_rd_kn = p.area_mm2 * grade.fy_mpa * 1e-3;
-    let n_b_rd_y_kn = knik.per_as[0].chi * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
-    let n_b_rd_z_kn = knik.per_as[1].chi * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1);
-    let lambda_bar_y = knik.per_as[0].lambda_bar;
-    let lambda_bar_z = knik.per_as[1].lambda_bar;
-    checks.push(make_stability(knik.calc));
+    let (n_b_rd_y_kn, n_b_rd_z_kn, lambda_bar_y, lambda_bar_z) = if let Some(reden) = &knik_weigering {
+        let (titel, artikel, stab) = toetsgegevens("6.3.1_buckling");
+        checks.push(weigering("6.3.1_buckling", titel, artikel, stab, vec![reden.clone()], comp_state));
+        (f64::NAN, f64::NAN, f64::NAN, f64::NAN)
+    } else {
+        let knik = n_b_rd(p, &grade, &knikassen, comp_state);
+        let uit = (
+            knik.per_as[0].chi * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1),
+            knik.per_as[1].chi * n_pl_rd_rd_fn(n_pl_rd_kn, grade.gamma_m1),
+            knik.per_as[0].lambda_bar,
+            knik.per_as[1].lambda_bar,
+        );
+        checks.push(make_stability(knik.calc));
+        uit
+    };
+    // De kipcontrole (en daarmee 6.3.3) wordt geweigerd om een doorsnedereden,
+    // om een doorlopend staafeind, of omdat de kniktoets al is geweigerd — 6.61
+    // en 6.62 delen ook door N_b,Rd.
+    let kip_weigering: Option<String> = doorsnede
+        .kip_weigering
+        .clone()
+        .or_else(|| knik_weigering.clone())
+        .or_else(|| reden_doorlopend_kip.clone());
 
     // 7. LTB 6.3.2 — channel sections use monosymmetric (conservative) Mcr × 0.7.
     //    Doubly-symmetric I/H sections use the standard I-section formula.
@@ -791,37 +871,91 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     //     worden afgelezen, niet op L_st/4 vanaf x = 0.
     //  3. WELK VELD MAATGEVEND IS. Die keuze zit in de ltb-crate (laagste
     //     M_cr), want zij vergt de hele NB-keten; zie `maatgevend_kipveld`.
-    let l_g_mm = input.length_m * 1000.0;
     let combo_id = gov_bending.combination_id;
+    let l_staaf_kip_mm = input.length_m * 1000.0;
     let kipsteunen = input
         .lateral_bracing
         .kipsteunen_op_de_gedrukte_flens(|f| {
-            interpolate_my_at(&input.forces_envelope, f * l_g_mm, combo_id)
+            interpolate_my_at(&input.forces_envelope, f * l_staaf_kip_mm, combo_id)
         });
-    let grenzen = nen_en_1993_1_1_ltb::lambda_chi::kipveld_grenzen_mm(l_g_mm, &kipsteunen);
-    // Zonder tussenliggende kipsteun is er één veld, en dat loopt van gaffel
-    // tot gaffel: dan geldt L_kip = L_st en NIET de formule met β.
-    let tussen_gaffels = grenzen.len() == 2;
-    let kipvelden: Vec<Kipveld> = grenzen
-        .windows(2)
-        .map(|w| Kipveld {
-            l_st_mm: w[1] - w[0],
-            m_begin_knm: interpolate_my_at(&input.forces_envelope, w[0], combo_id),
-            m_eind_knm: interpolate_my_at(&input.forces_envelope, w[1], combo_id),
-            // Rekent niet mee — NB.NB.4.3 werkt met de eindmomenten. Staat in
-            // het rapport zodat de lezer ziet of de momentenlijn tussen die
-            // eindmomenten doorbuigt; met alleen twee eindmomenten is een
-            // rechte lijn niet van een parabool te onderscheiden, terwijl
-            // NB.NB.4.3(3) juist op "verdeelde belasting mét eindmomenten"
-            // berust. De momentenlijn kent alleen de orchestrator.
-            m_midden_knm: interpolate_my_at(
-                &input.forces_envelope,
-                (w[0] + w[1]) / 2.0,
-                combo_id,
-            ),
-            tussen_gaffels,
-        })
-        .collect();
+    // Een UITKRAGING (één vrij staafeind) valt buiten NB.NB.4.3: dat kent geen
+    // kipveld dat bij een vrij eind eindigt. Getoetst wordt dan de vervangende
+    // ligger van tabel NB.NB.1 geval 5 — het spiegelbeeld om het ingeklemde
+    // eind, 2·L tussen twee gaffels, met C₁ = 1,0 en C₂ = 0. Tot september
+    // 2026 kreeg een uitkraging L_st = L en gold het vrije eind als gaffel:
+    // een IPE 300 van 3 m kwam zo op UC_kip 0,406 waar 0,720 hoort.
+    let (l_g_mm, kipvelden, uitkraging_notities): (f64, Vec<Kipveld>, Vec<String>) = if let Some(plaats) = vrij_eind {
+        let l_g_mm = 2.0 * l_staaf_kip_mm;
+        let (x_vrij, x_vast) = if einden.begin == Staafeind::Vrij {
+            (0.0, l_staaf_kip_mm)
+        } else {
+            (l_staaf_kip_mm, 0.0)
+        };
+        let m_vrij = interpolate_my_at(&input.forces_envelope, x_vrij, combo_id);
+        let m_vast = interpolate_my_at(&input.forces_envelope, x_vast, combo_id);
+        let mut notities = vec![format!(
+            "UITKRAGING. {} is vrij: geen oplegging en geen aansluitende \
+             staaf. Het is geen gaffel, en NB.NB.4.3 kent geen kipveld dat bij een vrij eind \
+             eindigt. Getoetst is daarom de vervangende ligger van tabel NB.NB.1 geval 5: het \
+             spiegelbeeld van de uitkraging om haar ingeklemde eind, L_g = L_st = L_kip = 2·L = \
+             {} mm tussen twee gaffels, met C₁ = 1,0 en C₂ = 0. Het ingeklemde eind is daarbij \
+             als gaffel aangenomen (torsie verhinderd, welving vrij).",
+            hoofdletter(plaats),
+            nl_getal(l_g_mm)
+        )];
+        if !kipsteunen.is_empty() {
+            notities.push(format!(
+                "De {} kipsteun(en) aan de gedrukte flens van deze uitkraging zijn NIET \
+                 meegeteld: NB.NB.4.3 geeft geen regel voor een veld tussen een kipsteun en een \
+                 vrij eind, en de volle vervangende lengte is de veilige kant.",
+                kipsteunen.len()
+            ));
+        }
+        (
+            l_g_mm,
+            vec![Kipveld {
+                l_st_mm: l_g_mm,
+                // Het spiegelbeeld heeft aan beide gaffels het moment van het
+                // vrije eind (in de regel nul) en halverwege dat van het
+                // ingeklemde eind. Rekent bij een uitkraging nergens in mee;
+                // staat in het rapport.
+                m_begin_knm: m_vrij,
+                m_eind_knm: m_vrij,
+                m_midden_knm: m_vast,
+                tussen_gaffels: true,
+                uitkraging: true,
+            }],
+            notities,
+        )
+    } else {
+        let l_g_mm = l_staaf_kip_mm;
+        let grenzen = nen_en_1993_1_1_ltb::lambda_chi::kipveld_grenzen_mm(l_g_mm, &kipsteunen);
+        // Zonder tussenliggende kipsteun is er één veld, en dat loopt van gaffel
+        // tot gaffel: dan geldt L_kip = L_st en NIET de formule met β.
+        let tussen_gaffels = grenzen.len() == 2;
+        let kipvelden: Vec<Kipveld> = grenzen
+            .windows(2)
+            .map(|w| Kipveld {
+                l_st_mm: w[1] - w[0],
+                m_begin_knm: interpolate_my_at(&input.forces_envelope, w[0], combo_id),
+                m_eind_knm: interpolate_my_at(&input.forces_envelope, w[1], combo_id),
+                // Rekent niet mee — NB.NB.4.3 werkt met de eindmomenten. Staat in
+                // het rapport zodat de lezer ziet of de momentenlijn tussen die
+                // eindmomenten doorbuigt; met alleen twee eindmomenten is een
+                // rechte lijn niet van een parabool te onderscheiden, terwijl
+                // NB.NB.4.3(3) juist op "verdeelde belasting mét eindmomenten"
+                // berust. De momentenlijn kent alleen de orchestrator.
+                m_midden_knm: interpolate_my_at(
+                    &input.forces_envelope,
+                    (w[0] + w[1]) / 2.0,
+                    combo_id,
+                ),
+                tussen_gaffels,
+                uitkraging: false,
+            })
+            .collect();
+        (l_g_mm, kipvelden, Vec::new())
+    };
 
     // β en B* hangen rechtstreeks aan de momenten op de STAAFEINDEN, en
     // `interpolate_my_at` houdt buiten het bemonsterde bereik de laatste waarde
@@ -834,7 +968,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     // zeggen dat het hierop berust.
     let mut envelop_notities: Vec<String> = Vec::new();
     {
-        let tol_mm = (l_g_mm * 1e-6).max(1e-9);
+        let tol_mm = (l_staaf_kip_mm * 1e-6).max(1e-9);
         let mut posities = input
             .forces_envelope
             .iter()
@@ -846,10 +980,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
                 min_mm = min_mm.min(x);
                 max_mm = max_mm.max(x);
             }
-            if min_mm > tol_mm || max_mm < l_g_mm - tol_mm {
+            if min_mm > tol_mm || max_mm < l_staaf_kip_mm - tol_mm {
                 envelop_notities.push(format!(
                     "De momentenlijn van de maatgevende combinatie is bemonsterd van \
-                     x = {min_mm:.0} tot x = {max_mm:.0} mm op een staaf van {l_g_mm:.0} mm. \
+                     x = {min_mm:.0} tot x = {max_mm:.0} mm op een staaf van {l_staaf_kip_mm:.0} mm. \
                      Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus \
                      de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn \
                      doorgetrokken en niet gemeten."
@@ -882,7 +1016,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             .unwrap_or(f64::NAN)
     }
 
-    let ltb_check = if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
+    let ltb_check = if let Some(reden_kip) = kip_weigering.clone() {
         m_b_rd_knm = f64::NAN; // bestaat niet; elke afnemer is hieronder geweigerd
         let (titel, artikel, stab) = toetsgegevens("6.3.2_ltb");
         weigering("6.3.2_ltb", titel, artikel, stab, vec![reden_kip], bend_state)
@@ -894,6 +1028,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             bend_state,
         );
         ltb.notes.extend(envelop_notities.iter().cloned());
+        ltb.notes.extend(uitkraging_notities.iter().cloned());
         m_b_rd_knm = m_b_rd_van(&ltb);
         make_stability(ltb)
     } else {
@@ -908,6 +1043,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         // declaratie berust in plaats van op lamellen.
         ltb.notes.extend(doorsnede.kip_notities.iter().cloned());
         ltb.notes.extend(envelop_notities.iter().cloned());
+        ltb.notes.extend(uitkraging_notities.iter().cloned());
         m_b_rd_knm = m_b_rd_van(&ltb);
         make_stability(ltb)
     };
@@ -944,7 +1080,7 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     } else {
         p.wel_z_mm3 * grade.fy_mpa / grade.gamma_m0 * 1e-6
     };
-    if let Some(reden_kip) = doorsnede.kip_weigering.clone() {
+    if let Some(reden_kip) = kip_weigering.clone() {
         // 6.61 en 6.62 delen door M_b,Rd; zonder kipcontrole bestaat dat getal
         // niet. Doorrekenen met χ_LT = 1 zou de kip stilzwijgend wegpoetsen.
         for id in ["6.3.3_eq_6_61", "6.3.3_eq_6_62"] {
@@ -999,6 +1135,17 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     //     slankheid om u-u en v-v is bepaald.
     hang_toets_notities(&mut checks, &doorsnede.toets_notities);
 
+    // 9c. De toelichtingen van de bouwer bij de staaf als geheel (een
+    //     doorgaande lijn die als één staaf is getoetst) — bij de drie toetsen
+    //     waarvoor de staaflengte de uitkomst bepaalt.
+    for tekst in input.staaf_notities.iter().flatten() {
+        for c in checks.iter_mut().filter(|c| {
+            matches!(c.id.as_str(), "6.3.1_buckling" | "6.3.2_ltb" | "deflection_w_fin")
+        }) {
+            plak_notitie(c, tekst);
+        }
+    }
+
     // 10. Aggregate
     let mut uc_max = 0.0_f64;
     let mut governing_check_id = String::new();
@@ -1028,6 +1175,15 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 #[inline]
 fn n_pl_rd_rd_fn(n_pl_rd_kn: f64, gamma_m1: f64) -> f64 {
     n_pl_rd_kn / gamma_m1
+}
+
+/// Eerste letter als hoofdletter, voor een zin die met een plaatsaanduiding begint.
+fn hoofdletter(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(eerste) => eerste.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
 }
 
 /// Een maat in mm als tekst met decimaalkomma, voor een kanttekening.

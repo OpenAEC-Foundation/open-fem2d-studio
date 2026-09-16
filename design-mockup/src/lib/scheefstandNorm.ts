@@ -801,6 +801,14 @@ export function scheefstandToelichting(
     );
     for (const r of geometrie.afleiding.slice(2)) regels.push(r);
   }
+  regels.push("");
+  regels.push(
+    "Richting: beide. Elke belastingcombinatie is doorgerekend met de scheefstand in +x " +
+      "én in −x, als twee varianten met de richting in de naam; de omhullende en de " +
+      "toetsing nemen per staaf de ongunstigste van de twee (EN 1993-1-1 5.3.2(2): de " +
+      "imperfectie in de meest ongunstige richting; 5.3.2(8): in alle relevante " +
+      "richtingen, één per keer).",
+  );
   if (uitkomst.waarschuwingen.length > 0) {
     regels.push("");
     for (const w of uitkomst.waarschuwingen) regels.push(`! ${w}`);
