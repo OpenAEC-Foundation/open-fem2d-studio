@@ -109,6 +109,8 @@ const KRUISTABEL: &[Rij] = &[
     Rij { tauri: Some("concrete_effective_flange_width"), toetsbrug: Some("concrete_effective_flange_width"), mcp: Some("concrete_effective_flange_width"), reden: "" },
     Rij { tauri: Some("list_exposure_classes"), toetsbrug: Some("list_exposure_classes"), mcp: Some("list_exposure_classes"), reden: "" },
     Rij { tauri: Some("concrete_cover_check"), toetsbrug: Some("concrete_cover_check"), mcp: Some("concrete_cover_check"), reden: "" },
+    // De kruipcoëfficiënt volgens bijlage B; zie `tests/drie_wegen_kruip.rs`.
+    Rij { tauri: Some("concrete_creep_coefficient"), toetsbrug: Some("concrete_creep_coefficient"), mcp: Some("concrete_creep_coefficient"), reden: "" },
 ];
 
 /// Wat geen drie wegen heeft — met de reden erbij.
