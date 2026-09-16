@@ -29,6 +29,7 @@ import type { TableDataset, TableViewApi } from "./components/table/tableTypes";
 import LoadCaseTabBar from "./components/fem/LoadCaseTabBar";
 import LoadCasesDialog from "./components/fem/LoadCasesDialog";
 import WindGeneratorDialog from "./lib/wind/WindGeneratorDialog";
+import { vrijstaandDakUitgangspunten } from "./lib/wind/windGenerator";
 import { useWindGenerator } from "./stores/windStore";
 import { pasRapportSnapshotToe, rapportSnapshot } from "./stores/reportStore";
 import { setSetting as zetInstelling } from "./store";
@@ -401,6 +402,15 @@ function App() {
           : "")
       : ""),
     [fem.stabiliteit, fem.analysetype, fem.scheefstandEnabled, fem.eindstijfheid]);
+  /**
+   * De omschrijving van de gegenereerde windlasten voor de PDF (issue #16):
+   * dezelfde functie waarmee het live rapport haar bij de uitgangspunten zet
+   * (ProjectSection), op dezelfde gevallen en lasten uit het model — scherm en
+   * papier zeggen zo hetzelfde. Leeg zonder gegenereerde windlast.
+   */
+  const windTekst = useMemo(
+    () => vrijstaandDakUitgangspunten(fem.loadCases, fem.loads),
+    [fem.loadCases, fem.loads]);
 
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
@@ -2218,6 +2228,7 @@ function App() {
         // rapport, zodat het scherm en het papier hetzelfde zeggen.
         scheefstandToelichting={scheefstandTekst}
         analyseToelichting={analyseTekst}
+        windToelichting={windTekst}
         onExportIfc={() => { void handleExportIfc(false); }}
         onExportIfcStructural={() => { void handleExportIfc(true); }}
         onValidateIfc={() => { void handleValidateIfc(); }}

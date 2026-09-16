@@ -901,3 +901,18 @@ async fn tikfout_in_een_houtveld_wordt_geweigerd_in_plaats_van_stil_genegeerd() 
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
+
+/// Het rapportschema noemt de windomschrijving (issue #16). Het schema staat
+/// op `additionalProperties: true`, dus een client KAN het veld altijd
+/// meesturen — maar een veld dat het schema niet noemt, vindt een client niet.
+#[tokio::test]
+async fn rapportschema_noemt_de_windomschrijving() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+    let rapport = tooldefinitie(&mut stdin, &mut reader, 40, "generate_steel_report_pdf").await;
+    assert_eq!(
+        rapport["inputSchema"]["properties"]["wind_toelichting"]["type"], "string",
+        "wind_toelichting ontbreekt in het schema van generate_steel_report_pdf"
+    );
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}

@@ -136,6 +136,22 @@ log("\n4. Vrijstaand dak (§7.3) — zones, resultante, blokkering");
   ok(tel(vol, /class="wgd-blok"/g) === 4 && vol.includes("φ = 1,00"), "blokkering φ = 1: de stapel aan de lijzijde");
 }
 
+log("\n5. Doorsnede — horizontaal geval: pijlen in de richting van de kracht (issue #16)");
+{
+  const zNodes = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }, { id: 3, x: 0, z: 3000 }, { id: 4, x: 6000, z: 3000 }];
+  const zBeams = [{ id: 1, from: 1, to: 3 }, { id: 2, from: 2, to: 4 }, { id: 3, from: 3, to: 4 }];
+  const r = genereerWindbelasting({ nodes: zNodes, beams: zBeams, loadCases: [] },
+    { ...inst, vorm: "vrijstaandDak", gebouwlengte_m: 20, afstandTotKopgevel_m: 10, hohSpant_m: 4, vrijstaandDakvorm: "lessenaar", wrijving: "ruw", kolomDoorsnede: "scherphoekig", kolomBreedte_mm: 200 });
+  const geval = r.samenvatting.perGeval.find((g) => g.sleutel === "luifel:horizontaal:links");
+  ok(!!geval && geval.regels.length === 3, "horizontaal van links: wrijving op het dak en twee kolommen");
+  const svg = renderToStaticMarkup(React.createElement(DoorsnedeSchema, { geometrie: r.geometrie, richting: "links", regels: geval.regels }));
+  ok(tel(svg, /class="wgd-druk"/g) === 3, "drie pijlen", `${tel(svg, /class="wgd-druk"/g)}`);
+  // Elke pijl wijst naar +x: het beginpunt ligt links van het eindpunt.
+  const lijnen = [...svg.matchAll(/<g class="wgd-druk"><line x1="([-\d.]+)"[^>]*x2="([-\d.]+)"/g)];
+  ok(lijnen.length === 3 && lijnen.every((m) => Number(m[1]) < Number(m[2])), "alle pijlen wijzen met de wind mee (+x)",
+    lijnen.map((m) => `${m[1]}→${m[2]}`).join(" "));
+}
+
 log("");
 log(`${geslaagd} geslaagd, ${gefaald} gefaald`);
 process.exit(gefaald === 0 ? 0 : 1);

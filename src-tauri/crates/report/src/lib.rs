@@ -259,6 +259,25 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(optional)]
     pub analyse_toelichting: Option<String>,
+    /// De windbelasting zoals de windgenerator haar in het model zette, als
+    /// tekstblok — woordelijk uit `lib/wind/windGenerator.ts`
+    /// (`vrijstaandDakUitgangspunten`): een kopregel met de normgrondslag
+    /// (NEN-EN 1991-1-4 §7.3) en per gegenereerd belastinggeval de omschrijving
+    /// van zijn lasten (tabel, α, φ en de gebruikte coëfficiënt).
+    ///
+    /// Waarom (issue #16): het live rapport noemde per windlast waar het getal
+    /// vandaan kwam, het papier niet. Een windlast zonder tabel en cel is niet
+    /// na te rekenen, en de PDF is het stuk dat wordt ingediend.
+    ///
+    /// Een String en geen getallen om dezelfde reden als de scheefstand: de
+    /// generator kent de tabelopzoeking en de interpolatie; die hier naspelen
+    /// zou een tweede lezing van dezelfde norm opleveren.
+    ///
+    /// Leeg of afwezig = geen gegenereerde windlast met omschrijving; het
+    /// rapport zwijgt dan.
+    #[serde(default)]
+    #[ts(optional)]
+    pub wind_toelichting: Option<String>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -926,7 +945,8 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 fn extend_with_uitgangspunten(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportInput) {
     let scheefstand = input.scheefstand_toelichting.as_ref().filter(|t| !t.trim().is_empty());
     let analyse = input.analyse_toelichting.as_ref().filter(|t| !t.trim().is_empty());
-    if scheefstand.is_none() && analyse.is_none() {
+    let wind = input.wind_toelichting.as_ref().filter(|t| !t.trim().is_empty());
+    if scheefstand.is_none() && analyse.is_none() && wind.is_none() {
         return;
     }
 
@@ -943,6 +963,19 @@ fn extend_with_uitgangspunten(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportI
              5.2.1(3) staat een eerste-orde-berekening alleen toe bij α_cr ≥ 10; de terugval van de \
              kniklengte op de systeemlengte in de staaftoets (5.2.2(7)b) veronderstelt bovendien \
              krachten uit een tweede-orde-berekening met imperfecties.",
+            style_body(),
+        )));
+        zet_regels(flow, tekst);
+        flow.push(Box::new(Spacer::from_mm(3.0)));
+    }
+
+    // De windbelasting: per gegenereerd geval de tabel, α, φ en coëfficiënt
+    // waaruit de lasten in de lastentabel volgen (NEN-EN 1991-1-4). Een
+    // belasting, dus vóór de scheefstand, die op alle verticale lasten rust.
+    if let Some(tekst) = wind {
+        flow.push(Box::new(Paragraph::new("Windbelasting", style_h3()).kop()));
+        flow.push(Box::new(Paragraph::new(
+            "De windlasten zijn door de windgenerator in het model gezet. Per belastinggeval staat              hieronder waar de coëfficiënt vandaan komt: de paragraaf en tabel van NEN-EN 1991-1-4,              de dakhelling α, de blokkering φ en de gebruikte waarde. De lijnlast is steeds              q_p(z_e) · coëfficiënt · belastingbreedte.",
             style_body(),
         )));
         zet_regels(flow, tekst);

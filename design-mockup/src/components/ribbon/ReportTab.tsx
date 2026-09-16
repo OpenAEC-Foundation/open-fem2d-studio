@@ -70,9 +70,15 @@ interface ReportTabProps {
   scheefstandToelichting?: string;
   /** Het analysetype en α_cr per combinatie, zoals App.tsx het opstelt (basisaudit nr 27). */
   analyseToelichting?: string;
+  /**
+   * De omschrijving van de gegenereerde windlasten (tabel, α, φ, coëfficiënt),
+   * zoals App.tsx haar met `vrijstaandDakUitgangspunten` uit het model opstelt
+   * — dezelfde tekst als in het live rapport (issue #16).
+   */
+  windToelichting?: string;
 }
 
-export default function ReportTab({ scheefstandToelichting, analyseToelichting }: ReportTabProps) {
+export default function ReportTab({ scheefstandToelichting, analyseToelichting, windToelichting }: ReportTabProps) {
   const { t } = useTranslation("ribbon");
 
   const pageSize = useReportStore((s) => s.pageSize);
@@ -225,6 +231,7 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting }
         // hoofdstuk Uitgangspunten vanzelf weg.
         scheefstandToelichting,
         analyseToelichting,
+        windToelichting,
       });
       const bytes = await genereerRapportPdf(invoer);
       const { save } = await import("@tauri-apps/plugin-dialog");

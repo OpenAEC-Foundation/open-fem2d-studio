@@ -729,6 +729,15 @@ log("\n[8] De gedeelde terugval krijgt aan beide kanten dezelfde invoer");
     betonInvoer: [],
   });
   checkWaar("een lege scheefstandtekst telt als niet meegestuurd", !("scheefstand_toelichting" in wit));
+
+  // De omschrijving van de gegenereerde windlasten (issue #16): woordelijk
+  // mee, en een lege of witte tekst telt als niet meegestuurd.
+  const windTekst = "Wind vrijstaand dak c_f opwaarts, van links: §7.3 tabel 7.6 (α = 10,0°, φ = 0,50): c_f = −1,15";
+  const metWind = bouwRapportInvoer({ project, checkResults: [beton(1)], windToelichting: windTekst });
+  checkWaar("de windomschrijving gaat woordelijk mee", metWind.wind_toelichting === windTekst);
+  checkWaar("zonder windomschrijving staat het veld er niet", !("wind_toelichting" in kaal));
+  const witWind = bouwRapportInvoer({ project, checkResults: [beton(1)], windToelichting: "   " });
+  checkWaar("een lege windomschrijving telt als niet meegestuurd", !("wind_toelichting" in witWind));
   checkWaar("een lege dekkingslijnlijst telt als niet meegestuurd", !("concrete_dekkingslijnen" in wit));
   checkWaar("een lege betoninvoer telt als niet meegestuurd", !("concrete_reinforcement_zones" in wit));
 }

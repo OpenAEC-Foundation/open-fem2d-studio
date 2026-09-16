@@ -130,4 +130,23 @@ scheefstand_toelichting?: string,
  *
  * Leeg of afwezig = niet meegestuurd; het rapport zwijgt dan.
  */
-analyse_toelichting?: string, };
+analyse_toelichting?: string, 
+/**
+ * De windbelasting zoals de windgenerator haar in het model zette, als
+ * tekstblok — woordelijk uit `lib/wind/windGenerator.ts`
+ * (`vrijstaandDakUitgangspunten`): een kopregel met de normgrondslag
+ * (NEN-EN 1991-1-4 §7.3) en per gegenereerd belastinggeval de omschrijving
+ * van zijn lasten (tabel, α, φ en de gebruikte coëfficiënt).
+ *
+ * Waarom (issue #16): het live rapport noemde per windlast waar het getal
+ * vandaan kwam, het papier niet. Een windlast zonder tabel en cel is niet
+ * na te rekenen, en de PDF is het stuk dat wordt ingediend.
+ *
+ * Een String en geen getallen om dezelfde reden als de scheefstand: de
+ * generator kent de tabelopzoeking en de interpolatie; die hier naspelen
+ * zou een tweede lezing van dezelfde norm opleveren.
+ *
+ * Leeg of afwezig = geen gegenereerde windlast met omschrijving; het
+ * rapport zwijgt dan.
+ */
+wind_toelichting?: string, };

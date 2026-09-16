@@ -107,9 +107,21 @@ export function DoorsnedeSchema({
     const a = r.startFrac ?? 0, b = r.endFrac ?? 1;
     const f = (a + b) / 2;
     const px = s.x1 + (s.x2 - s.x1) * f, pz = s.z1 + (s.z2 - s.z1) * f;
+    const lengte = 14 + Math.min(22, Math.abs(r.w_kNm2) * 12);
+    // Wrijving en kolomwind: de pijl wijst in de richting van de kracht en
+    // eindigt op de staaf; een normaal van het vlak zegt hier niets.
+    if (r.krachtRichting) {
+      const cx = sx(px), cy = sy(pz);
+      const { x: kx, z: kz } = r.krachtRichting;
+      const bx = cx - kx * lengte, by = cy + kz * lengte;
+      return [{
+        key: `${r.beamId}-${i}`, van: { x: bx, y: by }, naar: { x: cx, y: cy }, druk: true,
+        label: `${r.zone} ${nl(Math.abs(r.q_kNm), 2)}`,
+        lx: bx - kx * 8, ly: by + kz * 8,
+      }];
+    }
     const n = buitennormaal(s);
     const druk = r.w_kNm2 > 0;
-    const lengte = 14 + Math.min(22, Math.abs(r.w_kNm2) * 12);
     // Druk: de pijl komt van buiten en wijst het vlak in (punt op het vlak).
     // Zuiging: de pijl staat op het vlak en wijst naar buiten.
     const cx = sx(px), cy = sy(pz);
