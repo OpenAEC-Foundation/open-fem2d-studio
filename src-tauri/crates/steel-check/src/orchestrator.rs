@@ -29,7 +29,7 @@ use crate::input::{
     MELDING_AFSCHUIVING_HOEKPROFIEL, MELDING_BUIGING_HOEKPROFIEL, MELDING_KNIK_HOOFDASSEN,
     MELDING_VORM_NIET_CONTROLEERBAAR, REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD,
     REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_HOEKPROFIEL, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
-    REDEN_KLASSE_4, reden_lijfplooi,
+    REDEN_KLASSE_4, reden_lijfplooi, MELDING_KOKER_WARMVERVAARDIGD,
 };
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
 use crate::deflection::check_deflection_pair;
@@ -323,7 +323,14 @@ fn resolveer_doorsnede(
         // de beschrijvingsassen samenvalt. Wat daar aan beperkingen uit volgt,
         // hangt hieronder BIJ de toetsen waarop het slaat.
         let is_hoeklijn = matches!(profile.kind, ProfileKind::Angle);
-        let toets_notities: Vec<(&'static str, String)> = if is_hoeklijn {
+        // Koker of buis: de catalogus bevat uitsluitend warmvervaardigde
+        // (EN 10210) exemplaren, en dat is een aanname die de lezer bij de
+        // kniktoets hoort te zien — een koudgevormde koker (EN 10219) valt in
+        // tabel 6.2 onder kromme c en niet onder a (basisaudit nr 36).
+        let is_hol = matches!(profile.kind, ProfileKind::Shs | ProfileKind::Rhs | ProfileKind::Chs);
+        let toets_notities: Vec<(&'static str, String)> = if is_hol {
+            vec![("6.3.1_buckling", MELDING_KOKER_WARMVERVAARDIGD.to_string())]
+        } else if is_hoeklijn {
             vec![
                 ("6.2.4_compression", MELDING_AANSLUITING_HOEKPROFIEL.to_string()),
                 ("6.2.5_bending_y", MELDING_BUIGING_HOEKPROFIEL.to_string()),
@@ -343,11 +350,22 @@ fn resolveer_doorsnede(
                 .unwrap_or(BucklingCurve::B),
             curve_z: BucklingCurve::from_char(profile.buckling_curves.z_axis)
                 .unwrap_or(BucklingCurve::C),
-            kromme_toelichting: format!(
-                "Tabel 6.2 via de profieldatabase: bij {} staat knikkromme '{}' om de eerste as en \
-                 '{}' om de tweede as.",
-                input.profile_name, profile.buckling_curves.y_axis, profile.buckling_curves.z_axis
-            ),
+            kromme_toelichting: if is_hol {
+                format!(
+                    "Tabel 6.2, rij 'buisprofielen, warmvervaardigd': knikkromme '{}' om de eerste \
+                     as en '{}' om de tweede as bij {}. {}",
+                    profile.buckling_curves.y_axis,
+                    profile.buckling_curves.z_axis,
+                    input.profile_name,
+                    MELDING_KOKER_WARMVERVAARDIGD
+                )
+            } else {
+                format!(
+                    "Tabel 6.2 via de profieldatabase: bij {} staat knikkromme '{}' om de eerste as en \
+                     '{}' om de tweede as.",
+                    input.profile_name, profile.buckling_curves.y_axis, profile.buckling_curves.z_axis
+                )
+            },
             is_channel: matches!(profile.kind, ProfileKind::Channel),
             // Tabel 6.5 kent alleen rijen voor I-profielen. Alles uit de
             // catalogus is gewalst; kokers, buizen en hoeklijnen vallen buiten
