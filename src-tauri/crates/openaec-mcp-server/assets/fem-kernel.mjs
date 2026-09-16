@@ -510,6 +510,7 @@ var Mesh = class _Mesh {
     this.layers.set(0, { id: 0, name: "Default", color: "#3b82f6", visible: true, locked: false });
   }
   addNode(x, y) {
+    while (this.nodes.has(this.nextNodeId)) this.nextNodeId++;
     const node = {
       id: this.nextNodeId++,
       x,
@@ -520,8 +521,22 @@ var Mesh = class _Mesh {
     this.nodes.set(node.id, node);
     return node;
   }
-  /** Add a plate mesh node with ID starting from 1000 */
+  /**
+   * Plaatknoop toevoegen. De nummering begint op 1000 óf, als er al meer
+   * reguliere knopen zijn, boven het hoogste reguliere id; een bestaand id
+   * wordt overgeslagen.
+   *
+   * Tot september 2026 begon de plaatteller altijd op 1000 en overschreef hij
+   * stil een reguliere knoop zodra het model er 1000 of meer had (reguliere
+   * knopen: staafknopen, splitsknopen van staafpuntlasten en plaatranden).
+   * Gemeten: raamwerk 32 traveeën × 30 lagen (1023 knopen) met een losse
+   * wandschijf — vijf botsingen, ΣRx −300 → −154,2 kN, ux 58,33 → 4,33 mm,
+   * zonder melding. De `Map` gaf de knoop gewoon een nieuwe plek; de staven
+   * wezen naar een punt elders.
+   */
   addPlateNode(x, y) {
+    if (this.nextPlateNodeId < this.nextNodeId) this.nextPlateNodeId = this.nextNodeId;
+    while (this.nodes.has(this.nextPlateNodeId)) this.nextPlateNodeId++;
     const node = {
       id: this.nextPlateNodeId++,
       x,
@@ -3124,12 +3139,14 @@ var SingulierStelselFout = class extends Error {
     return `Het stelsel is singulier: ${knoop} op (${mmTekst(this.xMm)}, ${mmTekst(this.zMm)}) mm kan vrij ${beweging}. ${oorzaak} (Oorspronkelijke melding: ${this.origineel})`;
   }
 };
-function vertaalSingulier(e, mesh) {
+function vertaalSingulier(e, mesh, knoopVanIndex) {
   const origineel = e instanceof Error ? e.message : String(e);
   const treffer = /column (\d+)/.exec(origineel);
   if (!treffer) return e;
   const kolom = Number(treffer[1]);
-  const knoop = [...mesh.nodes.values()][Math.floor(kolom / 3)];
+  const index = Math.floor(kolom / 3);
+  const knoopId = knoopVanIndex ? knoopVanIndex(index)?.id : [...mesh.nodes.values()][index]?.id;
+  const knoop = knoopId === void 0 ? void 0 : mesh.nodes.get(knoopId);
   if (!knoop) return e;
   let losseKnoop = true;
   for (const beam of mesh.beamElements.values()) {
@@ -3137,6 +3154,14 @@ function vertaalSingulier(e, mesh) {
     if (eind && (eind[0].id === knoop.id || eind[1].id === knoop.id)) {
       losseKnoop = false;
       break;
+    }
+  }
+  if (losseKnoop) {
+    for (const element of mesh.elements.values()) {
+      if (element.nodeIds.includes(knoop.id)) {
+        losseKnoop = false;
+        break;
+      }
     }
   }
   const richtingen = ["x", "z", "rotatie"];
@@ -3211,6 +3236,14 @@ function calculateGeometricStiffness(L, N) {
   Kg.set(5, 5, c * factor);
   return Kg;
 }
+function telGeometrischeStijfheidOp(Kl, L, N) {
+  const Kg = calculateGeometricStiffness(L, N);
+  for (let i = 0; i < 6; i++) {
+    for (let j = 0; j < 6; j++) {
+      Kl.addAt(i, j, Kg.get(i, j));
+    }
+  }
+}
 function assembleGlobalStiffnessWithGeometric(mesh, axialForces, includeGeometric) {
   const numNodes = mesh.getNodeCount();
   const numDofs = numNodes * 3;
@@ -3231,21 +3264,16 @@ function assembleGlobalStiffnessWithGeometric(mesh, axialForces, includeGeometri
     const angle = calculateBeamAngle(n1, n2);
     if (L < 1e-10) throw nulElementFout(beam.id, n1);
     const Kl = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+    if (includeGeometric) {
+      const N = -(axialForces.get(beam.id) || 0);
+      telGeometrischeStijfheidOp(Kl, L, N);
+    }
     const releasedLocalDofs = getReleasedLocalDofs(beam);
     const veren = getSprungLocalDofs(beam);
     if (veren.length > 0) {
       applyEndConnections(Kl, releasedLocalDofs, veren);
     } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
-    }
-    if (includeGeometric) {
-      const N = -(axialForces.get(beam.id) || 0);
-      const Kg = calculateGeometricStiffness(L, N);
-      for (let i = 0; i < 6; i++) {
-        for (let j = 0; j < 6; j++) {
-          Kl.addAt(i, j, Kg.get(i, j));
-        }
-      }
     }
     const T = createTransformationMatrix(angle);
     const TT = T.transpose();
@@ -3348,21 +3376,16 @@ function assembleGlobalStiffnessFNL(mesh, sectionStates, axialForces, includeGeo
     const sectionState = sectionStates.get(beam.id);
     const EI_eff = sectionState?.tangentStiffness ?? material.E * beam.section.I;
     const Kl = calculateBeamLocalStiffnessFNL(L, material.E, beam.section.A, beam.section.I, EI_eff);
+    if (includeGeometric) {
+      const N = -(axialForces.get(beam.id) || 0);
+      telGeometrischeStijfheidOp(Kl, L, N);
+    }
     const releasedLocalDofs = getReleasedLocalDofs(beam);
     const veren = getSprungLocalDofs(beam);
     if (veren.length > 0) {
       applyEndConnections(Kl, releasedLocalDofs, veren);
     } else if (releasedLocalDofs.length > 0) {
       applyEndReleases(Kl, releasedLocalDofs);
-    }
-    if (includeGeometric) {
-      const N = -(axialForces.get(beam.id) || 0);
-      const Kg = calculateGeometricStiffness(L, N);
-      for (let i = 0; i < 6; i++) {
-        for (let j = 0; j < 6; j++) {
-          Kl.addAt(i, j, Kg.get(i, j));
-        }
-      }
     }
     const T = createTransformationMatrix(angle);
     const TT = T.transpose();
@@ -4131,7 +4154,30 @@ function assembleGeometricStiffnessMixed(mesh, displacements, nodeIdToIndex, num
     const ug = dofIndices.map((d) => displacements[d]);
     const ul = T.multiplyVector(ug);
     const N = material.E * beam.section.A / L * (ul[3] - ul[0]);
-    const KgLokaal = calculateGeometricStiffness(L, N);
+    const releasedLocalDofs = getReleasedLocalDofs(beam);
+    const veren = getSprungLocalDofs(beam);
+    let KgLokaal;
+    if (releasedLocalDofs.length === 0 && veren.length === 0) {
+      KgLokaal = calculateGeometricStiffness(L, N);
+    } else {
+      const condenseer = (M) => {
+        if (veren.length > 0) applyEndConnections(M, releasedLocalDofs, veren);
+        else applyEndReleases(M, releasedLocalDofs);
+        return M;
+      };
+      const KeAlleen = condenseer(
+        calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I)
+      );
+      const KeMetKg = calculateBeamLocalStiffness(L, material.E, beam.section.A, beam.section.I);
+      telGeometrischeStijfheidOp(KeMetKg, L, N);
+      condenseer(KeMetKg);
+      KgLokaal = new Matrix(6, 6);
+      for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 6; j++) {
+          KgLokaal.set(i, j, KeMetKg.get(i, j) - KeAlleen.get(i, j));
+        }
+      }
+    }
     const KgGlobaal = T.transpose().multiply(KgLokaal.multiply(T));
     for (let i = 0; i < 6; i++) {
       for (let j = 0; j < 6; j++) {
@@ -4311,12 +4357,19 @@ function solveMixed(mesh, opts) {
     }
     return herstel(solveLinearSystem2(Kmod, Fmod));
   };
+  const knoopVanIndex = /* @__PURE__ */ new Map();
+  for (const [id, index] of nodeIdToIndex) knoopVanIndex.set(index, { id });
   const numDofsMixed = K.rows;
   log({
     soort: "info",
     tekst: `Gemengd model: ${mesh.beamElements.size} staven en ${mesh.elements.size} schijfelementen, ${numDofsMixed} vrijheidsgraden` + (opts.geometricNonlinear ? " \u2014 geometrisch niet-lineair (P-\u0394)" : " \u2014 lineair")
   });
-  let displacements = losOp(K);
+  let displacements;
+  try {
+    displacements = losOp(K);
+  } catch (e) {
+    throw vertaalSingulier(e, mesh, (i) => knoopVanIndex.get(i));
+  }
   let Kreactie = K;
   if (opts.geometricNonlinear) {
     let vorigeNorm = Infinity;
@@ -5277,6 +5330,11 @@ function buildMesh(input, loadFactor) {
     return created.id;
   };
   for (const n of input.nodes) {
+    if (nodeIdMap.has(n.id)) {
+      throw new Error(
+        `Knoop ${n.id} komt tweemaal voor in het model. Elke knoop hoort een eigen nummer te hebben; anders is niet te zeggen op welke van de twee een staaf, oplegging of last aangrijpt.`
+      );
+    }
     const meshNode = mesh.addNode(n.x / 1e3, n.z / 1e3);
     nodeIdMap.set(n.id, meshNode.id);
   }
@@ -9196,11 +9254,7 @@ function matchSupportedConcreteClass(materialName, supportedClasses = SUPPORTED_
   if (!materialName) return null;
   const gezocht = materialName.replace(/\s/g, "").toLowerCase();
   if (!gezocht) return null;
-  const hit = supportedClasses.find((c) => {
-    const lang = c.toLowerCase();
-    const kort = lang.split("/")[0];
-    return lang === gezocht || kort === gezocht;
-  });
+  const hit = supportedClasses.find((c) => c.toLowerCase() === gezocht);
   return hit ?? null;
 }
 function parseConcreteRectMm(profileName) {
@@ -11240,6 +11294,326 @@ function bouwMultiInput(model) {
   return multiInput;
 }
 
+// src/lib/normenInRapport.ts
+function leeg() {
+  return { en1993: false, en1995: false, en1992: false };
+}
+function normVanMateriaal(soort) {
+  switch (soort) {
+    case "staal":
+      return "en1993";
+    case "hout":
+    case "clt":
+      return "en1995";
+    case "beton":
+      return "en1992";
+    default:
+      return null;
+  }
+}
+function normenInModel(beams) {
+  const uit = leeg();
+  for (const beam of beams) {
+    const norm = normVanMateriaal(materiaalVanStaaf(beam));
+    if (norm !== null) uit[norm] = true;
+  }
+  return uit;
+}
+
+// src/lib/scheefstandNorm.ts
+var SCHEEFSTAND_BRONNEN = [
+  "vast",
+  "en1993",
+  "en1992",
+  "en1995",
+  "ongunstigste"
+];
+var SCHEEFSTAND_NORMEN = ["en1993", "en1992", "en1995"];
+var SCHEEFSTAND_BRON_LABEL = {
+  vast: "vaste noemer",
+  en1993: "EN 1993-1-1 (5.5)",
+  en1992: "EN 1992-1-1 (5.1)",
+  en1995: "EN 1995-1-1 (5.1)",
+  ongunstigste: "ongunstigste van toepassing"
+};
+var VERTICAAL_VANAF_GRADEN2 = 75;
+function getal3(x, decimalen) {
+  return x.toFixed(decimalen).replace(".", ",");
+}
+function leidScheefstandGeometrieAf(model) {
+  const afleiding = [];
+  const knoopById = new Map(model.nodes.map((n) => [n.id, n]));
+  const alleZ = model.nodes.map((n) => n.z);
+  const topZ = alleZ.length > 0 ? Math.max(...alleZ) : 0;
+  const opleggingZ = model.supports.map((s) => knoopById.get(s.nodeId)?.z).filter((z) => typeof z === "number");
+  const heeftOpleggingen = opleggingZ.length > 0;
+  const voetZ = heeftOpleggingen ? Math.min(...opleggingZ) : alleZ.length > 0 ? Math.min(...alleZ) : 0;
+  const hoogteM = Math.max(0, (topZ - voetZ) / 1e3);
+  afleiding.push(
+    `h = ${getal3(hoogteM, 3)} m \u2014 van de voet (${heeftOpleggingen ? `laagste oplegging, z = ${getal3(voetZ, 0)} mm` : `geen opleggingen in het model, dus de laagste knoop, z = ${getal3(voetZ, 0)} mm`}) tot de bovenkant van de constructie (z = ${getal3(topZ, 0)} mm). EN 1993-1-1 figuur 5.2 meet h vanaf het opleggingsniveau; EN 1992-1-1 \xA75.2(6) noemt het voor de schorende constructie de hoogte van het gebouw.`
+  );
+  const minSinus = Math.sin(VERTICAAL_VANAF_GRADEN2 * Math.PI / 180);
+  const verticaal = [];
+  for (const b of model.beams) {
+    const a = knoopById.get(b.from);
+    const c = knoopById.get(b.to);
+    if (!a || !c) continue;
+    const dx = c.x - a.x;
+    const dz = c.z - a.z;
+    const L = Math.hypot(dx, dz);
+    if (L < 1e-9) continue;
+    if (Math.abs(dz) / L >= minSinus) verticaal.push({ id: b.id, from: b.from, to: b.to });
+  }
+  const ouder = /* @__PURE__ */ new Map();
+  const wortel = (x) => {
+    let r = x;
+    while (ouder.get(r) !== r) r = ouder.get(r);
+    let k = x;
+    while (ouder.get(k) !== r) {
+      const volgende = ouder.get(k);
+      ouder.set(k, r);
+      k = volgende;
+    }
+    return r;
+  };
+  for (const b of verticaal) {
+    for (const n of [b.from, b.to]) if (!ouder.has(n)) ouder.set(n, n);
+  }
+  for (const b of verticaal) {
+    const ra = wortel(b.from);
+    const rb = wortel(b.to);
+    if (ra !== rb) ouder.set(ra, rb);
+  }
+  const perWortel = /* @__PURE__ */ new Map();
+  for (const b of verticaal) {
+    const r = wortel(b.from);
+    const lijst = perWortel.get(r);
+    if (lijst) lijst.push(b.id);
+    else perWortel.set(r, [b.id]);
+  }
+  const kolomlijnen = [];
+  for (const staafIds of perWortel.values()) {
+    const knopen = /* @__PURE__ */ new Set();
+    for (const id of staafIds) {
+      const b = verticaal.find((v) => v.id === id);
+      knopen.add(b.from);
+      knopen.add(b.to);
+    }
+    const pts = [...knopen].map((n) => knoopById.get(n)).filter((n) => !!n);
+    if (pts.length === 0) continue;
+    const voet = pts.reduce((laagste, p) => p.z < laagste.z ? p : laagste, pts[0]);
+    kolomlijnen.push({
+      staafIds: [...staafIds].sort((a, b) => a - b),
+      voetZmm: voet.z,
+      topZmm: Math.max(...pts.map((p) => p.z)),
+      voetXmm: voet.x
+    });
+  }
+  kolomlijnen.sort((a, b) => a.voetXmm - b.voetXmm || a.voetZmm - b.voetZmm);
+  const aantalElementen = Math.max(1, kolomlijnen.length);
+  if (kolomlijnen.length === 0) {
+    afleiding.push(
+      `m = 1 (terugval) \u2014 dit model bevat geen enkele staaf die steiler staat dan ${VERTICAAL_VANAF_GRADEN2}\xB0 met de horizontaal, dus er is geen kolomlijn te tellen. m = 1 geeft \u03B1_m = 1,00: de grootste waarde die de formule kan aannemen, en dus de veilige terugval.`
+    );
+  } else {
+    afleiding.push(
+      `m = ${aantalElementen} \u2014 ${aantalElementen} kolomlijn${aantalElementen === 1 ? "" : "en"}: ` + kolomlijnen.map(
+        (k, i) => `(${i + 1}) x = ${getal3(k.voetXmm, 0)} mm, staaf ${k.staafIds.join("+")}`
+      ).join("; ") + `. Een staaf telt als verticaal vanaf ${VERTICAAL_VANAF_GRADEN2}\xB0 met de horizontaal; staven die een knoop delen vormen samen \xE9\xE9n kolom, zodat een kolom door meerdere verdiepingen \xE9\xE9nmaal telt.`
+    );
+  }
+  afleiding.push(
+    "LET OP bij m: EN 1993-1-1 5.3.2(3)a telt alleen kolommen mee die minstens 50 % van de gemiddelde verticale kolomkracht dragen. Die krachten volgen uit de berekening en de berekening heeft \u03C6 nodig, dus dat criterium is hier niet toegepast \u2014 \xE1lle kolomlijnen tellen mee. Een licht belaste stijl hoort er met de hand uit: kleinere m geeft grotere \u03B1_m en dus grotere \u03C6, de veilige kant."
+  );
+  afleiding.push(
+    "Wandschijven tellen niet mee in m: een schijf schoort meestal in plaats van geschoord te worden, en meetellen zou m verhogen en \u03C6 verlagen. Draagt een wand hier w\xE9l verticaal mee, verhoog m dan met de hand."
+  );
+  return {
+    hoogteM,
+    aantalElementen,
+    kolomlijnen,
+    afleidbaar: kolomlijnen.length > 0 && hoogteM > 0,
+    afleiding
+  };
+}
+function alphaH(hoogteM) {
+  const ruw = hoogteM > 0 ? 2 / Math.sqrt(hoogteM) : Number.POSITIVE_INFINITY;
+  if (ruw > 1) return { waarde: 1, begrensd: "boven" };
+  if (ruw < 2 / 3) return { waarde: 2 / 3, begrensd: "onder" };
+  return { waarde: ruw, begrensd: null };
+}
+function alphaM(aantalElementen) {
+  const m = Math.max(1, Math.floor(aantalElementen));
+  return Math.sqrt(0.5 * (1 + 1 / m));
+}
+var BASISWAARDE = {
+  en1993: {
+    waarde: 1 / 200,
+    noemer: 200,
+    artikel: "EN 1993-1-1 \xA75.3.2(3)a",
+    uitleg: "\u03C6\u2080 is de basiswaarde: \u03C6\u2080 = 1/200."
+  },
+  en1992: {
+    waarde: 1 / 300,
+    noemer: 300,
+    artikel: "EN 1992-1-1 \xA75.2(5) + NB",
+    uitleg: "\u03B8\u2080 is de basiswaarde. De Nederlandse nationale bijlage haalt de aanbevolen EN-waarde 1/200 door en schrijft 1/300 voor."
+  },
+  en1995: {
+    waarde: 5e-3,
+    noemer: 200,
+    artikel: "EN 1995-1-1 \xA75.4.4(2)",
+    uitleg: "\u03C6 = 0,005 rad voor h \u2264 5 m; deze norm kent geen losse basiswaarde."
+  }
+};
+function phiVolgensNorm(norm, hoogteM, aantalElementen) {
+  const h = Number.isFinite(hoogteM) && hoogteM > 0 ? hoogteM : 0;
+  const m = Math.max(1, Math.floor(Number.isFinite(aantalElementen) ? aantalElementen : 1));
+  const basis = BASISWAARDE[norm];
+  const regels = [];
+  if (norm === "en1995") {
+    const phi2 = h > 5 ? 5e-3 * Math.sqrt(5 / h) : 5e-3;
+    regels.push({
+      symbool: "h",
+      waarde: `${getal3(h, 3)} m`,
+      artikel: "EN 1995-1-1 \xA75.4.4(2)",
+      uitleg: "de hoogte van de constructie of de lengte van het element, in m."
+    });
+    regels.push({
+      symbool: "\u03C6",
+      waarde: `${getal3(phi2, 5)} rad = 1/${getal3(1 / phi2, 0)}`,
+      artikel: "EN 1995-1-1 (5.1)",
+      uitleg: h > 5 ? `h > 5 m, dus \u03C6 = 0,005\xB7\u221A(5/h) = 0,005\xB7\u221A(5/${getal3(h, 3)}).` : "h \u2264 5 m, dus \u03C6 = 0,005 rad. Deze norm kent geen \u03B1_m en geen ondergrens op de hoogtereductie."
+    });
+    return { norm, phi: phi2, regels };
+  }
+  const ah = alphaH(h);
+  const am = alphaM(m);
+  const phi = basis.waarde * ah.waarde * am;
+  const symbool = norm === "en1992" ? "\u03B8" : "\u03C6";
+  const artikelFormule = norm === "en1992" ? "EN 1992-1-1 (5.1)" : "EN 1993-1-1 (5.5)";
+  regels.push({
+    symbool: `${symbool}\u2080`,
+    waarde: `1/${basis.noemer} = ${getal3(basis.waarde, 5)}`,
+    artikel: basis.artikel,
+    uitleg: basis.uitleg
+  });
+  regels.push({
+    symbool: "h",
+    waarde: `${getal3(h, 3)} m`,
+    artikel: artikelFormule,
+    uitleg: norm === "en1992" ? "l is de hoogte van het gebouw; \xA75.2(6), geval 'effect op de schorende constructie'." : "h is de hoogte van de constructie, in meter (figuur 5.2)."
+  });
+  regels.push({
+    symbool: "\u03B1_h",
+    waarde: getal3(ah.waarde, 4),
+    artikel: artikelFormule,
+    uitleg: `\u03B1_h = 2/\u221Ah = 2/\u221A${getal3(h, 3)}` + (ah.begrensd === "boven" ? " en wordt begrensd door de bovengrens 1,0." : ah.begrensd === "onder" ? " en wordt begrensd door de ondergrens 2/3." : ", binnen 2/3 \u2264 \u03B1_h \u2264 1,0.")
+  });
+  regels.push({
+    symbool: "m",
+    waarde: String(m),
+    artikel: artikelFormule,
+    uitleg: norm === "en1992" ? "m is het aantal verticale elementen dat bijdraagt aan de horizontale kracht op de schorende constructie." : "m is het aantal kolommen in een rij (alleen die met N_Ed \u2265 50 % van het gemiddelde)."
+  });
+  regels.push({
+    symbool: "\u03B1_m",
+    waarde: getal3(am, 4),
+    artikel: artikelFormule,
+    uitleg: `\u03B1_m = \u221A(0,5\xB7(1 + 1/m)) = \u221A(0,5\xB7(1 + 1/${m})).`
+  });
+  regels.push({
+    symbool: norm === "en1992" ? "\u03B8_i" : "\u03C6",
+    waarde: `${getal3(phi, 5)} rad = 1/${getal3(1 / phi, 0)}`,
+    artikel: artikelFormule,
+    uitleg: `${symbool}\u2080 \xB7 \u03B1_h \xB7 \u03B1_m = ${getal3(basis.waarde, 5)} \xB7 ${getal3(ah.waarde, 4)} \xB7 ${getal3(am, 4)}.`
+  });
+  return { norm, phi, regels };
+}
+function toepasselijkeScheefstandNormen(beams) {
+  const vlaggen = normenInModel(beams);
+  return SCHEEFSTAND_NORMEN.filter((n) => vlaggen[n]);
+}
+function bepaalScheefstand(keuze, geometrie, toepasselijk) {
+  const noemer = Number.isFinite(keuze.noemer) && keuze.noemer > 0 ? keuze.noemer : 200;
+  const bron = keuze.bron ?? "vast";
+  const waarschuwingen = [];
+  const vast = (extraWaarschuwing) => {
+    if (extraWaarschuwing) waarschuwingen.push(extraWaarschuwing);
+    return {
+      phi: 1 / noemer,
+      noemer,
+      bron: "vast",
+      norm: null,
+      hoogteM: geometrie.hoogteM,
+      aantalElementen: geometrie.aantalElementen,
+      hoogteHandmatig: false,
+      aantalHandmatig: false,
+      regels: [
+        {
+          symbool: "\u03C6",
+          waarde: `1/${getal3(noemer, 0)} = ${getal3(1 / noemer, 5)}`,
+          artikel: "opgegeven waarde",
+          uitleg: "Vaste noemer uit de projectinstellingen; de reductiefactoren \u03B1_h en \u03B1_m van de norm zijn NIET toegepast. Dit is de basiswaarde en daarmee de veilige bovengrens."
+        }
+      ],
+      vergelijking: [],
+      waarschuwingen
+    };
+  };
+  if (bron === "vast") return vast();
+  const hoogteHandmatig = typeof keuze.hoogteM === "number" && Number.isFinite(keuze.hoogteM) && keuze.hoogteM > 0;
+  const aantalHandmatig = typeof keuze.aantalElementen === "number" && Number.isFinite(keuze.aantalElementen) && keuze.aantalElementen >= 1;
+  const hoogteM = hoogteHandmatig ? keuze.hoogteM : geometrie.hoogteM;
+  const aantalElementen = aantalHandmatig ? Math.floor(keuze.aantalElementen) : geometrie.aantalElementen;
+  if (!geometrie.afleidbaar && !(hoogteHandmatig && aantalHandmatig)) {
+    waarschuwingen.push(
+      "h en/of m zijn niet uit het model af te leiden (geen verticale staaf, of geen hoogte). Controleer ze en geef ze zo nodig zelf op."
+    );
+  }
+  if (hoogteM <= 0) {
+    waarschuwingen.push(
+      "De constructie heeft geen hoogte, dus \u03B1_h valt op zijn bovengrens 1,0. Een scheefstand op een vlak model is een keuze van de gebruiker en geen normvoorschrift."
+    );
+  }
+  let normen;
+  if (bron === "ongunstigste") {
+    if (toepasselijk.length === 0) {
+      return vast(
+        `Geen van de drie normen is op dit model van toepassing (alle staven hebben een vrij of onbekend materiaal). De vaste noemer blijft gelden: \u03C6 = 1/${getal3(noemer, 0)}.`
+      );
+    }
+    normen = toepasselijk;
+  } else {
+    normen = [bron];
+    if (toepasselijk.length > 0 && !toepasselijk.includes(bron)) {
+      waarschuwingen.push(
+        `${SCHEEFSTAND_BRON_LABEL[bron]} is gekozen, maar dit model bevat geen materiaal dat onder die norm valt (wel: ${toepasselijk.map((n) => SCHEEFSTAND_BRON_LABEL[n]).join(", ")}).`
+      );
+    }
+  }
+  const vergelijking = normen.map((n) => phiVolgensNorm(n, hoogteM, aantalElementen));
+  const gekozen = vergelijking.reduce((a, b) => b.phi > a.phi ? b : a);
+  if (bron === "ongunstigste" && vergelijking.length > 1) {
+    waarschuwingen.push(
+      "Ongunstigste van " + vergelijking.map((v) => `${SCHEEFSTAND_BRON_LABEL[v.norm]} \u2192 1/${getal3(1 / v.phi, 0)}`).join(", ") + `. Gekozen: ${SCHEEFSTAND_BRON_LABEL[gekozen.norm]}.`
+    );
+  }
+  return {
+    phi: gekozen.phi,
+    noemer: 1 / gekozen.phi,
+    bron,
+    norm: gekozen.norm,
+    hoogteM,
+    aantalElementen,
+    hoogteHandmatig,
+    aantalHandmatig,
+    regels: gekozen.regels,
+    vergelijking,
+    waarschuwingen
+  };
+}
+
 // src/io/projectFile.ts
 var PROJECT_FILE_EXT = "ifcfem2d";
 var PROJECT_FORMAT_VERSION = 2;
@@ -11523,6 +11897,24 @@ function aantalAfbeeldingen() {
   return AFBEELDINGEN.length;
 }
 
+// src/lib/materiaalDubbelzinnig.ts
+function dubbelzinnigMateriaal(material) {
+  if (!material) return null;
+  const naam = material.trim();
+  const hout = SUPPORTED_TIMBER_GRADES.find(
+    (g) => g.toLowerCase() === naam.toLowerCase()
+  );
+  if (!hout) return null;
+  const beton = SUPPORTED_CONCRETE_CLASSES.find(
+    (c) => c.split("/")[0].toLowerCase() === naam.toLowerCase()
+  );
+  return beton ? { hout, beton } : null;
+}
+function dubbelzinnigMateriaalTekst(beamId, d, metKorf) {
+  const basis = `Staaf ${beamId}: materiaal "${d.hout}" is dubbelzinnig \u2014 het is houtsterkteklasse ${d.hout} (EN 338) \xE9n de korte naam van betonklasse ${d.beton} (NEN-EN 1992-1-1 tabel 3.1). Er wordt met HOUT gerekend (stijfheid en eigen gewicht van hout, houttoets); de betontoets slaat deze staaf over. Bedoelt u beton, schrijf dan "${d.beton}".`;
+  return metKorf ? basis + ` Deze staaf heeft bovendien een wapeningskorf, en die hoort bij beton: dat botst. Schrijf "${d.beton}" voor beton, of haal de korf weg voor hout.` : basis;
+}
+
 // src/lib/modelControle.ts
 var CONTROLE_TOL_MM = 1;
 function zoekDubbeleKnopen(model, tolMm = CONTROLE_TOL_MM) {
@@ -11568,7 +11960,12 @@ var MODEL_VELDEN = [
   "selfWeightEnabled",
   "scheefstandEnabled",
   "scheefstandNoemer",
-  "scheefstandRichting"
+  "scheefstandRichting",
+  // De normkeuze van de scheefstand (basisaudit nr 19): de sidecar rekent φ
+  // hiermee zoals de app; het MCP-schema kent dezelfde drie velden.
+  "scheefstandBron",
+  "scheefstandHoogteM",
+  "scheefstandAantalElementen"
 ];
 var NODE_VELDEN = ["id", "x", "z"];
 var BEAM_VELDEN = [
@@ -11970,6 +12367,19 @@ function controleerVelden(rauw) {
   if (rauw.scheefstandRichting !== void 0 && rauw.scheefstandRichting !== 1 && rauw.scheefstandRichting !== -1) {
     fouten.push("model.scheefstandRichting: moet 1 (+x) of \u22121 (\u2212x) zijn.");
   }
+  if (rauw.scheefstandBron !== void 0 && rauw.scheefstandBron !== null && !SCHEEFSTAND_BRONNEN.includes(rauw.scheefstandBron)) {
+    fouten.push(
+      `model.scheefstandBron: "${String(rauw.scheefstandBron)}" is onbekend; bekend zijn ` + SCHEEFSTAND_BRONNEN.map((b) => `"${b}"`).join(", ") + "."
+    );
+  }
+  const hoogte = rauw.scheefstandHoogteM;
+  if (hoogte !== void 0 && hoogte !== null && !(typeof hoogte === "number" && Number.isFinite(hoogte) && hoogte > 0)) {
+    fouten.push("model.scheefstandHoogteM: moet een getal groter dan 0 zijn (m), of null.");
+  }
+  const aantal = rauw.scheefstandAantalElementen;
+  if (aantal !== void 0 && aantal !== null && !(typeof aantal === "number" && Number.isInteger(aantal) && aantal >= 1)) {
+    fouten.push("model.scheefstandAantalElementen: moet een geheel getal van minstens 1 zijn, of null.");
+  }
   const nodes = leesArray(rauw, "nodes", fouten);
   nodes.forEach((n, i) => {
     const pad = `model.nodes[${i}]`;
@@ -12265,6 +12675,11 @@ function valideerModel(rauw, opties = {}) {
       errors.push(
         `Staaf ${b.id}: onbekende combinatie materiaal "${b.material ?? "(leeg)"}" + profiel "${b.profile ?? "(leeg)"}". De solver zou terugvallen op HEA 160 / S235 en met een andere doorsnede rekenen dan opgegeven.`
       );
+    }
+    const dubbel = dubbelzinnigMateriaal(b.material);
+    if (dubbel) {
+      const metKorf = b.checkConfig?.betonKorf !== void 0 && b.checkConfig?.betonKorf !== null;
+      (metKorf ? errors : warnings).push(dubbelzinnigMateriaalTekst(b.id, dubbel, metKorf));
     }
   }
   const actief2 = /* @__PURE__ */ new Set();
@@ -12669,6 +13084,56 @@ function leesTekst(payload, veld) {
   }
   return waarde;
 }
+function leesScheefstand(rauw, model, opgegevenNoemer) {
+  const bronRauw = rauw.scheefstandBron;
+  if (bronRauw !== void 0 && bronRauw !== null && !SCHEEFSTAND_BRONNEN.includes(bronRauw)) {
+    throw new InvoerFout(
+      `\`scheefstandBron\` is "${String(bronRauw)}"; bekend zijn ` + SCHEEFSTAND_BRONNEN.map((b) => `"${b}"`).join(", ") + ". Een onbekende bron wordt geweigerd, niet stil als vaste noemer gerekend."
+    );
+  }
+  const bron = bronRauw ?? "vast";
+  const hoogte = rauw.scheefstandHoogteM;
+  if (hoogte !== void 0 && hoogte !== null && !(typeof hoogte === "number" && Number.isFinite(hoogte) && hoogte > 0)) {
+    throw new InvoerFout(
+      "`scheefstandHoogteM` moet een getal groter dan 0 zijn (hoogte h in m), of null om h uit het model af te leiden."
+    );
+  }
+  const aantal = rauw.scheefstandAantalElementen;
+  if (aantal !== void 0 && aantal !== null && !(typeof aantal === "number" && Number.isInteger(aantal) && aantal >= 1)) {
+    throw new InvoerFout(
+      "`scheefstandAantalElementen` moet een geheel getal van minstens 1 zijn (aantal dragende verticale elementen m), of null om m uit het model af te leiden."
+    );
+  }
+  const keuze = {
+    scheefstandBron: bron,
+    scheefstandHoogteM: typeof hoogte === "number" ? hoogte : null,
+    scheefstandAantalElementen: typeof aantal === "number" ? aantal : null
+  };
+  if (rauw.scheefstandEnabled !== true || bron === "vast") {
+    return { noemer: opgegevenNoemer, meldingen: [], keuze };
+  }
+  const geometrie = leidScheefstandGeometrieAf({
+    nodes: model.nodes,
+    beams: model.beams,
+    supports: model.supports
+  });
+  const uit = bepaalScheefstand(
+    {
+      bron,
+      noemer: opgegevenNoemer,
+      hoogteM: keuze.scheefstandHoogteM,
+      aantalElementen: keuze.scheefstandAantalElementen
+    },
+    geometrie,
+    toepasselijkeScheefstandNormen(model.beams)
+  );
+  const herkomst = uit.norm ? `${SCHEEFSTAND_BRON_LABEL[uit.bron]}` + (uit.bron === "ongunstigste" ? ` (${SCHEEFSTAND_BRON_LABEL[uit.norm]})` : "") + `, h = ${uit.hoogteM} m, m = ${uit.aantalElementen}` : SCHEEFSTAND_BRON_LABEL[uit.bron];
+  const meldingen = [
+    `Scheefstand: \u03C6 = 1/${uit.noemer.toFixed(1)} volgens ${herkomst} \u2014 dezelfde afleiding als de app; de noemer ${opgegevenNoemer} uit het bestand telt bij deze normkeuze niet.`,
+    ...uit.waarschuwingen.map((w) => `Scheefstand: ${w}`)
+  ];
+  return { noemer: uit.noemer, meldingen, keuze };
+}
 function alsGevolgklasse(x) {
   return GEVOLGKLASSEN.includes(x) ? x : null;
 }
@@ -12704,11 +13169,19 @@ function leesModel(payload) {
       scheefstandNoemer: bestand.scheefstandNoemer ?? 200,
       scheefstandRichting: bestand.scheefstandRichting ?? 1
     };
+    const scheef2 = leesScheefstand(
+      bestand,
+      uitBestand,
+      uitBestand.scheefstandNoemer
+    );
+    uitBestand.scheefstandNoemer = scheef2.noemer;
     return {
       model: uitBestand,
       // De arrays zijn dezelfde objecten als in het bestand, dus een onbekend
       // veld BINNEN een knoop, staaf of last blijft zichtbaar voor de validatie.
       rauw: uitBestand,
+      scheefstandMeldingen: scheef2.meldingen,
+      scheefstandKeuze: scheef2.keuze,
       beams: bestand.beams ?? [],
       combinatiesUitBestand: combinationsFromFile(bestand.combinations) ?? null,
       nonlinearUitBestand: bestand.nonlinearEnabled ?? null,
@@ -12731,32 +13204,37 @@ function leesModel(payload) {
       }
     }
   }
+  const model = {
+    nodes: eisArray(rauw.nodes ?? [], "model.nodes"),
+    beams,
+    supports: eisArray(
+      rauw.supports ?? [],
+      "model.supports"
+    ),
+    plates: eisArray(rauw.plates ?? [], "model.plates"),
+    loadCases: eisArray(
+      rauw.loadCases ?? [],
+      "model.loadCases"
+    ),
+    loads: eisArray(rauw.loads ?? [], "model.loads"),
+    selfWeightEnabled: rauw.selfWeightEnabled === true,
+    scheefstandEnabled: rauw.scheefstandEnabled === true,
+    scheefstandNoemer: typeof rauw.scheefstandNoemer === "number" ? rauw.scheefstandNoemer : 200,
+    scheefstandRichting: rauw.scheefstandRichting === -1 ? -1 : 1
+  };
+  const scheef = leesScheefstand(rauw, model, model.scheefstandNoemer);
+  model.scheefstandNoemer = scheef.noemer;
   return {
-    model: {
-      nodes: eisArray(rauw.nodes ?? [], "model.nodes"),
-      beams,
-      supports: eisArray(
-        rauw.supports ?? [],
-        "model.supports"
-      ),
-      plates: eisArray(rauw.plates ?? [], "model.plates"),
-      loadCases: eisArray(
-        rauw.loadCases ?? [],
-        "model.loadCases"
-      ),
-      loads: eisArray(rauw.loads ?? [], "model.loads"),
-      selfWeightEnabled: rauw.selfWeightEnabled === true,
-      scheefstandEnabled: rauw.scheefstandEnabled === true,
-      scheefstandNoemer: typeof rauw.scheefstandNoemer === "number" ? rauw.scheefstandNoemer : 200,
-      scheefstandRichting: rauw.scheefstandRichting === -1 ? -1 : 1
-    },
+    model,
     rauw,
     beams,
     combinatiesUitBestand: null,
     nonlinearUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
-    idTellersUitBestand: void 0
+    idTellersUitBestand: void 0,
+    scheefstandMeldingen: scheef.meldingen,
+    scheefstandKeuze: scheef.keuze
   };
 }
 function leesGevolgklasse(payload, gelezen) {
@@ -13036,6 +13514,7 @@ function rekenDoor(payload) {
       "Geen profieldatabase meegegeven (`profiles`); `steel_check_inputs` blijft daardoor leeg. Lever de lijst uit de staalprofielendatabase mee."
     );
   }
+  waarschuwingen.push(...gelezen.scheefstandMeldingen);
   if (legeGevallen.length > 0) {
     waarschuwingen.push(
       `Belastinggeval(len) ${legeGevallen.join(", ")} zonder werkzame last overgeslagen; ze tellen als nulbijdrage in de combinaties.`
@@ -13210,6 +13689,7 @@ function opLoadProject(payload) {
   );
   if (klasseMelding) warnings.push(klasseMelding);
   warnings.push(...openMeldingen);
+  warnings.push(...gelezen.scheefstandMeldingen);
   for (const mld of meldingenBelastinggevallen({
     loadCases: m.loadCases,
     combinations: lijst,
@@ -13225,7 +13705,10 @@ function opLoadProject(payload) {
     path: typeof payload.path === "string" ? payload.path : null,
     format_version: gelezen.formatVersion,
     supported_format_version: PROJECT_FORMAT_VERSION,
-    model: m,
+    // `scheefstandNoemer` is hier de GEREKENDE noemer (na de normkeuze); de
+    // keuze zelf gaat mee, zodat het model heen en weer kan zonder dat de
+    // norm onderweg verdwijnt.
+    model: { ...m, ...gelezen.scheefstandKeuze },
     combinations: lijst.map((c) => ({
       id: c.id,
       name: c.name,
