@@ -14219,6 +14219,10 @@ function vloerDakEis(beam, data, slsCombos) {
     klasse,
     // De kern gebruikt de noemer alleen bij klasse "Custom"
     // (deflection.rs::default_numerator); anders geldt de klassenoemer.
+    // `??` en niet `||`, met opzet: alleen een ONTBREKENDE noemer wordt 333.
+    // Een opgegeven 0 of negatief getal gaat ongewijzigd door, en de kern
+    // weigert de staaf dan met reden (deflection.rs::keur_noemers). Tot
+    // september 2026 gaf die 0 daar een oneindige grens en status Ok.
     noemerFin: cfg.deflectionClass === "custom" ? cfg.deflectionLimitNumerator ?? 333 : 333,
     // 0 = de kern leidt de w_add-noemer af uit de klasse volgens
     // NEN-EN 1990:2002/NB:2019 A1.4.3(3); dat is de normale gang van zaken.
@@ -14482,7 +14486,7 @@ function timberDeflectionNumerators(cls, customN) {
     case "cantilever":
       return { fin: 125, add: 167 };
     case "custom": {
-      const n = customN && customN > 0 ? customN : 333;
+      const n = customN ?? 333;
       return { fin: n, add: n };
     }
     case "floor":
