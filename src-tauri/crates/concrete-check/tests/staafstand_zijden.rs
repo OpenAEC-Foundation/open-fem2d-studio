@@ -78,6 +78,7 @@ fn omhullende(combi: u32, m: f64) -> Vec<ForcePoint> {
 
 fn invoer(stand: Option<Staafstand>, m: f64) -> ConcreteBeamCheckInput {
     ConcreteBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 3,
         section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".into(),

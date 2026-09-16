@@ -65,6 +65,7 @@ fn staaf(
     bracing: LateralBracing,
 ) -> BeamCheckResult {
     check_beam(BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: "IPE 200".to_string(),
         steel_grade: "S235".to_string(),

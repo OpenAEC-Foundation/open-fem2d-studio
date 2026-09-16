@@ -294,6 +294,24 @@ fn schema_custom_section() -> Value {
 /// `TimberBeamCheckInput` en `CltBeamCheckInput` kennen géén
 /// `deny_unknown_fields`, en een schema dat strenger belooft dan de server is
 /// verplaatst de fout naar de client. De reden staat in `timber_tools.rs`.
+
+/// Het schema van het veld `bijlage` — de nationale bijlage waarmee getoetst
+/// wordt.
+///
+/// Eén functie voor alle gereedschappen die een nationaal bepaalde parameter
+/// gebruiken. De `enum` komt uit `nationale_bijlage::BIJLAGEN_GEVULD`, zodat
+/// het schema niet kan beweren dat een bijlage bestaat die geen rekenwaarden
+/// heeft — en zodat er bij een tweede rij niets met de hand hoeft te worden
+/// bijgewerkt.
+fn schema_bijlage() -> Value {
+    json!({
+        "type": "string",
+        "enum": nationale_bijlage::BIJLAGEN_GEVULD,
+        "default": "NL",
+        "description": "Nationale bijlage waarmee getoetst wordt. Zij bepaalt de nationaal bepaalde parameters (partiële factoren, doorbuigingsgrenzen, k_cr, dekkingseisen, de kipmethode). Alleen de bijlagen in deze lijst hebben rekenwaarden; een andere waarde wordt GEWEIGERD met reden en er wordt nooit stil op een andere bijlage teruggevallen. Weglaten = de enige gevulde bijlage."
+    })
+}
+
 fn tool_definitions() -> Value {
     let mut tools = json!([
         {
@@ -313,6 +331,7 @@ fn tool_definitions() -> Value {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "bijlage": schema_bijlage(),
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het resultaat." },
                     "profile_name": { "type": "string",

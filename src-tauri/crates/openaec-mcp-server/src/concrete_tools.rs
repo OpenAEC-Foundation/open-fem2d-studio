@@ -641,6 +641,7 @@ fn schema_betonstaaf() -> Value {
         "type": "object",
         "additionalProperties": false,
         "properties": {
+            "bijlage": crate::schema_bijlage(),
             "beam_id": { "type": "integer", "minimum": 0,
                 "description": "Staafnummer; komt onveranderd terug in het resultaat." },
             "section": schema_doorsnede(),
@@ -786,6 +787,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "bijlage": crate::schema_bijlage(),
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het antwoord." },
                     "section": schema_doorsnede(),
@@ -887,6 +889,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "bijlage": crate::schema_bijlage(),
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het resultaat." },
                     "side": {

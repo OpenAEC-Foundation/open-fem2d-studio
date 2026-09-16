@@ -58,6 +58,7 @@ fn invoer(
     w_z_mm: f64,
 ) -> BeamCheckInput {
     BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: profiel.to_string(),
         steel_grade: "S235".to_string(),
@@ -181,6 +182,7 @@ fn kip_levert_geen_reductie_in_deze_casus() {
 #[test]
 fn toelichtingen_van_de_aanroeper_komen_bij_w_fin_terecht() {
     let mut input = BeamCheckInput {
+        bijlage: Default::default(),
         deflection_notes: vec!["w is gemeten vanaf de koorde.".to_string()],
         ..basisinvoer()
     };

@@ -28,7 +28,7 @@ use mechanics::{ForcePoint, ForceStateSnapshot, InternalForces};
 use nen_en_1993_1_1_section::CheckStatus;
 use nen_en_1995_1_1::clt::{CltLayerOrientation, CltLayup, CltMechanics};
 use nen_en_1995_1_1::clt_toets::{check_layer_bending, check_layer_shear, rolling_shear_info};
-use nen_en_1995_1_1::{design_strength, gamma_m, k_mod, k_sys, LoadDurationClass, ServiceClass};
+use nen_en_1995_1_1::{design_strength, k_mod, k_sys, LoadDurationClass, ServiceClass};
 use serde::{Deserialize, Serialize};
 use steel_check::{CheckKind, NamedCheck};
 use ts_rs::TS;
@@ -52,6 +52,21 @@ fn default_one() -> f64 {
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/timber/")]
 pub struct CltBeamCheckInput {
+    /// De nationale bijlage waarmee getoetst wordt.
+    ///
+    /// Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+    /// crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+    /// bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+    /// de Nederlandse waarden teruggevallen.
+    ///
+    /// `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+    /// precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+    /// betekenen dan die rij. Het houdt oude projectbestanden en oude
+    /// MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+    /// regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+    /// in `nationale-bijlage` valt dan om en zegt dat.
+    #[serde(default)]
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     pub beam_id: u32,
     /// Opbouw: breedte van de strook en de lagen van boven naar beneden.
     pub layup: CltLayup,
@@ -256,6 +271,13 @@ fn lagen_toetsen(
     let shear_state = ForceStateSnapshot::from_point(&gov_shear);
 
     let ksys = k_sys(input.load_sharing);
+    // γ_M uit de rij van de bijlage die in DEZE invoer staat (2.4.1, tabel
+    // 2.3), niet uit een vaste constante.
+    let ndp = nationale_bijlage::Ndp1995::voor(input.bijlage);
+    let gamma_van = |t: nen_en_1995_1_1::TimberType| match t {
+        nen_en_1995_1_1::TimberType::Solid => ndp.gamma_m_massief,
+        nen_en_1995_1_1::TimberType::Glulam => ndp.gamma_m_gelamineerd,
+    };
     let mut checks: Vec<NamedCheck> = Vec::new();
     let mut layers: Vec<CltLayerResult> = Vec::with_capacity(mech.layers.len());
 
@@ -267,7 +289,7 @@ fn lagen_toetsen(
             CltLayerOrientation::Longitudinal => {
                 // Rekenwaarden per laag: k_mod en γ_M uit het materiaaltype
                 // van de sterkteklasse van die laag; k_h = 1,0 (zie clt_toets).
-                let gamma = gamma_m(l.class.timber_type);
+                let gamma = gamma_van(l.class.timber_type);
                 let kmod = k_mod(l.class.timber_type, input.service_class, duur);
                 let f_md = design_strength(l.class.f_mk, kmod, gamma, 1.0, ksys);
                 let f_vd = design_strength(l.class.f_vk, kmod, gamma, 1.0, ksys);
@@ -615,6 +637,7 @@ mod tests {
     /// M_max = 20 kNm in het veld, V_max = 10 kN bij de oplegging, L = 5 m.
     fn invoer() -> CltBeamCheckInput {
         CltBeamCheckInput {
+            bijlage: Default::default(),
             beam_id: 7,
             layup: CltLayup::alternating(1000.0, &[40.0, 20.0, 40.0, 20.0, 40.0], "C24"),
             service_class: ServiceClass::Sc1,

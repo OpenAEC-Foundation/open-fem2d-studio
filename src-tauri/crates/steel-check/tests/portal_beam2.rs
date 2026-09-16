@@ -42,6 +42,7 @@ fn run() -> &'static BeamCheckResult {
     static RESULT: OnceLock<BeamCheckResult> = OnceLock::new();
     RESULT.get_or_init(|| {
         let input = BeamCheckInput {
+            bijlage: Default::default(),
             beam_id: 2,
             profile_name: "HEB160".to_string(),
             steel_grade: "S235".to_string(),

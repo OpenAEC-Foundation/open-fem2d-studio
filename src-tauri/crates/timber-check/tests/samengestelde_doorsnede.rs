@@ -62,6 +62,7 @@ fn punt(vz_kn: f64, my_knm: f64) -> ForcePoint {
 
 fn invoer(custom: Option<CustomSection>, vz_kn: f64, my_knm: f64) -> TimberBeamCheckInput {
     TimberBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         // De omhullende maten; met een samengestelde doorsnede mogen die de
         // uitkomst niet meer sturen.

@@ -47,6 +47,7 @@ ureq = { version = "2", features = ["json"] }
 # Hashpoort op de solverbundel (build.rs en sidecar.rs).
 sha2 = "0.10"
 # Engine crates
+nationale-bijlage = { path = "../nationale-bijlage" }
 steel-check = { path = "../steel-check" }
 steel-profiles = { path = "../steel-profiles" }
 section-properties = { path = "../section-properties" }

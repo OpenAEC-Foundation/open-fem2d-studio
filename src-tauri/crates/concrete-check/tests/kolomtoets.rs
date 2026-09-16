@@ -119,6 +119,7 @@ fn kolomgegevens(bracing: Schoring, geval: Knikgeval) -> ConcreteColumnInput {
 
 fn verzoek(kolom: ConcreteColumnInput, envelop: Vec<ForcePoint>) -> ConcreteColumnCheckRequest {
     ConcreteColumnCheckRequest {
+        bijlage: Default::default(),
         beam_id: 3,
         section: ConcreteSectionInput::rectangle(300.0, 300.0),
         concrete_class: "C30/37".into(),
@@ -137,6 +138,7 @@ fn verzoek(kolom: ConcreteColumnInput, envelop: Vec<ForcePoint>) -> ConcreteColu
 /// orchestrator en het losse verzoek dezelfde rekengang lopen.
 fn staaf(kolom: Option<ConcreteColumnInput>, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
     ConcreteBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 3,
         section: ConcreteSectionInput::rectangle(300.0, 300.0),
         concrete_class: "C30/37".into(),
@@ -880,6 +882,7 @@ fn interactie_5_39_maatgevend_met_a_1_0() {
     // In de volledige staaftoetsing is dit de MAATGEVENDE toets: de
     // afzonderlijke richtingen halen het (30/58 en 30,75/58), samen niet.
     let staaftoets = check_concrete_beam(ConcreteBeamCheckInput {
+        bijlage: Default::default(),
         length_m: 3.0,
         ..staaf(Some(k), ugt_z(3000.0, 150.0, 30.0, 0.0))
     });
@@ -1000,6 +1003,7 @@ fn de_tweede_as_heeft_een_eigen_schoring_en_kniklengte() {
 #[test]
 fn een_t_doorsnede_krijgt_de_tweede_as_niet() {
     let req = ConcreteColumnCheckRequest {
+        bijlage: Default::default(),
         section: ConcreteSectionInput::tee(600.0, 500.0, 300.0, 150.0),
         ..verzoek(
             kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend),

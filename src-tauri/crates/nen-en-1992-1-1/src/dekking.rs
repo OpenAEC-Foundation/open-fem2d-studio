@@ -605,6 +605,21 @@ pub enum CoverGovernedBy {
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct ConcreteCoverRequest {
+    /// De nationale bijlage waarmee getoetst wordt.
+    ///
+    /// Zij bepaalt de nationaal bepaalde parameters van deze toetsing (zie de
+    /// crate `nationale-bijlage`). Een bijlage die deze uitgave niet kent, wordt
+    /// bij het lezen van de invoer GEWEIGERD met reden; er wordt nooit stil op
+    /// de Nederlandse waarden teruggevallen.
+    ///
+    /// `#[serde(default)]` — en waarom dat hier geen stille keuze is: er is
+    /// precies één gevulde rij, dus "veld weggelaten" kan niet iets anders
+    /// betekenen dan die rij. Het houdt oude projectbestanden en oude
+    /// MCP-cliënten aan de praat. Zodra er een tweede rij gevuld is, MOET deze
+    /// regel weg; de test `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`
+    /// in `nationale-bijlage` valt dan om en zegt dat.
+    #[serde(default)]
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     /// Vrij te kiezen nummer; komt onveranderd terug. 0 als het niet om een
     /// staaf uit een model gaat.
     #[serde(default)]
@@ -881,6 +896,7 @@ mod tests {
 
     fn verzoek(exposure: ExposureClass, cover: f64) -> ConcreteCoverRequest {
         ConcreteCoverRequest {
+            bijlage: Default::default(),
             beam_id: 0,
             side: None,
             exposure_class: exposure,
@@ -966,6 +982,7 @@ mod tests {
     fn aanhechting_kan_maatgevend_zijn() {
         // Zware staaf zonder beugel: c_min,b = Ø = 40 mm > c_min,dur (X0: 10).
         let v = ConcreteCoverRequest {
+            bijlage: Default::default(),
             beam_id: 7,
             side: None,
             exposure_class: ExposureClass::X0,

@@ -975,6 +975,7 @@ mod tests {
 
     fn staaf(zones: ReinforcementZones) -> ConcreteBeamCheckInput {
         ConcreteBeamCheckInput {
+            bijlage: Default::default(),
             beam_id: 7,
             section: doorsnede(),
             concrete_class: "C30/37".to_string(),

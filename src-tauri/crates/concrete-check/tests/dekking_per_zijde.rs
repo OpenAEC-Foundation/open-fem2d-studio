@@ -51,6 +51,7 @@ fn punt(x_mm: f64, m_knm: f64) -> ForcePoint {
 
 fn invoer(cage: ReinforcementCage) -> ConcreteBeamCheckInput {
     ConcreteBeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         section: ConcreteSectionInput::rectangle(1000.0, 250.0),
         concrete_class: "C30/37".to_string(),

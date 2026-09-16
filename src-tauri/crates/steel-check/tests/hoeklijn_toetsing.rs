@@ -45,6 +45,7 @@ fn hoeklijn(naam: &str, l_m: f64, n_kn: f64) -> BeamCheckResult {
         .collect();
 
     check_beam(BeamCheckInput {
+        bijlage: Default::default(),
         beam_id: 1,
         profile_name: naam.to_string(),
         steel_grade: "S235".to_string(),

@@ -98,7 +98,20 @@
 /// als losse `const` of `match`-arm; nu staan ze bij elkaar in de crate
 /// `nationale-bijlage`, met het NB-artikel erbij, en leest deze crate ze daar.
 pub(crate) const NDP: nationale_bijlage::Ndp1992 =
-    nationale_bijlage::Ndp1992::voor(nationale_bijlage::NationaleBijlage::NL);
+    nationale_bijlage::Ndp1992::voor(BIJLAGE_VAN_DE_KERN);
+
+/// De nationale bijlage waarmee deze crate is gebouwd.
+///
+/// De NDP-rij hierboven wordt op COMPILEERTIJD opgehaald: de betonmodules
+/// dragen de bijlage (nog) niet als argument door hun rekengang, want die
+/// loopt via `DesignMaterial::new` en dat raakt tientallen aanroepen. De
+/// aanroepers (`concrete_check::check_concrete_beam`, de kolomtoets en de
+/// dekkingstoets) vergelijken de bijlage uit hun INVOER met deze constante en
+/// WEIGEREN de toets als ze verschillen. Zo kan een tweede bijlage hier nooit
+/// met Nederlandse getallen doorrekenen; hij krijgt een melding tot de
+/// rekengang hem werkelijk draagt.
+pub const BIJLAGE_VAN_DE_KERN: nationale_bijlage::NationaleBijlage =
+    nationale_bijlage::NationaleBijlage::NL;
 
 pub mod beff;
 pub mod beff_deelstappen;

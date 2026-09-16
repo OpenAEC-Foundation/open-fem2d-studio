@@ -497,6 +497,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
  "serde",
@@ -2782,6 +2783,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "concrete-check",
+ "nationale-bijlage",
  "nen-en-1992-1-1",
  "nen-en-1993-1-1-section",
  "nen-en-1995-1-1",
@@ -3925,6 +3927,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1993-1-1-section",
  "serde",
  "serde_json",
@@ -4515,6 +4518,7 @@ version = "0.1.0"
 dependencies = [
  "approx",
  "mechanics",
+ "nationale-bijlage",
  "nen-en-1993-1-1-ltb",
  "nen-en-1993-1-1-section",
  "nen-en-1993-1-1-stability",
