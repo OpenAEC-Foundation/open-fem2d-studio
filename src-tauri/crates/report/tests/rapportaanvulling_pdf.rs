@@ -402,6 +402,7 @@ fn invoer(
         concrete_reinforcement_zones: zones,
         scheefstand_toelichting: scheefstand,
         analyse_toelichting: None,
+        wind_toelichting: None,
     }
 }
 

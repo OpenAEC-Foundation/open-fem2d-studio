@@ -192,6 +192,14 @@ export interface RapportPdfBronnen {
    * of afwezig = niet gerekend; het rapport zwijgt dan.
    */
   analyseToelichting?: string;
+  /**
+   * De omschrijving van de gegenereerde windlasten als tekstblok, woordelijk
+   * zoals `lib/wind/windGenerator.vrijstaandDakUitgangspunten` het opstelt:
+   * per belastinggeval de paragraaf en tabel van NEN-EN 1991-1-4, α, φ en de
+   * coëfficiënt (issue #16). Dezelfde tekst staat in het live rapport bij de
+   * uitgangspunten. Leeg of afwezig = geen gegenereerde windlast; de PDF zwijgt.
+   */
+  windToelichting?: string;
 }
 
 /**
@@ -399,6 +407,9 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   }
   if (bron.analyseToelichting && bron.analyseToelichting.trim() !== "") {
     invoer.analyse_toelichting = bron.analyseToelichting;
+  }
+  if (bron.windToelichting && bron.windToelichting.trim() !== "") {
+    invoer.wind_toelichting = bron.windToelichting;
   }
   if (spoor) {
     invoer.concrete_stiffness_trace = { ...spoor, staafdoorsneden: doorsneden };

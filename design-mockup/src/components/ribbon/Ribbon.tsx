@@ -76,6 +76,8 @@ interface RibbonProps {
   scheefstandToelichting?: string;
   /** Het analysetype en α_cr per combinatie, zoals App.tsx het opstelt (basisaudit nr 27). */
   analyseToelichting?: string;
+  /** De omschrijving van de gegenereerde windlasten, voor de PDF (issue #16). */
+  windToelichting?: string;
   /** IFC4-export van het rekenmodel (Structural Analysis Domain). */
   onExportIfc?: () => void;
   /** Idem, maar alleen het draagsysteem — zonder belastinggevallen. */
@@ -125,7 +127,7 @@ export default function Ribbon({
   activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
   onExportCheck,
   onFilterSelection,
-  onExportHtml, scheefstandToelichting, analyseToelichting,
+  onExportHtml, scheefstandToelichting, analyseToelichting, windToelichting,
   onExportIfc, onExportIfcStructural, onValidateIfc, onOpenIfcView,
   tableDataset, onTableDataset, onTableExportCsv, onTableCopy, onTableFocusFilter,
 }: RibbonProps) {
@@ -298,6 +300,7 @@ export default function Ribbon({
           onExportHtml={onExportHtml}
           scheefstandToelichting={scheefstandToelichting}
           analyseToelichting={analyseToelichting}
+          windToelichting={windToelichting}
         />;
     }
   };

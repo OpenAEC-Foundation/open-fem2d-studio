@@ -438,7 +438,8 @@ fn tool_definitions() -> Value {
                     "clt_check_results":      { "type": "array" },
                     "concrete_check_results": { "type": "array" },
                     "stress_check_results":   { "type": "array" },
-                    "concrete_stiffness_trace": { "type": "object" }
+                    "concrete_stiffness_trace": { "type": "object" },
+                    "wind_toelichting": { "type": "string", "description": "Optional text block (one line per load case) describing generated wind loads: NEN-EN 1991-1-4 paragraph and table, roof pitch alpha, blockage phi and the coefficient used. Printed verbatim under 'Uitgangspunten' → 'Windbelasting'; empty or absent = the PDF says nothing about wind." }
                 },
                 "required": [
                     "project_name", "project_number", "engineer",
