@@ -144,12 +144,19 @@ pub struct TimberBeamCheckInput {
     /// Expliciete effectieve kiplengte in m; 0 → berekenen via tabel 6.1.
     #[serde(default)]
     pub ltb_effective_length_override_m: f64,
-    /// Kiptoets §6.3.3 uitvoeren. De referentie-uitwerking voert 6.3.3
-    /// alleen voor de ligger uit, niet voor de kolommen.
+    /// Kiptoets §6.3.3 uitvoeren. `false` betekent: de gedrukte rand is over
+    /// de volle lengte zijdelings gesteund en de opleggingen zijn torsievast,
+    /// zodat k_crit = 1,0 (art. 6.3.3(5)). De toets wordt dan niet stil
+    /// weggelaten maar als `NotApplicable` met die reden in het resultaat
+    /// gezet. De referentie-uitwerking voert 6.3.3 alleen voor de ligger uit,
+    /// niet voor de kolommen.
     #[serde(default = "default_true")]
     pub perform_ltb_check: bool,
-    /// Scheurfactor k_cr voor dwarskracht (6.13a). 1,0 conform de
-    /// referentie-uitwerking; A1-aanbevolen waarde 0,67.
+    /// Scheurfactor k_cr voor dwarskracht (6.13a), bereik (0, 1]. 1,0 is de
+    /// waarde van NEN-EN 1995-1-1/NB bij 6.1.7 voor een prismatische
+    /// doorsnede en de standaard; de in 6.1.7(2) aanbevolen waarde is 0,67.
+    /// Alleen bij een rechthoek gelezen; bij een samengestelde doorsnede
+    /// bepaalt de kern k_cr zelf (`shear::k_cr_nb`).
     #[serde(default = "default_one")]
     pub k_cr: f64,
     /// Lastverdelend systeem aanwezig → k_sys = 1,1 (§6.6).

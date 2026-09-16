@@ -169,6 +169,22 @@ checkEq("zonder loadCases: belastingduur uit checkConfig (terugval)", inp.load_d
   checkEq("met loadCases: terugval = de langste klasse", met.load_duration, "Permanent");
 }
 check("k_cr = 1,0 (NB, prismatisch)", inp.k_cr, 1);
+{
+  // Sinds september 2026 komt `checkConfig.kCr` ook bij kruislaaghout door
+  // (dezelfde `kCrUitConfig` als de houtbouwer); buiten (0, 1] wordt de
+  // staaf met reden overgeslagen, niet stil op 1,0 gezet.
+  const metKcr = clt.buildCltCheckInputs({
+    nodes, combinations, combinationResults,
+    beams: [{ ...beams[0], checkConfig: { ...beams[0].checkConfig, kCr: 0.67 } }],
+  }).inputs[0];
+  check("kCr 0,67 uit checkConfig komt door", metKcr.k_cr, 0.67);
+  const slecht = clt.buildCltCheckInputs({
+    nodes, combinations, combinationResults,
+    beams: [{ ...beams[0], checkConfig: { kCr: 1.5 } }],
+  });
+  checkTrue("kCr 1,5: staaf overgeslagen met reden die k_cr noemt",
+    slecht.inputs.length === 0 && slecht.skipped.length === 1 && /k_cr/.test(slecht.skipped[0].reason));
+}
 checkTrue("opbouw met 5 lagen", inp.layup.layers.length === 5 && inp.layup.width_mm === 1000);
 checkTrue("krachtsverloop gevuld", inp.forces_envelope.length > 0);
 const mMax = Math.max(...inp.forces_envelope.map((p) => Math.abs(p.forces.my_ed)));

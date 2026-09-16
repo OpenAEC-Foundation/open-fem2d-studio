@@ -182,6 +182,53 @@ export interface BeamCheckConfig {
    * laagste σ_m,crit en dus de zwaarste kiptoets.
    */
   ltbSupportSpacing_m?: number;
+  /**
+   * Scheurfactor k_cr voor de dwarskrachttoets, b_ef = k_cr · b in
+   * NEN-EN 1995-1-1 art. 6.1.7(2), verg. (6.13a). Bereik (0, 1]; leeg = 1,0.
+   *
+   * WAAROM 1,0 DE STANDAARD IS. Art. 6.1.7(2) beveelt in zijn OPMERKING 0,67
+   * aan voor gezaagd en voor gelijmd gelamineerd hout, maar laat de keuze
+   * uitdrukkelijk aan de nationale bijlage. NEN-EN 1995-1-1/NB:2013 bij 6.1.7
+   * schrijft voor liggers met een prismatische (rechthoekige) doorsnede
+   * k_cr = 1,0 voor; de 0,8 daar geldt alleen voor I-, T- en kokerprofielen
+   * met een lijf dunner dan de halve flensbreedte, en die verhouding leest de
+   * kern zelf uit een samengestelde doorsnede (`shear::k_cr_nb`). 1,0 is dus
+   * de Nederlandse normwaarde en geen vereenvoudiging.
+   *
+   * Wie toch met de aanbevolen 0,67 wil rekenen (een opdrachtgever die de
+   * Europese aanbeveling eist, een vergelijking met een berekening van
+   * elders) zet dat hier expliciet; de toets vermeldt de gebruikte waarde met
+   * bron. Buiten (0, 1] is geen scheurfactor: nul of negatief betekent geen
+   * breedte, meer dan 1 meer breedte dan er is — dat wordt geweigerd, niet
+   * stil gecorrigeerd.
+   */
+  kCr?: number;
+  /**
+   * Kiptoets van art. 6.3.3 uitvoeren; leeg = true.
+   *
+   * `false` betekent één ding: de gedrukte rand is over de volle lengte
+   * zijdelings gesteund (bijvoorbeeld een balklaag met doorgaand dakbeschot of
+   * een vloerplaat op de bovenrand) en de opleggingen laten geen torsie toe.
+   * Dan mag k_crit = 1,0 worden genomen (art. 6.3.3(5)), en is de buiging al
+   * getoetst in art. 6.1.6 en de druk in art. 6.3.2; (6.35) met k_crit = 1
+   * kan daar niet strenger uitvallen. De toetsing laat de kiptoets dan NIET
+   * stil weg: zij staat als "niet van toepassing" in het resultaat, met deze
+   * reden in de notitie, zodat het rapport de aanname toont.
+   */
+  performLtbCheck?: boolean;
+  /**
+   * Aangrijpingspunt van de belasting voor tabel 6.1 (voetnoot a): bij een
+   * last aan de DRUKzijde wordt l_ef vermeerderd met 2h, bij een last aan de
+   * TREKzijde verminderd met 0,5h; in het zwaartepunt blijft l_ef = verhouding
+   * · ℓ. Leeg = "centreOfGravity", het gedrag van vóór dit veld.
+   *
+   * Een dakbeschot of vloer op de bovenrand van een vrij opgelegde ligger is
+   * een last aan de drukzijde: het aangrijpingspunt ligt boven het
+   * dwarskrachtcentrum en versterkt het kippen. Dat is de ongunstige kant;
+   * wie hem kiest, ziet l_ef in de kiptoets groeien. Dezelfde namen als de
+   * Rust-enum `LtbLoadPosition`, in de spelling van dit object.
+   */
+  ltbLoadPosition?: "centreOfGravity" | "compressionEdge" | "tensionEdge";
   // Beton (EN 1992)
   /**
    * Wapeningskorf: dekking, beugel, boven- en onderwapening. Zonder korf

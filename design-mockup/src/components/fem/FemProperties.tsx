@@ -745,6 +745,72 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 meewerkende lengte l_ef maakt (l_ef = 0,9·ℓ bij een gelijkmatig verdeelde
                 belasting op twee steunpunten); l_ef bepaalt σ_m,crit en daarmee k_crit.
               </div>
+              {/* Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a).
+                  Leeg/zwaartepunt = geen correctie; de drukzijde (dak of vloer
+                  op de bovenrand) maakt l_ef 2h langer en is de ongunstige kant. */}
+              <Row label="Aangrijpingspunt">
+                <select
+                  className="fem-prop-select"
+                  value={cfg.ltbLoadPosition ?? "centreOfGravity"}
+                  onChange={(e) => setCfg({
+                    ltbLoadPosition: e.target.value === "centreOfGravity"
+                      ? undefined
+                      : (e.target.value as NonNullable<BeamCheckConfig["ltbLoadPosition"]>),
+                  })}
+                >
+                  <option value="centreOfGravity">Zwaartepunt (geen correctie)</option>
+                  <option value="compressionEdge">Drukzijde (l_ef + 2h)</option>
+                  <option value="tensionEdge">Trekzijde (l_ef − 0,5h)</option>
+                </select>
+              </Row>
+              {/* Kiptoets aan/uit. Uit = de gedrukte rand is over de volle lengte
+                  zijdelings gesteund en de opleggingen zijn torsievast, zodat
+                  k_crit = 1,0 (art. 6.3.3(5)). De kern zet de toets dan als
+                  "niet van toepassing" mét die reden in het resultaat. Alleen
+                  `false` gaat het bestand in; aan is de standaard. */}
+              <Row label="Kiptoets uitvoeren">
+                <input
+                  type="checkbox" className="fem-prop-checkbox"
+                  checked={cfg.performLtbCheck ?? true}
+                  onChange={(e) => setCfg({ performLtbCheck: e.target.checked ? undefined : false })}
+                />
+              </Row>
+              {cfg.performLtbCheck === false && (
+                <div className="fem-prop-hint fem-prop-let-op" role="note">
+                  Kiptoets uit: u verklaart dat de gedrukte rand over de volle lengte zijdelings
+                  gesteund is (dakbeschot, vloerplaat) en de opleggingen torsievast zijn, zodat
+                  k_crit = 1,0 (art. 6.3.3(5)). Die aanname komt zo in het rapport te staan.
+                </div>
+              )}
+            </Section>
+          )}
+
+          {isHout && (
+            <Section title="Dwarskracht (art. 6.1.7)">
+              {/* Scheurfactor k_cr, b_ef = k_cr · b (6.13a). Leeg = 1,0, de
+                  waarde van de NB bij 6.1.7 voor een prismatische doorsnede; de
+                  Europese aanbeveling is 0,67. Buiten (0, 1] wordt niet
+                  weggeschreven: dat is geen factor maar een fout. */}
+              <Row label="Scheurfactor k_cr">
+                <input
+                  type="number" className="fem-prop-input" step="0.01" min="0.01" max="1"
+                  placeholder="1,00"
+                  value={cfg.kCr ?? ""}
+                  onChange={(e) => {
+                    const k = Number(e.target.value);
+                    setCfg({
+                      kCr: e.target.value === "" || !Number.isFinite(k) || k <= 0 || k > 1
+                        ? undefined
+                        : k,
+                    });
+                  }}
+                />
+              </Row>
+              <div className="fem-prop-hint">
+                b_ef = k_cr · b (6.13a). Leeg = 1,0: NEN-EN 1995-1-1/NB bij 6.1.7 voor een
+                prismatische doorsnede. De Europese aanbeveling van 6.1.7(2) is 0,67 voor
+                gezaagd en gelijmd gelamineerd hout; alleen waarden in (0, 1] worden bewaard.
+              </div>
             </Section>
           )}
 

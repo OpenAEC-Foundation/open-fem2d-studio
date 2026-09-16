@@ -376,6 +376,114 @@ async fn een_tikfout_in_check_config_wordt_geweigerd() {
     );
 }
 
+/// De unity check van één toets uit een houtresultaat; `None` als de toets
+/// geen UC heeft (niet van toepassing).
+fn uc_van(hout: &Value, id: &str) -> Option<f64> {
+    let check = hout["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|c| c["id"] == json!(id))
+        .unwrap_or_else(|| panic!("toets {id} ontbreekt: {hout}"));
+    check["kind"]["data"]["uc"]["uc"].as_f64()
+}
+
+fn toets_van<'a>(hout: &'a Value, id: &str) -> &'a Value {
+    hout["checks"]
+        .as_array()
+        .expect("checks")
+        .iter()
+        .find(|c| c["id"] == json!(id))
+        .unwrap_or_else(|| panic!("toets {id} ontbreekt: {hout}"))
+}
+
+/// De drie houtkeuzen van `check_config` — `kCr`, `performLtbCheck` en
+/// `ltbLoadPosition` — werken door tot in het resultaat van `check_fem_model`,
+/// en onzin wordt door dezelfde poort geweigerd.
+///
+/// Tot september 2026 zette de bundel k_cr = 1,0, kiptoets aan en zwaartepunt
+/// vast; wie de tabellenpagina met k_cr = 0,67 en een balklaag zonder kiptoets
+/// wilde narekenen, moest om de app heen. De richting van elke verandering is
+/// een handberekening: k_cr schaalt τ met 1/k_cr (6.13a), dus de
+/// dwarskracht-UC met 0,67 is 1/0,67 keer die met 1,0; een last aan de
+/// drukzijde maakt l_ef 2h langer (tabel 6.1) en de kiptoets zwaarder; kiptoets
+/// uit zet de toets als "niet van toepassing" met de reden in de notitie.
+#[tokio::test]
+async fn k_cr_kiptoets_en_lastpositie_uit_check_config_werken_door() {
+    eis_node().await;
+
+    let model = portaal_met_houten_ligger();
+    let antwoorden = roep_tools(&[
+        ("check_fem_model", json!({ "model": model, "beam_ids": [2] })),
+        ("check_fem_model", json!({ "model": model, "beam_ids": [2], "check_config": { "2": { "kCr": 0.67 } } })),
+        ("check_fem_model", json!({ "model": model, "beam_ids": [2], "check_config": { "2": { "performLtbCheck": false } } })),
+        ("check_fem_model", json!({ "model": model, "beam_ids": [2], "check_config": { "2": { "ltbLoadPosition": "compressionEdge" } } })),
+        // Onzin: elk apart geweigerd, met de veldnaam in de melding.
+        ("check_fem_model", json!({ "model": model, "check_config": { "2": { "kCr": 1.5 } } })),
+        ("check_fem_model", json!({ "model": model, "check_config": { "2": { "kCr": 0 } } })),
+        ("check_fem_model", json!({ "model": model, "check_config": { "2": { "ltbLoadPosition": "bovenrand" } } })),
+        ("check_fem_model", json!({ "model": model, "check_config": { "2": { "performLtbCheck": "nee" } } })),
+        ("check_fem_model", json!({ "model": model, "check_config": { "2": { "k_cr": 0.67 } } })),
+    ])
+    .await;
+
+    let basis = geen_fout(&antwoorden[0]).clone();
+    let met_kcr = geen_fout(&antwoorden[1]).clone();
+    let zonder_kip = geen_fout(&antwoorden[2]).clone();
+    let drukzijde = geen_fout(&antwoorden[3]).clone();
+
+    // Standaard: de kerninvoer draagt de oude vaste waarden.
+    let inp = &basis["timber_check_inputs"][0];
+    // `as_f64`: de bundel schrijft 1 en niet 1.0, en serde_json onderscheidt die.
+    assert_eq!(inp["k_cr"].as_f64(), Some(1.0), "{inp}");
+    assert_eq!(inp["perform_ltb_check"], json!(true), "{inp}");
+    assert_eq!(inp["ltb_load_position"], json!("CentreOfGravity"), "{inp}");
+
+    // k_cr 0,67: in de kerninvoer, en de dwarskracht-UC 1/0,67 keer zo hoog.
+    assert_eq!(met_kcr["timber_check_inputs"][0]["k_cr"].as_f64(), Some(0.67));
+    let uc_basis = uc_van(&basis["timber_results"][0], "6.1.7_shear").expect("dwarskracht-UC");
+    let uc_kcr = uc_van(&met_kcr["timber_results"][0], "6.1.7_shear").expect("dwarskracht-UC");
+    assert!(uc_basis > 0.0, "de ligger draagt q = 5 kN/m, dus er is dwarskracht");
+    assert!(
+        (uc_kcr / uc_basis - 1.0 / 0.67).abs() < 1e-6,
+        "dwarskracht-UC hoort met 1/0,67 te schalen: {uc_kcr} / {uc_basis}"
+    );
+    let noot = toets_van(&met_kcr["timber_results"][0], "6.1.7_shear")["kind"]["data"]["notes"].to_string();
+    assert!(noot.contains("0,67") && noot.contains("opgegeven"), "{noot}");
+
+    // Kiptoets uit: de toets blijft in de lijst, als niet van toepassing, met de
+    // reden — en is niet langer maatgevend.
+    assert_eq!(zonder_kip["timber_check_inputs"][0]["perform_ltb_check"], json!(false));
+    let kip = toets_van(&zonder_kip["timber_results"][0], "6.3.3_beam_stability");
+    assert_eq!(kip["kind"]["data"]["status"], json!("NotApplicable"), "{kip}");
+    assert!(uc_van(&zonder_kip["timber_results"][0], "6.3.3_beam_stability").is_none());
+    let noot = kip["kind"]["data"]["notes"].to_string();
+    assert!(noot.contains("overgeslagen") && noot.contains("6.3.3(5)"), "{noot}");
+    assert_ne!(zonder_kip["timber_results"][0]["governing_check_id"], json!("6.3.3_beam_stability"));
+    assert_eq!(
+        zonder_kip["timber_results"][0]["checks"].as_array().unwrap().len(),
+        basis["timber_results"][0]["checks"].as_array().unwrap().len(),
+        "er verdwijnt geen toets uit de lijst"
+    );
+
+    // Drukzijde: l_ef + 2h, dus een zwaardere kiptoets, met het aangrijpingspunt
+    // in de notitie.
+    assert_eq!(drukzijde["timber_check_inputs"][0]["ltb_load_position"], json!("CompressionEdge"));
+    let uc_kip_basis = uc_van(&basis["timber_results"][0], "6.3.3_beam_stability").expect("kip-UC");
+    let uc_kip_druk = uc_van(&drukzijde["timber_results"][0], "6.3.3_beam_stability").expect("kip-UC");
+    assert!(uc_kip_druk > uc_kip_basis, "drukzijde hoort zwaarder te toetsen: {uc_kip_druk} > {uc_kip_basis}");
+    let noot = toets_van(&drukzijde["timber_results"][0], "6.3.3_beam_stability")["kind"]["data"]["notes"].to_string();
+    assert!(noot.contains("DRUKzijde") && noot.contains("+ 2 · 450"), "{noot}");
+
+    // De weigeringen: INVOER_ONGELDIG met de veldnaam.
+    for (i, veld) in [(4, "kCr"), (5, "kCr"), (6, "ltbLoadPosition"), (7, "performLtbCheck"), (8, "kCr")] {
+        let a = &antwoorden[i];
+        assert_eq!(a["isError"], true, "aanroep {i} hoort geweigerd te worden: {a}");
+        assert_eq!(a["structuredContent"]["error_code"], json!("INVOER_ONGELDIG"), "aanroep {i}: {a}");
+        assert!(a.to_string().contains(veld), "aanroep {i} hoort `{veld}` te noemen: {a}");
+    }
+}
+
 /// Catalogusprofielen buiten de oude voorvoegsellijst worden getoetst. Het
 /// faalscenario van de audit: vier vrij opgelegde liggers S235 van 5 m met
 /// q = 5 kN/m op IPE 200, INP 200, DIN 20 en L 100x100x10. Hier wordt geen

@@ -625,6 +625,67 @@ pub enum LtbLoadPosition {
     TensionEdge,
 }
 
+/// De verhouding l_ef/ℓ van tabel 6.1 voor het belastinggeval.
+pub fn l_ef_verhouding(case: LtbLoadCase) -> f64 {
+    match case {
+        LtbLoadCase::ConstantMoment => 1.0,
+        LtbLoadCase::UniformLoad => 0.9,
+        LtbLoadCase::ConcentratedMidspan => 0.8,
+        LtbLoadCase::CantileverUniform => 0.5,
+        LtbLoadCase::CantileverConcentratedEnd => 0.8,
+    }
+}
+
+/// Het belastinggeval van tabel 6.1 in woorden, voor de notitie bij de kiptoets.
+pub fn l_ef_geval_tekst(case: LtbLoadCase) -> &'static str {
+    match case {
+        LtbLoadCase::ConstantMoment => "ligger op twee steunpunten, constant moment",
+        LtbLoadCase::UniformLoad => "ligger op twee steunpunten, gelijkmatig verdeelde belasting",
+        LtbLoadCase::ConcentratedMidspan => "ligger op twee steunpunten, puntlast in het midden",
+        LtbLoadCase::CantileverUniform => "uitkraging, gelijkmatig verdeelde belasting",
+        LtbLoadCase::CantileverConcentratedEnd => "uitkraging, puntlast aan het vrije einde",
+    }
+}
+
+/// Het aangrijpingspunt van tabel 6.1 (voetnoot a) in woorden, met de
+/// correctie op l_ef erbij, voor de notitie bij de kiptoets.
+pub fn lastpositie_tekst(position: LtbLoadPosition) -> &'static str {
+    match position {
+        LtbLoadPosition::CentreOfGravity => "belasting aangrijpend in het zwaartepunt (geen correctie)",
+        LtbLoadPosition::CompressionEdge => "belasting aangrijpend aan de DRUKzijde (l_ef + 2h)",
+        LtbLoadPosition::TensionEdge => "belasting aangrijpend aan de TREKzijde (l_ef − 0,5h)",
+    }
+}
+
+/// De notitie die zegt hoe l_ef tot stand kwam: uit tabel 6.1 met het
+/// belastinggeval, de ℓ waar het van uitging en het aangrijpingspunt van de
+/// belasting. Zonder deze regel staat er in de kiptoets wél een l_ef maar
+/// niet waar hij vandaan komt — en juist het aangrijpingspunt is sinds
+/// september 2026 een keuze van de gebruiker (`ltb_load_position`), die
+/// l_ef met 2h kan laten groeien. Die keuze hoort in het rapport te staan.
+pub fn l_ef_toelichting(
+    l_mm: f64,
+    l_herkomst: &str,
+    case: LtbLoadCase,
+    position: LtbLoadPosition,
+    h_mm: f64,
+) -> String {
+    let l_ef = effective_length_mm(l_mm, case, position, h_mm);
+    let correctie = match position {
+        LtbLoadPosition::CentreOfGravity => String::new(),
+        LtbLoadPosition::CompressionEdge => format!(" + 2 · {h_mm:.0}"),
+        LtbLoadPosition::TensionEdge => format!(" − 0,5 · {h_mm:.0}"),
+    };
+    format!(
+        "l_ef = {ratio} · {l_mm:.0}{correctie} = {l_ef:.0} mm volgens tabel 6.1 ({geval}), \
+         met ℓ = {l_mm:.0} mm ({l_herkomst}); {positie}.",
+        // Nederlandse komma, zoals de rest van de notitie (0,5 · h).
+        ratio = format!("{:.1}", l_ef_verhouding(case)).replace('.', ","),
+        geval = l_ef_geval_tekst(case),
+        positie = lastpositie_tekst(position),
+    )
+}
+
 /// Effectieve kiplengte volgens tabel 6.1: l_ef = ratio·l, daarna
 /// gecorrigeerd voor het aangrijpingspunt van de belasting.
 ///
@@ -635,14 +696,7 @@ pub enum LtbLoadPosition {
 /// de normtekst; wie het referentiegedrag wil reproduceren geeft l_ef
 /// rechtstreeks op (zie `check_beam_stability`).
 pub fn effective_length_mm(l_mm: f64, case: LtbLoadCase, position: LtbLoadPosition, h_mm: f64) -> f64 {
-    let ratio = match case {
-        LtbLoadCase::ConstantMoment => 1.0,
-        LtbLoadCase::UniformLoad => 0.9,
-        LtbLoadCase::ConcentratedMidspan => 0.8,
-        LtbLoadCase::CantileverUniform => 0.5,
-        LtbLoadCase::CantileverConcentratedEnd => 0.8,
-    };
-    let base = ratio * l_mm;
+    let base = l_ef_verhouding(case) * l_mm;
     match position {
         LtbLoadPosition::CentreOfGravity => base,
         LtbLoadPosition::CompressionEdge => base + 2.0 * h_mm,
@@ -853,6 +907,61 @@ fn kip_niet_bepaalbaar(
     }
 }
 
+/// De kiptoets van §6.3.3 wanneer de invoer hem uitzet
+/// (`perform_ltb_check = false`): niet uitgevoerd, met de reden erbij.
+///
+/// WAT DIE VLAG BETEKENT
+/// Eén ding: de gedrukte rand is over de volle lengte zijdelings gesteund
+/// (dakbeschot, vloerplaat, doorgaande koppeling aan de bovenrand) en de
+/// opleggingen laten geen torsie toe. Art. 6.3.3(5) staat dan k_crit = 1,0
+/// toe. Met k_crit = 1 wordt (6.33) de gewone buigtoets van art. 6.1.6, en
+/// (6.35) — (σ_m/f_m)² + σ_c/(k_c,z·f_c,0,d) ≤ 1 — kan niet strenger uitvallen
+/// dan (6.23)/(6.24) van art. 6.3.2, waar dezelfde termen lineair staan. Wat
+/// de kiptoets zou toetsen, is dus al getoetst.
+///
+/// De toets komt wél in het resultaat, als `NotApplicable` met deze notitie.
+/// Een kiptoets die stil verdwijnt is precies de fout waar een balklaag zonder
+/// beschot onopgemerkt doorheen glipt; hier staat de aanname zwart op wit,
+/// zodat het rapport haar toont en de lezer haar kan betwisten.
+pub fn kip_overgeslagen_drukzijde_gesteund(
+    section: &TimberSection,
+    force_state: ForceStateSnapshot,
+) -> StabilityCalc {
+    let n_ed = force_state.forces.n_ed;
+    let sigma_m = sigma_m_mpa(force_state.forces.my_ed, section.w_y_mm3);
+    let sigma_c = if n_ed < 0.0 { sigma_axial_mpa(n_ed, section.a_mm2) } else { 0.0 };
+    StabilityCalc {
+        id: "6.3.3_beam_stability".to_string(),
+        title: "Kipstabiliteit (buiging en druk)".to_string(),
+        article: "art. 6.3.3 (5)".to_string(),
+        force_state,
+        formula_latex: r"k_{crit} = 1{,}0".to_string(),
+        variables: vec![
+            NamedValue { symbol: r"\sigma_{m,y,d}".to_string(), value: sigma_m, unit: "N/mm²".to_string() },
+            NamedValue { symbol: r"\sigma_{c,0,d}".to_string(), value: sigma_c, unit: "N/mm²".to_string() },
+        ],
+        intermediate_values: vec![
+            NamedValue { symbol: r"k_{crit}".to_string(), value: 1.0, unit: "-".to_string() },
+        ],
+        deelstappen: vec![],
+        value: 0.0,
+        unit: "-".to_string(),
+        uc: None,
+        status: CheckStatus::NotApplicable,
+        notes: vec![
+            concat!(
+                "Kiptoets overgeslagen op aanwijzing van de invoer (kiptoets uit): de gedrukte ",
+                "rand geldt als over de volle lengte zijdelings gesteund en de opleggingen als ",
+                "torsievast, zodat k_crit = 1,0 mag worden genomen (art. 6.3.3(5)). De buiging is ",
+                "dan getoetst in art. 6.1.6 en de druk in art. 6.3.2; (6.35) met k_crit = 1 kan ",
+                "daar niet strenger uitvallen. Deze aanname is een keuze van de constructeur en ",
+                "geen uitkomst van de berekening: controleer dat de steun er werkelijk is.",
+            )
+            .to_string(),
+        ],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -861,6 +970,46 @@ mod tests {
 
     fn sectie() -> TimberSection {
         TimberSection::rechthoek(96.0, 450.0)
+    }
+
+    /// De toelichting noemt de verhouding, ℓ, de correctie voor het
+    /// aangrijpingspunt en de uitkomst — en die uitkomst is dezelfde als
+    /// `effective_length_mm` geeft.
+    #[test]
+    fn l_ef_toelichting_noemt_verhouding_correctie_en_uitkomst() {
+        let drukzijde = l_ef_toelichting(
+            6000.0, "kipsteunafstand", LtbLoadCase::UniformLoad, LtbLoadPosition::CompressionEdge, 450.0,
+        );
+        assert!(drukzijde.contains("0,9 · 6000 + 2 · 450 = 6300 mm"), "{drukzijde}");
+        assert!(drukzijde.contains("DRUKzijde"), "{drukzijde}");
+        assert!(drukzijde.contains("kipsteunafstand"), "{drukzijde}");
+        let zwaartepunt = l_ef_toelichting(
+            6000.0, "staaflengte", LtbLoadCase::UniformLoad, LtbLoadPosition::CentreOfGravity, 450.0,
+        );
+        assert!(zwaartepunt.contains("0,9 · 6000 = 5400 mm"), "{zwaartepunt}");
+        assert!(zwaartepunt.contains("zwaartepunt"), "{zwaartepunt}");
+        let trekzijde = l_ef_toelichting(
+            6000.0, "staaflengte", LtbLoadCase::UniformLoad, LtbLoadPosition::TensionEdge, 450.0,
+        );
+        assert!(trekzijde.contains("− 0,5 · 450 = 5175 mm"), "{trekzijde}");
+    }
+
+    /// Kiptoets uit: niet van toepassing, geen UC, met de reden en het
+    /// normartikel in de notitie — nooit stil.
+    #[test]
+    fn kip_overgeslagen_staat_als_niet_van_toepassing_met_reden() {
+        let snap = ForceStateSnapshot {
+            combination_id: 1,
+            position_mm: 3000.0,
+            forces: InternalForces { n_ed: -10.0, my_ed: 40.0, ..Default::default() },
+        };
+        let k = kip_overgeslagen_drukzijde_gesteund(&sectie(), snap);
+        assert_eq!(k.id, "6.3.3_beam_stability");
+        assert!(matches!(k.status, CheckStatus::NotApplicable));
+        assert!(k.uc.is_none());
+        assert_eq!(k.notes.len(), 1);
+        assert!(k.notes[0].contains("6.3.3(5)"), "{}", k.notes[0]);
+        assert!(k.notes[0].contains("zijdelings gesteund"), "{}", k.notes[0]);
     }
 
     fn snap(n: f64, my: f64) -> ForceStateSnapshot {

@@ -129,7 +129,14 @@ const CHECKCONFIG_VELDEN = [
   // weg en `timberCheckBuilder` leest hem, maar hij stond hier niet: elk
   // houtmodel met een kipsteunafstand werd langs de MCP-weg geweigerd.
   "ltbSupportSpacing_m",
+  // De drie houtkeuzen van september 2026: scheurfactor k_cr (6.1.7),
+  // kiptoets aan/uit (6.3.3(5)) en het aangrijpingspunt van de belasting
+  // (tabel 6.1). Tot dan zaten ze vast in de houtbouwer.
+  "kCr", "performLtbCheck", "ltbLoadPosition",
 ] as const;
+
+/** De drie aangrijpingspunten van tabel 6.1, in de spelling van `checkConfig`. */
+const LTB_LASTPOSITIES = ["centreOfGravity", "compressionEdge", "tensionEdge"] as const;
 
 /**
  * De velden van het §5.8-blok (`ConcreteColumnInput`), inclusief de drie om de
@@ -547,6 +554,17 @@ export function keurCheckConfig(waarde: unknown, cpad: string): string[] {
   // Een kipsteunafstand van 0 of minder betekent in de bouwer "de staaflengte";
   // hier opgegeven hoort hij dus positief te zijn, net als de kniklengten.
   keurGetal(cc.ltbSupportSpacing_m, `${cpad}.ltbSupportSpacing_m`, fouten, { positief: true });
+  // k_cr is een BREEDTEFACTOR (b_ef = k_cr · b, 6.13a): boven 1 is meer breedte
+  // dan er is, nul of eronder geen breedte. Buiten (0, 1] is dus geen keuze
+  // maar een fout, en die wordt hier geweigerd — niet stil op 1,0 gezet.
+  keurGetal(cc.kCr, `${cpad}.kCr`, fouten, { positief: true });
+  if (isGetal(cc.kCr) && cc.kCr > 1) {
+    fouten.push(`${cpad}.kCr: moet ten hoogste 1 zijn (b_ef = k_cr · b), maar is ${cc.kCr}.`);
+  }
+  if (cc.performLtbCheck !== undefined && typeof cc.performLtbCheck !== "boolean") {
+    fouten.push(`${cpad}.performLtbCheck: moet true of false zijn, maar is ${JSON.stringify(cc.performLtbCheck)}.`);
+  }
+  keurEnum(cc.ltbLoadPosition, LTB_LASTPOSITIES, `${cpad}.ltbLoadPosition`, fouten);
   keurEnum(cc.deflectionClass, ["floor", "floorBrittle", "roof", "cantilever", "custom"], `${cpad}.deflectionClass`, fouten);
   keurEnum(cc.loadDuration, ["permanent", "long", "medium", "short", "instantaneous"], `${cpad}.loadDuration`, fouten);
   if (cc.serviceClass !== undefined && ![1, 2, 3].includes(cc.serviceClass as number)) {

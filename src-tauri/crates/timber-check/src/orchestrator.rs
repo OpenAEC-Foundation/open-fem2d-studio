@@ -6,7 +6,8 @@ use nen_en_1993_1_1_section::{CheckStatus, ResistanceCalc};
 use nen_en_1993_1_1_stability::kniklengte::{bepaal_kniklengte, Steunen, Steunrand};
 use nen_en_1993_1_1_stability::StabilityCalc;
 use nen_en_1995_1_1::stability::{
-    check_beam_stability, check_column_stability, effective_length_mm, BeamStabilityInput,
+    check_beam_stability, check_column_stability, effective_length_mm,
+    kip_overgeslagen_drukzijde_gesteund, l_ef_toelichting, BeamStabilityInput,
     ColumnStabilityInput,
 };
 use nen_en_1995_1_1::{
@@ -314,19 +315,37 @@ fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> 
 
     // Kipstabiliteit §6.3.3.
     if input.perform_ltb_check {
-        let segment_mm = if input.ltb_segment_length_m > 0.0 {
-            input.ltb_segment_length_m * 1e3
+        let (segment_mm, segment_herkomst) = if input.ltb_segment_length_m > 0.0 {
+            (input.ltb_segment_length_m * 1e3, "kipsteunafstand")
         } else {
-            input.length_m * 1e3
+            (input.length_m * 1e3, "staaflengte, terugval")
         };
-        let l_ef_mm = if input.ltb_effective_length_override_m > 0.0 {
-            input.ltb_effective_length_override_m * 1e3
+        // Hoe l_ef tot stand kwam, mét het aangrijpingspunt van de belasting:
+        // dat is een keuze van de gebruiker en hoort daarom in het rapport.
+        let (l_ef_mm, l_ef_notitie) = if input.ltb_effective_length_override_m > 0.0 {
+            (
+                input.ltb_effective_length_override_m * 1e3,
+                format!(
+                    "l_ef = {:.0} mm is rechtstreeks opgegeven (ltb_effective_length_override_m) en \
+                     niet uit tabel 6.1 afgeleid.",
+                    input.ltb_effective_length_override_m * 1e3
+                ),
+            )
         } else {
-            effective_length_mm(
-                segment_mm,
-                input.ltb_load_case,
-                input.ltb_load_position,
-                section.h_mm,
+            (
+                effective_length_mm(
+                    segment_mm,
+                    input.ltb_load_case,
+                    input.ltb_load_position,
+                    section.h_mm,
+                ),
+                l_ef_toelichting(
+                    segment_mm,
+                    segment_herkomst,
+                    input.ltb_load_case,
+                    input.ltb_load_position,
+                    section.h_mm,
+                ),
             )
         };
         let mut kip = check_beam_stability(
@@ -347,11 +366,17 @@ fn toetsketen(k: &Keten, omhullende: &[ForcePoint], duur: LoadDurationClass) -> 
         // deze regel ziet de lezer van de kiptoets k_c,z staan maar niet met
         // welke L_cr,z hij bepaald is — en die kan op de staaflengte zijn
         // teruggevallen.
+        kip.notes.push(l_ef_notitie);
         kip.notes.push(format!(
             "k_c,z in de drukterm van (6.35) is bepaald met {kniklengte_z_samenvatting} — dezelfde \
              kniklengte als in de kolomtoets van art. 6.3.2, waar haar afleiding staat."
         ));
         checks.push(make_stability(kip));
+    } else {
+        // Uitgezet door de invoer: NIET stil weglaten. De toets staat als
+        // "niet van toepassing" in het resultaat, met de aanname (gedrukte
+        // rand doorgaand gesteund, art. 6.3.3(5)) in de notitie.
+        checks.push(make_stability(kip_overgeslagen_drukzijde_gesteund(section, bend_state)));
     }
 
     checks
