@@ -433,7 +433,7 @@ function ifcGuid(seed: string): string {
   const basissen = [0x811c9dc5, 0x9747b28c, 0x2f0e5761, 0x6c62272e];
   let n = 0n;
   for (let i = 0; i < 4; i++) {
-    n = (n << 32n) | BigInt(fnv1a32(`${seed} ${i}`, basissen[i]));
+    n = (n << 32n) | BigInt(fnv1a32(`${seed}\u0000${i}`, basissen[i]));
   }
   let uit = IFC_GUID_TEKENS[Number(n >> 126n)];
   for (let i = 20; i >= 0; i--) {
