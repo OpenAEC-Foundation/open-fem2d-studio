@@ -29,7 +29,7 @@ import type { SolverResult } from "../components/fem/solver/types";
 import type {
   LoadCombination, Envelope,
 } from "../components/fem/solver/combinations";
-import { defaultCombinations } from "../components/fem/solver/combinations";
+import { defaultCombinations, metScheefstandRichtingen } from "../components/fem/solver/combinations";
 import {
   selecteerCombinaties, type OvergeslagenCombinatie,
 } from "../lib/combinatieSelectie";
@@ -1286,6 +1286,8 @@ export interface FemStore {
    * gebruikt DEZE lijst — opslaan en bewerken gebruikt `combinations`.
    */
   actieveCombinaties: LoadCombination[];
+  /** De volledige combinatielijst in dezelfde ontvouwing als `actieveCombinaties` (rapport). */
+  combinatiesVoorRapport: LoadCombination[];
   /** Wat er is weggelaten en waarom. Leeg = de volledige lijst wordt gebruikt. */
   overgeslagenCombinaties: OvergeslagenCombinatie[];
   /**
@@ -1709,12 +1711,6 @@ export function useFemStore(opties?: {
   // zodra er een houten of betonnen staaf bij komt — de beslissing wordt
   // opnieuw genomen, niet teruggedraaid. `defaultCombinations()` kan deze
   // afweging zelf niet maken: die draait vóórdat er een model is.
-  const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
-    useMemo(
-      () => selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse }),
-      [combinations, beams, plates, loadCases, gevolgklasse],
-    );
-
   // Structural grid (stramien) — separate from undo history.
   const [structuralGrid, setStructuralGridState] = useState<StructuralGrid>(DEFAULT_STRUCTURAL_GRID);
 
@@ -1727,6 +1723,28 @@ export function useFemStore(opties?: {
   const [scheefstandEnabled, setScheefstandEnabled] = useState<boolean>(false);
   const [scheefstandNoemer, setScheefstandNoemer]   = useState<number>(200);
   const [scheefstandRichting, setScheefstandRichting] = useState<1 | -1>(1);
+
+  // Met een scheefstand bestaat elke doorgerekende combinatie in TWEE
+  // varianten, één per richting (EN 1993-1-1 5.3.2(2), basisaudit nr 28).
+  // De ontvouwde lijst is de lijst waarmee gerekend en getoetst wordt; de
+  // opgeslagen `combinations` blijft de ononvouwen lijst van de editor.
+  const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
+    useMemo(() => {
+      const selectie = selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse });
+      return {
+        actief: metScheefstandRichtingen(selectie.actief, scheefstandEnabled, scheefstandRichting),
+        overgeslagen: selectie.overgeslagen,
+      };
+    }, [combinations, beams, plates, loadCases, gevolgklasse, scheefstandEnabled, scheefstandRichting]);
+  /**
+   * De VOLLEDIGE lijst in dezelfde ontvouwing als `actieveCombinaties` — voor
+   * het rapport, dat ook opsomt wat niet is doorgerekend en de resultaten op
+   * combinatie-id opzoekt.
+   */
+  const combinatiesVoorRapport = useMemo(
+    () => metScheefstandRichtingen(combinations, scheefstandEnabled, scheefstandRichting),
+    [combinations, scheefstandEnabled, scheefstandRichting],
+  );
   // Normberekening van φ — beginstand "vast" (= het oude gedrag), zie de
   // toelichting bij `scheefstandBron` hierboven. h en m op null = afleiden.
   const [scheefstandBron, setScheefstandBron] = useState<ScheefstandBron>("vast");
@@ -2496,7 +2514,7 @@ export function useFemStore(opties?: {
   return {
     nodes, beams, supports, plates, loads,
     loadCases, activeLoadCaseId,
-    combinations, actieveCombinaties, overgeslagenCombinaties,
+    combinations, actieveCombinaties, overgeslagenCombinaties, combinatiesVoorRapport,
     gevolgklasse, setGevolgklasse, belastingMeldingen, combinatieAfwijking, idTellers,
     combinatieVervanging,
     combinatieVervangingTekst: combinatieVervanging?.samenvatting ?? vervangingUitBestand,

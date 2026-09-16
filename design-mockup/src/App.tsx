@@ -355,8 +355,9 @@ function App() {
     // De VOLLEDIGE lijst: het rapport somt ook op wat er NIET is doorgerekend,
     // met de reden erbij (`overgeslagenCombinaties`). Een lezer die zes
     // combinaties ziet waar hij er acht verwacht, moet dat in het rapport zelf
-    // kunnen nazien.
-    combinations: fem.combinations,
+    // kunnen nazien. In dezelfde ontvouwing als de berekening: met een
+    // scheefstand per combinatie een variant per richting.
+    combinations: fem.combinatiesVoorRapport,
     overgeslagenCombinaties: fem.overgeslagenCombinaties,
     gevolgklasse: fem.gevolgklasse,
     // Het rapport vermeldt dat de combinaties bij het openen zijn vervangen.
@@ -378,7 +379,7 @@ function App() {
     scheefstandToelichting: scheefstandTekst,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
-    fem.combinations, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
+    fem.combinatiesVoorRapport, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
     scheefstandTekst,

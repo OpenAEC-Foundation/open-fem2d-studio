@@ -38,12 +38,14 @@
  * stderr omgeleid voordat er ook maar één verzoek wordt afgehandeld.
  */
 import {
+  gevalResultaten,
   solveAllCases,
   solveAllCasesNonlinear,
 } from "../components/fem/solver/engine";
 import {
   combineResults,
   computeEnvelope,
+  metScheefstandRichtingen,
   defaultCombinations,
   type LoadCombination,
 } from "../components/fem/solver/combinations";
@@ -627,7 +629,13 @@ function rekenDoor(payload: Record<string, unknown>) {
     gelezen.model.plates,
     { loadCases: gelezen.model.loadCases, gevolgklasse },
   );
-  const combinaties = selectie.actief;
+  // Met een scheefstand elke combinatie in twee varianten, één per richting —
+  // dezelfde ontvouwing als de app (basisaudit nr 28).
+  const combinaties = metScheefstandRichtingen(
+    selectie.actief,
+    gelezen.model.scheefstandEnabled,
+    gelezen.model.scheefstandRichting,
+  );
   const profileDb = leesProfielen(payload);
 
   // Tweede orde: uit het projectbestand als dat er is — een projectbestand
@@ -672,7 +680,9 @@ function rekenDoor(payload: Record<string, unknown>) {
   const solveMs = Date.now() - start;
 
   const gevraagd = gelezen.model.loadCases.map((lc) => lc.id);
-  const opgelost = [...perCase.keys()];
+  // Alleen de gewone geval-id's: de tegengestelde scheefstandrichting staat
+  // onder verschoven id's in de Map en is geen belastinggeval.
+  const opgelost = [...gevalResultaten(perCase).keys()];
   // `solveAllCases` slaat een belastinggeval zonder werkzame last stilzwijgend
   // over. Zonder deze lijst krijgt een client een ontbrekende sleutel die als
   // "nul" leest; daarom staat hij expliciet in het antwoord.
@@ -812,7 +822,7 @@ function opSolve(payload: Record<string, unknown>) {
         reason: c.reden,
       }),
     ),
-    per_case: mapNaarObject(d.perCase, (r) => vormResultaat(r, d.metStations)),
+    per_case: mapNaarObject(gevalResultaten(d.perCase), (r) => vormResultaat(r, d.metStations)),
     combinations: mapNaarObject(d.combinationResults, (r) =>
       vormResultaat(r, d.metStations),
     ),
