@@ -32,6 +32,7 @@
 import type { Beam, Load, Node, Plate, Support } from "../components/fem/femTypes";
 import { bepaalPlaatRand, valideerPlaatOpeningen } from "../components/fem/femTypes";
 import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "./materiaalDubbelzinnig";
+import { keurPlaatMateriaal } from "./plaatMateriaal";
 
 /**
  * Tekentolerantie in mm. Het model rekent in mm en de gebruiker tekent met
@@ -55,6 +56,8 @@ export type BevindingSoort =
   | "plaatlast"
   /** Opening buiten de plaat, rakend aan de omtrek, of over een andere opening. */
   | "opening"
+  /** Plaatmateriaal dat niet herkend wordt. */
+  | "plaatmateriaal"
   /** Materiaalnaam die hout én de korte naam van een betonklasse is ("C30"). */
   | "dubbelzinnigMateriaal";
 
@@ -98,7 +101,7 @@ export interface ControleModel {
     checkConfig?: { betonKorf?: unknown } | null;
   })[];
   supports?: Pick<Support, "nodeId">[];
-  plates?: Pick<Plate, "id" | "nodeIds" | "openingen">[];
+  plates?: Pick<Plate, "id" | "nodeIds" | "openingen" | "materiaal">[];
   /**
    * Optioneel: de lasten, voor de controle op plaatlasten. Ontbreekt het veld,
    * dan blijft die controle achterwege en is de uitkomst gelijk aan vroeger.
@@ -225,6 +228,27 @@ export function zoekOpeningFouten(model: ControleModel): Bevinding[] {
       uit.push({
         soort: "opening", ernst: "fout", nodeIds: [...p.nodeIds],
         tekst: `Plaat ${p.id}: ${fout}`,
+      });
+    }
+  }
+  return uit;
+}
+
+/**
+ * Een plaatmateriaal dat niet herkend wordt. DEZELFDE beoordeling als de
+ * engine en de MCP-poort (`keurPlaatMateriaal`), maar al zichtbaar vóór
+ * "Berekenen": typt de gebruiker "C4" in plaats van "C24", dan hoort dat
+ * hier te staan en niet pas als de berekening afbreekt. Geen herstelactie:
+ * welk materiaal bedoeld is, weet alleen de gebruiker.
+ */
+export function zoekPlaatMateriaalFouten(model: ControleModel): Bevinding[] {
+  const uit: Bevinding[] = [];
+  for (const p of model.plates ?? []) {
+    const reden = keurPlaatMateriaal(p.materiaal);
+    if (reden) {
+      uit.push({
+        soort: "plaatmateriaal", ernst: "fout", nodeIds: [...(p.nodeIds ?? [])],
+        tekst: `Plaat ${p.id}: ${reden}`,
       });
     }
   }
@@ -446,6 +470,7 @@ export function controleerModel(
     ...zoekDubbeleKnopen(model, tolMm),
     ...zoekPlaatlastFouten(model),
     ...zoekOpeningFouten(model),
+    ...zoekPlaatMateriaalFouten(model),
     ...materiaal.filter((m) => m.ernst === "fout"),
   ];
   const alGemeld = new Set<number>();
