@@ -9,6 +9,11 @@
  *    spanten op h.o.h., het gekozen spant uitgelicht op zijn afstand tot de
  *    kopgevel, en de windrichtingen als pijlen.
  *
+ *  • Bij een vrijstaand dak (§7.3) tekent de doorsnede de zones A/B/C/D
+ *    boven het dak en bij een c_f-geval de resultante op zijn aangrijpingspunt;
+ *    de plattegrond toont de zones van tabel 7.6/7.7, en BlokkeringSchema
+ *    laat zien wat de blokkering φ betekent.
+ *
  * Pure componenten: alles komt uit props, niets uit een store. Zo zijn ze
  * met react-dom/server te toetsen (test-wind-schema.mjs) en tekenen ze in
  * het rapport hetzelfde als in het venster. Assen: x naar rechts, z omhoog,
@@ -16,6 +21,7 @@
  */
 import type { BeamLoadRole } from "../../components/fem/femTypes";
 import type { VlakRegel, WindGeometrie, Windrichting } from "./windGenerator";
+import type { OverkappingDakvorm, OverkappingZone } from "./windEurocode";
 
 const nl = (v: number, d: number) => v.toFixed(d).replace(".", ",");
 
@@ -33,6 +39,15 @@ export const ROL_KLEUR: Record<BeamLoadRole, string> = {
 export const KLEUR_DRUK = "#2563eb";
 export const KLEUR_ZUIGING = "#dc2626";
 export const KLEUR_WIND = "#0891b2";
+export const KLEUR_RESULTANTE = "#7c3aed";
+
+/** Vlakkleur per zone van een vrijstaand dak (tabel 7.6/7.7). */
+export const ZONE_KLEUR: Record<OverkappingZone, string> = {
+  A: "#bbf7d0",
+  B: "#fca5a5",
+  C: "#fdba74",
+  D: "#c4b5fd",
+};
 
 /**
  * Buitennormaal van een staaf voor de pijlen — dezelfde regel als de
@@ -56,13 +71,20 @@ export interface DoorsnedeSchemaProps {
   regels?: readonly VlakRegel[];
   /** Gevelhoogte in m bij een kap zonder gevel; getekend als gedachte wand. */
   gevelhoogte_m?: number | null;
+  /** Vrijstaand dak, c_f-geval: de resultante(n) van het getoonde geval. */
+  resultanten?: readonly { x_m: number; z_m: number; F_kN: number }[];
   breedtePx?: number;
 }
 
 export function DoorsnedeSchema({
-  geometrie: g, richting, regels = [], gevelhoogte_m = null, breedtePx = 440,
+  geometrie: g, richting, regels = [], gevelhoogte_m = null, resultanten = [], breedtePx = 440,
 }: DoorsnedeSchemaProps) {
-  const gevel = g.kapZonderGevel && gevelhoogte_m ? gevelhoogte_m : 0;
+  const vrij = g.vrijstaand;
+  // Onder het model: de gedachte gevel van een kap zonder gevel, of bij een
+  // vrijstaand dak het stuk tussen het model en de opgegeven hoogte h.
+  const gevel = vrij
+    ? Math.max(0, g.h_m - g.modelhoogte_m)
+    : (g.kapZonderGevel && gevelhoogte_m ? gevelhoogte_m : 0);
   const xs = g.staven.flatMap((s) => [s.x1, s.x2]);
   const zs = g.staven.flatMap((s) => [s.z1, s.z2]);
   const minX = Math.min(g.xLinks_m, ...xs), maxX = Math.max(g.xRechts_m, ...xs);
@@ -70,7 +92,7 @@ export function DoorsnedeSchema({
   const spanX = Math.max(maxX - minX, 0.1), spanZ = Math.max(maxZ - minZ, 0.1);
   // Marges: links/rechts ruimte voor de windpijl en de hoogtemaat, onder voor
   // de breedtemaat en de grondlijn.
-  const M = { l: 56, r: 40, t: 22, b: 30 };
+  const M = { l: 56, r: 40, t: vrij ? 40 : 22, b: 30 };
   const tekenW = breedtePx - M.l - M.r;
   const schaal = Math.min(tekenW / spanX, 170 / spanZ);
   const hoogtePx = Math.max(120, spanZ * schaal + M.t + M.b);
@@ -121,8 +143,27 @@ export function DoorsnedeSchema({
         <line key={`g${k}`} x1={M.l - 26 + k * ((breedtePx - M.l - M.r + 46) / 11)} y1={y0} x2={M.l - 32 + k * ((breedtePx - M.l - M.r + 46) / 11)} y2={y0 + 6} stroke="var(--theme-text-faint, #888)" strokeWidth="0.7" />
       ))}
 
+      {/* Vrijstaand dak: de zones als band boven het dak */}
+      {vrij && (
+        <g className="wgd-zones">
+          {vrij.zones.map((z, k) => (
+            <g key={k} className={`wgd-zone wgd-zone-${z.zone}`}>
+              <rect x={sx(z.van_m)} y={6} width={Math.max(1, (z.tot_m - z.van_m) * schaal)} height={14}
+                fill={ZONE_KLEUR[z.zone]} stroke="var(--theme-bg, #fff)" strokeWidth="1" />
+              <text x={sx((z.van_m + z.tot_m) / 2)} y={16.5} fontSize="9" fontWeight="600" textAnchor="middle" fill="#1f2937">{z.zone}</text>
+            </g>
+          ))}
+        </g>
+      )}
+      {vrij && gevel > 0 && (
+        <g className="wgd-gedachte-kolom" stroke="var(--theme-text-faint, #888)" strokeWidth="1.2" strokeDasharray="5 4">
+          <line x1={sx(g.xLinks_m)} y1={sy(minZ + gevel)} x2={sx(g.xLinks_m)} y2={y0} />
+          <line x1={sx(g.xRechts_m)} y1={sy(minZ + gevel)} x2={sx(g.xRechts_m)} y2={y0} />
+        </g>
+      )}
+
       {/* Kap zonder gevel: de gedachte gevels als gestreepte wanden */}
-      {gevel > 0 && (
+      {!vrij && gevel > 0 && (
         <g className="wgd-gedachte-gevel" stroke={ROL_KLEUR.gevelLinks} strokeWidth="1.4" strokeDasharray="5 4" fill="none">
           <line x1={sx(g.xLinks_m)} y1={sy(minZ + gevel)} x2={sx(g.xLinks_m)} y2={y0} />
           <line x1={sx(g.xRechts_m)} y1={sy(minZ + gevel)} x2={sx(g.xRechts_m)} y2={y0} />
@@ -162,6 +203,30 @@ export function DoorsnedeSchema({
         </g>
       )}
 
+      {richting === "alle" && (
+        <g className="wgd-wind">
+          <line x1={M.l - 50} y1={windY} x2={sx(minX) - 10} y2={windY} stroke={KLEUR_WIND} strokeWidth="2.2"
+            markerStart="url(#wgd-pijl)" markerEnd="url(#wgd-pijl)" />
+          <title>Alle windrichtingen (NEN-EN 1991-1-4 §7.3(3))</title>
+        </g>
+      )}
+
+      {/* Vrijstaand dak, c_f-geval: de resultante op zijn aangrijpingspunt */}
+      {resultanten.map((r, k) => {
+        const cx = sx(r.x_m), cy = sy(r.z_m);
+        const neer = r.F_kN >= 0;
+        const van = neer ? { x: cx, y: cy - 38 } : { x: cx, y: cy };
+        const naar = neer ? { x: cx, y: cy - 2 } : { x: cx, y: cy - 36 };
+        return (
+          <g key={`res${k}`} className="wgd-resultante">
+            <line x1={van.x} y1={van.y} x2={naar.x} y2={naar.y} stroke={KLEUR_RESULTANTE} strokeWidth="2.6" markerEnd="url(#wgd-pijl)" />
+            <text x={cx + 6} y={cy - 40} fontSize="9" fontWeight="600" fill={KLEUR_RESULTANTE}>
+              {`F = ${nl(Math.abs(r.F_kN), 2)} kN`}
+            </text>
+          </g>
+        );
+      })}
+
       {/* Druk- en zuigpijlen van het geval */}
       {pijlen.map((p) => (
         <g key={p.key} className={p.druk ? "wgd-druk" : "wgd-zuiging"}>
@@ -188,6 +253,49 @@ export function DoorsnedeSchema({
   );
 }
 
+/**
+ * Wat de blokkering φ betekent (§7.3(2), figuur 7.15), als twee tekeningetjes:
+ * links het lege dak (φ = 0), rechts het dak met de gekozen φ als opgestapelde
+ * goederen aan de lijzijde. De stapel is φ van de vrije hoogte onder het dak.
+ */
+export function BlokkeringSchema({ phi, dakvorm, breedtePx = 300 }: { phi: number; dakvorm: OverkappingDakvorm; breedtePx?: number }) {
+  const p = Math.max(0, Math.min(1, Number.isFinite(phi) ? phi : 0));
+  const H = 78, grond = 64, dakZ = 22;
+  const dak = (x0: number) => dakvorm === "lessenaar"
+    ? `M ${x0} ${dakZ} L ${x0 + 110} ${dakZ + 10}`
+    : `M ${x0} ${dakZ + 8} L ${x0 + 55} ${dakZ - 4} L ${x0 + 110} ${dakZ + 8}`;
+  const paneel = (x0: number, stapel: number, label: string) => {
+    const vrijeHoogte = grond - (dakZ + 10);
+    const hoog = stapel * vrijeHoogte;
+    return (
+      <g>
+        <line x1={x0 - 6} y1={grond} x2={x0 + 116} y2={grond} stroke="var(--theme-text-faint, #888)" strokeWidth="1" />
+        <line x1={x0 + 4} y1={grond} x2={x0 + 4} y2={dakZ + 1} stroke="#9ca3af" strokeWidth="1.5" />
+        <line x1={x0 + 106} y1={grond} x2={x0 + 106} y2={dakZ + 9} stroke="#9ca3af" strokeWidth="1.5" />
+        <path d={dak(x0)} stroke={ROL_KLEUR.dakPlat} strokeWidth="3" fill="none" strokeLinecap="round" />
+        {hoog > 0.5 && [0, 1, 2, 3].map((k) => (
+          <rect key={k} className="wgd-blok" x={x0 + 102 - (k + 1) * 11} y={grond - hoog} width={10} height={hoog}
+            fill="#d6b98c" stroke="#8b6b3d" strokeWidth="0.8" />
+        ))}
+        <line x1={x0 - 26} y1={grond - 22} x2={x0 - 8} y2={grond - 22} stroke={KLEUR_WIND} strokeWidth="1.8" markerEnd="url(#wgd-pijl3)" />
+        <text x={x0 + 55} y={H - 2} fontSize="9.5" textAnchor="middle" fill="var(--theme-text-muted, #666)">{label}</text>
+      </g>
+    );
+  };
+  return (
+    <svg className="wgd-schema wgd-blokkering" viewBox={`0 0 ${breedtePx} ${H}`} role="img"
+      aria-label={`Blokkering onder het dak: φ = ${nl(p, 2)}`}>
+      <defs>
+        <marker id="wgd-pijl3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M 0 0 L 8 4 L 0 8 z" fill="context-stroke" />
+        </marker>
+      </defs>
+      {paneel(30, 0, "φ = 0 — leeg")}
+      {paneel(breedtePx / 2 + 28, p, `φ = ${nl(p, 2)}`)}
+    </svg>
+  );
+}
+
 export interface PlattegrondSchemaProps {
   gebouwlengte_m: number;
   d_m: number;
@@ -199,12 +307,18 @@ export interface PlattegrondSchemaProps {
   richtingHaaks: boolean;
   /** e = min(b; 2h) — de randzone e/4 wordt licht gearceerd. */
   e_m?: number;
+  /**
+   * Vrijstaand dak: de zones van tabel 7.6/7.7 in plattegrond in plaats van de
+   * randzone e/4. `nokFractie` = plaats van de nok of kiel vanaf de linker
+   * dakrand (0…1); null bij een lessenaarsdak.
+   */
+  vrijstaand?: { nokFractie: number | null };
   breedtePx?: number;
 }
 
 export function PlattegrondSchema({
   gebouwlengte_m: b, d_m: d, hoh_m, positie, afstandTotKopgevel_m, richtingLinks, richtingRechts, richtingHaaks,
-  e_m, breedtePx = 440,
+  e_m, vrijstaand, breedtePx = 440,
 }: PlattegrondSchemaProps) {
   const M = { l: 40, r: 40, t: 26, b: 22 };
   const tekenW = breedtePx - M.l - M.r;
@@ -218,7 +332,25 @@ export function PlattegrondSchema({
   const spanten = Array.from({ length: Math.min(aantal + 1, 60) }, (_, k) => k * hoh_m).filter((y) => y <= b + 1e-9);
   const ditSpant = positie === "kopgevelspant" ? 0 : Math.min(Math.max(afstandTotKopgevel_m, 0), b);
   const sx = (y: number) => x0 + y * schaal;
-  const eRand = e_m && e_m > 0 ? Math.min(e_m / 4, b) : 0;
+  const eRand = !vrijstaand && e_m && e_m > 0 ? Math.min(e_m / 4, b) : 0;
+  // Zones van een vrijstaand dak (tabel 7.6/7.7): B over b/10 aan de kopse
+  // einden, C over d/10 langs de dakranden, D over d/5 rond de nok of kiel.
+  // De linkerdakrand van de doorsnede ligt onderin (wind van links komt van
+  // onderen, zie de windpijlen hieronder).
+  const zoneRechthoeken: { zone: OverkappingZone; x: number; y: number; w: number; h: number }[] = [];
+  if (vrijstaand) {
+    const bB = (b / 10) * schaal, dC = (d / 10) * schaal;
+    const binnenW = wPx - 2 * bB;
+    zoneRechthoeken.push({ zone: "A", x: x0 + bB, y: y0, w: binnenW, h: hPx });
+    zoneRechthoeken.push({ zone: "C", x: x0 + bB, y: y0, w: binnenW, h: dC });
+    zoneRechthoeken.push({ zone: "C", x: x0 + bB, y: y0 + hPx - dC, w: binnenW, h: dC });
+    if (vrijstaand.nokFractie !== null) {
+      const yNok = y0 + hPx - vrijstaand.nokFractie * hPx;
+      zoneRechthoeken.push({ zone: "D", x: x0 + bB, y: yNok - dC, w: binnenW, h: 2 * dC });
+    }
+    zoneRechthoeken.push({ zone: "B", x: x0, y: y0, w: bB, h: hPx });
+    zoneRechthoeken.push({ zone: "B", x: x0 + wPx - bB, y: y0, w: bB, h: hPx });
+  }
   return (
     <svg className="wgd-schema" viewBox={`0 0 ${breedtePx} ${hoogtePx.toFixed(0)}`} role="img"
       aria-label={`Plattegrond, gebouwlengte ${nl(b, 1)} m, spanwijdte ${nl(d, 1)} m`}>
@@ -234,6 +366,14 @@ export function PlattegrondSchema({
           <rect x={x0 + wPx - eRand * schaal} y={y0} width={eRand * schaal} height={hPx} />
         </g>
       )}
+      {zoneRechthoeken.map((z, k) => (
+        <g key={`z${k}`} className={`wgd-zone wgd-zone-${z.zone}`}>
+          <rect x={z.x} y={z.y} width={Math.max(0, z.w)} height={Math.max(0, z.h)} fill={ZONE_KLEUR[z.zone]} opacity="0.75" />
+          {z.w > 10 && z.h > 9 && (
+            <text x={z.x + z.w / 2} y={z.y + z.h / 2 + 3} fontSize="8.5" fontWeight="600" textAnchor="middle" fill="#1f2937">{z.zone}</text>
+          )}
+        </g>
+      ))}
       <rect x={x0} y={y0} width={wPx} height={hPx} fill="none" stroke="var(--theme-text-secondary, #555)" strokeWidth="1.2" />
       {spanten.map((y) => (
         <line key={y} x1={sx(y)} y1={y0} x2={sx(y)} y2={y0 + hPx} stroke="var(--theme-text-faint, #999)" strokeWidth="0.8" className="wgd-spant" />

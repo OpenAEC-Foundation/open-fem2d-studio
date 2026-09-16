@@ -14,6 +14,8 @@
  *    tabellen hangen af van de dakhelling én de windrichting en zijn niet
  *    betrouwbaar uit de 2D-geometrie af te leiden; de generator vraagt de
  *    c_pe-waarden daarom aan de gebruiker en vult ze niet zelf in.
+ *    (Open overkappingen, §7.3, zijn een ander geval: tabel 7.6/7.7 gelden
+ *    voor alle windrichtingen en vult de generator wel zelf in — zie §9.)
  *  • Orografie (EN 1991-1-4 §4.3.3 / bijlage A.3): c_o(z) = 1,0 — vlak
  *    terrein. Bij heuvels/steilranden moet de gebruiker de stuwdruk zelf
  *    verhogen (of handmatig invoeren).
@@ -343,4 +345,164 @@ export const ZMAX_M = 200;
  */
 export function berekenE(b_m: number, h_m: number): number {
   return Math.min(b_m, 2 * h_m);
+}
+
+// ── 9. Open overkappingen (vrijstaande daken) — §7.3 ─────────────────────
+
+/**
+ * Een open overkapping is "een dak van een constructie die geen blijvende
+ * gevels heeft" (NEN-EN 1991-1-4 §7.3(1)): luifel, carport, kapschuur.
+ * Anders dan bij de hellende daken van §7.2.5 (zie de kop van dit bestand)
+ * vult de generator deze tabellen WEL zelf in: hun enige ingangen zijn de
+ * dakhelling α — die uit de 2D-geometrie volgt — en de blokkering φ, en ze
+ * gelden "voor alle windrichtingen" (§7.3(3)). Er is dus geen keuze per
+ * windrichting of per zone die de gebruiker zelf zou moeten maken.
+ *
+ * Elke rij is overgenomen uit NEN-EN 1991-1-4:2005+C2:2011 (uitgave met
+ * NB:2019), tabel 7.6 resp. tabel 7.7, en gecontroleerd tegen de weergave
+ * van de tabelpagina zelf. De nationale bijlage wijzigt §7.3 niet: bij 7.3(6)
+ * staat alleen dat de plaats van het aangrijpingspunt in de bijlage "kan"
+ * staan, en er staat geen NB-bepaling bij. Dan geldt de aanbevolen plaats uit
+ * figuur 7.16.
+ *
+ * Per coëfficiënt een drietal, in de volgorde van de tabelcel:
+ *   [ maximaal voor alle φ ; minimaal voor φ = 0 ; minimaal voor φ = 1 ].
+ * Positief = netto neerwaarts, negatief = netto opwaarts (opmerking onder
+ * beide tabellen).
+ */
+export type OverkappingDrietal = readonly [max: number, min0: number, min1: number];
+
+export type OverkappingZone = "A" | "B" | "C" | "D";
+
+export interface OverkappingRij {
+  /** Dakhelling α in graden; in tabel 7.7 negatief voor een kiel (V-dak). */
+  alpha: number;
+  /** Globale krachtcoëfficiënt c_f. */
+  cf: OverkappingDrietal;
+  /** Nettodrukcoëfficiënten c_p,net per zone; zone D alleen in tabel 7.7. */
+  zones: Partial<Record<OverkappingZone, OverkappingDrietal>>;
+}
+
+/** Tabel 7.6 — eenzijdig hellende overkappingen (lessenaarsdak), α = 0°…30°. */
+export const TABEL_76: readonly OverkappingRij[] = [
+  { alpha: 0,  cf: [0.2, -0.5, -1.3], zones: { A: [0.5, -0.6, -1.5], B: [1.8, -1.3, -1.8], C: [1.1, -1.4, -2.2] } },
+  { alpha: 5,  cf: [0.4, -0.7, -1.4], zones: { A: [0.8, -1.1, -1.6], B: [2.1, -1.7, -2.2], C: [1.3, -1.8, -2.5] } },
+  { alpha: 10, cf: [0.5, -0.9, -1.4], zones: { A: [1.2, -1.5, -1.6], B: [2.4, -2.0, -2.6], C: [1.6, -2.1, -2.7] } },
+  { alpha: 15, cf: [0.7, -1.1, -1.4], zones: { A: [1.4, -1.8, -1.6], B: [2.7, -2.4, -2.9], C: [1.8, -2.5, -3.0] } },
+  { alpha: 20, cf: [0.8, -1.3, -1.4], zones: { A: [1.7, -2.2, -1.6], B: [2.9, -2.8, -2.9], C: [2.1, -2.9, -3.0] } },
+  { alpha: 25, cf: [1.0, -1.6, -1.4], zones: { A: [2.0, -2.6, -1.5], B: [3.1, -3.2, -2.5], C: [2.3, -3.2, -2.8] } },
+  { alpha: 30, cf: [1.2, -1.8, -1.4], zones: { A: [2.2, -3.0, -1.5], B: [3.2, -3.8, -2.2], C: [2.4, -3.6, -2.7] } },
+];
+
+/**
+ * Tabel 7.7 — tweezijdig hellende overkappingen. α > 0 is een zadeldak (nok
+ * boven), α < 0 een kiel- of V-dak (figuur 7.17, onderste helft). De tabel
+ * heeft geen rijen tussen −5° en +5°.
+ */
+export const TABEL_77: readonly OverkappingRij[] = [
+  { alpha: -20, cf: [0.7, -0.7, -1.3], zones: { A: [0.8, -0.9, -1.5], B: [1.6, -1.3, -2.4], C: [0.6, -1.6, -2.4], D: [1.7, -0.6, -0.6] } },
+  { alpha: -15, cf: [0.5, -0.6, -1.4], zones: { A: [0.6, -0.8, -1.6], B: [1.5, -1.3, -2.7], C: [0.7, -1.6, -2.6], D: [1.4, -0.6, -0.6] } },
+  { alpha: -10, cf: [0.4, -0.6, -1.4], zones: { A: [0.6, -0.8, -1.6], B: [1.4, -1.3, -2.7], C: [0.8, -1.5, -2.6], D: [1.1, -0.6, -0.6] } },
+  { alpha: -5,  cf: [0.3, -0.5, -1.3], zones: { A: [0.5, -0.7, -1.5], B: [1.5, -1.3, -2.4], C: [0.8, -1.6, -2.4], D: [0.8, -0.6, -0.6] } },
+  { alpha: 5,   cf: [0.3, -0.6, -1.3], zones: { A: [0.6, -0.6, -1.3], B: [1.8, -1.4, -2.0], C: [1.3, -1.4, -1.8], D: [0.4, -1.1, -1.5] } },
+  { alpha: 10,  cf: [0.4, -0.7, -1.3], zones: { A: [0.7, -0.7, -1.3], B: [1.8, -1.5, -2.0], C: [1.4, -1.4, -1.8], D: [0.4, -1.4, -1.8] } },
+  { alpha: 15,  cf: [0.4, -0.8, -1.3], zones: { A: [0.9, -0.9, -1.3], B: [1.9, -1.7, -2.2], C: [1.4, -1.4, -1.6], D: [0.4, -1.8, -2.1] } },
+  { alpha: 20,  cf: [0.6, -0.9, -1.3], zones: { A: [1.1, -1.2, -1.4], B: [1.9, -1.8, -2.2], C: [1.5, -1.4, -1.6], D: [0.4, -2.0, -2.1] } },
+  { alpha: 25,  cf: [0.7, -1.0, -1.3], zones: { A: [1.2, -1.4, -1.4], B: [1.9, -1.9, -2.0], C: [1.6, -1.4, -1.5], D: [0.5, -2.0, -2.0] } },
+  { alpha: 30,  cf: [0.9, -1.0, -1.3], zones: { A: [1.3, -1.4, -1.4], B: [1.9, -1.9, -1.8], C: [1.6, -1.4, -1.4], D: [0.7, -2.0, -2.0] } },
+];
+
+export type OverkappingDakvorm = "lessenaar" | "zadel";
+
+export const OVERKAPPING_TABEL_BRON: Record<OverkappingDakvorm, string> = {
+  lessenaar: "NEN-EN 1991-1-4 §7.3, tabel 7.6 (eenzijdig hellende overkapping)",
+  zadel: "NEN-EN 1991-1-4 §7.3, tabel 7.7 (tweezijdig hellende overkapping)",
+};
+
+/** Eén coëfficiënt zoals de generator hem gebruikt, met de afleiding erbij. */
+export interface OverkappingCoefficient {
+  /** "c_f" of de zone. */
+  naam: "c_f" | OverkappingZone;
+  /** Maximaal voor alle φ (neerwaarts), over α geïnterpoleerd. */
+  max: number;
+  /** Minimaal voor φ = 0, over α geïnterpoleerd. */
+  min0: number;
+  /** Minimaal voor φ = 1, over α geïnterpoleerd. */
+  min1: number;
+  /** Minimaal bij de gekozen φ: min0 + φ·(min1 − min0), §7.3(3). */
+  minPhi: number;
+}
+
+export interface OverkappingOpzoeking {
+  ok: boolean;
+  /** Reden van weigering (α buiten de tabel, φ buiten 0…1). */
+  reden?: string;
+  tabel: "7.6" | "7.7";
+  bron: string;
+  /** De tabelrijen (α) waartussen is geïnterpoleerd; gelijk op een tabelrij. */
+  rijOnder: number;
+  rijBoven: number;
+  coefficienten: OverkappingCoefficient[];
+}
+
+/**
+ * Coëfficiënten van tabel 7.6/7.7 bij dakhelling α en blokkering φ.
+ *
+ * INTERPOLATIE
+ *  • Over φ: lineair tussen "minimaal voor φ = 0" en "minimaal voor φ = 1",
+ *    uitdrukkelijk toegestaan in §7.3(3). "Maximaal" geldt voor alle φ.
+ *  • Over α: lineair tussen de twee omsluitende tabelrijen, elk drietal
+ *    afzonderlijk. §7.3 zegt daar zelf niets over; de generator volgt de regel
+ *    die NEN-EN 1991-1-4 bij de andere dakvormtabellen geeft (opmerking bij
+ *    tabel 7.3a en 7.4a: "voor tussenliggende hellingshoeken mag lineaire
+ *    interpolatie zijn toegepast, tussen waarden met hetzelfde teken"). In
+ *    tabel 7.6 en 7.7 heeft elke kolom van een drietal in alle rijen hetzelfde
+ *    teken, dus aan die voorwaarde is overal voldaan. Tussen −5° en +5° in
+ *    tabel 7.7 wordt NIET geïnterpoleerd — dezelfde regel als bij tabel 7.4a
+ *    ("maak geen interpolatie tussen α = +5° en α = −5°"); de dakvorm slaat
+ *    daar om van kiel naar nok.
+ *  • Buiten de tabel (lessenaar α > 30°; zadel α > 30°, α < −20° of
+ *    |α| < 5°) wordt GEWEIGERD in plaats van geklemd.
+ */
+export function overkappingCoefficienten(
+  dakvorm: OverkappingDakvorm, alpha_graden: number, phi: number,
+): OverkappingOpzoeking {
+  const tabel = dakvorm === "lessenaar" ? "7.6" : "7.7";
+  const rijen = dakvorm === "lessenaar" ? TABEL_76 : TABEL_77;
+  const bron = OVERKAPPING_TABEL_BRON[dakvorm];
+  const graden = (x: number) => `${x.toFixed(1).replace(".", ",").replace("-", "−")}°`;
+  const weiger = (reden: string): OverkappingOpzoeking =>
+    ({ ok: false, reden, tabel, bron, rijOnder: NaN, rijBoven: NaN, coefficienten: [] });
+  if (!(phi >= 0 && phi <= 1)) {
+    return weiger("De blokkering φ ligt tussen 0 (leeg eronder) en 1 (volledig geblokkeerd), §7.3(2).");
+  }
+  // Een uit de geometrie berekende hoek als 29,9999999° hoort bij de rij 30°.
+  const a = Math.abs(alpha_graden - Math.round(alpha_graden)) < 1e-6 ? Math.round(alpha_graden) : alpha_graden;
+  if (dakvorm === "lessenaar" && (a < 0 || a > 30)) {
+    return weiger(`Tabel 7.6 geeft dakhellingen van 0° tot 30°; deze helling is ${graden(a)}.`);
+  }
+  if (dakvorm === "zadel" && (a < -20 || a > 30 || (a > -5 && a < 5))) {
+    return weiger(
+      `Tabel 7.7 geeft dakhellingen van −20° tot −5° en van +5° tot +30°; deze helling is ${graden(a)}. ` +
+      "Tussen −5° en +5° staat er geen rij, en daartussen wordt niet geïnterpoleerd.",
+    );
+  }
+  let i = 0;
+  while (i < rijen.length - 2 && !(a >= rijen[i].alpha && a <= rijen[i + 1].alpha)) i++;
+  const onder = rijen[i];
+  const boven = rijen[i + 1];
+  const f = (a - onder.alpha) / (boven.alpha - onder.alpha);
+  // Precies op een tabelrij: de celwaarde zelf, zonder drijvende-kommaruis.
+  const mix = (x: number, y: number) => (f === 0 ? x : f === 1 ? y : x + (y - x) * f);
+  const namen: ("c_f" | OverkappingZone)[] = dakvorm === "lessenaar" ? ["c_f", "A", "B", "C"] : ["c_f", "A", "B", "C", "D"];
+  const coefficienten = namen.map((naam): OverkappingCoefficient => {
+    const o = naam === "c_f" ? onder.cf : onder.zones[naam]!;
+    const b = naam === "c_f" ? boven.cf : boven.zones[naam]!;
+    const max = mix(o[0], b[0]), min0 = mix(o[1], b[1]), min1 = mix(o[2], b[2]);
+    const minPhi = phi === 0 ? min0 : phi === 1 ? min1 : min0 + phi * (min1 - min0);
+    return { naam, max, min0, min1, minPhi };
+  });
+  const rijOnder = f === 1 ? boven.alpha : onder.alpha;
+  const rijBoven = f === 0 ? onder.alpha : boven.alpha;
+  return { ok: true, tabel, bron, rijOnder, rijBoven, coefficienten };
 }

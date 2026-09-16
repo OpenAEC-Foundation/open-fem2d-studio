@@ -84,6 +84,58 @@ log("\n3. Plattegrond — spanten, het gekozen spant en de windrichtingen");
   ok(tel(kop, /<rect /g) === 1, "zonder e geen randzone");
 }
 
+log("\n4. Vrijstaand dak (§7.3) — zones, resultante, blokkering");
+{
+  const { BlokkeringSchema, KLEUR_RESULTANTE } = await import("./src/lib/wind/WindSchema.tsx");
+  // Zadeldak 8 m breed, nok op 4 m, α = 15°, kolommen 2,5 m.
+  const rise = 4000 * Math.tan(15 * Math.PI / 180);
+  const zNodes = [{ id: 1, x: 0, z: 0 }, { id: 2, x: 8000, z: 0 }, { id: 3, x: 0, z: 2500 }, { id: 4, x: 4000, z: 2500 + rise }, { id: 5, x: 8000, z: 2500 }];
+  const zBeams = [{ id: 1, from: 1, to: 3 }, { id: 2, from: 2, to: 5 }, { id: 3, from: 3, to: 4 }, { id: 4, from: 4, to: 5 }];
+  const vInst = { ...inst, vorm: "vrijstaandDak", vrijstaandDakvorm: "zadel", blokkering_phi: 0, gebouwlengte_m: 20, afstandTotKopgevel_m: 10, hohSpant_m: 4 };
+  const z = genereerWindbelasting({ nodes: zNodes, beams: zBeams, loadCases: [] }, vInst);
+  ok(z.ok && z.geometrie.vrijstaand, "de generator levert een vrijstaand-dakgeometrie");
+  const cpnet = z.samenvatting.perGeval.find((p) => p.sleutel === "luifel:cpnet:max");
+  const svg = renderToStaticMarkup(React.createElement(DoorsnedeSchema, {
+    geometrie: z.geometrie, richting: "alle", regels: cpnet.regels, resultanten: cpnet.resultanten ?? [],
+  }));
+  // C, A, D, A, C boven het dak.
+  ok(tel(svg, /class="wgd-zone wgd-zone-C"/g) === 2 && tel(svg, /class="wgd-zone wgd-zone-A"/g) === 2
+    && tel(svg, /class="wgd-zone wgd-zone-D"/g) === 1, "zoneband C·A·D·A·C boven het dak");
+  ok(tel(svg, /class="wgd-wind"/g) === 1 && svg.includes("Alle windrichtingen"), "één dubbele windpijl: alle richtingen");
+  ok(tel(svg, /class="wgd-druk"/g) === 6, "c_p,net neerwaarts: zes drukpijlen (drie zones per dakvlak)", `${tel(svg, /class="wgd-druk"/g)}`);
+  ok(tel(svg, /class="wgd-staaf wgd-rol-binnen"/g) === 2, "de kolommen zijn geen gevel in de tekening");
+  ok(!svg.includes("wgd-resultante"), "geen resultante bij een c_p,net-geval");
+  ok(!svg.includes("wgd-gedachte-gevel"), "geen gedachte gevels bij een vrijstaand dak");
+
+  const cf = z.samenvatting.perGeval.find((p) => p.sleutel === "luifel:cf:min:links");
+  const svgCf = renderToStaticMarkup(React.createElement(DoorsnedeSchema, {
+    geometrie: z.geometrie, richting: "alle", regels: cf.regels, resultanten: cf.resultanten,
+  }));
+  ok(tel(svgCf, /class="wgd-resultante"/g) === 1 && svgCf.includes(`stroke="${KLEUR_RESULTANTE}"`), "c_f alleen linkerdakvlak: één resultante");
+  ok(tel(svgCf, /class="wgd-zuiging"/g) === 1 && tel(svgCf, /class="wgd-druk"/g) === 0, "…en één zuigpijl, op het linkerdakvlak");
+
+  // Alleen het dak getekend, h opgegeven: de kolommen gestreept tot maaiveld.
+  const alleenDak = genereerWindbelasting({ nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 5000, z: 0 }], beams: [{ id: 1, from: 1, to: 2 }], loadCases: [] },
+    { ...vInst, vrijstaandDakvorm: "lessenaar", vrijstaandHoogte_m: 2.6 });
+  const svgH = renderToStaticMarkup(React.createElement(DoorsnedeSchema, { geometrie: alleenDak.geometrie, richting: "alle", regels: [] }));
+  ok(svgH.includes("wgd-gedachte-kolom") && svgH.includes("h = 2,60 m"), "alleen het dak: gestreepte kolommen en h = 2,60 m");
+  ok(tel(svgH, /class="wgd-zone wgd-zone-/g) === 3, "lessenaarsdak: zoneband C·A·C", `${tel(svgH, /class="wgd-zone wgd-zone-/g)}`);
+
+  const plan = renderToStaticMarkup(React.createElement(PlattegrondSchema, {
+    gebouwlengte_m: 20, d_m: 8, hoh_m: 4, positie: "tussenspant", afstandTotKopgevel_m: 10,
+    richtingLinks: true, richtingRechts: true, richtingHaaks: false, e_m: 7, vrijstaand: { nokFractie: 0.5 },
+  }));
+  ok(tel(plan, /class="wgd-zone wgd-zone-B"/g) === 2 && tel(plan, /class="wgd-zone wgd-zone-C"/g) === 2
+    && tel(plan, /class="wgd-zone wgd-zone-D"/g) === 1 && tel(plan, /class="wgd-zone wgd-zone-A"/g) === 1,
+  "plattegrond: B aan de kopse einden, C langs de dakranden, D rond de nok, A");
+  ok(!plan.includes("wgd-randzone"), "plattegrond vrijstaand dak: geen randzone e/4");
+
+  const leeg = renderToStaticMarkup(React.createElement(BlokkeringSchema, { phi: 0, dakvorm: "lessenaar" }));
+  const vol = renderToStaticMarkup(React.createElement(BlokkeringSchema, { phi: 1, dakvorm: "zadel" }));
+  ok(tel(leeg, /class="wgd-blok"/g) === 0 && leeg.includes("φ = 0 — leeg"), "blokkering φ = 0: geen stapel");
+  ok(tel(vol, /class="wgd-blok"/g) === 4 && vol.includes("φ = 1,00"), "blokkering φ = 1: de stapel aan de lijzijde");
+}
+
 log("");
 log(`${geslaagd} geslaagd, ${gefaald} gefaald`);
 process.exit(gefaald === 0 ? 0 : 1);
