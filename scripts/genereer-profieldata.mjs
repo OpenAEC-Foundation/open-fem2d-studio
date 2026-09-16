@@ -1838,9 +1838,15 @@ const motorBin = join(
  */
 function motorInvoerVan(p) {
   const g = p.geometry;
+  // De flenshelling staat in de database (`flange_slope`): UNP 0,08 en INP
+  // 0,14. Zonder die vertaling rekende `--motor-valideer` een INP als I met
+  // evenwijdige flenzen en meldde 19 % afwijking op Iz die er niet is.
+  const schuin = (g.flange_slope ?? 0) > 0;
   const soort = p.kind === "Channel"
-    ? (sleutel(p.name).startsWith("UNP") ? "ChannelSchuin" : "Channel")
-    : p.kind;
+    ? (schuin || sleutel(p.name).startsWith("UNP") ? "ChannelSchuin" : "Channel")
+    : p.kind === "ISection" && schuin
+      ? "ISectionSchuin"
+      : p.kind;
   return {
     naam: p.name,
     soort,
@@ -1850,6 +1856,8 @@ function motorInvoerVan(p) {
     tf: g.tf ?? 0,
     t: g.t ?? 0,
     r: g.r ?? 0,
+    // Teenafronding van de hoeklijn; voor de andere soorten 0.
+    r2: g.r2 ?? 0,
   };
 }
 
@@ -1897,6 +1905,24 @@ function draaiMotor(lijst) {
  */
 const MOTOR_OVERNAME = [
   {
+    // Basisaudit nr 33: de overgetypte tabelwaarden van W_pl,z van de
+    // HEM-reeks staan tot 1,9 % te hoog (HEM 300: 1 950 000 tegen 1 913 180
+    // mm³ uit de exacte contour), en W_pl,y van HEM 220 0,74 %. Een te hoge
+    // W_pl geeft een te hoge buigweerstand (6.2.5) en een te gunstige
+    // interactie (6.61/6.62): onveilig. W_pl is een zuivere contourgrootheid
+    // (statisch moment om de plastische neutrale lijn), dus de motor is hier
+    // exact. Alleen regels die meer dan `drempel_pct` afwijken worden
+    // overschreven, zodat een afronding op drie cijfers niet honderd regels
+    // in beweging zet.
+    soorten: ["ISection"],
+    velden: ["wpl_y_mm3", "wpl_z_mm3"],
+    drempel_pct: 0.5,
+    reden:
+      "W_pl,y en W_pl,z van gewalste I-profielen die meer dan 0,5 % van de " +
+      "exacte contour afwijken (HEM-reeks tot +1,9 %). W_pl is een zuivere " +
+      "contourgrootheid; een te hoge waarde geeft een te hoge buigweerstand.",
+  },
+  {
     soorten: ["Channel"],
     velden: ["it_mm4"],
     reden:
@@ -1918,10 +1944,14 @@ const MOTOR_OVERNAME = [
   },
 ];
 
-/** De velden die de motor voor een gegeven soort mag zetten. */
+/**
+ * De velden die de motor voor een gegeven soort mag zetten, met per veld de
+ * drempel (in %) waaronder de databasewaarde blijft staan; 0 = altijd
+ * overschrijven.
+ */
 function motorVelden(kind) {
   return MOTOR_OVERNAME.filter((r) => r.soorten.includes(kind))
-    .flatMap((r) => r.velden);
+    .flatMap((r) => r.velden.map((k) => ({ k, drempel: r.drempel_pct ?? 0 })));
 }
 
 function motorValideer() {
@@ -2014,10 +2044,11 @@ function motorHerstel() {
     if (velden.length === 0) continue;
     const m = opNaam.get(p.name);
     const wijzigingen = [];
-    for (const k of velden) {
+    for (const { k, drempel } of velden) {
       const oud = p.properties[k];
       const nieuw = afgerond(m[k]);
       if (!Number.isFinite(oud) || oud === nieuw) continue;
+      if (drempel > 0 && oud !== 0 && Math.abs((nieuw - oud) / oud) * 100 <= drempel) continue;
       wijzigingen.push({
         k,
         oud,
