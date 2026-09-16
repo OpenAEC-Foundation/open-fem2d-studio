@@ -661,7 +661,10 @@ function wAddCombinatieVanKlasse(klasse: DeflectionClass): string {
 /** Alles wat de doorbuigingstoets van één staaf nodig heeft, plus de verantwoording. */
 export interface DoorbuigingsInvoer {
   klasse: DeflectionClass;
-  /** Noemer n voor w_fin — geheel getal, want de kern leest hem als u32. */
+  /**
+   * Noemer n voor w_fin — geheel getal, want de kern leest hem als i32. Bij
+   * klasse "custom" moet hij groter dan nul zijn; anders weigert de kern.
+   */
   noemerFin: number;
   /** Noemer n voor w_add; 0 = de kern leidt hem uit de klasse af. */
   noemerAdd: number;
@@ -1003,6 +1006,10 @@ function vloerDakEis(
     klasse,
     // De kern gebruikt de noemer alleen bij klasse "Custom"
     // (deflection.rs::default_numerator); anders geldt de klassenoemer.
+    // `??` en niet `||`, met opzet: alleen een ONTBREKENDE noemer wordt 333.
+    // Een opgegeven 0 of negatief getal gaat ongewijzigd door, en de kern
+    // weigert de staaf dan met reden (deflection.rs::keur_noemers). Tot
+    // september 2026 gaf die 0 daar een oneindige grens en status Ok.
     noemerFin: cfg.deflectionClass === "custom" ? cfg.deflectionLimitNumerator ?? 333 : 333,
     // 0 = de kern leidt de w_add-noemer af uit de klasse volgens
     // NEN-EN 1990:2002/NB:2019 A1.4.3(3); dat is de normale gang van zaken.

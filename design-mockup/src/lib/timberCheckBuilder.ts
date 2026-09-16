@@ -174,7 +174,12 @@ export function kCrUitConfig(cfg: BeamCheckConfig): { kCr: number } | { fout: st
  *    lengte van een uitkraging" uitgedrukt als gehalveerde noemers op de
  *    staaflengte;
  *  - "custom":       de opgegeven n geldt voor w_fin én w_add (één knop,
- *    transparant gedocumenteerd in de UI-hint).
+ *    transparant gedocumenteerd in de UI-hint). Zonder opgegeven n: 333,
+ *    dezelfde terugval als de staalbouwer. Een OPGEGEVEN 0 of negatief getal
+ *    gaat ongewijzigd door: de kern weigert de staaf dan met reden
+ *    (`nen_en_1995_1_1::deflection::keur_noemers`). Tot september 2026 werd
+ *    zo'n getal hier stil 333, zodat de gebruiker een andere eis getoetst
+ *    kreeg dan hij had ingevuld.
  */
 export function timberDeflectionNumerators(
   cls: BeamCheckConfig["deflectionClass"],
@@ -185,7 +190,7 @@ export function timberDeflectionNumerators(
     case "floorBrittle": return { fin: 250, add: 500 };
     case "cantilever":   return { fin: 125, add: 167 };
     case "custom": {
-      const n = customN && customN > 0 ? customN : 333;
+      const n = customN ?? 333;
       return { fin: n, add: n };
     }
     case "floor":
