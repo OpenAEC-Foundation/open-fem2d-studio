@@ -20032,7 +20032,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.11";
+var version = "0.3.12";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
