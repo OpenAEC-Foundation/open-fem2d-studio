@@ -843,6 +843,30 @@ export const VRIJSTAAND_UITGANGSPUNT =
   "figuur 7.16/7.17 (§7.3(6)). Positief = netto neerwaarts.";
 
 /**
+ * De uitgangspunten van een vrijstaand dak voor het rapport, afgeleid uit wat
+ * er IN HET MODEL staat: de gegenereerde gevallen en de omschrijving van hun
+ * lasten (paragraaf, tabel, α, φ en coëfficiënt). Leeg als er geen vrijstaand
+ * dak is gegenereerd. Eén regel per geval, dubbele omschrijvingen één keer —
+ * dezelfde regelvorm als de andere tekstblokken van de uitgangspunten.
+ */
+export function vrijstaandDakUitgangspunten(
+  loadCases: readonly { id: number; name: string; gegenereerd?: { bron: string; sleutel: string } }[],
+  loads: readonly { caseId: number; gegenereerdDoor?: string; omschrijving?: string }[],
+): string {
+  const gevallen = loadCases.filter((c) => c.gegenereerd?.bron === "wind"
+    && c.gegenereerd.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX));
+  if (gevallen.length === 0) return "";
+  const regels = [VRIJSTAAND_UITGANGSPUNT];
+  for (const c of gevallen) {
+    const teksten = [...new Set(loads
+      .filter((l) => l.caseId === c.id && l.gegenereerdDoor === "wind" && (l.omschrijving ?? "").trim() !== "")
+      .map((l) => l.omschrijving!.trim()))];
+    regels.push(`${c.name}: ${teksten.length > 0 ? teksten.join("; ") : "geen lasten"}`);
+  }
+  return regels.join("\n");
+}
+
+/**
  * De gevallen van een vrijstaand dak (open overkapping, §7.3).
  *
  * WELKE GEVALLEN

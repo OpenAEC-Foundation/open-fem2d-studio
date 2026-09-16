@@ -29,6 +29,7 @@ import {
   LEVENSDUUR_OMSCHRIJVING,
 } from "../../project/ProjectSettingsDialog";
 import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
+import { vrijstaandDakUitgangspunten } from "../../../lib/wind/windGenerator";
 import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE } from "../../../lib/normAanduidingen";
 
 /** yyyy-mm-dd → nl-notatie; alles wat niet parsebaar is blijft zoals het is. */
@@ -109,7 +110,7 @@ export default function ProjectSection() {
   // bepaald — dezelfde tekst die de PDF-uitdraai in haar hoofdstuk
   // Uitgangspunten zet. Hier wordt niets herrekend: stond er geen scheefstand
   // op de lasten, dan is de tekst leeg en zwijgt ook dit blok erover.
-  const { beams, scheefstandToelichting, analyseToelichting, combinations } = useReportData();
+  const { beams, scheefstandToelichting, analyseToelichting, combinations, loads, loadCases } = useReportData();
 
   // Koptekst-regel: lokale draft tijdens het typen; commit (blur/Enter) →
   // projectinfo-setting. In de browser (zonder Tauri) faalt setSetting stil
@@ -230,6 +231,16 @@ export default function ProjectSection() {
           rijen.push([
             t("report.fieldAnalyse", "Berekening en stabiliteit"),
             <ScheefstandBlok tekst={analyseToelichting} />,
+          ]);
+        }
+        // Wind op een vrijstaand dak (§7.3): tabel, α, φ en de gebruikte
+        // c_p,net/c_f, uit de omschrijving van de gegenereerde lasten. Staat
+        // er geen vrijstaand dak in het model, dan blijft de rij weg.
+        const windVrijstaand = vrijstaandDakUitgangspunten(loadCases, loads);
+        if (windVrijstaand !== "") {
+          rijen.push([
+            t("report.fieldWindVrijstaand", "Windbelasting vrijstaand dak"),
+            <ScheefstandBlok tekst={windVrijstaand} />,
           ]);
         }
         if (scheefstandToelichting.trim() !== "") {

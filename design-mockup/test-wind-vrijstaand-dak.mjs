@@ -68,7 +68,7 @@ import { createHash } from "node:crypto";
 
 const {
   genereerWindbelasting, genereerWindCombinaties, STANDAARD_WIND_INSTELLINGEN,
-  handtekeningVanGeneratie, handtekeningVanModel,
+  handtekeningVanGeneratie, handtekeningVanModel, vrijstaandDakUitgangspunten,
 } = await import("./src/lib/wind/windGenerator.ts");
 const { berekenStuwdruk, overkappingCoefficienten } = await import("./src/lib/wind/windEurocode.ts");
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
@@ -462,6 +462,16 @@ log("\n[9] Handtekening — de omschrijving telt mee bij een vrijstaand dak");
     omschrijving: l.omschrijving, gegenereerdDoor: "wind",
   }));
   checkExact("model ⇄ generatie: gelijke handtekening", handtekeningVanModel(loadCases, loads, []), h1);
+
+  // Rapport, uitgangspunten: paragraaf, tabel, alpha, phi en de gebruikte c_p,net per geval.
+  const tekst = vrijstaandDakUitgangspunten(loadCases, loads);
+  const regels = tekst.split("\n");
+  checkExact("uitgangspunten: kopregel + een regel per geval", regels.length, 1 + resL.gevallen.length);
+  checkTrue("kopregel noemt §7.3, tabel 7.6/7.7 en z_e = h", regels[0].includes("§7.3") && regels[0].includes("tabel 7.6") && regels[0].includes("z_e = h"));
+  checkExact("regel c_p,net opwaarts: zones C en A, dubbele C één keer",
+    regels[2],
+    "Wind vrijstaand dak c_p,net opwaarts: §7.3 tabel 7.6 (α = 10,0°, φ = 0,50): zone C, c_p,net = −2,40; §7.3 tabel 7.6 (α = 10,0°, φ = 0,50): zone A, c_p,net = −1,55");
+  checkExact("zonder vrijstaand dak: leeg", vrijstaandDakUitgangspunten([{ id: 1, name: "Wind links", gegenereerd: { bron: "wind", sleutel: "wind:links:cpi-0.30" } }], []), "");
 }
 
 // ─────────────────────────────────────────────────────────────────────────
