@@ -438,5 +438,35 @@ log("\n[7] Droogloop: plaatlasten");
   checkTrue("moment op een plaat: fout", moment.errors.some((e) => /Last 9 \(type "pointMoment"\) noemt een plaat/.test(e)), JSON.stringify(moment.errors));
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[8] Elementkeuze (stap 2): dezelfde randlasten geven dezelfde reacties op driehoeken en vierhoeken");
+{
+  // Statica: ΣR en het moment om de oorsprong volgen uit de last alleen, niet
+  // uit het elementtype. Deellast, trapezium en randpuntlast op de wand, met
+  // het raster als Quad4 (de standaard) en als CST.
+  const nodes = wandKnopen();
+  const lasten = {
+    edgeLoads: [
+      { plateId: 1, caseId: 1, edge: "top", p: -20, pStart: -10, pEnd: -30, startFrac: 0.2, endFrac: 0.85, dir: "z" },
+      { plateId: 1, caseId: 1, edge: "left", p: 8, startFrac: 0.5, endFrac: 1, dir: "x" },
+    ],
+    edgePointLoads: [{ plateId: 1, edge: "top", posFrac: 0.375, fz: -5000, caseId: 1 }],
+  };
+  const rQ = eenGeval(wand({ ...lasten, plates: [{ ...wand().plates[0], meshType: "vierhoeken" }] }));
+  const rD = eenGeval(wand({ ...lasten, plates: [{ ...wand().plates[0], meshType: "driehoeken" }] }));
+  const rS = eenGeval(wand(lasten));
+  const sQ = reactieSom(rQ, nodes), sD = reactieSom(rD, nodes), sS = reactieSom(rS, nodes);
+  checkRel("ΣRz driehoeken = vierhoeken", sD.rz, sQ.rz, 1e-9);
+  checkRel("ΣRx driehoeken = vierhoeken", sD.rx, sQ.rx, 1e-9);
+  checkRel("moment driehoeken = vierhoeken", sD.m, sQ.m, 1e-9, Math.abs(sQ.rz) * 3000);
+  checkTrue("zonder keuze = vierhoeken (bit-gelijk aan voorheen)", Object.is(sS.rz, sQ.rz) && Object.is(sS.rx, sQ.rx) && Object.is(sS.m, sQ.m));
+  const resT = lastResultante({ x: 0, z: 3000 }, { x: 2000, z: 3000 }, 0.2, 0.85, -10, -30, "z");
+  const resL = lastResultante({ x: 0, z: 0 }, { x: 0, z: 3000 }, 0.5, 1, 8, 8, "x");
+  checkRel("ΣRz = −∫pz − F (beide typen)", sD.rz, -resT.fz + 5000, 1e-9);
+  checkRel("ΣRx = −∫px (beide typen)", sD.rx, -resL.fx, 1e-9);
+  checkTrue("CST-raster: 48 driehoeken, Quad4-raster: 24 vierhoeken",
+    rD.plateElements[0].elements.length === 48 && rQ.plateElements[0].elements.length === 24);
+}
+
 log(`\n${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed > 0 ? 1 : 0);

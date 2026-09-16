@@ -222,13 +222,19 @@ log("\n[4] Schijfelement dat niet op te bouwen is");
   // nul. Vroeger sloeg de assemblage hem met een console.warn over en slaagde
   // de berekening — met hetzelfde getal, want dit element draagt niets. Juist
   // daarom is het een zuivere proef: het enige verschil is of er gemeld wordt.
+  // Sinds de vierhoekmesher (stap 2) keurt de engine elk element van een
+  // cache al VÓÓR de kern (keurPlatMesh: bereik, dubbele hoeken, oppervlakte,
+  // convexiteit); de ontaarde driehoek wordt dus eerder gemeld, met zijn
+  // nummer in de cache. De kernmelding blijft bestaan voor wat de keuring
+  // niet ziet; beide patronen zijn hier goed — geen van beide is stil.
   const cache = bouwLCache();
   const p0 = cache.points.findIndex((p) => p.x === 0 && p.z === 0);
   const p1 = cache.points.findIndex((p) => p.x === 500 && p.z === 0);
   const p2 = cache.points.findIndex((p) => p.x === 1000 && p.z === 0);
   cache.triangles.push([p0, p1, p2]);
   weigert("ontaarde driehoek: de berekening stopt met plaat- en elementnummer",
-    () => solveAllCases(bouwMultiInput(lModel({ cache }))), /^Plaat 1: schijfelement \d+ met hoeken .* is niet op te bouwen/);
+    () => solveAllCases(bouwMultiInput(lModel({ cache }))),
+    /^Plaat 1: (de meshcache is beschadigd — driehoek 25 heeft geen oppervlakte|schijfelement \d+ met hoeken .* is niet op te bouwen)/);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

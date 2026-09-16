@@ -45,16 +45,20 @@
  * gebruikt — en levert die daar geen invoerregel op, dan telt hij niet mee.
  * Zo kan deze validatie per definitie niet uit de pas lopen met de mapping.
  * Om dezelfde reden komt de doorsnedecontrole uit `resolveSection` en de
- * plaatvormcontrole uit `valideerPlaatPolygoon` / `isAsgelijndeRechthoek`.
+ * plaatvormcontrole uit `valideerPlaatPolygoon` / `plaatRekentAlsRaster` en de
+ * openingencontrole uit `valideerPlaatOpeningen`.
  */
 import {
   GEBRUIKSCATEGORIEEN,
-  berekenPlaatMeshSignatuur,
+  plaatMeshSignatuurVan,
+  plaatRekentAlsRaster,
+  valideerPlaatOpeningen,
+  PLAAT_MESH_TYPEN,
   bepaalPlaatRand,
-  isAsgelijndeRechthoek,
   valideerPlaatPolygoon,
   type PlaatPunt,
 } from "../components/fem/femTypes";
+import { puntInPolygoon, afstandTotLijnstuk } from "../core/fem/PlaatMesher";
 import { zoekDubbeleKnopen } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
@@ -201,11 +205,19 @@ const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 
 const PLATE_VELDEN = [
   "id", "nodeIds", "thickness", "E", "nu", "rho", "meshSize", "meshCache",
+  "meshType", "openingen",
 ] as const;
+
+/** Velden van één opening in een plaat (`PlaatOpening`). */
+const OPENING_VELDEN = ["id", "punten"] as const;
 
 const MESHCACHE_VELDEN = [
   "signature", "points", "triangles", "edgeNodeIndices",
+  "quads", "meshSoort", "openingEdgeNodeIndices",
 ] as const;
+
+/** Wat een mesher kan opleveren (`PlaatMeshSoort`). */
+const MESHSOORTEN = ["driehoeken", "vierhoeken", "gemengd"] as const;
 
 const LOAD_VELDEN = [
   "id", "type", "caseId", "nodeId", "fx", "fz", "my", "beamId", "posFrac",
@@ -250,6 +262,7 @@ const isGetal = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
 const isGeheel = (v: unknown): v is number => isGetal(v) && Number.isInteger(v);
+const isEindig = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 /** Levenshtein-afstand, alleen voor de "bedoelde u …?"-hint. */
 function afstand(a: string, b: string): number {
@@ -694,6 +707,26 @@ export function controleerVelden(rauw: unknown): string[] {
     keurGetal(p.nu, `${pad}.nu`, fouten);
     keurGetal(p.rho, `${pad}.rho`, fouten, { positief: true });
     keurGetal(p.meshSize, `${pad}.meshSize`, fouten, { positief: true });
+    // Elementkeuze: een tikfout ("vierhoek") zou stil de standaard geven.
+    keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
+    // Openingen: vorm van het veld; de ligging (binnen de omtrek, los van
+    // elkaar) volgt in de constructieve controle.
+    if (p.openingen !== undefined) {
+      if (!Array.isArray(p.openingen)) {
+        fouten.push(`${pad}.openingen: moet een array van openingen zijn.`);
+      } else {
+        p.openingen.forEach((o, k) => {
+          const opad = `${pad}.openingen[${k}]`;
+          if (!isObject(o)) return void fouten.push(`${opad}: moet een object zijn.`);
+          keurVelden(o, OPENING_VELDEN, opad, fouten);
+          eisGeheel(o.id, `${opad}.id`, fouten);
+          if (!Array.isArray(o.punten) || o.punten.length < 3
+              || !o.punten.every((q) => isObject(q) && isEindig(q.x) && isEindig(q.z))) {
+            fouten.push(`${opad}.punten: verplichte array van minstens drie punten {x, z} in mm.`);
+          }
+        });
+      }
+    }
     if (p.meshCache !== undefined) {
       if (!isObject(p.meshCache)) {
         fouten.push(`${pad}.meshCache: moet een object zijn.`);
@@ -704,6 +737,22 @@ export function controleerVelden(rauw: unknown): string[] {
         }
         if (!Array.isArray(p.meshCache.points) || !Array.isArray(p.meshCache.triangles)) {
           fouten.push(`${pad}.meshCache: \`points\` en \`triangles\` zijn verplichte arrays.`);
+        }
+        // Vierhoeken (stap 2): optioneel, maar als ze er zijn dan viertallen
+        // puntindices. Convexiteit en bereik keurt de engine (keurPlatMesh).
+        if (p.meshCache.quads !== undefined) {
+          const qs = p.meshCache.quads;
+          if (!Array.isArray(qs) || !qs.every((q) => Array.isArray(q) && q.length === 4 && q.every((i) => isGeheel(i) && i >= 0))) {
+            fouten.push(`${pad}.meshCache.quads: moet een lijst van viertallen puntindices (gehele getallen ≥ 0) zijn.`);
+          }
+        }
+        keurEnum(p.meshCache.meshSoort, MESHSOORTEN, `${pad}.meshCache.meshSoort`, fouten);
+        if (p.meshCache.openingEdgeNodeIndices !== undefined) {
+          const oe = p.meshCache.openingEdgeNodeIndices;
+          if (!Array.isArray(oe) || !oe.every((randen) => Array.isArray(randen)
+              && randen.every((r) => Array.isArray(r) && r.every((i) => isGeheel(i) && i >= 0)))) {
+            fouten.push(`${pad}.meshCache.openingEdgeNodeIndices: moet per opening een lijst van randen (elk een lijst puntindices) zijn.`);
+          }
         }
         // `edgeNodeIndices` is VERPLICHT, met precies één lijst per hoek. Dit
         // veld was optioneel in schema en validatie, terwijl de engine er
@@ -975,6 +1024,8 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
   const supports = (m.supports ?? []) as { nodeId: number; type: string; k?: number }[];
   const plates = (m.plates ?? []) as {
     id: number; nodeIds: number[]; meshSize?: number; meshCache?: { signature: string };
+    meshType?: "driehoeken" | "vierhoeken";
+    openingen?: { id: number; punten: PlaatPunt[] }[];
   }[];
   const loadCases = (m.loadCases ?? []) as { id: number; name: string; type?: string }[];
   const loads = (m.loads ?? []) as Record<string, unknown>[];
@@ -1075,6 +1126,25 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     actief.add(b.to);
   }
   for (const p of plates) for (const id of p.nodeIds ?? []) actief.add(id);
+  // Een knoop ÓP een plaatrand of binnen de plaat kan een rekenknoop van het
+  // plaatmesh zijn (het raster hergebruikt UI-knopen op gridposities; een
+  // opleggingsrij langs de onderrand van een wand is het gewone geval). Tot
+  // september 2026 telde deze poort alleen de hoekknopen, en meldde hij bij
+  // zo'n wand "geen enkele oplegging houdt de constructie tegen" — een
+  // geldig model werd via de MCP geweigerd. Of de knoop werkelijk op een
+  // rekenknoop valt, keurt de engine precies (en weigert anders met reden);
+  // deze poort mag niet strenger zijn dan de engine.
+  // Per plaat (zelfde index als `plates`): de hoekcoördinaten, of undefined
+  // als een hoek ontbreekt (dat meldt de plaatcontrole verderop zelf).
+  const plaatOmtrekken: ({ x: number; z: number }[] | undefined)[] = plates.map((p) => {
+    const h = (p.nodeIds ?? []).map((id) => knoopById.get(id));
+    return h.every((q) => q !== undefined) && h.length >= 3 ? (h as { x: number; z: number }[]) : undefined;
+  });
+  const inOfOpPlaat = (n: { x: number; z: number }): boolean =>
+    plaatOmtrekken.some((omtrek) => !!omtrek && (
+      puntInPolygoon(n.x, n.z, omtrek) ||
+      omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1)));
+  for (const n of nodes) if (!actief.has(n.id) && inOfOpPlaat(n)) actief.add(n.id);
 
   for (const n of nodes) {
     if (!actief.has(n.id)) {
@@ -1162,9 +1232,20 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
 
   // Elk samenhangend constructiedeel moet ergens steunen.
   if (actief.size > 0) {
+    // Een plaat verbindt zijn hoeken én de knopen op zijn rand of in zijn
+    // vlak (zie `inOfOpPlaat` hierboven): een oplegging op de onderrand van
+    // een wand steunt de wand, ook al is die knoop geen hoek.
     const verbindingen: number[][] = [
       ...beams.map((b) => [b.from, b.to]),
-      ...plates.map((p) => p.nodeIds ?? []),
+      ...plates.map((p, k) => {
+        const omtrek = plaatOmtrekken[k];
+        const erbij = omtrek
+          ? nodes.filter((n) => puntInPolygoon(n.x, n.z, omtrek)
+              || omtrek.some((a, i) => afstandTotLijnstuk(n, a, omtrek[(i + 1) % omtrek.length]) <= 1))
+              .map((n) => n.id)
+          : [];
+        return [...(p.nodeIds ?? []), ...erbij];
+      }),
     ];
     for (const deel of samenhangendeDelen([...actief], verbindingen)) {
       if (!deel.some((id) => gesteund.has(id))) {
@@ -1186,21 +1267,39 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
       continue;
     }
     const punten = hoeken.map((h) => ({ x: h!.x, z: h!.z })) as PlaatPunt[];
-    if (punten.length === 4 && isAsgelijndeRechthoek(punten, 1)) continue;
+    // Openingen (stap 2): dezelfde regel als engine, tekentool en
+    // modelcontrole — buiten de plaat, rakend of overlappend is een fout.
+    const openingen = (p.openingen ?? []).map((o) => o.punten);
+    const openingFout = valideerPlaatOpeningen(punten, openingen, 1);
+    if (openingFout) {
+      errors.push(`Plaat ${p.id}: ${openingFout}`);
+      continue;
+    }
+    const meldDubbeleOpeningIds = new Set<number>();
+    for (const o of p.openingen ?? []) {
+      if (meldDubbeleOpeningIds.has(o.id)) {
+        errors.push(`Plaat ${p.id}: opening-id ${o.id} komt meer dan één keer voor.`);
+        break;
+      }
+      meldDubbeleOpeningIds.add(o.id);
+    }
+    // Rasterpad: rechthoek met rechthoekige openingen meshet de engine zelf.
+    if (plaatRekentAlsRaster(punten, openingen, 1)) continue;
     const vormFout = valideerPlaatPolygoon(punten, 1);
     if (vormFout) {
       errors.push(`Plaat ${p.id}: ${vormFout}`);
       continue;
     }
-    const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize! : 500;
-    const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
+    const handtekening = plaatMeshSignatuurVan(p, punten);
     // Alleen de cache uit het model telt — precies wat de engine leest. Het
     // doorgeefluik in de GUI waar deze regel vroeger ook keek, is weg.
     const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : undefined;
     if (!cache) {
+      const waarom = openingen.length > 0 && punten.length === 4
+        ? "heeft een opening die geen asgelijnde rechthoek is en rekent daarom via de CDT"
+        : "is geen asgelijnde rechthoek en rekent daarom als polygoonplaat";
       errors.push(
-        `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als ` +
-          "polygoonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. " +
+        `Plaat ${p.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. ` +
           "Reken via een projectbestand waarin het mesh is opgeslagen; de " +
           "MCP-server genereert zelf geen meshes.",
       );

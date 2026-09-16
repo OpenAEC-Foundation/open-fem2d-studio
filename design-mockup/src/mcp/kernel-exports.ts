@@ -56,6 +56,11 @@ export * from "../lib/timberCheckBuilder";
 export * from "../lib/sectionResolver";
 export * from "../lib/modelNaarSolverInput";
 export * from "../components/fem/femTypes";
+// De plaatmesher (raster met openingen, koppeling tot vierhoeken, keuring van
+// een cache): pure meetkunde zonder WASM of DOM — de engine gebruikt hem al,
+// en zijn tests horen tegen de bundel te draaien. PlateRegion en de
+// CDT-service blijven er bewust buiten (zie boven).
+export * from "../core/fem/PlaatMesher";
 export * from "../lib/wind/windGenerator";
 export * from "../lib/wind/windEurocode";
 

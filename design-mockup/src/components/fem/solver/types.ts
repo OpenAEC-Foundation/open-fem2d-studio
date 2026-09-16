@@ -365,6 +365,19 @@ export interface SolverPlateInput {
    * beschadigde cache → nette NL-fout.
    */
   meshCache?: import("../femTypes").PlaatMeshCache;
+  /**
+   * Elementkeuze (stap 2): "driehoeken" (CST) of "vierhoeken" (Quad4).
+   * Ontbreekt = de standaard voor de vorm — rasterpad vierhoeken, CDT-pad
+   * driehoeken — zie femTypes.effectiefPlaatMeshType.
+   */
+  meshType?: import("../femTypes").PlaatMeshType;
+  /**
+   * Openingen (stap 2): polygonen in mm binnen de omtrek. Bij een asgelijnde
+   * rechthoek met asgelijnde rechthoekige openingen meshet de adapter zelf
+   * (rasterpad, ook in de sidecar); elke andere combinatie vereist een
+   * meshCache waarvan de handtekening óók de openingen dekt.
+   */
+  openingen?: import("../femTypes").PlaatOpening[];
   /** Plaatdikte (mm). */
   thickness: number;
   /** Elasticiteitsmodulus (N/mm²). */

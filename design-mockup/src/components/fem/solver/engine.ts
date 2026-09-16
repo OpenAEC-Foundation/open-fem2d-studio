@@ -24,11 +24,16 @@ import { assembleGlobalStiffnessMatrix, buildNodeIdToIndex, getDofsPerNode, Plaa
 import { calculateBeamLength, calculateBeamAngle, calculateBeamLocalStiffness } from "../../../core/fem/Beam";
 import { generatePlateRegionMesh } from "../../../core/fem/PlateRegion";
 import {
+  genereerRasterMesh, keurPlatMesh, keurRandKnopen, dwingendeLijnenUitKnopen,
+  type PlatMesh, type RasterMesh,
+} from "../../../core/fem/PlaatMesher";
+import {
   computeSelfWeightNodalForces, computeEdgeLoadNodalForces, applyNodalForces,
   verdeelRandlastConsistent, verdeelRandpuntlastConsistent,
 } from "../../../core/fem/PlateLoads";
 import {
-  isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur, bepaalPlaatRand,
+  valideerPlaatPolygoon, berekenPlaatMeshSignatuur, bepaalPlaatRand,
+  plaatRekentAlsRaster, effectiefPlaatMeshType, valideerPlaatOpeningen, PLAAT_MESH_TYPEN,
 } from "../femTypes";
 import type { PlaatMeshCache, PlaatPunt } from "../femTypes";
 import type {
@@ -220,22 +225,26 @@ function normaliseerSegmenten(
  * op een rand ligt levert een lege lijst — die blijft ongesplitst.
  * Randen van meerdere platen worden samengevoegd en ontdubbeld (gedeelde
  * randen tussen twee platen leveren dezelfde posities).
+ *
+ * De posities komen uit de GRIDLIJNEN van het rastermesh (`xs`, `zs`), niet
+ * uit i/nx: sinds openingen (stap 2) is het raster niet meer uniform — een
+ * openingsrand dwingt een gridlijn af — en mesher en staafsplitsing moeten
+ * dezelfde lijst lezen, anders raakt een randstaaf stil los van de plaat.
  */
 function berekenPlaatrandSplitsFracties(
   nA: { x: number; z: number },
   nB: { x: number; z: number },
-  plateRects: { minX: number; minZ: number; width: number; height: number; nx: number; ny: number }[],
+  plateRects: { minX: number; maxX: number; minZ: number; maxZ: number; xs: number[]; zs: number[] }[],
   tolMm: number,
 ): number[] {
   const ts: number[] = [];
   for (const r of plateRects) {
     // Horizontale randen (onder/boven): z ≈ randhoogte, x varieert.
-    for (const randZ of [r.minZ, r.minZ + r.height]) {
+    for (const randZ of [r.minZ, r.maxZ]) {
       if (Math.abs(nA.z - randZ) <= tolMm && Math.abs(nB.z - randZ) <= tolMm &&
           Math.abs(nB.x - nA.x) > tolMm) {
         const lo = Math.min(nA.x, nB.x), hi = Math.max(nA.x, nB.x);
-        for (let i = 0; i <= r.nx; i++) {
-          const pos = r.minX + (i / r.nx) * r.width;
+        for (const pos of r.xs) {
           if (pos > lo + tolMm && pos < hi - tolMm) {
             ts.push((pos - nA.x) / (nB.x - nA.x));
           }
@@ -243,12 +252,11 @@ function berekenPlaatrandSplitsFracties(
       }
     }
     // Verticale randen (links/rechts): x ≈ randpositie, z varieert.
-    for (const randX of [r.minX, r.minX + r.width]) {
+    for (const randX of [r.minX, r.maxX]) {
       if (Math.abs(nA.x - randX) <= tolMm && Math.abs(nB.x - randX) <= tolMm &&
           Math.abs(nB.z - nA.z) > tolMm) {
         const lo = Math.min(nA.z, nB.z), hi = Math.max(nA.z, nB.z);
-        for (let j = 0; j <= r.ny; j++) {
-          const pos = r.minZ + (j / r.ny) * r.height;
+        for (const pos of r.zs) {
           if (pos > lo + tolMm && pos < hi - tolMm) {
             ts.push((pos - nA.z) / (nB.z - nA.z));
           }
@@ -393,23 +401,38 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
   const nodeById = new Map<number, { x: number; z: number }>();
   for (const n of input.nodes) nodeById.set(n.id, { x: n.x, z: n.z });
 
-  // ── Platen parsen + valideren (P2.2/P2.4/P4.2) ───────────────────────────
+  // ── Platen parsen + valideren (P2.2/P2.4/P4.2, stap 2) ───────────────────
   // De validatie gebeurt VÓÓR de staven, zodat het splitsen van staven op
   // plaatrandknopen de gridposities al kent; het meshen zelf volgt verderop
   // (na de staven, zodat het grid hun splitsknopen kan hergebruiken).
-  // Classificatie (P4.2): 4 hoekknopen die een asgelijnde rechthoek vormen →
-  // het deterministische quad-grid-pad; elke andere geldige polygoon
-  // (n ≥ 3 hoeken) → het CDT-polygonpad, dat het vooraf gegenereerde mesh
-  // uit de cache haalt (de CDT zelf is async/WASM en draait niet in de solve).
+  // Classificatie (`plaatRekentAlsRaster`): een asgelijnde rechthoek met
+  // asgelijnde rechthoekige openingen → het synchrone RASTERPAD (gridlijnen
+  // door elke openingsrand, vakken in een opening vallen weg; vierhoeken of
+  // driehoeken naar keuze); elke andere vorm → het CDT-PAD, dat het vooraf
+  // gegenereerde mesh uit de cache haalt (de CDT zelf is async/WASM en draait
+  // niet in de solve). Beide meshes gaan verderop door één en dezelfde
+  // omzetting naar kernelementen.
   const TOL_MM = 1; // zelfde orde als de findNodeAt-hergebruiktolerantie (0,001 m)
   const plateInputs = (input as any).plates as SolverPlateInput[] | undefined;
   const plateRects: {
     p: SolverPlateInput;
-    minX: number; minZ: number; width: number; height: number;
-    nx: number; ny: number;
+    minX: number; maxX: number; minZ: number; maxZ: number;
+    xs: number[]; zs: number[];
+    raster: RasterMesh;
     punten: PlaatPunt[];
   }[] = [];
-  const plaatPolygonen: { p: SolverPlateInput; cache: PlaatMeshCache; punten: PlaatPunt[] }[] = [];
+  const plaatPolygonen: {
+    p: SolverPlateInput; cache: PlaatMeshCache; punten: PlaatPunt[];
+    gekeurd: ReturnType<typeof keurPlatMesh>;
+  }[] = [];
+  // Knopen waar iets aan hangt: staafeinden, opleggingen, puntlasten. Bij
+  // een plaat MET openingen worden hun coördinaten dwingende gridlijnen (zie
+  // RasterMeshInvoer.dwingendX); zonder openingen blijft het raster bit-gelijk
+  // aan vroeger en geldt de bestaande weigering voor een knoop naast het grid.
+  const verwezenKnopen = new Set<number>();
+  for (const b of input.beams) { verwezenKnopen.add(b.from); verwezenKnopen.add(b.to); }
+  for (const s of input.supports) verwezenKnopen.add(s.nodeId);
+  for (const pl of (((input as any).pointLoads ?? []) as { nodeId: number }[])) verwezenKnopen.add(pl.nodeId);
   if (plateInputs && plateInputs.length > 0) {
     for (const p of plateInputs) {
       if (!Array.isArray(p.nodeIds) || p.nodeIds.length < 3) {
@@ -422,23 +445,43 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       }
       const punten = corners.map((c) => ({ x: c!.x, z: c!.z }));
       const meshSize = p.meshSize > 0 ? p.meshSize : 500;
+      if (p.meshType !== undefined && !PLAAT_MESH_TYPEN.includes(p.meshType)) {
+        throw new Error(
+          `Plaat ${p.id}: onbekende elementkeuze "${String(p.meshType)}" — ` +
+          `toegestaan: ${PLAAT_MESH_TYPEN.join(", ")}.`);
+      }
+      // Openingen: vorm, ligging binnen de omtrek en onderlinge afstand —
+      // DEZELFDE regel als de tekentool, de modelcontrole en de MCP-poort.
+      // Een opening buiten de plaat of over een andere heen is een fout, geen
+      // mesh met een gat op een andere plek.
+      const openingen = (p.openingen ?? []).map((o) => o.punten);
+      const openingFout = valideerPlaatOpeningen(punten, openingen, TOL_MM);
+      if (openingFout) throw new Error(`Plaat ${p.id}: ${openingFout}`);
+      const meshType = effectiefPlaatMeshType(p, punten, TOL_MM);
 
-      if (punten.length === 4 && isAsgelijndeRechthoek(punten, TOL_MM)) {
-        // ── Rechthoekpad (ongewijzigd t.o.v. P2.2) ──────────────────────────
-        const xs = punten.map((c) => c.x);
-        const zs = punten.map((c) => c.z);
-        const minX = Math.min(...xs), maxX = Math.max(...xs);
-        const minZ = Math.min(...zs), maxZ = Math.max(...zs);
-        const width = maxX - minX, height = maxZ - minZ;
-        // Divisions uit meshSize (mm): afgerond op het dichtstbijzijnde
-        // gehele aantal, minimaal 1 per richting.
-        const nx = Math.max(1, Math.round(width / meshSize));
-        const ny = Math.max(1, Math.round(height / meshSize));
-        plateRects.push({ p, minX, minZ, width, height, nx, ny, punten });
+      if (plaatRekentAlsRaster(punten, openingen, TOL_MM)) {
+        // ── Rasterpad ─────────────────────────────────────────────────────
+        // Zonder openingen en met "vierhoeken" is dit bit-voor-bit het oude
+        // Quad4-grid: dezelfde gridposities lo + (k/n)·(hi−lo), dezelfde
+        // elementvolgorde, dezelfde hoekvolgorde per element.
+        const xsH = punten.map((c) => c.x);
+        const zsH = punten.map((c) => c.z);
+        const minX = Math.min(...xsH), maxX = Math.max(...xsH);
+        const minZ = Math.min(...zsH), maxZ = Math.max(...zsH);
+        const dwingend = openingen.length > 0
+          ? dwingendeLijnenUitKnopen(
+              [...verwezenKnopen].map((id) => nodeById.get(id)).filter((n): n is { x: number; z: number } => !!n),
+              { minX, maxX, minZ, maxZ }, TOL_MM)
+          : { x: [], z: [] };
+        const raster = genereerRasterMesh({
+          minX, maxX, minZ, maxZ, openingen, meshSize, meshType,
+          dwingendX: dwingend.x, dwingendZ: dwingend.z,
+        });
+        plateRects.push({ p, minX, maxX, minZ, maxZ, xs: raster.xs, zs: raster.zs, raster, punten });
         continue;
       }
 
-      // ── Polygonpad (P4.2) ─────────────────────────────────────────────────
+      // ── CDT-pad ───────────────────────────────────────────────────────────
       // Eerst de vorm zelf valideren (zelfsnijdend, dubbele hoeken,
       // degeneraat — dekt ook de oude "gedegenereerde rechthoek"-gevallen).
       const vormFout = valideerPlaatPolygoon(punten, TOL_MM);
@@ -448,15 +491,19 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
       // CDT-cache: UITSLUITEND uit de invoer. Het module-globale doorgeefluik
       // waaruit de engine hem vroeger ook las, bestond alleen in de GUI; in de
       // MCP-sidecar was het leeg, en daar rekende dezelfde plaat dus anders
-      // (of niet). De signatuur borgt dat de cache bij de ACTUELE geometrie +
-      // meshSize hoort; een verouderde of ontbrekende cache is een nette fout,
-      // nooit een stil verkeerd mesh.
-      const handtekening = berekenPlaatMeshSignatuur(punten, meshSize);
+      // (of niet). De signatuur borgt dat de cache bij de ACTUELE geometrie,
+      // meshSize, openingen en elementkeuze hoort; een verouderde of
+      // ontbrekende cache is een nette fout, nooit een stil verkeerd mesh.
+      const handtekening = berekenPlaatMeshSignatuur(punten, meshSize, {
+        openingen, meshType: p.meshType,
+      });
       const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : undefined;
       if (!cache) {
+        const waarom = openingen.length > 0 && punten.length === 4
+          ? "heeft een opening die geen asgelijnde rechthoek is en rekent daarom via de CDT"
+          : "is geen asgelijnde rechthoek en rekent daarom als polygonplaat";
         throw new Error(
-          `Plaat ${p.id} is geen asgelijnde rechthoek en rekent daarom als ` +
-          `polygonplaat, maar het CDT-rekenmesh ontbreekt of is verouderd. ` +
+          `Plaat ${p.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. ` +
           `Open het canvas (het mesh wordt daar automatisch gegenereerd) en ` +
           `reken daarna opnieuw.`);
       }
@@ -465,12 +512,17 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
           `Plaat ${p.id}: de meshcache is beschadigd — ${waarom}. Wijzig de plaat ` +
           `(bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`);
       };
-      // Cache-sanity: puntindices binnen bereik (beschadigd projectbestand).
-      const nPts = cache.points.length;
-      const driehoekenOk = Array.isArray(cache.triangles) && cache.triangles.every((t) =>
-        Array.isArray(t) && t.length === 3 && t.every((i) => Number.isInteger(i) && i >= 0 && i < nPts));
-      if (!driehoekenOk || nPts < 3 || cache.triangles.length < 1) {
-        beschadigd("de driehoeken verwijzen naar punten die niet bestaan");
+      if (!Array.isArray(cache.points) || cache.points.length < 3) {
+        beschadigd("de puntenlijst ontbreekt of is te kort");
+      }
+      // Elementen: indices binnen bereik, echte oppervlakte, convexe
+      // vierhoeken; de omloopzin wordt genormaliseerd. Een vervormde vierhoek
+      // zou in de kern een negatieve Jacobiaan geven.
+      let gekeurd: ReturnType<typeof keurPlatMesh>;
+      try {
+        gekeurd = keurPlatMesh(cache.points, cache.triangles, cache.quads);
+      } catch (e) {
+        beschadigd(e instanceof Error ? e.message : String(e));
       }
       // RANDKNOPEN, PER HOEKPAAR. Zonder `edgeNodeIndices` kan geen randlast,
       // randpuntlast of randkoppeling zijn rand vinden; vroeger crashte de
@@ -486,29 +538,34 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
           `\`edgeNodeIndices\` beschrijft ${cache.edgeNodeIndices.length} randen, ` +
           `maar de plaat heeft ${punten.length} hoeken en dus ${punten.length} randen`);
       }
-      cache.edgeNodeIndices.forEach((rand, i) => {
-        if (!Array.isArray(rand) || rand.length < 2
-            || !rand.every((k) => Number.isInteger(k) && k >= 0 && k < nPts)) {
-          beschadigd(`rand ${i + 1} heeft geen geldige lijst randknopen (minstens de twee hoeken)`);
-        }
-        const a = punten[i], b = punten[(i + 1) % punten.length];
-        const L = Math.hypot(b.x - a.x, b.z - a.z);
-        let tMin = Infinity, tMax = -Infinity;
-        for (const k of rand) {
-          const q = cache.points[k];
-          const t = ((q.x - a.x) * (b.x - a.x) + (q.z - a.z) * (b.z - a.z)) / L;
-          const d = Math.abs((q.x - a.x) * (b.z - a.z) - (q.z - a.z) * (b.x - a.x)) / L;
-          if (!(d <= TOL_MM) || t < -TOL_MM || t > L + TOL_MM) {
-            beschadigd(`punt ${k} van rand ${i + 1} ligt niet op die rand`);
+      try {
+        cache.edgeNodeIndices.forEach((rand, i) => {
+          keurRandKnopen(cache.points, rand, punten[i], punten[(i + 1) % punten.length], TOL_MM, `rand ${i + 1}`);
+        });
+        // Openingsranden: het net moet de opening werkelijk volgen — per
+        // opening, per rand een lijst knopen van hoek tot hoek. Zonder die
+        // lijsten is niet te zien of de cache het gat op de goede plek laat.
+        if (openingen.length > 0) {
+          const oe = cache.openingEdgeNodeIndices;
+          if (!Array.isArray(oe) || oe.length !== openingen.length) {
+            throw new Error(
+              `\`openingEdgeNodeIndices\` beschrijft ${Array.isArray(oe) ? oe.length : 0} ` +
+              `openingen, maar de plaat heeft er ${openingen.length}`);
           }
-          tMin = Math.min(tMin, t);
-          tMax = Math.max(tMax, t);
+          oe.forEach((randen, k) => {
+            const op = openingen[k];
+            if (!Array.isArray(randen) || randen.length !== op.length) {
+              throw new Error(`opening ${k + 1} heeft ${op.length} randen, maar de cache beschrijft er ${Array.isArray(randen) ? randen.length : 0}`);
+            }
+            randen.forEach((rand, j) => {
+              keurRandKnopen(cache.points, rand, op[j], op[(j + 1) % op.length], TOL_MM, `rand ${j + 1} van opening ${k + 1}`);
+            });
+          });
         }
-        if (tMin > TOL_MM || tMax < L - TOL_MM) {
-          beschadigd(`de randknopen van rand ${i + 1} reiken niet van hoek tot hoek`);
-        }
-      });
-      plaatPolygonen.push({ p, cache, punten });
+      } catch (e) {
+        beschadigd(e instanceof Error ? e.message : String(e));
+      }
+      plaatPolygonen.push({ p, cache, punten, gekeurd: gekeurd! });
     }
   }
 
@@ -969,96 +1026,116 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     })));
   };
 
+  /**
+   * ÉÉN OMZETTING VOOR BEIDE PADEN. Een plat mesh (punten in mm, driehoeken en
+   * vierhoeken als indexlijsten) wordt 1-op-1 omgezet naar kernknopen (mm → m)
+   * en CST-/Quad4-elementen. findNodeAt HERGEBRUIKT bestaande knopen binnen
+   * 1 mm — de UI-hoekknopen, UI-knopen op randposities en de splitsknopen van
+   * randstaven worden zo rekenknopen van de plaat, zodat steunpunten en lasten
+   * daar gewoon aangrijpen en randstaven volledig meedragen. Driehoeken gaan
+   * vóór vierhoeken, in de volgorde van het mesh: de combinaties tellen
+   * plaatspanningen per elementindex op en rekenen erop dat elke berekening
+   * dezelfde volgorde geeft.
+   */
+  const zetPlatMeshInKern = (
+    p: SolverPlateInput, plat: Pick<PlatMesh, "points" | "triangles" | "quads">,
+  ): { knoopIdPerPunt: number[]; nodeIds: number[]; elementIds: number[]; materialId: number } => {
+    // Eigen mesh-materiaal per plaat: E (N/mm² → Pa), ν en ρ uit de invoer.
+    const mat = mesh.addMaterial({
+      name: `Plaat ${p.id}`,
+      E: p.E * 1e6,
+      nu: p.nu,
+      rho: p.rho,
+      color: matTemplate?.color ?? "#3b82f6",
+      alpha: matTemplate?.alpha ?? 12e-6,
+    });
+    const dikte_m = p.thickness / 1000;
+    const knoopIdPerPunt = plat.points.map((pt) => {
+      const mx = pt.x / 1000, my = pt.z / 1000;   // mm → m; model-z = mesh-y
+      const bestaand = mesh.findNodeAt(mx, my, 0.001);
+      return bestaand ? bestaand.id : mesh.addPlateNode(mx, my).id;
+    });
+    const nodeIds = Array.from(new Set(knoopIdPerPunt));
+    const elementIds: number[] = [];
+    for (const [a, b, c] of plat.triangles) {
+      const t = mesh.addTriangleElement(
+        [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c]], mat.id, dikte_m);
+      if (t) elementIds.push(t.id);
+    }
+    for (const [a, b, c, d] of plat.quads) {
+      const q = mesh.addQuadElement(
+        [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c], knoopIdPerPunt[d]], mat.id, dikte_m);
+      if (q) elementIds.push(q.id);
+    }
+    return { knoopIdPerPunt, nodeIds, elementIds, materialId: mat.id };
+  };
+
+  /** Een `IPlateRegion` voor het adapterpad — alleen de velden die hier lopen. */
+  const maakRegion = (
+    p: SolverPlateInput, plat: Pick<PlatMesh, "points" | "quads">,
+    k: ReturnType<typeof zetPlatMeshInKern>,
+    edges: { bottom: number[]; top: number[]; left: number[]; right: number[] },
+    isPolygon: boolean,
+  ): ReturnType<typeof generatePlateRegionMesh> => {
+    const xs = plat.points.map((pt) => pt.x);
+    const zs = plat.points.map((pt) => pt.z);
+    const minX = Math.min(...xs), minZ = Math.min(...zs);
+    return {
+      id: 0, // wordt door addPlateRegion toegekend
+      x: minX / 1000, y: minZ / 1000,
+      width: (Math.max(...xs) - minX) / 1000,
+      height: (Math.max(...zs) - minZ) / 1000,
+      divisionsX: 0, divisionsY: 0,
+      materialId: k.materialId,
+      thickness: p.thickness / 1000,
+      elementType: plat.quads.length > 0 ? "quad" : "triangle",
+      nodeIds: k.nodeIds,
+      // Niet gebruikt in het adapterpad (alleen door remesh-/edge-helpers
+      // van de core, die hier niet lopen) — bewust een neutrale vulling.
+      cornerNodeIds: [k.nodeIds[0], k.nodeIds[0], k.nodeIds[0], k.nodeIds[0]],
+      elementIds: k.elementIds,
+      edges: {
+        bottom: { nodeIds: edges.bottom }, top: { nodeIds: edges.top },
+        left: { nodeIds: edges.left }, right: { nodeIds: edges.right },
+      },
+      isPolygon,
+      meshSize: (p.meshSize > 0 ? p.meshSize : 500) / 1000,
+    };
+  };
+
+  // ── Rasterpad: rechthoek (met rechthoekige openingen) ────────────────────
+  // De benoemde zijden komen uit het raster; randlasten met een benoemde rand
+  // lezen ze via `region.edges`.
   if (plateRects.length > 0) {
-    for (const { p, minX, minZ, width, height, nx, ny, punten } of plateRects) {
-      // Eigen mesh-materiaal per plaat: E (N/mm² → Pa), ν en ρ uit de invoer.
-      const mat = mesh.addMaterial({
-        name: `Plaat ${p.id}`,
-        E: p.E * 1e6,
-        nu: p.nu,
-        rho: p.rho,
-        color: matTemplate?.color ?? "#3b82f6",
-        alpha: matTemplate?.alpha ?? 12e-6,
-      });
-      const region = generatePlateRegionMesh(mesh, {
-        x: minX / 1000, y: minZ / 1000,          // mm → m
-        width: width / 1000, height: height / 1000,
-        divisionsX: nx, divisionsY: ny,
-        materialId: mat.id,
-        thickness: p.thickness / 1000,           // mm → m
-        // Regelmatig grid → Quad4: geen detJ-problemen en beter buiggedrag
-        // dan CST (zie het platenplan, ontwerpbesluiten).
-        elementType: "quad",
-      });
+    for (const { p, raster, punten } of plateRects) {
+      const k = zetPlatMeshInKern(p, raster);
+      const naarIds = (lijst: number[]) => lijst.map((i) => k.knoopIdPerPunt[i]);
+      const region = maakRegion(p, raster, k, {
+        bottom: naarIds(raster.randen.bottom), top: naarIds(raster.randen.top),
+        left: naarIds(raster.randen.left), right: naarIds(raster.randen.right),
+      }, false);
       mesh.addPlateRegion(region);
       plateInfo.push({ plateId: p.id, region, hoeken: punten });
-      pasPlaatEigengewichtToe(p, region.elementIds);
+      pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
 
-  // ── Polygonplaten meshen uit de CDT-cache (P4.2) ─────────────────────────
-  // De cache (mm, gevalideerd op signatuur hierboven) wordt 1-op-1 omgezet
-  // naar meshknopen (mm → m) en CST-driehoeken. findNodeAt HERGEBRUIKT
-  // bestaande knopen binnen 1 mm — de UI-hoekknopen (polygoonhoeken zitten
-  // altijd in het CDT-mesh) en eventuele UI-knopen op randposities worden zo
-  // rekenknopen van de plaat, net als in het grid-pad. Staafsplitsen langs
-  // polygonranden (het P2.4-gedrag van rechthoekranden) is er bewust nog
-  // niet — een staaf op een polygonrand hangt alleen aan zijn eindknopen.
+  // ── CDT-pad: mesh uit de (gekeurde) cache ────────────────────────────────
+  // Polygonmesh heeft geen benoemde randen: randlasten lopen via de
+  // rand-index (edgeNodeIds); een benoemde rand op een polygonplaat wordt
+  // door `bepaalPlaatRand` geweigerd. Staafsplitsen langs polygonranden (het
+  // P2.4-gedrag van rechthoekranden) is er bewust nog niet — een staaf op een
+  // polygonrand hangt aan zijn eindknopen en aan de randkoppeling verderop.
   if (plaatPolygonen.length > 0) {
-    for (const { p, cache, punten } of plaatPolygonen) {
-      const mat = mesh.addMaterial({
-        name: `Plaat ${p.id}`,
-        E: p.E * 1e6,
-        nu: p.nu,
-        rho: p.rho,
-        color: matTemplate?.color ?? "#3b82f6",
-        alpha: matTemplate?.alpha ?? 12e-6,
-      });
-      const dikte_m = p.thickness / 1000;
-      const knoopIdPerPunt = cache.points.map((pt) => {
-        const mx = pt.x / 1000, my = pt.z / 1000;   // mm → m; model-z = mesh-y
-        const bestaand = mesh.findNodeAt(mx, my, 0.001);
-        return bestaand ? bestaand.id : mesh.addPlateNode(mx, my).id;
-      });
-      const nodeIds = Array.from(new Set(knoopIdPerPunt));
-      const elementIds: number[] = [];
-      for (const [a, b, c] of cache.triangles) {
-        const t = mesh.addTriangleElement(
-          [knoopIdPerPunt[a], knoopIdPerPunt[b], knoopIdPerPunt[c]], mat.id, dikte_m);
-        if (t) elementIds.push(t.id);
-      }
-      const xs = cache.points.map((pt) => pt.x);
-      const zs = cache.points.map((pt) => pt.z);
-      const minX = Math.min(...xs), minZ = Math.min(...zs);
-      const region: ReturnType<typeof generatePlateRegionMesh> = {
-        id: 0, // wordt door addPlateRegion toegekend
-        x: minX / 1000, y: minZ / 1000,
-        width: (Math.max(...xs) - minX) / 1000,
-        height: (Math.max(...zs) - minZ) / 1000,
-        divisionsX: 0, divisionsY: 0,
-        materialId: mat.id,
-        thickness: dikte_m,
-        elementType: "triangle",
-        nodeIds,
-        // Niet gebruikt in het adapterpad (alleen door remesh-/edge-helpers
-        // van de core, die hier niet lopen) — bewust een neutrale vulling.
-        cornerNodeIds: [nodeIds[0], nodeIds[0], nodeIds[0], nodeIds[0]],
-        elementIds,
-        // Polygonmesh heeft geen benoemde randen: randlasten lopen via de
-        // rand-index (edgeNodeIds hieronder); een benoemde rand op een
-        // polygonplaat wordt door `bepaalPlaatRand` geweigerd.
-        edges: {
-          bottom: { nodeIds: [] }, top: { nodeIds: [] },
-          left: { nodeIds: [] }, right: { nodeIds: [] },
-        },
-        isPolygon: true,
-        meshSize: (p.meshSize > 0 ? p.meshSize : 500) / 1000,
-      };
+    for (const { p, cache, punten, gekeurd } of plaatPolygonen) {
+      const k = zetPlatMeshInKern(p, { points: cache.points, triangles: gekeurd.triangles, quads: gekeurd.quads });
+      const region = maakRegion(p, { points: cache.points, quads: gekeurd.quads }, k,
+        { bottom: [], top: [], left: [], right: [] }, true);
       mesh.addPlateRegion(region);
       const edgeNodeIds = cache.edgeNodeIndices.map((rand) =>
-        rand.map((i) => knoopIdPerPunt[i]));
+        rand.map((i) => k.knoopIdPerPunt[i]));
       plateInfo.push({ plateId: p.id, region, edgeNodeIds, hoeken: punten });
-      pasPlaatEigengewichtToe(p, elementIds);
+      pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
 
@@ -1092,9 +1169,29 @@ function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?: numbe
     }
     const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
     if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} — ${rand.reden}`);
-    const kandidaten = rand.soort === "rechthoek"
-      ? info.region.edges[rand.naam!].nodeIds
-      : info.edgeNodeIds![rand.edgeIndex!];
+    // De bron van de randknopen volgt het REKENPAD van de plaat, niet de
+    // vorm: het rasterpad kent de vier benoemde zijden, het CDT-pad kent de
+    // lijst per hoekpaar. Een rechthoek met een veelhoekige opening is een
+    // rechthoek (benoemde randen zijn geldig) maar rekent via de CDT; de
+    // benoemde rand wordt dan op zijn hoekpaar (hoekVan → hoekNaar) afgebeeld.
+    let kandidaten: number[];
+    if (info.edgeNodeIds) {
+      const n = info.hoeken.length;
+      let k = rand.edgeIndex;
+      if (k === undefined) {
+        k = info.hoeken.findIndex((_, i) =>
+          (i === rand.hoekVan && (i + 1) % n === rand.hoekNaar) ||
+          (i === rand.hoekNaar && (i + 1) % n === rand.hoekVan));
+      }
+      if (k < 0 || !info.edgeNodeIds[k]) {
+        throw new Error(
+          `Plaat ${plateId}: ${wat} — de rand van hoek ${rand.hoekVan + 1} naar hoek ` +
+          `${rand.hoekNaar + 1} is geen rand van de omtrek in het rekenmesh.`);
+      }
+      kandidaten = info.edgeNodeIds[k];
+    } else {
+      kandidaten = info.region.edges[rand.naam!].nodeIds;
+    }
     // Ordenen op de projectie langs van → naar (m). De randlijsten van het
     // grid en van de cache liggen al op de rand (gecontroleerd bij het
     // inlezen van de cache); ordenen maakt de richting van de fracties
