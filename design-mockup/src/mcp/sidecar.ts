@@ -1058,6 +1058,8 @@ function rekenDoor(payload: Record<string, unknown>) {
     combinations: combinaties,
     combinationResults,
     nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    loadCases: gelezen.model.loadCases,
+    gevallenMetLast: opgelost,
   });
 
   const waarschuwingen: string[] = [];

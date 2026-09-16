@@ -30,6 +30,9 @@ import type { PlaatMateriaalSoort as KernSoort } from "./types/plaat/PlaatMateri
 import type { PlaatCombinatie } from "./types/plaat/PlaatCombinatie";
 import { bepaalPlaatStijfheid, type PlaatMateriaalSoort } from "./plaatMateriaal";
 import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
+import type { LoadCase } from "../components/fem/femTypes";
+import type { ServiceClass } from "./types/timber/ServiceClass";
+import { belastingduurPerCombinatie } from "./belastingduur";
 
 /** Een plaat die niet naar de kern ging, met de reden. */
 export interface PlaatSkip {
@@ -42,6 +45,16 @@ export interface PlaatBuildData {
   combinations: readonly LoadCombination[];
   combinationResults: ReadonlyMap<number, SolverResult>;
   nationaleBijlage?: NationaleBijlageCode;
+  /**
+   * De belastinggevallen: daaruit volgt voor een HOUTEN plaat de
+   * belastingduurklasse per UGT-combinatie (EN 1995-1-1 3.1.3(2),
+   * `lib/belastingduur.ts`) — dezelfde afleiding als bij een houten staaf.
+   * Ontbreekt de lijst, dan krijgt de kern geen klassen en weigert hij een
+   * houten plaat met reden; er wordt geen duur aangenomen.
+   */
+  loadCases?: readonly Pick<LoadCase, "id" | "name" | "type" | "categorie">[];
+  /** De gevallen met een werkzame last (sleutels van `perCase`); zie de houtbouwer. */
+  gevallenMetLast?: readonly number[];
   /** Alleen deze plaatnummers; leeg of afwezig = alle platen. */
   plateIds?: readonly number[];
 }
@@ -65,7 +78,12 @@ const KERN_SOORT: Record<PlaatMateriaalSoort, KernSoort> = {
  * een besparing op wat er over de brug gaat: wat getoetst wordt, beslist de
  * kern.
  */
-const SOORT_MET_SPANNINGEN: ReadonlySet<KernSoort> = new Set<KernSoort>(["Staal"]);
+const SOORT_MET_SPANNINGEN: ReadonlySet<KernSoort> = new Set<KernSoort>(["Staal", "Hout"]);
+
+/** Klimaatklasse van een plaat → kernenum; ontbreekt = 1, zoals bij een houten staaf. */
+function klimaatklasse(k: Plate["klimaatklasse"]): ServiceClass {
+  return k === 2 ? "Sc2" : k === 3 ? "Sc3" : "Sc1";
+}
 
 /** Heeft deze plaat een ingevuld materiaal? */
 export function plaatHeeftMateriaal(p: Pick<Plate, "materiaal">): boolean {
@@ -127,11 +145,42 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
         );
       }
     }
+    // Hout: klimaatklasse, hoofdrichting en de belastingduur per combinatie.
+    const hout =
+      soort === "Hout"
+        ? (() => {
+            if (plaat.klimaatklasse === undefined) {
+              notities.push(
+                "Klimaatklasse niet opgegeven bij de plaat: klimaatklasse 1 aangehouden (2.3.1.3), " +
+                  "net als bij een houten staaf zonder opgave.",
+              );
+            }
+            if (!s.orthotroop) {
+              notities.push(
+                "De E-modulus van deze houten plaat is handmatig overschreven: de spanningen zijn " +
+                  "isotroop berekend en daarna in de materiaalassen getoetst.",
+              );
+            }
+            const gevuld = data.gevallenMetLast ? new Set(data.gevallenMetLast) : null;
+            return {
+              hoofdrichting_graden: s.hoekGraden,
+              service_class: klimaatklasse(plaat.klimaatklasse),
+              load_duration_per_combination: data.loadCases
+                ? belastingduurPerCombinatie({
+                    combinaties: ugt,
+                    loadCases: data.loadCases,
+                    gevuld: gevuld ? (id) => gevuld.has(id) : undefined,
+                  })
+                : [],
+            };
+          })()
+        : {};
     inputs.push({
       bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       plate_id: plaat.id,
       soort,
       materiaal: s.naam,
+      ...hout,
       // Dezelfde aanvulling als de solverinvoer (`plaatNaarSolverInput`): de
       // spanningen zijn met deze dikte berekend.
       thickness_mm: withPlateDefaults(plaat).thickness!,

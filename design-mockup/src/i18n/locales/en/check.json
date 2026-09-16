@@ -1141,7 +1141,8 @@
       "removeOpeningTitle": "Remove this opening",
       "removeOpening": "Remove",
       "openingsHint": "The calculation mesh leaves the openings free and places nodes on the opening edge.",
-      "openingsHintCdt": "A non-rectangular opening is calculated via the CDT (mesh cache)."
+      "openingsHintCdt": "A non-rectangular opening is calculated via the CDT (mesh cache).",
+      "serviceClassTitle": "Service class for the plate check (NEN-EN 1995-1-1 2.3.1.3): together with the load duration it sets k_mod. The stiffness does not change."
     }
   },
   "barDialog": {

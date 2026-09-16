@@ -85,6 +85,10 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      de reden en de twee uitwegen — er wordt geen G₁₂ aangenomen.
  *      Bewust geen automatische aanvulling bij het laden: dat zou de
  *      niet-gereduceerde bovengrens stil tot keuze van de gebruiker maken.
+ *      Issue #15 (september 2026, optioneel — geen versie-bump):
+ *      `Plate.klimaatklasse` (1/2/3) van een houten plaat voor de plaattoets.
+ *      Ontbreekt hij, dan toetst de app met klimaatklasse 1 en zegt dat;
+ *      stijfheid en spanningen veranderen niet.
  *      Eveneens optioneel binnen v2: `analysetype` (drie standen) en
  *      `betonSegmentLengteMm`. `nonlinearEnabled` BLIJFT geschreven worden en
  *      blijft leidend zolang `analysetype` ontbreekt — zie

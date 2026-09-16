@@ -62,7 +62,7 @@ import { puntInPolygoon, afstandTotLijnstuk } from "../core/fem/PlaatMesher";
 import { zoekDubbeleKnopen, zoekStaafeindenBijPlaatrand } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
-import { keurPlaatMateriaal } from "../lib/plaatMateriaal";
+import { keurPlaatMateriaal, plaatMateriaalSoort } from "../lib/plaatMateriaal";
 // De geldige bronnen van de scheefstand — één lijst met de app en de sidecar.
 import { SCHEEFSTAND_BRONNEN } from "../lib/scheefstandNorm";
 // De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
@@ -249,7 +249,7 @@ const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 const PLATE_VELDEN = [
   "id", "nodeIds", "thickness", "E", "nu", "rho", "meshSize", "meshCache",
   "meshType", "openingen", "materiaal", "hoofdrichting",
-  "cltG12", "cltG12Bron", "cltG12Bovengrens",
+  "cltG12", "cltG12Bron", "cltG12Bovengrens", "klimaatklasse",
 ] as const;
 
 /** Velden van één opening in een plaat (`PlaatOpening`). */
@@ -941,6 +941,18 @@ export function controleerVelden(rauw: unknown): string[] {
         cltG12Bovengrens: typeof p.cltG12Bovengrens === "boolean" ? p.cltG12Bovengrens : undefined,
       });
       if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
+    }
+    // Klimaatklasse (plaattoets hout, 2.3.1.3): 1, 2 of 3, en alleen bij een
+    // houten plaat — bij elk ander materiaal zou hij stil genegeerd worden.
+    if (p.klimaatklasse !== undefined) {
+      if (p.klimaatklasse !== 1 && p.klimaatklasse !== 2 && p.klimaatklasse !== 3) {
+        fouten.push(`${pad}.klimaatklasse: 1, 2 of 3 verwacht (NEN-EN 1995-1-1 2.3.1.3).`);
+      } else if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : undefined) !== "hout") {
+        fouten.push(
+          `${pad}.klimaatklasse: hoort alleen bij een houten plaat (massief of gelijmd gelamineerd); ` +
+            "bij dit materiaal wordt hij geweigerd in plaats van stil genegeerd.",
+        );
+      }
     }
     // Hoofdrichting in graden; elke eindige hoek mag, ook negatief of > 360.
     keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);

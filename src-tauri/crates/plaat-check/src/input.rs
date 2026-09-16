@@ -8,6 +8,8 @@
 //! criterium.
 
 use nationale_bijlage::NationaleBijlage;
+use nen_en_1995_1_1::ServiceClass;
+use timber_check::CombinationLoadDuration;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -74,6 +76,23 @@ pub struct PlateCheckInput {
     pub materiaal: String,
     /// Plaatdikte in mm. Bij staal bepaalt zij de dikteklasse van tabel 3.1.
     pub thickness_mm: f64,
+    /// Hout: hoofdrichting (vezel) in GRADEN tegen de klok in vanaf de globale
+    /// x-as — dezelfde hoek als `Plate.hoofdrichting` en als de solver gebruikt.
+    /// Weglaten = 0°. Bij staal zonder betekenis.
+    #[serde(default)]
+    #[ts(as = "Option<f64>", optional)]
+    pub hoofdrichting_graden: f64,
+    /// Hout: de klimaatklasse (2.3.1.3). VERPLICHT voor hout: ontbreekt zij,
+    /// dan weigert de kern — er wordt geen klasse aangenomen.
+    #[serde(default)]
+    #[ts(optional)]
+    pub service_class: Option<ServiceClass>,
+    /// Hout: de belastingduurklasse per UGT-combinatie (3.1.3(2)), zoals de
+    /// invoerbouwer haar uit de belastinggevallen afleidde. Elke combinatie in
+    /// `combinations` moet erin staan; anders weigert de kern.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<CombinationLoadDuration>>", optional)]
+    pub load_duration_per_combination: Vec<CombinationLoadDuration>,
     /// Kanttekeningen van de invoerbouwer; rekenen nergens mee en komen
     /// letterlijk in de notities van het resultaat.
     #[serde(default)]

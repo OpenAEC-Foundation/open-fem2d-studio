@@ -18,6 +18,11 @@ mechanics = { path = "../mechanics" }
 # daarnaast tabel 3.1 (`SteelGrade::voor_dikte`).
 nen-en-1993-1-1-section = { path = "../nen-en-1993-1-1-section" }
 steel-check = { path = "../steel-check" }
+# Hout: sterkteklassen (EN 338 / EN 14080), k_mod (tabel 3.1), en de
+# belastingduur per combinatie (`CombinationLoadDuration`) — dezelfde typen als
+# de staaftoets, zodat de invoerbouwer één afleiding gebruikt.
+nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
+timber-check = { path = "../timber-check" }
 
 [dev-dependencies]
 approx = { workspace = true }
@@ -26,3 +31,7 @@ serde_json = { workspace = true }
 [[test]]
 name = "handberekening_staal"
 path = "tests/handberekening_staal.rs"
+
+[[test]]
+name = "handberekening_hout"
+path = "tests/handberekening_hout.rs"

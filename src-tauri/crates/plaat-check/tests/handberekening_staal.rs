@@ -24,6 +24,9 @@ fn plaat(materiaal: &str, t_mm: f64, combinaties: Vec<(u32, Vec<PlaatElementSpan
         materiaal: materiaal.to_string(),
         thickness_mm: t_mm,
         notities: vec![],
+        hoofdrichting_graden: 0.0,
+        service_class: None,
+        load_duration_per_combination: vec![],
         combinations: combinaties
             .into_iter()
             .map(|(id, elements)| PlaatCombinatie { combination_id: id, elements })

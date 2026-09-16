@@ -173,3 +173,42 @@ async fn betonnen_wand_wordt_geweigerd_met_reden_en_telt_niet_als_maatgevend() {
     assert!(r["geweigerd"].as_str().unwrap().contains("bijlage F"), "{r}");
     assert!(uit["governing_plate"].is_null(), "een weigering is geen oordeel: {}", uit["governing_plate"]);
 }
+
+/// Houten drukwand — dezelfde handberekening als
+/// `design-mockup/test-plaat-toets-hout.mjs`: C24, t = 100 mm, vezel verticaal,
+/// G = 200 kN/m en Q (categorie A) = 300 kN/m op de bovenrand.
+///   1,35·G:        σ = −2,7 N/mm², k_mod 0,60 → f_c,0,d = 9,692308 → UC 0,278571
+///   1,2·G + 1,5·Q: σ = −6,9 N/mm², k_mod 0,80 → f_c,0,d = 12,923077 → UC 0,533929
+#[tokio::test]
+async fn houten_wand_toetst_met_k_mod_per_combinatie() {
+    eis_node().await;
+    let mut model = wand(Some("C24"));
+    model["plates"][0]["hoofdrichting"] = json!(90);
+    model["plates"][0]["thickness"] = json!(100);
+    model["loadCases"] = json!([
+        { "id": 1, "name": "G", "type": "dead" },
+        { "id": 2, "name": "Q", "type": "live", "categorie": "A" }
+    ]);
+    model["loads"] = json!([
+        { "id": 1, "type": "edgeLoad", "caseId": 1, "plateId": 1, "edge": "top", "q": -200, "qDir": "z" },
+        { "id": 2, "type": "edgeLoad", "caseId": 2, "plateId": 1, "edge": "top", "q": -300, "qDir": "z" }
+    ]);
+    let combinaties = json!([
+        { "id": 1, "name": "UGT 1,35·G", "type": "uls", "formula": "1,35·G", "factors": { "1": 1.35 } },
+        { "id": 2, "name": "UGT 1,2·G + 1,5·Q", "type": "uls", "formula": "1,2·G + 1,5·Q", "factors": { "1": 1.2, "2": 1.5 } }
+    ]);
+    let uit = check_fem_model(json!({ "model": model, "combinations": combinaties })).await;
+    let r = &uit["plate_results"][0];
+    assert!(r["geweigerd"].is_null(), "{r}");
+    assert_eq!(r["soort"], "Hout");
+    let uc = |id: u64| {
+        r["combinaties"].as_array().unwrap().iter()
+            .find(|c| c["combination_id"] == id).unwrap()["uc"].as_f64().unwrap()
+    };
+    assert!((uc(1) - 0.278_571).abs() <= 0.02 * 0.278_571, "UC 1: {}", uc(1));
+    assert!((uc(2) - 0.533_929).abs() <= 0.02 * 0.533_929, "UC 2: {}", uc(2));
+    assert_eq!(r["governing_combination_id"], 2);
+    let invoer = &uit["plate_check_inputs"][0];
+    assert_eq!(invoer["service_class"], "Sc1");
+    assert_eq!(invoer["hoofdrichting_graden"], 90.0);
+}

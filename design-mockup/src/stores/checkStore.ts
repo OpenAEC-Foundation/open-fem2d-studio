@@ -447,6 +447,8 @@ export const useCheckStore = create<CheckState>((set) => ({
         combinations: data.combinations,
         combinationResults: data.combinationResults,
         nationaleBijlage: data.nationaleBijlage,
+        loadCases: data.loadCases,
+        gevallenMetLast: data.gevallenMetLast,
       });
       for (const s of plaat.skipped) {
         console.info(`[Toetsing] plaat ${s.plateId} overgeslagen — ${s.reason}`);

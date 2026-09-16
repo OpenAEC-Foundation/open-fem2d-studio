@@ -258,6 +258,12 @@ const BUNDEL_TESTS = new Set([
   // spanningen, dikte of materiaal verkeerd doorgeeft, toetst daar stil een
   // andere plaat dan de app.
   "plaat-toets-staal",
+  // Plaattoets hout (issue #15, stap 2): bouwer via de in-proces sidecar
+  // (hoofdrichting, klimaatklasse, belastingduur per combinatie), de modelpoort
+  // (`valideerModel`) — alles in de barrel — en de kern via de toetsbrug. Hoort
+  // óók tegen de bundel: laat de bundel de belastingduur of de hoofdrichting
+  // vallen, dan weigert of toetst de MCP-weg een andere plaat dan de app.
+  "plaat-toets-hout",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",

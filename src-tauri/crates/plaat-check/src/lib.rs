@@ -18,6 +18,10 @@
 //!
 //! * **Staal** — het vloeicriterium van NEN-EN 1993-1-1 6.2.1(5), zie
 //!   [`staal`]. Plooi (NEN-EN 1993-1-5) niet.
+//! * **Hout** (massief en gelijmd gelamineerd) — NEN-EN 1995-1-1 6.1.2, 6.1.4,
+//!   6.1.5, 6.1.7 en 6.2.2 in de materiaalassen, zie [`hout`]. Trek loodrecht
+//!   op de vezel (6.1.3) niet: daar geeft de norm geen uitdrukking voor.
+//! * **Kruislaaghout** — geweigerd: geen normgrondslag op schijf.
 //! * Elk ander materiaal wordt GEWEIGERD met reden: er komt geen UC uit die
 //!   als "voldoet" kan lezen.
 //!
@@ -27,6 +31,7 @@
 //! toetsbrug-opdracht van die naam, het MCP-gereedschap `check_plates` en de
 //! plaattoets binnen `check_fem_model` roepen allemaal deze functie aan.
 
+pub mod hout;
 pub mod input;
 pub mod latex;
 pub mod result;
@@ -76,12 +81,7 @@ pub fn check_plate(input: &PlateCheckInput) -> PlateCheckResult {
     }
     match input.soort {
         PlaatMateriaalSoort::Staal => staal::toets(input),
-        PlaatMateriaalSoort::Hout => geweigerd(
-            input,
-            "de plaattoets voor hout (NEN-EN 1995-1-1 in de materiaalassen) is nog niet \
-             beschikbaar; er is niet getoetst"
-                .to_string(),
-        ),
+        PlaatMateriaalSoort::Hout => hout::toets(input),
         PlaatMateriaalSoort::Kruislaaghout => geweigerd(
             input,
             "kruislaaghout als plaat wordt niet getoetst: NEN-EN 1995-1-1 kent kruislaaghout niet \
