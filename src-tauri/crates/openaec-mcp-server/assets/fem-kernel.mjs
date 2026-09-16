@@ -5224,13 +5224,19 @@ function normaliseerSegmenten(beamId, segmenten, L_mm) {
     if (!(I_mm4 > 0)) {
       throw new Error(`Staaf ${beamId}, segment ${i + 1}: I moet groter dan nul zijn (mm\u2074).`);
     }
+    const A_mm2 = s.A;
+    if (A_mm2 !== void 0 && !(Number.isFinite(A_mm2) && A_mm2 > 0)) {
+      throw new Error(
+        `Staaf ${beamId}, segment ${i + 1}: A moet, als hij is opgegeven, groter dan nul zijn (mm\xB2).`
+      );
+    }
     const lengte_mm = (t1 - t0) * L_mm;
     if (L_mm > 0 && lengte_mm < KNOOP_TOL_MM) {
       throw new Error(
         `Staaf ${beamId}, segment ${i + 1}: lengte ${lengte_mm.toFixed(4)} mm is korter dan de knooptolerantie van het rekenmesh (${KNOOP_TOL_MM} mm). Zo'n segment levert een element van lengte nul op. Gebruik een grovere segmentindeling.`
       );
     }
-    return { t0, t1, I_mm4, index: i };
+    return { t0, t1, I_mm4, ...A_mm2 !== void 0 ? { A_mm2 } : {}, index: i };
   });
   if (Math.abs(uit[0].t0) > TOL || Math.abs(uit[uit.length - 1].t1 - 1) > TOL) {
     throw new Error(
@@ -5571,8 +5577,13 @@ function buildMesh(input, loadFactor) {
       const mid = (t0 + t1) / 2;
       const s = segDef.find((d) => mid >= d.t0 && mid < d.t1) ?? segDef[segDef.length - 1];
       return {
-        sec: { A: section.A, I: s.I_mm4 * 1e-12, h: section.h },
+        sec: {
+          A: s.A_mm2 !== void 0 ? s.A_mm2 * 1e-6 : section.A,
+          I: s.I_mm4 * 1e-12,
+          h: section.h
+        },
         I_mm4: s.I_mm4,
+        ...s.A_mm2 !== void 0 ? { A_mm2: s.A_mm2 } : {},
         segmentIndex: s.index
       };
     };
@@ -5596,7 +5607,7 @@ function buildMesh(input, loadFactor) {
       if (segDef) {
         segmentUitvoer.set(
           b.id,
-          [{ meshId: meshBeam.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex }]
+          [{ meshId: meshBeam.id, I_mm4: d.I_mm4, A_mm2: d.A_mm2, segmentIndex: d.segmentIndex }]
         );
       }
     } else {
@@ -5630,7 +5641,7 @@ function buildMesh(input, loadFactor) {
         pasReleasesToe(mb.id, b, i === 0, i === knoopIds.length - 2);
         zetBedding(mb.id);
         segs.push({ meshId: mb.id, t0: grens[i], t1: grens[i + 1] });
-        stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, segmentIndex: d.segmentIndex });
+        stukken.push({ meshId: mb.id, I_mm4: d.I_mm4, A_mm2: d.A_mm2, segmentIndex: d.segmentIndex });
       }
       if (segs.length > 0) {
         beamIdMap.set(b.id, segs[0].meshId);
@@ -6137,6 +6148,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
         xStart: offset_m * 1e3,
         xEnd: (offset_m + L_stuk_m) * 1e3,
         I: stuk.I_mm4,
+        ...stuk.A_mm2 !== void 0 ? { A: stuk.A_mm2 } : {},
         segmentIndex: stuk.segmentIndex,
         N_start: -(nArr[0] ?? 0),
         N_end: -(nArr[nArr.length - 1] ?? 0),
@@ -7378,6 +7390,10 @@ function staafInReferentierichting(beam, nodes) {
   if (!referentieVanStaaf(beam, nodes).gespiegeld) return beam;
   const lengteMm = beamLengthMm(beam, nodes);
   const uit = { ...beam, from: beam.to, to: beam.from };
+  if (beam.profileEnd !== void 0) {
+    uit.profile = beam.profileEnd;
+    uit.profileEnd = beam.profile;
+  }
   if (beam.releases) uit.releases = spiegelEinden(beam.releases);
   if (beam.veren) uit.veren = spiegelEinden(beam.veren);
   if (beam.checkConfig) uit.checkConfig = spiegelToetsconfig(beam.checkConfig, lengteMm);
@@ -7408,6 +7424,9 @@ function toetsdataInReferentierichting(data) {
       )
     )
   };
+}
+function zijdenInWereldtermen(staafstand) {
+  return staafstand === "Staand" ? { onder: "rechts", boven: "links" } : { onder: "onder", boven: "boven" };
 }
 function nl(v) {
   return String(Math.round(v * 100) / 100).replace(".", ",");
@@ -7465,6 +7484,34 @@ function zeegNotities(beam, nodes) {
     `De opgegeven zeeg van ${nl(zeeg)} mm is NIET verrekend. NEN-EN 1990 A1.4.3(2) definieert de zeeg w_c bij de VERTICALE doorbuiging (figuur A1.1); deze staaf staat overwegend verticaal (75\xB0 of meer met de horizontaal), en daar bestaat "omhoog" loodrecht op de staaf niet. Een zeeg verandert bovendien de horizontale verplaatsing van de kop ten opzichte van de voet niet.`
   ];
 }
+var SPIEGELREGELS_ELEMENTKRACHTEN = {
+  N: "de normaalkracht aan het nieuwe begin (het oude eind); trek blijft trek",
+  V: "de dwarskracht aan het nieuwe begin; V = dM/dx en x \xE9n M klappen om, dus geen tekenwissel",
+  M_start: "\u2212M_end: het moment aan het oude eind, met omgekeerd teken",
+  M_end: "\u2212M_start",
+  L_mm: "gelijk",
+  stations_mm: "L \u2212 x, in omgekeerde volgorde",
+  normalForce: "omgekeerde volgorde, zelfde teken",
+  shearForce: "omgekeerde volgorde, zelfde teken",
+  bendingMoment: "omgekeerde volgorde, tegengesteld teken (+y klapt om, dus 'onder' ook)",
+  deflection: "omgekeerde volgorde, tegengesteld teken (w staat langs lokaal +y)",
+  axialDisp: "omgekeerde volgorde, tegengesteld teken (u staat langs de staafas)",
+  rotation: "omgekeerde volgorde, zelfde teken (een draaiing in het vlak hangt niet aan de as)",
+  segmenten: "x \u2192 L \u2212 x, begin en eind verwisseld, momenten tegengesteld; segmentIndex blijft"
+};
+var SPIEGELREGELS_STAAF = {
+  id: "gelijk",
+  from: "wordt de eindknoop",
+  to: "wordt de beginknoop",
+  material: "gelijk",
+  profile: "wordt het eindprofiel als er een verloop is (profileEnd); anders gelijk",
+  profileEnd: "wordt het beginprofiel: begin en eind van het verloop verwisseld",
+  releases: "begin en eind verwisseld",
+  veren: "begin en eind verwisseld",
+  checkConfig: "per veld, zie SPIEGELREGELS_TOETSCONFIG",
+  loadRole: "gelijk: het staaftype hangt niet aan de tekenrichting",
+  bedding: "gelijk: over de hele staaf"
+};
 var SPIEGELREGELS_TOETSCONFIG = {
   bucklingLengthY_m: "gelijk",
   bucklingLengthZ_m: "gelijk",
@@ -10867,6 +10914,5855 @@ function beoordeelCombinatiesBijOpenen(p) {
   return { weesFactoren, blijvend, samenvatting: samenvatting.trim() };
 }
 
+// src/lib/steelSectionDims.generated.ts
+var STEEL_SECTION_DIMS = {
+  "UNP350": {
+    kind: "Channel",
+    naam: "UNP350",
+    h: 350,
+    b: 100,
+    tw: 14,
+    tf: 16,
+    r: 16,
+    flensHelling: 0.08,
+    props: { iz: 5603739, welY: 725384, welZ: 73447, wplY: 889763, wplZ: 139730, avZ: 4946, it: 603930, iw: 105718e6, iRadY: 128.7, iRadZ: 27 }
+  },
+  "HFRHS200X200X16": {
+    kind: "Shs",
+    naam: "HFRHS200X200X16",
+    h: 200,
+    b: 200,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 63935400, welY: 639354, welZ: 639354, wplY: 785472, wplZ: 785472, avZ: 5750.65, it: 10244e4, iw: 0, iRadY: 74.5585, iRadZ: 74.5585 }
+  },
+  "IPE80": {
+    kind: "ISection",
+    naam: "IPE 80",
+    h: 80,
+    b: 46,
+    tw: 3.8,
+    tf: 5.2,
+    r: 5,
+    props: { iz: 84900, welY: 2e4, welZ: 3690, wplY: 23200, wplZ: 5820, avZ: 357.4, it: 7e3, iw: 115111e3, iRadY: 32.37945829336445, iRadZ: 10.541615362469917 }
+  },
+  "IPE100": {
+    kind: "ISection",
+    naam: "IPE 100",
+    h: 100,
+    b: 55,
+    tw: 4.1,
+    tf: 5.7,
+    r: 7,
+    props: { iz: 159e3, welY: 34200, welZ: 5790, wplY: 39400, wplZ: 9150, avZ: 506.2, it: 12e3, iw: 342049e3, iRadY: 40.745480421235456, iRadZ: 12.424529449393042 }
+  },
+  "IPE120": {
+    kind: "ISection",
+    naam: "IPE 120",
+    h: 120,
+    b: 64,
+    tw: 4.4,
+    tf: 6.3,
+    r: 7,
+    props: { iz: 277e3, welY: 53e3, welZ: 8650, wplY: 60700, wplZ: 13600, avZ: 629.5, it: 17400, iw: 87183e4, iRadY: 49.08249086070214, iRadZ: 14.486148033500308 }
+  },
+  "IPE140": {
+    kind: "ISection",
+    naam: "IPE 140",
+    h: 140,
+    b: 73,
+    tw: 4.7,
+    tf: 6.9,
+    r: 7,
+    props: { iz: 449e3, welY: 77300, welZ: 12300, wplY: 88300, wplZ: 19300, avZ: 761.6, it: 24500, iw: 195034e4, iRadY: 57.43501099333819, iRadZ: 16.5463134203628 }
+  },
+  "IPE160": {
+    kind: "ISection",
+    naam: "IPE 160",
+    h: 160,
+    b: 82,
+    tw: 5,
+    tf: 7.4,
+    r: 9,
+    props: { iz: 683e3, welY: 109e3, welZ: 16700, wplY: 124e3, wplZ: 26100, avZ: 966.6, it: 36e3, iw: 388826e4, iRadY: 65.75243786033423, iRadZ: 18.43369184468688 }
+  },
+  "IPE180": {
+    kind: "ISection",
+    naam: "IPE 180",
+    h: 180,
+    b: 91,
+    tw: 5.3,
+    tf: 8,
+    r: 9,
+    props: { iz: 101e4, welY: 146e3, welZ: 22200, wplY: 166e3, wplZ: 34600, avZ: 1120.4, it: 47900, iw: 732103e4, iRadY: 74.31697351413912, iRadZ: 20.55709469403238 }
+  },
+  "IPE200": {
+    kind: "ISection",
+    naam: "IPE 200",
+    h: 200,
+    b: 100,
+    tw: 5.6,
+    tf: 8.5,
+    r: 12,
+    props: { iz: 142e4, welY: 194e3, welZ: 28500, wplY: 221e3, wplZ: 44600, avZ: 1401.6, it: 69800, iw: 127449e5, iRadY: 82.50465164982911, iRadZ: 22.321416040096732 }
+  },
+  "IPE220": {
+    kind: "ISection",
+    naam: "IPE 220",
+    h: 220,
+    b: 110,
+    tw: 5.9,
+    tf: 9.2,
+    r: 12,
+    props: { iz: 205e4, welY: 252e3, welZ: 37300, wplY: 285e3, wplZ: 58100, avZ: 1591.1, it: 90700, iw: 223082e5, iRadY: 91.06817871052816, iRadZ: 24.774431478639833 }
+  },
+  "IPE240": {
+    kind: "ISection",
+    naam: "IPE 240",
+    h: 240,
+    b: 120,
+    tw: 6.2,
+    tf: 9.8,
+    r: 15,
+    props: { iz: 284e4, welY: 324e3, welZ: 47300, wplY: 367e3, wplZ: 73900, avZ: 1912.8, it: 129e3, iw: 36677e6, iRadY: 99.74391763340427, iRadZ: 26.950746019311644 }
+  },
+  "IPE270": {
+    kind: "ISection",
+    naam: "IPE 270",
+    h: 270,
+    b: 135,
+    tw: 6.6,
+    tf: 10.2,
+    r: 15,
+    props: { iz: 42e5, welY: 429e3, welZ: 62200, wplY: 484e3, wplZ: 97e3, avZ: 2209.3, it: 159e3, iw: 694639e5, iRadY: 112.31375287544851, iRadZ: 30.249507099101006 }
+  },
+  "IPE300": {
+    kind: "ISection",
+    naam: "IPE 300",
+    h: 300,
+    b: 150,
+    tw: 7.1,
+    tf: 10.7,
+    r: 15,
+    props: { iz: 604e4, welY: 557e3, welZ: 80500, wplY: 628e3, wplZ: 125e3, avZ: 2567, it: 201e3, iw: 124247e6, iRadY: 124.65565954760767, iRadZ: 33.50636625964759 }
+  },
+  "IPE330": {
+    kind: "ISection",
+    naam: "IPE 330",
+    h: 330,
+    b: 160,
+    tw: 7.5,
+    tf: 11.5,
+    r: 18,
+    props: { iz: 788e4, welY: 713e3, welZ: 98500, wplY: 804e3, wplZ: 154e3, avZ: 3080.3, it: 282e3, iw: 196075e6, iRadY: 137.12008216489426, iRadZ: 35.47937347941777 }
+  },
+  "IPE360": {
+    kind: "ISection",
+    naam: "IPE 360",
+    h: 360,
+    b: 170,
+    tw: 8,
+    tf: 12.7,
+    r: 18,
+    props: { iz: 104e5, welY: 904e3, welZ: 123e3, wplY: 102e4, wplZ: 191e3, avZ: 3510.8, it: 373e3, iw: 309344e6, iRadY: 149.59826992945878, iRadZ: 37.82243317357027 }
+  },
+  "IPE400": {
+    kind: "ISection",
+    naam: "IPE 400",
+    h: 400,
+    b: 180,
+    tw: 8.6,
+    tf: 13.5,
+    r: 21,
+    props: { iz: 132e5, welY: 116e4, welZ: 146e3, wplY: 131e4, wplZ: 229e3, avZ: 4273.1, it: 511e3, iw: 482854e6, iRadY: 165.44721534401467, iRadZ: 39.52379254973886 }
+  },
+  "IPE450": {
+    kind: "ISection",
+    naam: "IPE 450",
+    h: 450,
+    b: 190,
+    tw: 9.4,
+    tf: 14.6,
+    r: 21,
+    props: { iz: 168e5, welY: 15e5, welZ: 176e3, wplY: 17e5, wplZ: 276e3, avZ: 5082.4, it: 669e3, iw: 780918e6, iRadY: 184.79663841869584, iRadZ: 41.23596559193922 }
+  },
+  "IPE500": {
+    kind: "ISection",
+    naam: "IPE 500",
+    h: 500,
+    b: 200,
+    tw: 10.2,
+    tf: 16,
+    r: 21,
+    props: { iz: 214e5, welY: 193e4, welZ: 214e3, wplY: 219e4, wplZ: 336e3, avZ: 6035.2, it: 893e3, iw: 123532e7, iRadY: 203.84240024570707, iRadZ: 42.951456159330576 }
+  },
+  "IPE550": {
+    kind: "ISection",
+    naam: "IPE 550",
+    h: 550,
+    b: 210,
+    tw: 11.1,
+    tf: 17.2,
+    r: 24,
+    props: { iz: 267e5, welY: 244e4, welZ: 254e3, wplY: 278e4, wplZ: 401e3, avZ: 7192.5, it: 123e4, iw: 186139e7, iRadY: 223.80695306179825, iRadZ: 44.63784620064946 }
+  },
+  "IPE600": {
+    kind: "ISection",
+    naam: "IPE 600",
+    h: 600,
+    b: 220,
+    tw: 12,
+    tf: 19,
+    r: 24,
+    props: { iz: 339e5, welY: 307e4, welZ: 308e3, wplY: 351e4, wplZ: 486e3, avZ: 8380, it: 165e4, iw: 281452e7, iRadY: 242.95193151247227, iRadZ: 46.616273157309806 }
+  },
+  "HEA100": {
+    kind: "ISection",
+    naam: "HEA 100",
+    h: 96,
+    b: 100,
+    tw: 5,
+    tf: 8,
+    r: 12,
+    props: { iz: 134e4, welY: 72800, welZ: 26800, wplY: 83e3, wplZ: 41100, avZ: 752, it: 52400, iw: 247465e4, iRadY: 40.57371581571424, iRadZ: 25.141111186622464 }
+  },
+  "HEA120": {
+    kind: "ISection",
+    naam: "HEA 120",
+    h: 114,
+    b: 120,
+    tw: 5,
+    tf: 8,
+    r: 12,
+    props: { iz: 231e4, welY: 106e3, welZ: 38500, wplY: 119e3, wplZ: 58900, avZ: 842, it: 59900, iw: 62835e5, iRadY: 48.941362026368324, iRadZ: 30.216609311120095 }
+  },
+  "HEA140": {
+    kind: "ISection",
+    naam: "HEA 140",
+    h: 133,
+    b: 140,
+    tw: 5.5,
+    tf: 8.5,
+    r: 12,
+    props: { iz: 389e4, welY: 155e3, welZ: 55600, wplY: 174e3, wplZ: 85200, avZ: 1010.8, it: 81300.00000000001, iw: 147267e5, iRadY: 57.273508510218434, iRadZ: 35.197350797818764 }
+  },
+  "HEA160": {
+    kind: "ISection",
+    naam: "HEA 160",
+    h: 152,
+    b: 160,
+    tw: 6,
+    tf: 9,
+    r: 15,
+    props: { iz: 616e4, welY: 22e4, welZ: 77e3, wplY: 245e3, wplZ: 118e3, avZ: 1324, it: 122e3, iw: 306112e5, iRadY: 65.60582071234386, iRadZ: 39.84506074759307 }
+  },
+  "HEA180": {
+    kind: "ISection",
+    naam: "HEA 180",
+    h: 171,
+    b: 180,
+    tw: 6,
+    tf: 9.5,
+    r: 15,
+    props: { iz: 925e4, welY: 294e3, welZ: 103e3, wplY: 325e3, wplZ: 157e3, avZ: 1452, it: 148e3, iw: 590078e5, iRadY: 74.43681113600401, iRadZ: 45.18785904262905 }
+  },
+  "HEA200": {
+    kind: "ISection",
+    naam: "HEA 200",
+    h: 190,
+    b: 200,
+    tw: 6.5,
+    tf: 10,
+    r: 18,
+    props: { iz: 134e5, welY: 389e3, welZ: 134e3, wplY: 43e4, wplZ: 204e3, avZ: 1805, it: 209800, iw: 105568e6, iRadY: 82.81748643541141, iRadZ: 49.9069766636149 }
+  },
+  "HEA220": {
+    kind: "ISection",
+    naam: "HEA 220",
+    h: 210,
+    b: 220,
+    tw: 7,
+    tf: 11,
+    r: 18,
+    props: { iz: 195e5, welY: 515e3, welZ: 177e3, wplY: 569e3, wplZ: 271e3, avZ: 2063, it: 285e3, iw: 189595e6, iRadY: 91.72614593227726, iRadZ: 55.06958696976234 }
+  },
+  "HEA240": {
+    kind: "ISection",
+    naam: "HEA 240",
+    h: 230,
+    b: 240,
+    tw: 7.5,
+    tf: 12,
+    r: 21,
+    props: { iz: 277e5, welY: 675e3, welZ: 231e3, wplY: 745e3, wplZ: 352e3, avZ: 2514, it: 416e3, iw: 321612e6, iRadY: 100.51948401512348, iRadZ: 60.056397105831564 }
+  },
+  "HEA260": {
+    kind: "ISection",
+    naam: "HEA 260",
+    h: 250,
+    b: 260,
+    tw: 7.5,
+    tf: 12.5,
+    r: 24,
+    props: { iz: 367e5, welY: 836e3, welZ: 282e3, wplY: 92e4, wplZ: 43e4, avZ: 2873.8, it: 524e3, iw: 504943e6, iRadY: 109.72315392346522, iRadZ: 65.02392328272988 }
+  },
+  "HEA280": {
+    kind: "ISection",
+    naam: "HEA 280",
+    h: 270,
+    b: 280,
+    tw: 8,
+    tf: 13,
+    r: 24,
+    props: { iz: 476e5, welY: 101e4, welZ: 34e4, wplY: 111e4, wplZ: 518e3, avZ: 3178, it: 621e3, iw: 770073e6, iRadY: 118.52987793379789, iRadZ: 69.9434509510022 }
+  },
+  "HEA300": {
+    kind: "ISection",
+    naam: "HEA 300",
+    h: 290,
+    b: 300,
+    tw: 8.5,
+    tf: 14,
+    r: 27,
+    props: { iz: 631e5, welY: 126e4, welZ: 421e3, wplY: 138e4, wplZ: 641e3, avZ: 3675, it: 852e3, iw: 117461e7, iRadY: 127.68543937572298, iRadZ: 75.05950020769238 }
+  },
+  "HEA320": {
+    kind: "ISection",
+    naam: "HEA 320",
+    h: 310,
+    b: 300,
+    tw: 9,
+    tf: 15.5,
+    r: 27,
+    props: { iz: 69852972, welY: 1479497, welZ: 465686, wplY: 1628366, wplZ: 709770, avZ: 4116, it: 1084313, iw: 148244e7, iRadY: 135.8, iRadZ: 74.9 }
+  },
+  "HEA340": {
+    kind: "ISection",
+    naam: "HEA 340",
+    h: 330,
+    b: 300,
+    tw: 9.5,
+    tf: 16.5,
+    r: 27,
+    props: { iz: 744e5, welY: 168e4, welZ: 496e3, wplY: 185e4, wplZ: 756e3, avZ: 4497.8, it: 127e4, iw: 179005e7, iRadY: 144.01934951147317, iRadZ: 74.65275418807512 }
+  },
+  "HEA360": {
+    kind: "ISection",
+    naam: "HEA 360",
+    h: 350,
+    b: 300,
+    tw: 10,
+    tf: 17.5,
+    r: 27,
+    props: { iz: 789e5, welY: 189e4, welZ: 526e3, wplY: 209e4, wplZ: 803e3, avZ: 4900, it: 149e4, iw: 21375e8, iRadY: 152.2244031276294, iRadZ: 74.33175690129767 }
+  },
+  "HEA400": {
+    kind: "ISection",
+    naam: "HEA 400",
+    h: 390,
+    b: 300,
+    tw: 11,
+    tf: 19,
+    r: 27,
+    props: { iz: 85638935, welY: 2311600, welZ: 570926, wplY: 2562154, wplZ: 872900, avZ: 5735, it: 1897649, iw: 289336e7, iRadY: 168.4, iRadZ: 73.4 }
+  },
+  "HEB100": {
+    kind: "ISection",
+    naam: "HEB 100",
+    h: 100,
+    b: 100,
+    tw: 6,
+    tf: 10,
+    r: 12,
+    props: { iz: 167e4, welY: 89900, welZ: 33500, wplY: 104e3, wplZ: 51400, avZ: 900, it: 92500, iw: 32313e5, iRadY: 41.60251471689218, iRadZ: 25.34379001467011 }
+  },
+  "HEB120": {
+    kind: "ISection",
+    naam: "HEB 120",
+    h: 120,
+    b: 120,
+    tw: 6.5,
+    tf: 11,
+    r: 12,
+    props: { iz: 318e4, welY: 144e3, welZ: 53e3, wplY: 165e3, wplZ: 81e3, avZ: 1095.5, it: 138e3, iw: 912233e4, iRadY: 50.410083025008355, iRadZ: 30.582578662484607 }
+  },
+  "HEB140": {
+    kind: "ISection",
+    naam: "HEB 140",
+    h: 140,
+    b: 140,
+    tw: 7,
+    tf: 12,
+    r: 12,
+    props: { iz: 55e5, welY: 216e3, welZ: 78500, wplY: 246e3, wplZ: 12e4, avZ: 1312, it: 201e3, iw: 219597e5, iRadY: 59.25899009413461, iRadZ: 35.764084881929534 }
+  },
+  "HEB160": {
+    kind: "ISection",
+    naam: "HEB 160",
+    h: 160,
+    b: 160,
+    tw: 8,
+    tf: 13,
+    r: 15,
+    props: { iz: 889e4, welY: 311e3, welZ: 111e3, wplY: 354e3, wplZ: 17e4, avZ: 1764, it: 312e3, iw: 466548e5, iRadY: 67.71731949151578, iRadZ: 40.46233726131315 }
+  },
+  "HEB180": {
+    kind: "ISection",
+    naam: "HEB 180",
+    h: 180,
+    b: 180,
+    tw: 8.5,
+    tf: 14,
+    r: 15,
+    props: { iz: 136e5, welY: 426e3, welZ: 151e3, wplY: 481e3, wplZ: 231e3, avZ: 2029, it: 422e3, iw: 917066e5, iRadY: 76.58483770305361, iRadZ: 45.6365561001259 }
+  },
+  "HEB200": {
+    kind: "ISection",
+    naam: "HEB 200",
+    h: 200,
+    b: 200,
+    tw: 9,
+    tf: 15,
+    r: 18,
+    props: { iz: 2e7, welY: 57e4, welZ: 2e5, wplY: 642e3, wplZ: 306e3, avZ: 2485, it: 593e3, iw: 16703e7, iRadY: 85.43029595728645, iRadZ: 50.604539936925754 }
+  },
+  "HEB220": {
+    kind: "ISection",
+    naam: "HEB 220",
+    h: 220,
+    b: 220,
+    tw: 9.5,
+    tf: 16,
+    r: 18,
+    props: { iz: 284e5, welY: 736e3, welZ: 258e3, wplY: 827e3, wplZ: 396e3, avZ: 2788, it: 766e3, iw: 289455e6, iRadY: 94.28737927267832, iRadZ: 55.86482901503522 }
+  },
+  "HEB240": {
+    kind: "ISection",
+    naam: "HEB 240",
+    h: 240,
+    b: 240,
+    tw: 10,
+    tf: 17,
+    r: 21,
+    props: { iz: 392e5, welY: 938e3, welZ: 327e3, wplY: 105e4, wplZ: 5e5, avZ: 3324, it: 103e4, iw: 476202e6, iRadY: 103.06619964582939, iRadZ: 60.81211398682971 }
+  },
+  "HEB260": {
+    kind: "ISection",
+    naam: "HEB 260",
+    h: 260,
+    b: 260,
+    tw: 10,
+    tf: 17.5,
+    r: 24,
+    props: { iz: 513e5, welY: 115e4, welZ: 395e3, wplY: 128e4, wplZ: 602e3, avZ: 3715, it: 124e4, iw: 736173e6, iRadY: 112.4458438387572, iRadZ: 65.93525329532483 }
+  },
+  "HEB280": {
+    kind: "ISection",
+    naam: "HEB 280",
+    h: 280,
+    b: 280,
+    tw: 10.5,
+    tf: 18,
+    r: 24,
+    props: { iz: 659e5, welY: 138e4, welZ: 471e3, wplY: 153e4, wplZ: 718e3, avZ: 4073, it: 144e4, iw: 110704e7, iRadY: 121.28447412641957, iRadZ: 70.92625995458268 }
+  },
+  "HEB300": {
+    kind: "ISection",
+    naam: "HEB 300",
+    h: 300,
+    b: 300,
+    tw: 11,
+    tf: 19,
+    r: 27,
+    props: { iz: 856e5, welY: 168e4, welZ: 571e3, wplY: 187e4, wplZ: 871e3, avZ: 4735, it: 185e4, iw: 165079e7, iRadY: 129.97160247401902, iRadZ: 75.79555688134378 }
+  },
+  "HEB320": {
+    kind: "ISection",
+    naam: "HEB 320",
+    h: 320,
+    b: 300,
+    tw: 11.5,
+    tf: 20.5,
+    r: 27,
+    props: { iz: 924e5, welY: 193e4, welZ: 616e3, wplY: 215e4, wplZ: 94e4, avZ: 5172.8, it: 225e4, iw: 202587e7, iRadY: 138.22898959619909, iRadZ: 75.68656613047285 }
+  },
+  "HEB340": {
+    kind: "ISection",
+    naam: "HEB 340",
+    h: 340,
+    b: 300,
+    tw: 12,
+    tf: 21.5,
+    r: 27,
+    props: { iz: 969e5, welY: 216e4, welZ: 646e3, wplY: 241e4, wplZ: 986e3, avZ: 5609, it: 257e4, iw: 240523e7, iRadY: 146.46208047866608, iRadZ: 75.29928582579505 }
+  },
+  "HEB360": {
+    kind: "ISection",
+    naam: "HEB 360",
+    h: 360,
+    b: 300,
+    tw: 12.5,
+    tf: 22.5,
+    r: 27,
+    props: { iz: 1014e5, welY: 24e5, welZ: 676e3, wplY: 268e4, wplZ: 103e4, avZ: 6056.3, it: 293e4, iw: 282889e7, iRadY: 154.64387696307455, iRadZ: 74.93075430155055 }
+  },
+  "HEB400": {
+    kind: "ISection",
+    naam: "HEB 400",
+    h: 400,
+    b: 300,
+    tw: 13.5,
+    tf: 24,
+    r: 27,
+    props: { iz: 1082e5, welY: 288e4, welZ: 721e3, wplY: 323e4, wplZ: 11e5, avZ: 7e3, it: 356e4, iw: 375056e7, iRadY: 170.76524369139878, iRadZ: 73.96061040039345 }
+  },
+  "HEM100": {
+    kind: "ISection",
+    naam: "HEM 100",
+    h: 120,
+    b: 106,
+    tw: 12,
+    tf: 20,
+    r: 12,
+    props: { iz: 399e4, welY: 19e4, welZ: 75300, wplY: 235e3, wplZ: 117e3, avZ: 1800, it: 682100, iw: 941747e4, iRadY: 46.29100498862757, iRadZ: 27.386127875258307 }
+  },
+  "HEM120": {
+    kind: "ISection",
+    naam: "HEM 120",
+    h: 140,
+    b: 126,
+    tw: 12.5,
+    tf: 21,
+    r: 12,
+    props: { iz: 703e4, welY: 288e3, welZ: 112e3, wplY: 35e4, wplZ: 172e3, avZ: 2114.5, it: 916600, iw: 238624e5, iRadY: 55.15585802703821, iRadZ: 32.53820738392077 }
+  },
+  "HEM140": {
+    kind: "ISection",
+    naam: "HEM 140",
+    h: 160,
+    b: 146,
+    tw: 13,
+    tf: 22,
+    r: 12,
+    props: { iz: 114e5, welY: 411e3, welZ: 156e3, wplY: 496e3, wplZ: 241e3, avZ: 2450, it: 12e5, iw: 527826e5, iRadY: 63.88963809632517, iRadZ: 37.60840410803615 }
+  },
+  "HEM160": {
+    kind: "ISection",
+    naam: "HEM 160",
+    h: 180,
+    b: 166,
+    tw: 14,
+    tf: 23,
+    r: 15,
+    props: { iz: 176e5, welY: 566e3, welZ: 212e3, wplY: 675e3, wplZ: 327e3, avZ: 3086, it: 1624e3, iw: 104627e6, iRadY: 72.47287215754707, iRadZ: 42.57422185586412 }
+  },
+  "HEM180": {
+    kind: "ISection",
+    naam: "HEM 180",
+    h: 200,
+    b: 186,
+    tw: 14.5,
+    tf: 24,
+    r: 15,
+    props: { iz: 258e5, welY: 748e3, welZ: 277e3, wplY: 884e3, wplZ: 428e3, avZ: 3440, it: 2033e3, iw: 194181e6, iRadY: 81.36011938627347, iRadZ: 47.78269394569507 }
+  },
+  "HEM200": {
+    kind: "ISection",
+    naam: "HEM 200",
+    h: 220,
+    b: 206,
+    tw: 15,
+    tf: 25,
+    r: 18,
+    props: { iz: 365e5, welY: 967e3, welZ: 354e3, wplY: 114e4, wplZ: 549e3, avZ: 4075, it: 2594e3, iw: 336686e6, iRadY: 90.12290166533784, iRadZ: 52.78503141975699 }
+  },
+  "HEM220": {
+    kind: "ISection",
+    naam: "HEM 220",
+    h: 240,
+    b: 226,
+    tw: 15.5,
+    tf: 26,
+    r: 18,
+    props: { iz: 502e5, welY: 122e4, welZ: 444e3, wplY: 143e4, wplZ: 69e4, avZ: 4487, it: 3153e3, iw: 559281e6, iRadY: 98.9881695866774, iRadZ: 58.04418589986876 }
+  },
+  "HEM240": {
+    kind: "ISection",
+    naam: "HEM 240",
+    h: 270,
+    b: 248,
+    tw: 18,
+    tf: 32,
+    r: 21,
+    props: { iz: 815e5, welY: 18e5, welZ: 657e3, wplY: 212e4, wplZ: 102e4, avZ: 6048, it: 6279e3, iw: 112285e7, iRadY: 110.20435563080073, iRadZ: 63.835726674018524 }
+  },
+  "HEM260": {
+    kind: "ISection",
+    naam: "HEM 260",
+    h: 290,
+    b: 268,
+    tw: 18,
+    tf: 32.5,
+    r: 24,
+    props: { iz: 1045e5, welY: 216e4, welZ: 78e4, wplY: 253e4, wplZ: 121e4, avZ: 6725, it: 719e4, iw: 168308e7, iRadY: 119.29718429962286, iRadZ: 68.92024376045111 }
+  },
+  "HEM280": {
+    kind: "ISection",
+    naam: "HEM 280",
+    h: 310,
+    b: 288,
+    tw: 18.5,
+    tf: 33,
+    r: 24,
+    props: { iz: 1316e5, welY: 255e4, welZ: 914e3, wplY: 297e4, wplZ: 142e4, avZ: 7186.5, it: 8073e3, iw: 246184e7, iRadY: 128.3712065327216, iRadZ: 74.04953297174353 }
+  },
+  "HEM300": {
+    kind: "ISection",
+    naam: "HEM 300",
+    h: 340,
+    b: 310,
+    tw: 21,
+    tf: 39,
+    r: 27,
+    props: { iz: 194e6, welY: 348e4, welZ: 125e4, wplY: 408e4, wplZ: 195e4, avZ: 9045, it: 1408e4, iw: 427798e7, iRadY: 139.77823076351888, iRadZ: 80.01649994861312 }
+  },
+  "SHS80X80X4": {
+    kind: "Shs",
+    naam: "SHS 80x80x4",
+    h: 80,
+    b: 80,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 1144550, welY: 28613.9, welZ: 28613.9, wplY: 33975.5, wplZ: 33975.5, avZ: 599.416, it: 1793520, iw: 0, iRadY: 30.8986, iRadZ: 30.8986 }
+  },
+  "SHS100X100X5": {
+    kind: "Shs",
+    naam: "SHS 100x100x5",
+    h: 100,
+    b: 100,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 2794320, welY: 55886.5, welZ: 55886.5, wplY: 66358.4, wplZ: 66358.4, avZ: 936.587, it: 4378720, iw: 0, iRadY: 38.6233, iRadZ: 38.6233 }
+  },
+  "SHS120X120X5": {
+    kind: "Shs",
+    naam: "SHS 120x120x5",
+    h: 120,
+    b: 120,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 4977140, welY: 82952.4, welZ: 82952.4, wplY: 97590.1, wplZ: 97590.1, avZ: 1136.59, it: 7746560, iw: 0, iRadY: 46.7922, iRadZ: 46.7922 }
+  },
+  "SHS150X150X6": {
+    kind: "Shs",
+    naam: "SHS 150x150x6",
+    h: 150,
+    b: 150,
+    tw: 6,
+    tf: 6,
+    r: 9,
+    props: { iz: 11735600, welY: 156474, welZ: 156474, wplY: 183748, wplZ: 183748, avZ: 1708.69, it: 18240300, iw: 0, iRadY: 58.6011, iRadZ: 58.6011 }
+  },
+  "SHS200X200X8": {
+    kind: "Shs",
+    naam: "SHS 200x200x8",
+    h: 200,
+    b: 200,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 37090100, welY: 370901, welZ: 370901, wplY: 435550, wplZ: 435550, avZ: 3037.66, it: 57648400, iw: 0, iRadY: 78.1348, iRadZ: 78.1348 }
+  },
+  "SHS250X250X10": {
+    kind: "Shs",
+    naam: "SHS 250x250x10",
+    h: 250,
+    b: 250,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 90552100, welY: 724417, welZ: 724417, wplY: 850684, wplZ: 850684, avZ: 4746.35, it: 140743e3, iw: 0, iRadY: 97.6685, iRadZ: 97.6685 }
+  },
+  "SHS300X300X10": {
+    kind: "Shs",
+    naam: "SHS 300x300x10",
+    h: 300,
+    b: 300,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 160261e3, welY: 1068410, welZ: 1068410, wplY: 1245500, wplZ: 1245500, avZ: 5746.35, it: 247695e3, iw: 0, iRadY: 118.087, iRadZ: 118.087 }
+  },
+  "RHS100X50X4": {
+    kind: "Rhs",
+    naam: "RHS 100x50x4",
+    h: 100,
+    b: 50,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 461881, welY: 27920, welZ: 18475.2, wplY: 35243.8, wplZ: 21473, avZ: 745.888, it: 1121910, iw: 0, iRadY: 35.3232, iRadZ: 20.3181 }
+  },
+  "RHS120X60X5": {
+    kind: "Rhs",
+    naam: "RHS 120x60x5",
+    h: 120,
+    b: 60,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 987592, welY: 49869, welZ: 32919.7, wplY: 63090.1, wplZ: 38394.9, avZ: 1115.45, it: 2404260, iw: 0, iRadY: 42.2883, iRadZ: 24.2951 }
+  },
+  "RHS150X100X6": {
+    kind: "Rhs",
+    naam: "RHS 150x100x6",
+    h: 150,
+    b: 100,
+    tw: 6,
+    tf: 6,
+    r: 9,
+    props: { iz: 4559020, welY: 114978, welZ: 91180.4, wplY: 140548, wplZ: 105814, avZ: 1690.42, it: 9427380, iw: 0, iRadY: 55.3243, iRadZ: 40.2266 }
+  },
+  "RHS200X100X8": {
+    kind: "Rhs",
+    naam: "RHS 200x100x8",
+    h: 200,
+    b: 100,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 7390090, welY: 223360, welZ: 147802, wplY: 281950, wplZ: 171784, avZ: 2983.55, it: 17950500, iw: 0, iRadY: 70.6465, iRadZ: 40.6362 }
+  },
+  "RHS250X150X8": {
+    kind: "Rhs",
+    naam: "RHS 250x150x8",
+    h: 250,
+    b: 150,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 22980100, welY: 408915, welZ: 306401, wplY: 500634, wplZ: 350467, avZ: 3797.08, it: 50077500, iw: 0, iRadY: 91.7248, iRadZ: 61.5023 }
+  },
+  "RHS300X200X10": {
+    kind: "Rhs",
+    naam: "RHS 300x200x10",
+    h: 300,
+    b: 200,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 62775800, welY: 787962, welZ: 627758, wplY: 955502, wplZ: 720867, avZ: 5695.62, it: 128764e3, iw: 0, iRadY: 111.584, iRadZ: 81.3208 }
+  },
+  "CHS424X32": {
+    kind: "Chs",
+    naam: "CHS 42.4x3.2",
+    h: 42.4,
+    b: 42.4,
+    tw: 3.2,
+    tf: 3.2,
+    r: 0,
+    props: { iz: 76199.6, welY: 3594.32, welZ: 3594.32, wplY: 4928.17, wplZ: 4928.17, avZ: 250.88, it: 152399, iw: 0, iRadY: 13.9054, iRadZ: 13.9054 }
+  },
+  "CHS483X32": {
+    kind: "Chs",
+    naam: "CHS 48.3x3.2",
+    h: 48.3,
+    b: 48.3,
+    tw: 3.2,
+    tf: 3.2,
+    r: 0,
+    props: { iz: 115857, welY: 4797.37, welZ: 4797.37, wplY: 6519.75, wplZ: 6519.75, avZ: 288.64, it: 231713, iw: 0, iRadY: 15.9853, iRadZ: 15.9853 }
+  },
+  "CHS603X40": {
+    kind: "Chs",
+    naam: "CHS 60.3x4.0",
+    h: 60.3,
+    b: 60.3,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 281729, welY: 9344.25, welZ: 9344.25, wplY: 12700.1, wplZ: 12700.1, avZ: 450.4, it: 563458, iw: 0, iRadY: 19.9552, iRadZ: 19.9552 }
+  },
+  "CHS761X50": {
+    kind: "Chs",
+    naam: "CHS 76.1x5.0",
+    h: 76.1,
+    b: 76.1,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 709220, welY: 18639.2, welZ: 18639.2, wplY: 25317.7, wplZ: 25317.7, avZ: 711, it: 1418440, iw: 0, iRadY: 25.1997, iRadZ: 25.1997 }
+  },
+  "CHS889X50": {
+    kind: "Chs",
+    naam: "CHS 88.9x5.0",
+    h: 88.9,
+    b: 88.9,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 1163740, welY: 26180.8, welZ: 26180.8, wplY: 35237.7, wplZ: 35237.7, avZ: 839, it: 2327480, iw: 0, iRadY: 29.7158, iRadZ: 29.7158 }
+  },
+  "CHS1143X63": {
+    kind: "Chs",
+    naam: "CHS 114.3x6.3",
+    h: 114.3,
+    b: 114.3,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 3127140, welY: 54718.1, welZ: 54718.1, wplY: 73566.5, wplZ: 73566.5, avZ: 1360.8, it: 6254280, iw: 0, iRadY: 38.2487, iRadZ: 38.2487 }
+  },
+  "CHS1397X80": {
+    kind: "Chs",
+    naam: "CHS 139.7x8.0",
+    h: 139.7,
+    b: 139.7,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 7202890, welY: 103119, welZ: 103119, wplY: 138930, wplZ: 138930, avZ: 2107.2, it: 14405800, iw: 0, iRadY: 46.6488, iRadZ: 46.6488 }
+  },
+  "CHS1683X80": {
+    kind: "Chs",
+    naam: "CHS 168.3x8.0",
+    h: 168.3,
+    b: 168.3,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 12972700, welY: 154162, welZ: 154162, wplY: 205739, wplZ: 205739, avZ: 2564.8, it: 25945400, iw: 0, iRadY: 56.7451, iRadZ: 56.7451 }
+  },
+  "CHS2191X10": {
+    kind: "Chs",
+    naam: "CHS 219.1x10",
+    h: 219.1,
+    b: 219.1,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 35984400, welY: 328475, welZ: 328475, wplY: 437561, wplZ: 437561, avZ: 4182, it: 71968800, iw: 0, iRadY: 74.0125, iRadZ: 74.0125 }
+  },
+  "CHS273X10": {
+    kind: "Chs",
+    naam: "CHS 273x10",
+    h: 273,
+    b: 273,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 71540900, welY: 524109, welZ: 524109, wplY: 692023, wplZ: 692023, avZ: 5260, it: 143082e3, iw: 0, iRadY: 93.0517, iRadZ: 93.0517 }
+  },
+  "CHS3239X125": {
+    kind: "Chs",
+    naam: "CHS 323.9x12.5",
+    h: 323.9,
+    b: 323.9,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 148465e3, welY: 916735, welZ: 916735, wplY: 1212780, wplZ: 1212780, avZ: 7785, it: 296931e3, iw: 0, iRadY: 110.185, iRadZ: 110.185 }
+  },
+  "CHS4064X16": {
+    kind: "Chs",
+    naam: "CHS 406.4x16",
+    h: 406.4,
+    b: 406.4,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 374488e3, welY: 1842950, welZ: 1842950, wplY: 2439960, wplZ: 2439960, avZ: 12492.8, it: 748976e3, iw: 0, iRadY: 138.143, iRadZ: 138.143 }
+  },
+  "UNP80": {
+    kind: "Channel",
+    naam: "UNP 80",
+    h: 80,
+    b: 45,
+    tw: 6,
+    tf: 8,
+    r: 8,
+    flensHelling: 0.08,
+    props: { iz: 193581, welY: 26482.5, welZ: 6351.06, wplY: 31898.3, wplZ: 12081.4, avZ: 494.34, it: 21519.2, iw: 167587e3, iRadY: 30.9993, iRadZ: 13.2517 }
+  },
+  "UNP100": {
+    kind: "Channel",
+    naam: "UNP 100",
+    h: 100,
+    b: 50,
+    tw: 6,
+    tf: 8.5,
+    r: 8.5,
+    flensHelling: 0.08,
+    props: { iz: 292339, welY: 41100.7, welZ: 8479.91, wplY: 48997.9, wplZ: 16238.1, avZ: 619.39, it: 28212.4, iw: 413199e3, iRadY: 39.0719, iRadZ: 14.7366 }
+  },
+  "UNP120": {
+    kind: "Channel",
+    naam: "UNP 120",
+    h: 120,
+    b: 55,
+    tw: 7,
+    tf: 9,
+    r: 9,
+    flensHelling: 0.08,
+    props: { iz: 430621, welY: 60721.6, welZ: 11058.5, wplY: 72701.8, wplZ: 21267.6, avZ: 852.712, it: 41383.5, iw: 898945e3, iRadY: 46.3113, iRadZ: 15.9216 }
+  },
+  "UNP140": {
+    kind: "Channel",
+    naam: "UNP 140",
+    h: 140,
+    b: 60,
+    tw: 7,
+    tf: 10,
+    r: 10,
+    flensHelling: 0.08,
+    props: { iz: 624853, welY: 86401.9, welZ: 14721.2, wplY: 102773, wplZ: 28319.1, avZ: 1006.98, it: 57117.5, iw: 179977e4, iRadY: 54.4901, iRadZ: 17.5144 }
+  },
+  "UNP160": {
+    kind: "Channel",
+    naam: "UNP 160",
+    h: 160,
+    b: 65,
+    tw: 7.5,
+    tf: 10.5,
+    r: 10.5,
+    flensHelling: 0.08,
+    props: { iz: 852430, welY: 115658, welZ: 18298, wplY: 137608, wplZ: 35219.7, avZ: 1226.39, it: 74262.4, iw: 326004e4, iRadY: 62.0599, iRadZ: 18.8368 }
+  },
+  "UNP180": {
+    kind: "Channel",
+    naam: "UNP 180",
+    h: 180,
+    b: 70,
+    tw: 8,
+    tf: 11,
+    r: 11,
+    flensHelling: 0.08,
+    props: { iz: 1134990, welY: 150434, welZ: 22379.6, wplY: 179115, wplZ: 43068.1, avZ: 1465.57, it: 95049, iw: 556745e4, iRadY: 69.5796, iRadZ: 20.1457 }
+  },
+  "UNP200": {
+    kind: "Channel",
+    naam: "UNP 200",
+    h: 200,
+    b: 75,
+    tw: 8.5,
+    tf: 11.5,
+    r: 11.5,
+    flensHelling: 0.08,
+    props: { iz: 1480500, welY: 191181, welZ: 26998, wplY: 227850, wplZ: 51957.7, avZ: 1724.53, it: 119949, iw: 906587e4, iRadY: 77.0594, iRadZ: 21.4441 }
+  },
+  "UNP220": {
+    kind: "Channel",
+    naam: "UNP 220",
+    h: 220,
+    b: 80,
+    tw: 9,
+    tf: 12.5,
+    r: 12.5,
+    flensHelling: 0.08,
+    props: { iz: 1962440, welY: 244758, welZ: 33526.1, wplY: 291604, wplZ: 64456.3, avZ: 2014.28, it: 161334, iw: 145854e5, iRadY: 84.7828, iRadZ: 22.8898 }
+  },
+  "UNP240": {
+    kind: "Channel",
+    naam: "UNP 240",
+    h: 240,
+    b: 85,
+    tw: 9.5,
+    tf: 13,
+    r: 13,
+    flensHelling: 0.08,
+    props: { iz: 2474410, welY: 299901, welZ: 39503.1, wplY: 357666, wplZ: 75960.7, avZ: 2313.17, it: 197903, iw: 220703e5, iRadY: 92.2306, iRadZ: 24.1842 }
+  },
+  "UNP260": {
+    kind: "Channel",
+    naam: "UNP 260",
+    h: 260,
+    b: 90,
+    tw: 10,
+    tf: 14,
+    r: 14,
+    flensHelling: 0.08,
+    props: { iz: 3172710, welY: 371092, welZ: 47838.3, wplY: 442407, wplZ: 91910.2, avZ: 2644.25, it: 257156, iw: 33269e6, iRadY: 99.9581, iRadZ: 25.6342 }
+  },
+  "UNP280": {
+    kind: "Channel",
+    naam: "UNP 280",
+    h: 280,
+    b: 95,
+    tw: 10,
+    tf: 15,
+    r: 15,
+    flensHelling: 0.08,
+    props: { iz: 3981970, welY: 448279, welZ: 57151.5, wplY: 531962, wplZ: 109812, avZ: 2866.98, it: 313525, iw: 484731e5, iRadY: 108.39, iRadZ: 27.3022 }
+  },
+  "UNP300": {
+    kind: "Channel",
+    naam: "UNP 300",
+    h: 300,
+    b: 100,
+    tw: 10,
+    tf: 16,
+    r: 16,
+    flensHelling: 0.08,
+    props: { iz: 4931510, welY: 535178, welZ: 67559.6, wplY: 632364, wplZ: 129913, avZ: 3092.24, it: 379641, iw: 689843e5, iRadY: 116.881, iRadZ: 28.9695 }
+  },
+  "HEA450": {
+    kind: "ISection",
+    naam: "HEA 450",
+    h: 440,
+    b: 300,
+    tw: 11.5,
+    tf: 21,
+    r: 27,
+    props: { iz: 94653300, welY: 2896440, welZ: 631022, wplY: 3215870, wplZ: 965531, avZ: 6578.28, it: 2501090, iw: 408679e7, iRadY: 189.191, iRadZ: 72.9162 }
+  },
+  "HEA500": {
+    kind: "ISection",
+    naam: "HEA 500",
+    h: 490,
+    b: 300,
+    tw: 12,
+    tf: 23,
+    r: 27,
+    props: { iz: 103671e3, welY: 3549990, welZ: 691137, wplY: 3948860, wplZ: 1058510, avZ: 7471.78, it: 3178150, iw: 55687e8, iRadY: 209.832, iRadZ: 72.444 }
+  },
+  "HEA550": {
+    kind: "ISection",
+    naam: "HEA 550",
+    h: 540,
+    b: 300,
+    tw: 12.5,
+    tf: 24,
+    r: 27,
+    props: { iz: 10819e4, welY: 4145640, welZ: 721270, wplY: 4621820, wplZ: 1106900, avZ: 8371.78, it: 3603560, iw: 710242e7, iRadY: 229.91, iRadZ: 71.4784 }
+  },
+  "HEA600": {
+    kind: "ISection",
+    naam: "HEA 600",
+    h: 590,
+    b: 300,
+    tw: 13,
+    tf: 25,
+    r: 27,
+    props: { iz: 112713e3, welY: 4786720, welZ: 751421, wplY: 5350390, wplZ: 1155660, avZ: 9320.78, it: 4068810, iw: 887882e7, iRadY: 249.71, iRadZ: 70.5495 }
+  },
+  "HEA650": {
+    kind: "ISection",
+    naam: "HEA 650",
+    h: 640,
+    b: 300,
+    tw: 13.5,
+    tf: 26,
+    r: 27,
+    props: { iz: 117239e3, welY: 5474320, welZ: 781592, wplY: 6136290, wplZ: 1204790, avZ: 10318.8, it: 4576040, iw: 109141e8, iRadY: 269.251, iRadZ: 69.6552 }
+  },
+  "HEA700": {
+    kind: "ISection",
+    naam: "HEA 700",
+    h: 690,
+    b: 300,
+    tw: 14.5,
+    tf: 27,
+    r: 27,
+    props: { iz: 121788e3, welY: 6240620, welZ: 811920, wplY: 7031820, wplZ: 1256740, avZ: 11697.3, it: 5215450, iw: 132221e8, iRadY: 287.5, iRadZ: 68.3781 }
+  },
+  "HEA800": {
+    kind: "ISection",
+    naam: "HEA 800",
+    h: 790,
+    b: 300,
+    tw: 15,
+    tf: 28,
+    r: 30,
+    props: { iz: 126387e3, welY: 7682090, welZ: 842578, wplY: 8699490, wplZ: 1312260, avZ: 13882.6, it: 6086330, iw: 181119e8, iRadY: 325.827, iRadZ: 66.4967 }
+  },
+  "HEA900": {
+    kind: "ISection",
+    naam: "HEA 900",
+    h: 890,
+    b: 300,
+    tw: 16,
+    tf: 30,
+    r: 30,
+    props: { iz: 135475e3, welY: 9484830, welZ: 903165, wplY: 10811e3, wplZ: 1414480, avZ: 16332.6, it: 7490140, iw: 247466e8, iRadY: 362.88, iRadZ: 65.0126 }
+  },
+  "HEA1000": {
+    kind: "ISection",
+    naam: "HEA 1000",
+    h: 990,
+    b: 300,
+    tw: 16.5,
+    tf: 31,
+    r: 30,
+    props: { iz: 140045e3, welY: 11188800, welZ: 933630, wplY: 12824400, wplZ: 1469710, avZ: 18456.1, it: 8348450, iw: 318315e8, iRadY: 399.601, iRadZ: 63.5426 }
+  },
+  "HEB450": {
+    kind: "ISection",
+    naam: "HEB 450",
+    h: 450,
+    b: 300,
+    tw: 14,
+    tf: 26,
+    r: 27,
+    props: { iz: 117213e3, welY: 3550560, welZ: 781422, wplY: 3982370, wplZ: 1197660, avZ: 7965.78, it: 4479740, iw: 517692e7, iRadY: 191.44, iRadZ: 73.3301 }
+  },
+  "HEB500": {
+    kind: "ISection",
+    naam: "HEB 500",
+    h: 500,
+    b: 300,
+    tw: 14.5,
+    tf: 28,
+    r: 27,
+    props: { iz: 126239e3, welY: 4287030, welZ: 841595, wplY: 4814570, wplZ: 1291650, avZ: 8981.78, it: 5481370, iw: 691975e7, iRadY: 211.923, iRadZ: 72.7323 }
+  },
+  "HEB550": {
+    kind: "ISection",
+    naam: "HEB 550",
+    h: 550,
+    b: 300,
+    tw: 15,
+    tf: 29,
+    r: 27,
+    props: { iz: 130769e3, welY: 4970580, welZ: 871793, wplY: 5590610, wplZ: 1341140, avZ: 10006.8, it: 6101730, iw: 874268e7, iRadY: 231.955, iRadZ: 71.7441 }
+  },
+  "HEB600": {
+    kind: "ISection",
+    naam: "HEB 600",
+    h: 600,
+    b: 300,
+    tw: 15.5,
+    tf: 30,
+    r: 27,
+    props: { iz: 135302e3, welY: 5701370, welZ: 902016, wplY: 6425140, wplZ: 1391060, avZ: 11080.8, it: 6771260, iw: 108364e8, iRadY: 251.711, iRadZ: 70.7954 }
+  },
+  "HEB650": {
+    kind: "ISection",
+    naam: "HEB 650",
+    h: 650,
+    b: 300,
+    tw: 16,
+    tf: 31,
+    r: 27,
+    props: { iz: 13984e4, welY: 6480500, welZ: 932266, wplY: 7319880, wplZ: 1441410, avZ: 12203.8, it: 7492240, iw: 132171e8, iRadY: 271.21, iRadZ: 69.8838 }
+  },
+  "HEB700": {
+    kind: "ISection",
+    naam: "HEB 700",
+    h: 700,
+    b: 300,
+    tw: 17,
+    tf: 32,
+    r: 27,
+    props: { iz: 144409e3, welY: 7339670, welZ: 962724, wplY: 8327130, wplZ: 1495040, avZ: 13709.8, it: 8388250, iw: 15898e9, iRadY: 289.563, iRadZ: 68.6543 }
+  },
+  "HEB800": {
+    kind: "ISection",
+    naam: "HEB 800",
+    h: 800,
+    b: 300,
+    tw: 17.5,
+    tf: 33,
+    r: 30,
+    props: { iz: 149037e3, welY: 8977090, welZ: 993578, wplY: 10228700, wplZ: 1553130, avZ: 16175.1, it: 9587010, iw: 216149e8, iRadY: 327.801, iRadZ: 66.782 }
+  },
+  "HEB900": {
+    kind: "ISection",
+    naam: "HEB 900",
+    h: 900,
+    b: 300,
+    tw: 18.5,
+    tf: 35,
+    r: 30,
+    props: { iz: 158159e3, welY: 10979200, welZ: 1054390, wplY: 12584100, wplZ: 1658340, avZ: 18875.1, it: 11501900, iw: 291934e8, iRadY: 364.791, iRadZ: 65.2678 }
+  },
+  "HEB1000": {
+    kind: "ISection",
+    naam: "HEB 1000",
+    h: 1e3,
+    b: 300,
+    tw: 19,
+    tf: 36,
+    r: 30,
+    props: { iz: 162758e3, welY: 12895e3, welZ: 1085050, wplY: 14855100, wplZ: 1716270, avZ: 21248.6, it: 12670800, iw: 37337e9, iRadY: 401.458, iRadZ: 63.7846 }
+  },
+  "HEM320": {
+    kind: "ISection",
+    naam: "HEM 320",
+    h: 359,
+    b: 309,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 197093e3, welY: 3795810, welZ: 1275680, wplY: 4435030, wplZ: 1950720, avZ: 9484.78, it: 15060200, iw: 488762e7, iRadY: 147.766, iRadZ: 79.474 }
+  },
+  "HEM340": {
+    kind: "ISection",
+    naam: "HEM 340",
+    h: 377,
+    b: 309,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 197107e3, welY: 4051550, welZ: 1275770, wplY: 4717570, wplZ: 1952710, avZ: 9862.78, it: 15115700, iw: 54608e8, iRadY: 155.504, iRadZ: 78.9998 }
+  },
+  "HEM360": {
+    kind: "ISection",
+    naam: "HEM 360",
+    h: 395,
+    b: 308,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 195218e3, welY: 4297060, welZ: 1267650, wplY: 4989320, wplZ: 1942350, avZ: 10240.8, it: 15128600, iw: 600672e7, iRadY: 163.157, iRadZ: 78.2519 }
+  },
+  "HEM400": {
+    kind: "ISection",
+    naam: "HEM 400",
+    h: 432,
+    b: 307,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 193355e3, welY: 4820330, welZ: 1259640, wplY: 5570620, wplZ: 1934130, avZ: 11017.8, it: 15200200, iw: 726606e7, iRadY: 178.774, iRadZ: 77.0401 }
+  },
+  "HEM450": {
+    kind: "ISection",
+    naam: "HEM 450",
+    h: 478,
+    b: 307,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 19339e4, welY: 5501440, welZ: 1259870, wplY: 6331020, wplZ: 1939200, avZ: 11983.8, it: 15342200, iw: 90893e8, iRadY: 197.984, iRadZ: 75.9297 }
+  },
+  "HEM500": {
+    kind: "ISection",
+    naam: "HEM 500",
+    h: 524,
+    b: 306,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 191547e3, welY: 6180490, welZ: 1251940, wplY: 7094270, wplZ: 1932020, avZ: 12949.8, it: 15441500, iw: 110084e8, iRadY: 216.868, iRadZ: 74.5883 }
+  },
+  "HEM550": {
+    kind: "ISection",
+    naam: "HEM 550",
+    h: 572,
+    b: 306,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 191584e3, welY: 6922520, welZ: 1252180, wplY: 7932680, wplZ: 1937310, avZ: 13957.8, it: 15589700, iw: 133198e8, iRadY: 236.364, iRadZ: 73.527 }
+  },
+  "HEM600": {
+    kind: "ISection",
+    naam: "HEM 600",
+    h: 620,
+    b: 305,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 189755e3, welY: 7659600, welZ: 1244290, wplY: 8772090, wplZ: 1930380, avZ: 14965.8, it: 15695200, iw: 156969e8, iRadY: 255.527, iRadZ: 72.2353 }
+  },
+  "HEM650": {
+    kind: "ISection",
+    naam: "HEM 650",
+    h: 668,
+    b: 305,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 189792e3, welY: 8433160, welZ: 1244540, wplY: 9656960, wplZ: 1935670, avZ: 15973.8, it: 15843400, iw: 184229e8, iRadY: 274.527, iRadZ: 71.2615 }
+  },
+  "HEM700": {
+    kind: "ISection",
+    naam: "HEM 700",
+    h: 716,
+    b: 304,
+    tw: 21,
+    tf: 40,
+    r: 27,
+    props: { iz: 187974e3, welY: 9197710, welZ: 1236670, wplY: 10539e3, wplZ: 1928780, avZ: 16981.8, it: 15948900, iw: 211575e8, iRadY: 293.205, iRadZ: 70.0551 }
+  },
+  "HEM800": {
+    kind: "ISection",
+    naam: "HEM 800",
+    h: 814,
+    b: 303,
+    tw: 21,
+    tf: 40,
+    r: 30,
+    props: { iz: 186274e3, welY: 10874600, welZ: 1229530, wplY: 12487700, wplZ: 1930390, avZ: 19426.6, it: 16573700, iw: 274684e8, iRadY: 330.881, iRadZ: 67.8801 }
+  },
+  "HEM900": {
+    kind: "ISection",
+    naam: "HEM 900",
+    h: 910,
+    b: 302,
+    tw: 21,
+    tf: 40,
+    r: 30,
+    props: { iz: 184518e3, welY: 12537e3, welZ: 1221970, wplY: 14441800, wplZ: 1928880, avZ: 21442.6, it: 16827400, iw: 344149e8, iRadY: 366.954, iRadZ: 65.9975 }
+  },
+  "HEM1000": {
+    kind: "ISection",
+    naam: "HEM 1000",
+    h: 1008,
+    b: 302,
+    tw: 21,
+    tf: 40,
+    r: 30,
+    props: { iz: 184593e3, welY: 14331300, welZ: 1222470, wplY: 16567900, wplZ: 1939680, avZ: 23500.6, it: 17129900, iw: 426603e8, iRadY: 403.243, iRadZ: 64.4638 }
+  },
+  "UPE80": {
+    kind: "Channel",
+    naam: "UPE 80",
+    h: 80,
+    b: 50,
+    tw: 4,
+    tf: 7,
+    r: 10,
+    flensHelling: 0,
+    props: { iz: 254133, welY: 26801.1, welZ: 7984.04, wplY: 31226.5, wplZ: 13945.3, avZ: 404.92, it: 14593.9, iw: 237134e3, iRadY: 32.6294, iRadZ: 15.8867 }
+  },
+  "UPE100": {
+    kind: "Channel",
+    naam: "UPE 100",
+    h: 100,
+    b: 55,
+    tw: 4.5,
+    tf: 7.5,
+    r: 10,
+    flensHelling: 0,
+    props: { iz: 382139, welY: 41372.6, welZ: 10633.7, wplY: 48012.6, wplZ: 18876.9, avZ: 534.17, it: 20069, iw: 568125e3, iRadY: 40.6737, iRadZ: 17.4817 }
+  },
+  "UPE120": {
+    kind: "Channel",
+    naam: "UPE 120",
+    h: 120,
+    b: 60,
+    tw: 5,
+    tf: 8,
+    r: 12,
+    flensHelling: 0,
+    props: { iz: 553982, welY: 60583.7, welZ: 13791.1, wplY: 70328.2, wplZ: 24799.8, avZ: 717.805, it: 28790.1, iw: 119715e4, iRadY: 48.5555, iRadZ: 18.9554 }
+  },
+  "UPE140": {
+    kind: "Channel",
+    naam: "UPE 140",
+    h: 140,
+    b: 65,
+    tw: 5,
+    tf: 9,
+    r: 12,
+    flensHelling: 0,
+    props: { iz: 787006, welY: 85637.4, welZ: 18188.8, wplY: 98844.5, wplZ: 32579.6, avZ: 824.805, it: 40316.4, iw: 233721e4, iRadY: 57.0504, iRadZ: 20.6713 }
+  },
+  "UPE160": {
+    kind: "Channel",
+    naam: "UPE 160",
+    h: 160,
+    b: 70,
+    tw: 5.5,
+    tf: 9.5,
+    r: 12,
+    flensHelling: 0,
+    props: { iz: 1068250, welY: 113883, welZ: 22582.4, wplY: 131610, wplZ: 40723.3, avZ: 1003.56, it: 51875.1, iw: 417965e4, iRadY: 64.8356, iRadZ: 22.2012 }
+  },
+  "UPE180": {
+    kind: "Channel",
+    naam: "UPE 180",
+    h: 180,
+    b: 75,
+    tw: 5.5,
+    tf: 10.5,
+    r: 12,
+    flensHelling: 0,
+    props: { iz: 1437050, welY: 150382, welZ: 28556.8, wplY: 172990, wplZ: 51296.3, avZ: 1120.06, it: 69821.2, iw: 715819e4, iRadY: 73.4125, iRadZ: 23.9214 }
+  },
+  "UPE200": {
+    kind: "Channel",
+    naam: "UPE 200",
+    h: 200,
+    b: 80,
+    tw: 6,
+    tf: 11,
+    r: 13,
+    flensHelling: 0,
+    props: { iz: 1872970, welY: 190930, welZ: 34428.7, wplY: 220091, wplZ: 62196.7, avZ: 1349.54, it: 88704.7, iw: 115651e5, iRadY: 81.133, iRadZ: 25.4112 }
+  },
+  "UPE220": {
+    kind: "Channel",
+    naam: "UPE 220",
+    h: 220,
+    b: 85,
+    tw: 6.5,
+    tf: 12,
+    r: 13,
+    flensHelling: 0,
+    props: { iz: 2464350, welY: 243855, welZ: 42507.4, wplY: 281484, wplZ: 76876.1, avZ: 1580.54, it: 120323, iw: 184412e5, iRadY: 88.9988, iRadZ: 26.9757 }
+  },
+  "UPE240": {
+    kind: "Channel",
+    naam: "UPE 240",
+    h: 240,
+    b: 90,
+    tw: 7,
+    tf: 12.5,
+    r: 15,
+    flensHelling: 0,
+    props: { iz: 3109340, welY: 299899, welZ: 50082.1, wplY: 346889, wplZ: 90845.6, avZ: 1876.57, it: 151022, iw: 277623e5, iRadY: 96.6627, iRadZ: 28.4129 }
+  },
+  "UPE270": {
+    kind: "Channel",
+    naam: "UPE 270",
+    h: 270,
+    b: 95,
+    tw: 7.5,
+    tf: 13.5,
+    r: 15,
+    flensHelling: 0,
+    props: { iz: 4010020, welY: 389223, welZ: 60692.6, wplY: 451088, wplZ: 110214, avZ: 2222.82, it: 198802, iw: 455401e5, iRadY: 108.251, iRadZ: 29.9045 }
+  },
+  "UPE300": {
+    kind: "Channel",
+    naam: "UPE 300",
+    h: 300,
+    b: 100,
+    tw: 9.5,
+    tf: 15,
+    r: 15,
+    flensHelling: 0,
+    props: { iz: 5376520, welY: 521546, welZ: 75582.6, wplY: 613351, wplZ: 136714, avZ: 3029.07, it: 314750, iw: 754594e5, iRadY: 117.55, iRadZ: 30.8164 }
+  },
+  "UPE330": {
+    kind: "Channel",
+    naam: "UPE 330",
+    h: 330,
+    b: 105,
+    tw: 11,
+    tf: 16,
+    r: 18,
+    flensHelling: 0,
+    props: { iz: 6814650, welY: 667122, welZ: 89663.5, wplY: 791892, wplZ: 161723, avZ: 3881.06, it: 451135, iw: 116336e6, iRadY: 127.445, iRadZ: 31.7103 }
+  },
+  "UPE360": {
+    kind: "Channel",
+    naam: "UPE 360",
+    h: 360,
+    b: 110,
+    tw: 12,
+    tf: 17,
+    r: 18,
+    flensHelling: 0,
+    props: { iz: 8436980, welY: 823634, welZ: 105069, wplY: 982346, wplZ: 189247, avZ: 4561.06, it: 584003, iw: 172354e6, iRadY: 137.945, iRadZ: 32.9075 }
+  },
+  "UPE400": {
+    kind: "Channel",
+    naam: "UPE 400",
+    h: 400,
+    b: 115,
+    tw: 13.5,
+    tf: 18,
+    r: 18,
+    flensHelling: 0,
+    props: { iz: 10447200, welY: 1049030, welZ: 122573, wplY: 1262660, wplZ: 220836, avZ: 5620.06, it: 790217, iw: 266306e6, iRadY: 151.071, iRadZ: 33.7109 }
+  },
+  "SHS40X40X3": {
+    kind: "Shs",
+    naam: "SHS 40x40x3",
+    h: 40,
+    b: 40,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 97750.5, welY: 4887.52, welZ: 4887.52, wplY: 5969.98, wplZ: 5969.98, avZ: 217.171, it: 156081, iw: 0, iRadY: 15.0018, iRadZ: 15.0018 }
+  },
+  "SHS40X40X4": {
+    kind: "Shs",
+    naam: "SHS 40x40x4",
+    h: 40,
+    b: 40,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 118295, welY: 5914.75, welZ: 5914.75, wplY: 7438.84, wplZ: 7438.84, avZ: 279.416, it: 191936, iw: 0, iRadY: 14.5493, iRadZ: 14.5493 }
+  },
+  "SHS40X40X5": {
+    kind: "Shs",
+    naam: "SHS 40x40x5",
+    h: 40,
+    b: 40,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 133679, welY: 6683.95, welZ: 6683.95, wplY: 8663.12, wplZ: 8663.12, avZ: 336.587, it: 219633, iw: 0, iRadY: 14.0918, iRadZ: 14.0918 }
+  },
+  "SHS50X50X3": {
+    kind: "Shs",
+    naam: "SHS 50x50x3",
+    h: 50,
+    b: 50,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 201989, welY: 8079.55, welZ: 8079.55, wplY: 9701.69, wplZ: 9701.69, avZ: 277.171, it: 318998, iw: 0, iRadY: 19.0886, iRadZ: 19.0886 }
+  },
+  "SHS50X50X4": {
+    kind: "Shs",
+    naam: "SHS 50x50x4",
+    h: 50,
+    b: 50,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 249748, welY: 9989.9, welZ: 9989.9, wplY: 12273, wplZ: 12273, avZ: 359.416, it: 400155, iw: 0, iRadY: 18.6396, iRadZ: 18.6396 }
+  },
+  "SHS50X50X5": {
+    kind: "Shs",
+    naam: "SHS 50x50x5",
+    h: 50,
+    b: 50,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 288806, welY: 11552.2, welZ: 11552.2, wplY: 14529, wplZ: 14529, avZ: 436.587, it: 468594, iw: 0, iRadY: 18.1866, iRadZ: 18.1866 }
+  },
+  "SHS50X50X63": {
+    kind: "Shs",
+    naam: "SHS 50x50x6.3",
+    h: 50,
+    b: 50,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 327622, welY: 13104.9, welZ: 13104.9, wplY: 17006.1, wplZ: 17006.1, avZ: 529.326, it: 538504, iw: 0, iRadY: 17.5918, iRadZ: 17.5918 }
+  },
+  "SHS60X60X3": {
+    kind: "Shs",
+    naam: "SHS 60x60x3",
+    h: 60,
+    b: 60,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 362144, welY: 12071.5, welZ: 12071.5, wplY: 14333.4, wplZ: 14333.4, avZ: 337.171, it: 567482, iw: 0, iRadY: 23.174, iRadZ: 23.174 }
+  },
+  "SHS60X60X4": {
+    kind: "Shs",
+    naam: "SHS 60x60x4",
+    h: 60,
+    b: 60,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 453942, welY: 15131.4, welZ: 15131.4, wplY: 18307.2, wplZ: 18307.2, avZ: 439.416, it: 720493, iw: 0, iRadY: 22.7273, iRadZ: 22.7273 }
+  },
+  "SHS60X60X5": {
+    kind: "Shs",
+    naam: "SHS 60x60x5",
+    h: 60,
+    b: 60,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 532592, welY: 17753.1, welZ: 17753.1, wplY: 21894.9, wplZ: 21894.9, avZ: 536.587, it: 855248, iw: 0, iRadY: 22.2773, iRadZ: 22.2773 }
+  },
+  "SHS60X60X63": {
+    kind: "Shs",
+    naam: "SHS 60x60x6.3",
+    h: 60,
+    b: 60,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 616453, welY: 20548.4, welZ: 20548.4, wplY: 25997.5, wplZ: 25997.5, avZ: 655.326, it: 1003030, iw: 0, iRadY: 21.6873, iRadZ: 21.6873 }
+  },
+  "SHS60X60X8": {
+    kind: "Shs",
+    naam: "SHS 60x60x8",
+    h: 60,
+    b: 60,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 697344, welY: 23244.8, welZ: 23244.8, wplY: 30437.5, wplZ: 30437.5, avZ: 797.664, it: 1149450, iw: 0, iRadY: 20.9073, iRadZ: 20.9073 }
+  },
+  "SHS70X70X36": {
+    kind: "Shs",
+    naam: "SHS 70x70x3.6",
+    h: 70,
+    b: 70,
+    tw: 3.6,
+    tf: 3.6,
+    r: 5.4,
+    props: { iz: 686485, welY: 19613.8, welZ: 19613.8, wplY: 23326.2, wplZ: 23326.2, avZ: 471.127, it: 1076950, iw: 0, iRadY: 26.9918, iRadZ: 26.9918 }
+  },
+  "SHS70X70X4": {
+    kind: "Shs",
+    naam: "SHS 70x70x4",
+    h: 70,
+    b: 70,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 746877, welY: 21339.4, welZ: 21339.4, wplY: 25541.3, wplZ: 25541.3, avZ: 519.416, it: 1176950, iw: 0, iRadY: 26.8134, iRadZ: 26.8134 }
+  },
+  "SHS70X70X5": {
+    kind: "Shs",
+    naam: "SHS 70x70x5",
+    h: 70,
+    b: 70,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 885037, welY: 25286.8, welZ: 25286.8, wplY: 30760.7, wplZ: 30760.7, avZ: 636.587, it: 1409590, iw: 0, iRadY: 26.3655, iRadZ: 26.3655 }
+  },
+  "SHS70X70X63": {
+    kind: "Shs",
+    naam: "SHS 70x70x6.3",
+    h: 70,
+    b: 70,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 1038480, welY: 29670.8, welZ: 29670.8, wplY: 36878.8, wplZ: 36878.8, avZ: 781.326, it: 1674810, iw: 0, iRadY: 25.7791, iRadZ: 25.7791 }
+  },
+  "SHS70X70X8": {
+    kind: "Shs",
+    naam: "SHS 70x70x8",
+    h: 70,
+    b: 70,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 1197550, welY: 34215.7, welZ: 34215.7, wplY: 43774.1, wplZ: 43774.1, avZ: 957.664, it: 1957960, iw: 0, iRadY: 25.0049, iRadZ: 25.0049 }
+  },
+  "SHS80X80X36": {
+    kind: "Shs",
+    naam: "SHS 80x80x3.6",
+    h: 80,
+    b: 80,
+    tw: 3.6,
+    tf: 3.6,
+    r: 5.4,
+    props: { iz: 1049050, welY: 26226.1, welZ: 26226.1, wplY: 30967.9, wplZ: 30967.9, avZ: 543.127, it: 1637240, iw: 0, iRadY: 31.0765, iRadZ: 31.0765 }
+  },
+  "SHS80X80X5": {
+    kind: "Shs",
+    naam: "SHS 80x80x5",
+    h: 80,
+    b: 80,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 1366140, welY: 34153.5, welZ: 34153.5, wplY: 41126.6, wplZ: 41126.6, avZ: 736.587, it: 2161620, iw: 0, iRadY: 30.4523, iRadZ: 30.4523 }
+  },
+  "SHS80X80X63": {
+    kind: "Shs",
+    naam: "SHS 80x80x6.3",
+    h: 80,
+    b: 80,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 1618900, welY: 40472.4, welZ: 40472.4, wplY: 49650.2, wplZ: 49650.2, avZ: 907.326, it: 2591650, iw: 0, iRadY: 29.8685, iRadZ: 29.8685 }
+  },
+  "SHS80X80X8": {
+    kind: "Shs",
+    naam: "SHS 80x80x8",
+    h: 80,
+    b: 80,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 1892720, welY: 47318, welZ: 47318, wplY: 59510.7, wplZ: 59510.7, avZ: 1117.66, it: 3070980, iw: 0, iRadY: 29.0986, iRadZ: 29.0986 }
+  },
+  "SHS80X80X10": {
+    kind: "Shs",
+    naam: "SHS 80x80x10",
+    h: 80,
+    b: 80,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 2138860, welY: 53471.6, welZ: 53471.6, wplY: 69304.9, wplZ: 69304.9, avZ: 1346.35, it: 3514130, iw: 0, iRadY: 28.1837, iRadZ: 28.1837 }
+  },
+  "SHS90X90X4": {
+    kind: "Shs",
+    naam: "SHS 90x90x4",
+    h: 90,
+    b: 90,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 1662970, welY: 36955, welZ: 36955, wplY: 43609.6, wplZ: 43609.6, avZ: 679.416, it: 2594220, iw: 0, iRadY: 34.9832, iRadZ: 34.9832 }
+  },
+  "SHS90X90X5": {
+    kind: "Shs",
+    naam: "SHS 90x90x5",
+    h: 90,
+    b: 90,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 1995900, welY: 44353.4, welZ: 44353.4, wplY: 52992.5, wplZ: 52992.5, avZ: 836.587, it: 3141330, iw: 0, iRadY: 34.5381, iRadZ: 34.5381 }
+  },
+  "SHS90X90X63": {
+    kind: "Shs",
+    naam: "SHS 90x90x6.3",
+    h: 90,
+    b: 90,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 2382910, welY: 52953.6, welZ: 52953.6, wplY: 64311.6, wplZ: 64311.6, avZ: 1033.33, it: 3791340, iw: 0, iRadY: 33.9563, iRadZ: 33.9563 }
+  },
+  "SHS90X90X8": {
+    kind: "Shs",
+    naam: "SHS 90x90x8",
+    h: 90,
+    b: 90,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 2814860, welY: 62552.4, welZ: 62552.4, wplY: 77647.4, wplZ: 77647.4, avZ: 1277.66, it: 4536490, iw: 0, iRadY: 33.1898, iRadZ: 33.1898 }
+  },
+  "SHS90X90X10": {
+    kind: "Shs",
+    naam: "SHS 90x90x10",
+    h: 90,
+    b: 90,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 3222560, welY: 71612.5, welZ: 71612.5, wplY: 91268.4, wplZ: 91268.4, avZ: 1546.35, it: 5260430, iw: 0, iRadY: 32.2799, iRadZ: 32.2799 }
+  },
+  "SHS100X100X4": {
+    kind: "Shs",
+    naam: "SHS 100x100x4",
+    h: 100,
+    b: 100,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 2318130, welY: 46362.7, welZ: 46362.7, wplY: 54443.8, wplZ: 54443.8, avZ: 759.416, it: 3603030, iw: 0, iRadY: 39.0674, iRadZ: 39.0674 }
+  },
+  "SHS100X100X63": {
+    kind: "Shs",
+    naam: "SHS 100x100x6.3",
+    h: 100,
+    b: 100,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 3355720, welY: 67114.4, welZ: 67114.4, wplY: 80862.9, wplZ: 80862.9, avZ: 1159.33, it: 5311680, iw: 0, iRadY: 38.043, iRadZ: 38.043 }
+  },
+  "SHS100X100X8": {
+    kind: "Shs",
+    naam: "SHS 100x100x8",
+    h: 100,
+    b: 100,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 3995960, welY: 79919.2, welZ: 79919.2, wplY: 98184, wplZ: 98184, avZ: 1437.66, it: 6402480, iw: 0, iRadY: 37.2792, iRadZ: 37.2792 }
+  },
+  "SHS100X100X10": {
+    kind: "Shs",
+    naam: "SHS 100x100x10",
+    h: 100,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 4620900, welY: 92418, welZ: 92418, wplY: 116232, wplZ: 116232, avZ: 1746.35, it: 7497510, iw: 0, iRadY: 36.3733, iRadZ: 36.3733 }
+  },
+  "SHS100X100X125": {
+    kind: "Shs",
+    naam: "SHS 100x100x12.5",
+    h: 100,
+    b: 100,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 5221830, welY: 104437, welZ: 104437, wplY: 135361, wplZ: 135361, avZ: 2103.67, it: 8579420, iw: 0, iRadY: 35.2296, iRadZ: 35.2296 }
+  },
+  "SHS120X120X63": {
+    kind: "Shs",
+    naam: "SHS 120x120x6.3",
+    h: 120,
+    b: 120,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 6028520, welY: 100475, welZ: 100475, wplY: 119636, wplZ: 119636, avZ: 1411.33, it: 9465510, iw: 0, iRadY: 46.2143, iRadZ: 46.2143 }
+  },
+  "SHS120X120X8": {
+    kind: "Shs",
+    naam: "SHS 120x120x8",
+    h: 120,
+    b: 120,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 7263070, welY: 121051, welZ: 121051, wplY: 146457, wplZ: 146457, avZ: 1757.66, it: 11527900, iw: 0, iRadY: 45.4545, iRadZ: 45.4545 }
+  },
+  "SHS120X120X10": {
+    kind: "Shs",
+    naam: "SHS 120x120x10",
+    h: 120,
+    b: 120,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 8521470, welY: 142025, welZ: 142025, wplY: 175159, wplZ: 175159, avZ: 2146.35, it: 13684e3, iw: 0, iRadY: 44.5546, iRadZ: 44.5546 }
+  },
+  "SHS120X120X125": {
+    kind: "Shs",
+    naam: "SHS 120x120x12.5",
+    h: 120,
+    b: 120,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 9817500, welY: 163625, welZ: 163625, wplY: 206810, wplZ: 206810, avZ: 2603.67, it: 15966700, iw: 0, iRadY: 43.4203, iRadZ: 43.4203 }
+  },
+  "SHS140X140X5": {
+    kind: "Shs",
+    naam: "SHS 140x140x5",
+    h: 140,
+    b: 140,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 8074590, welY: 115351, welZ: 115351, wplY: 134822, wplZ: 134822, avZ: 1336.59, it: 12505100, iw: 0, iRadY: 54.96, iRadZ: 54.96 }
+  },
+  "SHS140X140X63": {
+    kind: "Shs",
+    naam: "SHS 140x140x6.3",
+    h: 140,
+    b: 140,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 9838900, welY: 140556, welZ: 140556, wplY: 165968, wplZ: 165968, avZ: 1663.33, it: 15355500, iw: 0, iRadY: 54.3838, iRadZ: 54.3838 }
+  },
+  "SHS140X140X8": {
+    kind: "Shs",
+    naam: "SHS 140x140x8",
+    h: 140,
+    b: 140,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 1195e4, welY: 170715, welZ: 170715, wplY: 204331, wplZ: 204331, avZ: 2077.66, it: 18831200, iw: 0, iRadY: 53.6268, iRadZ: 53.6268 }
+  },
+  "SHS140X140X10": {
+    kind: "Shs",
+    naam: "SHS 140x140x10",
+    h: 140,
+    b: 140,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 14160600, welY: 202294, welZ: 202294, wplY: 246086, wplZ: 246086, avZ: 2546.35, it: 22553400, iw: 0, iRadY: 52.7311, iRadZ: 52.7311 }
+  },
+  "SHS140X140X125": {
+    kind: "Shs",
+    naam: "SHS 140x140x12.5",
+    h: 140,
+    b: 140,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 16529600, welY: 236138, welZ: 236138, wplY: 293258, wplZ: 293258, avZ: 3103.67, it: 26646200, iw: 0, iRadY: 51.6035, iRadZ: 51.6035 }
+  },
+  "SHS150X150X5": {
+    kind: "Shs",
+    naam: "SHS 150x150x5",
+    h: 150,
+    b: 150,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 10016300, welY: 133551, welZ: 133551, wplY: 155688, wplZ: 155688, avZ: 1436.59, it: 15480900, iw: 0, iRadY: 59.0436, iRadZ: 59.0436 }
+  },
+  "SHS150X150X63": {
+    kind: "Shs",
+    naam: "SHS 150x150x6.3",
+    h: 150,
+    b: 150,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 12233700, welY: 163116, welZ: 163116, wplY: 191970, wplZ: 191970, avZ: 1789.33, it: 19046100, iw: 0, iRadY: 58.4681, iRadZ: 58.4681 }
+  },
+  "SHS150X150X8": {
+    kind: "Shs",
+    naam: "SHS 150x150x8",
+    h: 150,
+    b: 150,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 14906e3, welY: 198746, welZ: 198746, wplY: 236867, wplZ: 236867, avZ: 2237.66, it: 23419600, iw: 0, iRadY: 57.7122, iRadZ: 57.7122 }
+  },
+  "SHS150X150X10": {
+    kind: "Shs",
+    naam: "SHS 150x150x10",
+    h: 150,
+    b: 150,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 17732100, welY: 236428, welZ: 236428, wplY: 286049, wplZ: 286049, avZ: 2746.35, it: 28144300, iw: 0, iRadY: 56.8182, iRadZ: 56.8182 }
+  },
+  "SHS150X150X125": {
+    kind: "Shs",
+    naam: "SHS 150x150x12.5",
+    h: 150,
+    b: 150,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 20804400, welY: 277392, welZ: 277392, wplY: 342107, wplZ: 342107, avZ: 3353.67, it: 33408100, iw: 0, iRadY: 55.6932, iRadZ: 55.6932 }
+  },
+  "SHS150X150X16": {
+    kind: "Shs",
+    naam: "SHS 150x150x16",
+    h: 150,
+    b: 150,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 24300200, welY: 324003, welZ: 324003, wplY: 410739, wplZ: 410739, avZ: 4150.65, it: 39574600, iw: 0, iRadY: 54.1043, iRadZ: 54.1043 }
+  },
+  "SHS160X160X63": {
+    kind: "Shs",
+    naam: "SHS 160x160x6.3",
+    h: 160,
+    b: 160,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 14988500, welY: 187356, welZ: 187356, wplY: 219861, wplZ: 219861, avZ: 1915.33, it: 23284100, iw: 0, iRadY: 62.5521, iRadZ: 62.5521 }
+  },
+  "SHS160X160X8": {
+    kind: "Shs",
+    naam: "SHS 160x160x8",
+    h: 160,
+    b: 160,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 18312900, welY: 228911, welZ: 228911, wplY: 271804, wplZ: 271804, avZ: 2397.66, it: 28696400, iw: 0, iRadY: 61.7973, iRadZ: 61.7973 }
+  },
+  "SHS160X160X10": {
+    kind: "Shs",
+    naam: "SHS 160x160x10",
+    h: 160,
+    b: 160,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 21858200, welY: 273228, welZ: 273228, wplY: 329013, wplZ: 329013, avZ: 2946.35, it: 34585900, iw: 0, iRadY: 60.9047, iRadZ: 60.9047 }
+  },
+  "SHS160X160X125": {
+    kind: "Shs",
+    naam: "SHS 160x160x12.5",
+    h: 160,
+    b: 160,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 25758200, welY: 321978, welZ: 321978, wplY: 394706, wplZ: 394706, avZ: 3603.67, it: 41218100, iw: 0, iRadY: 59.782, iRadZ: 59.782 }
+  },
+  "SHS160X160X16": {
+    kind: "Shs",
+    naam: "SHS 160x160x16",
+    h: 160,
+    b: 160,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 30283500, welY: 378544, welZ: 378544, wplY: 476086, wplZ: 476086, avZ: 4470.65, it: 49135700, iw: 0, iRadY: 58.1973, iRadZ: 58.1973 }
+  },
+  "SHS180X180X63": {
+    kind: "Shs",
+    naam: "SHS 180x180x6.3",
+    h: 180,
+    b: 180,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 21678800, welY: 240876, welZ: 240876, wplY: 281314, wplZ: 281314, avZ: 2167.33, it: 33553700, iw: 0, iRadY: 70.7197, iRadZ: 70.7197 }
+  },
+  "SHS180X180X8": {
+    kind: "Shs",
+    naam: "SHS 180x180x8",
+    h: 180,
+    b: 180,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 26607600, welY: 295640, welZ: 295640, wplY: 348877, wplZ: 348877, avZ: 2717.66, it: 41507500, iw: 0, iRadY: 69.9664, iRadZ: 69.9664 }
+  },
+  "SHS180X180X10": {
+    kind: "Shs",
+    naam: "SHS 180x180x10",
+    h: 180,
+    b: 180,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 31934400, welY: 354827, welZ: 354827, wplY: 423940, wplZ: 423940, avZ: 3346.35, it: 50261200, iw: 0, iRadY: 69.0763, iRadZ: 69.0763 }
+  },
+  "SHS180X180X125": {
+    kind: "Shs",
+    naam: "SHS 180x180x12.5",
+    h: 180,
+    b: 180,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 37903300, welY: 421148, welZ: 421148, wplY: 511155, wplZ: 511155, avZ: 4103.67, it: 60282e3, iw: 0, iRadY: 67.9575, iRadZ: 67.9575 }
+  },
+  "SHS180X180X16": {
+    kind: "Shs",
+    naam: "SHS 180x180x16",
+    h: 180,
+    b: 180,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 45037700, welY: 500419, welZ: 500419, wplY: 621179, wplZ: 621179, avZ: 5110.65, it: 72583800, iw: 0, iRadY: 66.3796, iRadZ: 66.3796 }
+  },
+  "SHS200X200X63": {
+    kind: "Shs",
+    naam: "SHS 200x200x6.3",
+    h: 200,
+    b: 200,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 30111500, welY: 301115, welZ: 301115, wplY: 350327, wplZ: 350327, avZ: 2419.33, it: 46466600, iw: 0, iRadY: 78.8868, iRadZ: 78.8868 }
+  },
+  "SHS200X200X10": {
+    kind: "Shs",
+    naam: "SHS 200x200x10",
+    h: 200,
+    b: 200,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 44709200, welY: 447092, welZ: 447092, wplY: 530867, wplZ: 530867, avZ: 3746.35, it: 70059500, iw: 0, iRadY: 77.2466, iRadZ: 77.2466 }
+  },
+  "SHS200X200X125": {
+    kind: "Shs",
+    naam: "SHS 200x200x12.5",
+    h: 200,
+    b: 200,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 53364900, welY: 533649, welZ: 533649, wplY: 642603, wplZ: 642603, avZ: 4603.67, it: 84438100, iw: 0, iRadY: 76.1308, iRadZ: 76.1308 }
+  },
+  "SHS200X200X20": {
+    kind: "Shs",
+    naam: "SHS 200x200x20",
+    h: 200,
+    b: 200,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 73934400, welY: 739344, welZ: 739344, wplY: 929855, wplZ: 929855, avZ: 6985.4, it: 11996e4, iw: 0, iRadY: 72.7466, iRadZ: 72.7466 }
+  },
+  "SHS220X220X8": {
+    kind: "Shs",
+    naam: "SHS 220x220x8",
+    h: 220,
+    b: 220,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 50016600, welY: 454696, welZ: 454696, wplY: 531824, wplZ: 531824, avZ: 3357.66, it: 77503200, iw: 0, iRadY: 86.3025, iRadZ: 86.3025 }
+  },
+  "SHS220X220X10": {
+    kind: "Shs",
+    naam: "SHS 220x220x10",
+    h: 220,
+    b: 220,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 60502400, welY: 550022, welZ: 550022, wplY: 649794, wplZ: 649794, avZ: 4146.35, it: 94460800, iw: 0, iRadY: 85.4159, iRadZ: 85.4159 }
+  },
+  "SHS220X220X125": {
+    kind: "Shs",
+    naam: "SHS 220x220x12.5",
+    h: 220,
+    b: 220,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 72542900, welY: 659481, welZ: 659481, wplY: 789052, wplZ: 789052, avZ: 5103.67, it: 114286e3, iw: 0, iRadY: 84.3026, iRadZ: 84.3026 }
+  },
+  "SHS220X220X16": {
+    kind: "Shs",
+    naam: "SHS 220x220x16",
+    h: 220,
+    b: 220,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 87488500, welY: 795350, welZ: 795350, wplY: 968965, wplZ: 968965, avZ: 6390.65, it: 139471e3, iw: 0, iRadY: 82.7347, iRadZ: 82.7347 }
+  },
+  "SHS250X250X63": {
+    kind: "Shs",
+    naam: "SHS 250x250x6.3",
+    h: 250,
+    b: 250,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 60139200, welY: 481114, welZ: 481114, wplY: 555933, wplZ: 555933, avZ: 3049.33, it: 92298300, iw: 0, iRadY: 99.3029, iRadZ: 99.3029 }
+  },
+  "SHS250X250X8": {
+    kind: "Shs",
+    naam: "SHS 250x250x8",
+    h: 250,
+    b: 250,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 74548500, welY: 596388, welZ: 596388, wplY: 694234, wplZ: 694234, avZ: 3837.66, it: 115089e3, iw: 0, iRadY: 98.5532, iRadZ: 98.5532 }
+  },
+  "SHS250X250X125": {
+    kind: "Shs",
+    naam: "SHS 250x250x12.5",
+    h: 250,
+    b: 250,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 109153e3, welY: 873226, welZ: 873226, wplY: 1036850, wplZ: 1036850, avZ: 5853.67, it: 171044e3, iw: 0, iRadY: 96.5582, iRadZ: 96.5582 }
+  },
+  "SHS250X250X16": {
+    kind: "Shs",
+    naam: "SHS 250x250x16",
+    h: 250,
+    b: 250,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 132667e3, welY: 1061340, welZ: 1061340, wplY: 1280200, wplZ: 1280200, avZ: 7350.65, it: 210153e3, iw: 0, iRadY: 94.9957, iRadZ: 94.9957 }
+  },
+  "SHS250X250X20": {
+    kind: "Shs",
+    naam: "SHS 250x250x20",
+    h: 250,
+    b: 250,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 156092e3, welY: 1248740, welZ: 1248740, wplY: 1534130, wplZ: 1534130, avZ: 8985.4, it: 250097e3, iw: 0, iRadY: 93.1981, iRadZ: 93.1981 }
+  },
+  "SHS260X260X8": {
+    kind: "Shs",
+    naam: "SHS 260x260x8",
+    h: 260,
+    b: 260,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 84225e3, welY: 647885, welZ: 647885, wplY: 753170, wplZ: 753170, avZ: 3997.66, it: 12989e4, iw: 0, iRadY: 102.637, iRadZ: 102.637 }
+  },
+  "SHS260X260X10": {
+    kind: "Shs",
+    naam: "SHS 260x260x10",
+    h: 260,
+    b: 260,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 102425e3, welY: 787882, welZ: 787882, wplY: 923648, wplZ: 923648, avZ: 4946.35, it: 158992e3, iw: 0, iRadY: 101.752, iRadZ: 101.752 }
+  },
+  "SHS260X260X125": {
+    kind: "Shs",
+    naam: "SHS 260x260x12.5",
+    h: 260,
+    b: 260,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 123648e3, welY: 951141, welZ: 951141, wplY: 1126950, wplZ: 1126950, avZ: 6103.67, it: 193459e3, iw: 0, iRadY: 100.643, iRadZ: 100.643 }
+  },
+  "SHS260X260X16": {
+    kind: "Shs",
+    naam: "SHS 260x260x16",
+    h: 260,
+    b: 260,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 150609e3, welY: 1158530, welZ: 1158530, wplY: 1393550, wplZ: 1393550, avZ: 7670.65, it: 238133e3, iw: 0, iRadY: 99.0819, iRadZ: 99.0819 }
+  },
+  "SHS300X300X8": {
+    kind: "Shs",
+    naam: "SHS 300x300x8",
+    h: 300,
+    b: 300,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 131281e3, welY: 875206, welZ: 875206, wplY: 1012920, wplZ: 1012920, avZ: 4637.66, it: 201741e3, iw: 0, iRadY: 118.97, iRadZ: 118.97 }
+  },
+  "SHS300X300X125": {
+    kind: "Shs",
+    naam: "SHS 300x300x12.5",
+    h: 300,
+    b: 300,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 19442e4, welY: 1296130, welZ: 1296130, wplY: 1524850, wplZ: 1524850, avZ: 7103.67, it: 3026e5, iw: 0, iRadY: 116.981, iRadZ: 116.981 }
+  },
+  "SHS300X300X16": {
+    kind: "Shs",
+    naam: "SHS 300x300x16",
+    h: 300,
+    b: 300,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 238496e3, welY: 1589970, welZ: 1589970, wplY: 1894940, wplZ: 1894940, avZ: 8950.65, it: 374713e3, iw: 0, iRadY: 115.424, iRadZ: 115.424 }
+  },
+  "SHS300X300X20": {
+    kind: "Shs",
+    naam: "SHS 300x300x20",
+    h: 300,
+    b: 300,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 283714e3, welY: 1891420, welZ: 1891420, wplY: 2288400, wplZ: 2288400, avZ: 10985.4, it: 450308e3, iw: 0, iRadY: 113.636, iRadZ: 113.636 }
+  },
+  "SHS350X350X8": {
+    kind: "Shs",
+    naam: "SHS 350x350x8",
+    h: 350,
+    b: 350,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 211288e3, welY: 1207360, welZ: 1207360, wplY: 1391600, wplZ: 1391600, avZ: 5437.66, it: 323605e3, iw: 0, iRadY: 139.385, iRadZ: 139.385 }
+  },
+  "SHS350X350X10": {
+    kind: "Shs",
+    naam: "SHS 350x350x10",
+    h: 350,
+    b: 350,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 258836e3, welY: 1479060, welZ: 1479060, wplY: 1715320, wplZ: 1715320, avZ: 6746.35, it: 398415e3, iw: 0, iRadY: 138.504, iRadZ: 138.504 }
+  },
+  "SHS350X350X125": {
+    kind: "Shs",
+    naam: "SHS 350x350x12.5",
+    h: 350,
+    b: 350,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 315414e3, welY: 1802360, welZ: 1802360, wplY: 2106590, wplZ: 2106590, avZ: 8353.67, it: 488482e3, iw: 0, iRadY: 137.4, iRadZ: 137.4 }
+  },
+  "SHS350X350X16": {
+    kind: "Shs",
+    naam: "SHS 350x350x16",
+    h: 350,
+    b: 350,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 389421e3, welY: 2225260, welZ: 2225260, wplY: 2629670, wplZ: 2629670, avZ: 10550.7, it: 60812e4, iw: 0, iRadY: 135.848, iRadZ: 135.848 }
+  },
+  "SHS350X350X20": {
+    kind: "Shs",
+    naam: "SHS 350x350x20",
+    h: 350,
+    b: 350,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 466798e3, welY: 2667420, welZ: 2667420, wplY: 3192670, wplZ: 3192670, avZ: 12985.4, it: 735594e3, iw: 0, iRadY: 134.067, iRadZ: 134.067 }
+  },
+  "SHS400X400X10": {
+    kind: "Shs",
+    naam: "SHS 400x400x10",
+    h: 400,
+    b: 400,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 391276e3, welY: 1956380, welZ: 1956380, wplY: 2260140, wplZ: 2260140, avZ: 7746.35, it: 600404e3, iw: 0, iRadY: 158.92, iRadZ: 158.92 }
+  },
+  "SHS400X400X125": {
+    kind: "Shs",
+    naam: "SHS 400x400x12.5",
+    h: 400,
+    b: 400,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 478386e3, welY: 2391930, welZ: 2391930, wplY: 2782090, wplZ: 2782090, avZ: 9603.67, it: 738064e3, iw: 0, iRadY: 157.818, iRadZ: 157.818 }
+  },
+  "SHS400X400X16": {
+    kind: "Shs",
+    naam: "SHS 400x400x16",
+    h: 400,
+    b: 400,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 593442e3, welY: 2967210, welZ: 2967210, wplY: 3484400, wplZ: 3484400, avZ: 12150.7, it: 922374e3, iw: 0, iRadY: 156.27, iRadZ: 156.27 }
+  },
+  "SHS400X400X20": {
+    kind: "Shs",
+    naam: "SHS 400x400x20",
+    h: 400,
+    b: 400,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 715347e3, welY: 3576730, welZ: 3576730, wplY: 4246940, wplZ: 4246940, avZ: 14985.4, it: 112095e4, iw: 0, iRadY: 154.493, iRadZ: 154.493 }
+  },
+  "RHS50X30X3": {
+    kind: "Rhs",
+    naam: "RHS 50x30x3",
+    h: 50,
+    b: 30,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 59389.3, welY: 5425.15, welZ: 3959.29, wplY: 6881.69, wplZ: 4758.26, avZ: 271.464, it: 133923, iw: 0, iRadY: 17.6709, iRadZ: 11.6933 }
+  },
+  "RHS50X30X32": {
+    kind: "Rhs",
+    naam: "RHS 50x30x3.2",
+    h: 50,
+    b: 30,
+    tw: 3.2,
+    tf: 3.2,
+    r: 4.800000000000001,
+    props: { iz: 61973.3, welY: 5682.82, welZ: 4131.55, wplY: 7246.44, wplZ: 5001.12, avZ: 287.533, it: 140362, iw: 0, iRadY: 17.5731, iRadZ: 11.6064 }
+  },
+  "RHS50X30X4": {
+    kind: "Rhs",
+    naam: "RHS 50x30x4",
+    h: 50,
+    b: 30,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 70837.4, welY: 6595.77, welZ: 4722.49, wplY: 8593, wplZ: 5884.68, avZ: 349.27, it: 162999, iw: 0, iRadY: 17.1776, iRadZ: 11.2588 }
+  },
+  "RHS50X30X5": {
+    kind: "Rhs",
+    naam: "RHS 50x30x5",
+    h: 50,
+    b: 30,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 78877.1, welY: 7485.58, welZ: 5258.48, wplY: 10029, wplZ: 6797.24, avZ: 420.734, it: 184313, iw: 0, iRadY: 16.6732, iRadZ: 10.8246 }
+  },
+  "RHS60X40X3": {
+    kind: "Rhs",
+    naam: "RHS 60x40x3",
+    h: 60,
+    b: 40,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 138910, welY: 8819.48, welZ: 6945.52, wplY: 10913.4, wplZ: 8189.98, avZ: 332.606, it: 290619, iw: 0, iRadY: 21.847, iRadZ: 15.8299 }
+  },
+  "RHS60X40X32": {
+    kind: "Rhs",
+    naam: "RHS 60x40x3.2",
+    h: 60,
+    b: 40,
+    tw: 3.2,
+    tf: 3.2,
+    r: 4.800000000000001,
+    props: { iz: 145742, welY: 9274.8, welZ: 7287.08, wplY: 11524.3, wplZ: 8638.98, avZ: 352.831, it: 306056, iw: 0, iRadY: 21.7523, iRadZ: 15.7429 }
+  },
+  "RHS60X40X4": {
+    kind: "Rhs",
+    naam: "RHS 60x40x4",
+    h: 60,
+    b: 40,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 170348, welY: 10942.9, welZ: 8517.42, wplY: 13827.2, wplZ: 10318.8, avZ: 431.299, it: 362858, iw: 0, iRadY: 21.3705, iRadZ: 15.3941 }
+  },
+  "RHS60X40X5": {
+    kind: "Rhs",
+    naam: "RHS 60x40x5",
+    h: 60,
+    b: 40,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 195346, welY: 12697.5, welZ: 9767.28, wplY: 16394.9, wplZ: 12163.1, avZ: 523.905, it: 422716, iw: 0, iRadY: 20.8867, iRadZ: 14.9572 }
+  },
+  "RHS60X40X63": {
+    kind: "Rhs",
+    naam: "RHS 60x40x6.3",
+    h: 60,
+    b: 40,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 219168, welY: 14464.9, welZ: 10958.4, wplY: 19231.3, wplZ: 14151, avZ: 635.191, it: 482052, iw: 0, iRadY: 20.2461, iRadZ: 14.3884 }
+  },
+  "RHS70X50X3": {
+    kind: "Rhs",
+    naam: "RHS 70x50x3",
+    h: 70,
+    b: 50,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 268349, welY: 13013.1, welZ: 10734, wplY: 15845.1, wplZ: 12521.7, avZ: 393.367, it: 532961, iw: 0, iRadY: 25.9886, iRadZ: 19.9485 }
+  },
+  "RHS70X50X36": {
+    kind: "Rhs",
+    naam: "RHS 70x50x3.6",
+    h: 70,
+    b: 50,
+    tw: 3.6,
+    tf: 3.6,
+    r: 5.4,
+    props: { iz: 309386, welY: 15074.5, welZ: 12375.4, wplY: 18545.4, wplZ: 14623.7, avZ: 465.648, it: 620318, iw: 0, iRadY: 25.709, iRadZ: 19.687 }
+  },
+  "RHS70X50X4": {
+    kind: "Rhs",
+    naam: "RHS 70x50x4",
+    h: 70,
+    b: 50,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 334601, welY: 16355, welZ: 13384, wplY: 20261.3, wplZ: 15953, avZ: 512.652, it: 674970, iw: 0, iRadY: 25.5215, iRadZ: 19.5124 }
+  },
+  "RHS70X50X5": {
+    kind: "Rhs",
+    naam: "RHS 70x50x5",
+    h: 70,
+    b: 50,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 390473, welY: 19239.1, welZ: 15618.9, wplY: 24260.7, wplZ: 19029, avZ: 626.019, it: 799025, iw: 0, iRadY: 25.0491, iRadZ: 19.0748 }
+  },
+  "RHS70X50X63": {
+    kind: "Rhs",
+    naam: "RHS 70x50x6.3",
+    h: 70,
+    b: 50,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 448766, welY: 22343.1, welZ: 17950.6, wplY: 28852.6, wplZ: 22512.3, avZ: 764.547, it: 933404, iw: 0, iRadY: 24.4266, iRadZ: 18.504 }
+  },
+  "RHS80X40X3": {
+    kind: "Rhs",
+    naam: "RHS 80x40x3",
+    h: 80,
+    b: 40,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 180070, welY: 13557.2, welZ: 9003.52, wplY: 17056.8, wplZ: 10410, avZ: 449.562, it: 435896, iw: 0, iRadY: 28.3579, iRadZ: 16.3411 }
+  },
+  "RHS80X40X32": {
+    kind: "Rhs",
+    naam: "RHS 80x40x3.2",
+    h: 80,
+    b: 40,
+    tw: 3.2,
+    tf: 3.2,
+    r: 4.800000000000001,
+    props: { iz: 189186, welY: 14295, welZ: 9459.32, wplY: 18044.8, wplZ: 10994.2, avZ: 477.368, it: 459534, iw: 0, iRadY: 28.2586, iRadZ: 16.2545 }
+  },
+  "RHS80X40X4": {
+    kind: "Rhs",
+    naam: "RHS 80x40x4",
+    h: 80,
+    b: 40,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 222402, welY: 17051.2, welZ: 11120.1, wplY: 21815.5, wplZ: 13198.8, avZ: 585.888, it: 547312, iw: 0, iRadY: 27.8583, iRadZ: 15.908 }
+  },
+  "RHS80X40X5": {
+    kind: "Rhs",
+    naam: "RHS 80x40x5",
+    h: 80,
+    b: 40,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 257012, welY: 20070.2, welZ: 12850.6, wplY: 26126.6, wplZ: 15663.1, avZ: 715.45, it: 641823, iw: 0, iRadY: 27.3508, iRadZ: 15.4754 }
+  },
+  "RHS80X40X63": {
+    kind: "Rhs",
+    naam: "RHS 80x40x6.3",
+    h: 80,
+    b: 40,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 291550, welY: 23320.9, welZ: 14577.5, wplY: 31077.8, wplZ: 18397.2, avZ: 873.768, it: 739563, iw: 0, iRadY: 26.6784, iRadZ: 14.9146 }
+  },
+  "RHS80X40X8": {
+    kind: "Rhs",
+    naam: "RHS 80x40x8",
+    h: 80,
+    b: 40,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 321088, welY: 26496.7, welZ: 16054.4, wplY: 36470.7, wplZ: 21204.2, avZ: 1063.55, it: 825058, iw: 0, iRadY: 25.7751, iRadZ: 14.1869 }
+  },
+  "RHS90X50X36": {
+    kind: "Rhs",
+    naam: "RHS 90x50x3.6",
+    h: 90,
+    b: 50,
+    tw: 3.6,
+    tf: 3.6,
+    r: 5.4,
+    props: { iz: 387048, welY: 21847.5, welZ: 15481.9, wplY: 27247.9, wplZ: 17964.5, avZ: 605.735, it: 889700, iw: 0, iRadY: 32.3016, iRadZ: 20.2674 }
+  },
+  "RHS90X50X4": {
+    kind: "Rhs",
+    naam: "RHS 90x50x4",
+    h: 90,
+    b: 50,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 419454, welY: 23797, welZ: 16778.2, wplY: 29849.6, wplZ: 19633, avZ: 667.82, it: 969750, iw: 0, iRadY: 32.1067, iRadZ: 20.0942 }
+  },
+  "RHS90X50X5": {
+    kind: "Rhs",
+    naam: "RHS 90x50x5",
+    h: 90,
+    b: 50,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 492139, welY: 28279.3, welZ: 19685.6, wplY: 35992.5, wplZ: 23529, avZ: 818.469, it: 1153390, iw: 0, iRadY: 31.6153, iRadZ: 19.6608 }
+  },
+  "RHS90X50X63": {
+    kind: "Rhs",
+    naam: "RHS 90x50x6.3",
+    h: 90,
+    b: 50,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 569910, welY: 33300.6, welZ: 22796.4, wplY: 43219.2, wplZ: 28018.5, avZ: 1004.56, it: 1356930, iw: 0, iRadY: 30.9672, iRadZ: 19.0973 }
+  },
+  "RHS90X50X8": {
+    kind: "Rhs",
+    naam: "RHS 90x50x8",
+    h: 90,
+    b: 50,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 645759, welY: 38569, welZ: 25830.4, wplY: 51407.4, wplZ: 32940.8, avZ: 1231.28, it: 1563350, iw: 0, iRadY: 30.1026, iRadZ: 18.3617 }
+  },
+  "RHS100X50X3": {
+    kind: "Rhs",
+    naam: "RHS 100x50x3",
+    h: 100,
+    b: 50,
+    tw: 3,
+    tf: 3,
+    r: 4.5,
+    props: { iz: 367889, welY: 21920.8, welZ: 14715.6, wplY: 27310.3, wplZ: 16751.7, avZ: 569.562, it: 881137, iw: 0, iRadY: 35.8176, iRadZ: 20.7512 }
+  },
+  "RHS100X50X32": {
+    kind: "Rhs",
+    naam: "RHS 100x50x3.2",
+    h: 100,
+    b: 50,
+    tw: 3.2,
+    tf: 3.2,
+    r: 4.800000000000001,
+    props: { iz: 387760, welY: 23171, welZ: 15510.4, wplY: 28942.9, wplZ: 17729.6, avZ: 605.368, it: 931411, iw: 0, iRadY: 35.7192, iRadZ: 20.6645 }
+  },
+  "RHS100X50X5": {
+    kind: "Rhs",
+    naam: "RHS 100x50x5",
+    h: 100,
+    b: 50,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 542973, welY: 33303.1, welZ: 21718.9, wplY: 42608.4, wplZ: 25779, avZ: 915.45, it: 1336210, iw: 0, iRadY: 34.8229, iRadZ: 19.885 }
+  },
+  "RHS100X50X63": {
+    kind: "Rhs",
+    naam: "RHS 100x50x6.3",
+    h: 100,
+    b: 50,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 630482, welY: 39416.7, welZ: 25219.3, wplY: 51347.4, wplZ: 30771.6, avZ: 1125.77, it: 1575320, iw: 0, iRadY: 34.1629, iRadZ: 19.3226 }
+  },
+  "RHS100X50X8": {
+    kind: "Rhs",
+    naam: "RHS 100x50x8",
+    h: 100,
+    b: 50,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 717173, welY: 45977.9, welZ: 28686.9, wplY: 61384, wplZ: 36300.8, avZ: 1383.55, it: 1821070, iw: 0, iRadY: 33.2825, iRadZ: 18.5895 }
+  },
+  "RHS100X60X36": {
+    kind: "Rhs",
+    naam: "RHS 100x60x3.6",
+    h: 100,
+    b: 60,
+    tw: 3.6,
+    tf: 3.6,
+    r: 5.4,
+    props: { iz: 648184, welY: 28942.5, welZ: 21606.1, wplY: 35609.6, wplZ: 24886.1, avZ: 678.909, it: 1419910, iw: 0, iRadY: 36.4996, iRadZ: 24.4278 }
+  },
+  "RHS100X60X4": {
+    kind: "Rhs",
+    naam: "RHS 100x60x4",
+    h: 100,
+    b: 60,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 705248, welY: 31608.6, welZ: 23508.3, wplY: 39083.8, wplZ: 27267.2, avZ: 749.27, it: 1552850, iw: 0, iRadY: 36.3085, iRadZ: 24.2545 }
+  },
+  "RHS100X60X5": {
+    kind: "Rhs",
+    naam: "RHS 100x60x5",
+    h: 100,
+    b: 60,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 835925, welY: 37819.8, welZ: 27864.2, wplY: 47358.4, wplZ: 32894.9, avZ: 920.734, it: 1863400, iw: 0, iRadY: 35.8276, iRadZ: 23.8208 }
+  },
+  "RHS100X60X63": {
+    kind: "Rhs",
+    naam: "RHS 100x60x6.3",
+    h: 100,
+    b: 60,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 981465, welY: 44956.3, welZ: 32715.5, wplY: 57250.5, wplZ: 39529.9, avZ: 1134.16, it: 2220500, iw: 0, iRadY: 35.1952, iRadZ: 23.2563 }
+  },
+  "RHS100X60X8": {
+    kind: "Rhs",
+    naam: "RHS 100x60x8",
+    h: 100,
+    b: 60,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 1133400, welY: 52766.2, welZ: 37779.9, wplY: 68744, wplZ: 47077.5, avZ: 1397.08, it: 2607990, iw: 0, iRadY: 34.3552, iRadZ: 22.5175 }
+  },
+  "RHS120X60X36": {
+    kind: "Rhs",
+    naam: "RHS 120x60x3.6",
+    h: 120,
+    b: 60,
+    tw: 3.6,
+    tf: 3.6,
+    r: 5.4,
+    props: { iz: 762854, welY: 37879.1, welZ: 25428.5, wplY: 47192.1, wplZ: 28946.9, avZ: 820.169, it: 1827130, iw: 0, iRadY: 42.9811, iRadZ: 24.9014 }
+  },
+  "RHS120X60X4": {
+    kind: "Rhs",
+    naam: "RHS 120x60x4",
+    h: 120,
+    b: 60,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 830902, welY: 41455.3, welZ: 27696.7, wplY: 51872.1, wplZ: 31747.2, avZ: 905.888, it: 1999650, iw: 0, iRadY: 42.7842, iRadZ: 24.7282 }
+  },
+  "RHS120X60X63": {
+    kind: "Rhs",
+    naam: "RHS 120x60x6.3",
+    h: 120,
+    b: 60,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 1163970, welY: 59711.5, welZ: 38799, wplY: 76657.1, wplZ: 46296.1, avZ: 1377.77, it: 2873290, iw: 0, iRadY: 41.6362, iRadZ: 23.7322 }
+  },
+  "RHS120X60X8": {
+    kind: "Rhs",
+    naam: "RHS 120x60x8",
+    h: 120,
+    b: 60,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 1351420, welY: 70789.8, welZ: 45047.5, wplY: 92697.3, wplZ: 55397.5, avZ: 1703.55, it: 3389770, iw: 0, iRadY: 40.7697, iRadZ: 22.9971 }
+  },
+  "RHS120X60X10": {
+    kind: "Rhs",
+    naam: "RHS 120x60x10",
+    h: 120,
+    b: 60,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 1515370, welY: 81357.9, welZ: 50512.2, wplY: 109159, wplZ: 64377.9, avZ: 2061.8, it: 3857790, iw: 0, iRadY: 39.7289, iRadZ: 22.1355 }
+  },
+  "RHS120X80X4": {
+    kind: "Rhs",
+    naam: "RHS 120x80x4",
+    h: 120,
+    b: 80,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 1607060, welY: 50429.6, welZ: 40176.5, wplY: 61152.1, wplZ: 46135.5, avZ: 911.299, it: 3296350, iw: 0, iRadY: 44.6337, iRadZ: 32.5283 }
+  },
+  "RHS120X80X5": {
+    kind: "Rhs",
+    naam: "RHS 120x80x5",
+    h: 120,
+    b: 80,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 1929470, welY: 60896.8, welZ: 48236.8, wplY: 74590.1, wplZ: 56126.6, avZ: 1123.9, it: 3997800, iw: 0, iRadY: 44.1656, iRadZ: 32.0945 }
+  },
+  "RHS120X80X63": {
+    kind: "Rhs",
+    naam: "RHS 120x80x6.3",
+    h: 120,
+    b: 80,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 2304960, welY: 73299.5, welZ: 57623.9, wplY: 90983.3, wplZ: 68222.6, avZ: 1391.19, it: 4835890, iw: 0, iRadY: 43.552, iRadZ: 31.5293 }
+  },
+  "RHS120X80X8": {
+    kind: "Rhs",
+    naam: "RHS 120x80x8",
+    h: 120,
+    b: 80,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 2725570, welY: 87543.6, welZ: 68139.3, wplY: 110617, wplZ: 82550.7, avZ: 1725.2, it: 5805720, iw: 0, iRadY: 42.7409, iRadZ: 30.7883 }
+  },
+  "RHS120X80X10": {
+    kind: "Rhs",
+    naam: "RHS 120x80x10",
+    h: 120,
+    b: 80,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 3125530, welY: 101580, welZ: 78138.2, wplY: 131159, wplZ: 97304.9, avZ: 2095.62, it: 6763450, iw: 0, iRadY: 41.7734, iRadZ: 29.9145 }
+  },
+  "RHS140X80X4": {
+    kind: "Rhs",
+    naam: "RHS 140x80x4",
+    h: 140,
+    b: 80,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 1838310, welY: 62943.3, welZ: 45957.9, wplY: 77140.4, wplZ: 52215.5, avZ: 1068.35, it: 4097670, iw: 0, iRadY: 51.2295, iRadZ: 33.0907 }
+  },
+  "RHS140X80X5": {
+    kind: "Rhs",
+    naam: "RHS 140x80x5",
+    h: 140,
+    b: 80,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 2211140, welY: 76279.9, welZ: 55278.5, wplY: 94321.9, wplZ: 63626.6, avZ: 1319.29, it: 4976560, iw: 0, iRadY: 50.75, iRadZ: 32.658 }
+  },
+  "RHS140X80X63": {
+    kind: "Rhs",
+    naam: "RHS 140x80x6.3",
+    h: 140,
+    b: 80,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 2647990, welY: 92255.7, welZ: 66199.7, wplY: 115430, wplZ: 77508.8, avZ: 1635.87, it: 6031780, iw: 0, iRadY: 50.1215, iRadZ: 32.0949 }
+  },
+  "RHS140X80X8": {
+    kind: "Rhs",
+    naam: "RHS 140x80x8",
+    h: 140,
+    b: 80,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 3142e3, welY: 110902, welZ: 78550, wplY: 140971, wplZ: 94070.7, avZ: 2033.39, it: 7262600, iw: 0, iRadY: 49.2903, iRadZ: 31.3578 }
+  },
+  "RHS140X80X10": {
+    kind: "Rhs",
+    naam: "RHS 140x80x10",
+    h: 140,
+    b: 80,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 3618860, welY: 129723, welZ: 90471.6, wplY: 168086, wplZ: 111305, avZ: 2477.17, it: 8494420, iw: 0, iRadY: 48.2983, iRadZ: 30.4902 }
+  },
+  "RHS150X100X4": {
+    kind: "Rhs",
+    naam: "RHS 150x100x4",
+    h: 150,
+    b: 100,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 3240270, welY: 80972.4, welZ: 64805.4, wplY: 97414.6, wplZ: 73643.8, avZ: 1151.3, it: 6591180, iw: 0, iRadY: 56.2575, iRadZ: 41.0934 }
+  },
+  "RHS150X100X5": {
+    kind: "Rhs",
+    naam: "RHS 150x100x5",
+    h: 150,
+    b: 100,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 3923490, welY: 98495.2, welZ: 78469.8, wplY: 119438, wplZ: 90108.4, avZ: 1423.9, it: 8047730, iw: 0, iRadY: 55.7922, iRadZ: 40.6604 }
+  },
+  "RHS150X100X63": {
+    kind: "Rhs",
+    naam: "RHS 150x100x6.3",
+    h: 150,
+    b: 100,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 4740610, welY: 119724, welZ: 94812.1, wplY: 146704, wplZ: 110378, avZ: 1769.19, it: 9826250, iw: 0, iRadY: 55.1835, iRadZ: 40.0964 }
+  },
+  "RHS150X100X8": {
+    kind: "Rhs",
+    naam: "RHS 150x100x8",
+    h: 150,
+    b: 100,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 5693030, welY: 144919, welZ: 113861, wplY: 180067, wplZ: 134984, avZ: 2205.2, it: 11955300, iw: 0, iRadY: 54.3807, iRadZ: 39.3571 }
+  },
+  "RHS150X100X10": {
+    kind: "Rhs",
+    naam: "RHS 150x100x10",
+    h: 150,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 6654230, welY: 170984, welZ: 133085, wplY: 216049, wplZ: 161232, avZ: 2695.62, it: 14174100, iw: 0, iRadY: 53.4262, iRadZ: 38.4853 }
+  },
+  "RHS150X100X125": {
+    kind: "Rhs",
+    naam: "RHS 150x100x12.5",
+    h: 150,
+    b: 100,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 7630690, welY: 198399, welZ: 152614, wplY: 256170, wplZ: 190049, avZ: 3274.41, it: 16512300, iw: 0, iRadY: 52.2167, iRadZ: 37.3931 }
+  },
+  "RHS160X80X4": {
+    kind: "Rhs",
+    naam: "RHS 160x80x4",
+    h: 160,
+    b: 80,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    props: { iz: 2069570, welY: 76525.7, welZ: 51739.2, wplY: 94728.8, wplZ: 58295.5, avZ: 1225.89, it: 4920560, iw: 0, iRadY: 57.7003, iRadZ: 33.5482 }
+  },
+  "RHS160X80X5": {
+    kind: "Rhs",
+    naam: "RHS 160x80x5",
+    h: 160,
+    b: 80,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 2492810, welY: 93000.2, welZ: 62320.2, wplY: 116054, wplZ: 71126.6, avZ: 1515.45, it: 5981360, iw: 0, iRadY: 57.2098, iRadZ: 33.1152 }
+  },
+  "RHS160X80X63": {
+    kind: "Rhs",
+    naam: "RHS 160x80x6.3",
+    h: 160,
+    b: 80,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 2991020, welY: 112899, welZ: 74775.4, wplY: 142396, wplZ: 86795, avZ: 1881.77, it: 7259010, iw: 0, iRadY: 56.5669, iRadZ: 32.5522 }
+  },
+  "RHS160X80X8": {
+    kind: "Rhs",
+    naam: "RHS 160x80x8",
+    h: 160,
+    b: 80,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 3558430, welY: 136410, welZ: 88960.7, wplY: 174524, wplZ: 105591, avZ: 2343.55, it: 8756980, iw: 0, iRadY: 55.7166, iRadZ: 31.816 }
+  },
+  "RHS160X80X10": {
+    kind: "Rhs",
+    naam: "RHS 160x80x10",
+    h: 160,
+    b: 80,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 4112200, welY: 160561, welZ: 102805, wplY: 209013, wplZ: 125305, avZ: 2861.8, it: 10269200, iw: 0, iRadY: 54.7016, iRadZ: 30.9508 }
+  },
+  "RHS160X80X125": {
+    kind: "Rhs",
+    naam: "RHS 160x80x12.5",
+    h: 160,
+    b: 80,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 4646800, welY: 185676, welZ: 116170, wplY: 247206, wplZ: 146413, avZ: 3471.56, it: 11781200, iw: 0, iRadY: 53.409, iRadZ: 29.8723 }
+  },
+  "RHS180X100X5": {
+    kind: "Rhs",
+    naam: "RHS 180x100x5",
+    h: 180,
+    b: 100,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 4600990, welY: 128075, welZ: 92019.8, wplY: 157285, wplZ: 104358, avZ: 1718.47, it: 10402100, iw: 0, iRadY: 65.6658, iRadZ: 41.487 }
+  },
+  "RHS180X100X63": {
+    kind: "Rhs",
+    naam: "RHS 180x100x6.3",
+    h: 180,
+    b: 100,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 5571540, welY: 156358, welZ: 111431, wplY: 193769, wplZ: 128088, avZ: 2138.56, it: 12722200, iw: 0, iRadY: 65.0395, iRadZ: 40.9245 }
+  },
+  "RHS180X100X8": {
+    kind: "Rhs",
+    naam: "RHS 180x100x8",
+    h: 180,
+    b: 100,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 6711270, welY: 190376, welZ: 134225, wplY: 238797, wplZ: 157064, avZ: 2671.28, it: 15516e3, iw: 0, iRadY: 64.2133, iRadZ: 40.1883 }
+  },
+  "RHS180X100X10": {
+    kind: "Rhs",
+    naam: "RHS 180x100x10",
+    h: 180,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 7874230, welY: 226234, welZ: 157485, wplY: 287940, wplZ: 188232, avZ: 3273.88, it: 18454200, iw: 0, iRadY: 63.2305, iRadZ: 39.3215 }
+  },
+  "RHS180X100X125": {
+    kind: "Rhs",
+    naam: "RHS 180x100x12.5",
+    h: 180,
+    b: 100,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 9076e3, welY: 264990, welZ: 181520, wplY: 343655, wplZ: 222861, avZ: 3990.43, it: 21597400, iw: 0, iRadY: 61.9846, iRadZ: 38.2379 }
+  },
+  "RHS200X100X5": {
+    kind: "Rhs",
+    naam: "RHS 200x100x5",
+    h: 200,
+    b: 100,
+    tw: 5,
+    tf: 5,
+    r: 7.5,
+    props: { iz: 5052660, welY: 149464, welZ: 101053, wplY: 185017, wplZ: 113858, avZ: 1915.45, it: 12013100, iw: 0, iRadY: 72.1253, iRadZ: 41.9352 }
+  },
+  "RHS200X100X63": {
+    kind: "Rhs",
+    naam: "RHS 200x100x6.3",
+    h: 200,
+    b: 100,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 6125490, welY: 182886, welZ: 122510, wplY: 228296, wplZ: 139894, avZ: 2385.77, it: 14703100, iw: 0, iRadY: 71.4876, iRadZ: 41.3724 }
+  },
+  "RHS200X100X10": {
+    kind: "Rhs",
+    naam: "RHS 200x100x10",
+    h: 200,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 8687560, welY: 266425, welZ: 173751, wplY: 340867, wplZ: 206232, avZ: 3661.8, it: 21379400, iw: 0, iRadY: 69.6458, iRadZ: 39.77 }
+  },
+  "RHS200X100X125": {
+    kind: "Rhs",
+    naam: "RHS 200x100x12.5",
+    h: 200,
+    b: 100,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 10039500, welY: 313596, welZ: 200791, wplY: 408228, wplZ: 244736, avZ: 4471.56, it: 25071200, iw: 0, iRadY: 68.377, iRadZ: 38.6885 }
+  },
+  "RHS200X100X16": {
+    kind: "Rhs",
+    naam: "RHS 200x100x16",
+    h: 200,
+    b: 100,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 11474800, welY: 367823, welZ: 229495, wplY: 491072, wplZ: 290407, avZ: 5534.21, it: 29137200, iw: 0, iRadY: 66.565, iRadZ: 37.1791 }
+  },
+  "RHS200X120X63": {
+    kind: "Rhs",
+    naam: "RHS 200x120x6.3",
+    h: 200,
+    b: 120,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 9289630, welY: 206532, welZ: 154827, wplY: 252702, wplZ: 176940, avZ: 2394.16, it: 20230300, iw: 0, iRadY: 73.4273, iRadZ: 49.2451 }
+  },
+  "RHS200X120X8": {
+    kind: "Rhs",
+    naam: "RHS 200x120x8",
+    h: 200,
+    b: 120,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 11284e3, welY: 252868, welZ: 188066, wplY: 312670, wplZ: 218137, avZ: 2997.08, it: 24845700, iw: 0, iRadY: 72.617, iRadZ: 48.509 }
+  },
+  "RHS200X120X10": {
+    kind: "Rhs",
+    naam: "RHS 200x120x10",
+    h: 200,
+    b: 120,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 13374800, welY: 302558, welZ: 222913, wplY: 378867, wplZ: 263159, avZ: 3682.94, it: 29814500, iw: 0, iRadY: 71.6552, iRadZ: 47.6416 }
+  },
+  "RHS200X120X125": {
+    kind: "Rhs",
+    naam: "RHS 200x120x12.5",
+    h: 200,
+    b: 120,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 15621700, welY: 357607, welZ: 260361, wplY: 455103, wplZ: 314310, avZ: 4504.59, it: 35323800, iw: 0, iRadY: 70.4394, iRadZ: 46.556 }
+  },
+  "RHS250X150X63": {
+    kind: "Rhs",
+    naam: "RHS 250x150x6.3",
+    h: 250,
+    b: 150,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 18742500, welY: 331418, welZ: 249900, wplY: 402402, wplZ: 282501, avZ: 3024.16, it: 40472400, iw: 0, iRadY: 92.5297, iRadZ: 62.2374 }
+  },
+  "RHS250X150X10": {
+    kind: "Rhs",
+    naam: "RHS 250x150x10",
+    h: 250,
+    b: 150,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 27548800, welY: 493884, welZ: 367317, wplY: 610684, wplZ: 426049, avZ: 4682.94, it: 60658300, iw: 0, iRadY: 90.7712, iRadZ: 60.6362 }
+  },
+  "RHS250X150X125": {
+    kind: "Rhs",
+    naam: "RHS 250x150x12.5",
+    h: 250,
+    b: 150,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 32653300, welY: 590934, welZ: 435378, wplY: 739974, wplZ: 513982, avZ: 5754.59, it: 72789200, iw: 0, iRadY: 89.5689, iRadZ: 59.552 }
+  },
+  "RHS250X150X16": {
+    kind: "Rhs",
+    naam: "RHS 250x150x16",
+    h: 250,
+    b: 150,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 38733300, welY: 710353, welZ: 516444, wplY: 905805, wplZ: 625139, avZ: 7188.32, it: 87726e3, iw: 0, iRadY: 87.8655, iRadZ: 58.0321 }
+  },
+  "RHS260X180X8": {
+    kind: "Rhs",
+    naam: "RHS 260x180x8",
+    h: 260,
+    b: 180,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 36081300, welY: 491515, welZ: 400903, wplY: 591890, wplZ: 458957, avZ: 3968.15, it: 72073100, iw: 0, iRadY: 97.5453, iRadZ: 73.3006 }
+  },
+  "RHS260X180X10": {
+    kind: "Rhs",
+    naam: "RHS 260x180x10",
+    h: 260,
+    b: 180,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 43507800, welY: 595471, welZ: 483420, wplY: 723648, wplZ: 559940, avZ: 4900.23, it: 87710700, iw: 0, iRadY: 96.6171, iRadZ: 72.4328 }
+  },
+  "RHS260X180X125": {
+    kind: "Rhs",
+    naam: "RHS 260x180x12.5",
+    h: 260,
+    b: 180,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 51957500, welY: 715339, welZ: 577305, wplY: 879449, wplZ: 678655, avZ: 6031.61, it: 10591e4, iw: 0, iRadY: 95.449, iRadZ: 71.3457 }
+  },
+  "RHS260X180X16": {
+    kind: "Rhs",
+    naam: "RHS 260x180x16",
+    h: 260,
+    b: 180,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 62305800, welY: 865011, welZ: 692286, wplY: 1081230, wplZ: 831099, avZ: 7552.59, it: 128867e3, iw: 0, iRadY: 93.7983, iRadZ: 69.8195 }
+  },
+  "RHS300X200X63": {
+    kind: "Rhs",
+    naam: "RHS 300x200x6.3",
+    h: 300,
+    b: 200,
+    tw: 6.3,
+    tf: 6.3,
+    r: 9.45,
+    props: { iz: 41934400, welY: 521939, welZ: 419344, wplY: 623759, wplZ: 472358, avZ: 3659.19, it: 84684600, iw: 0, iRadY: 113.302, iRadZ: 82.9217 }
+  },
+  "RHS300X200X8": {
+    kind: "Rhs",
+    naam: "RHS 300x200x8",
+    h: 300,
+    b: 200,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 51844300, welY: 647779, welZ: 518443, wplY: 779317, wplZ: 589150, avZ: 4605.2, it: 105459e3, iw: 0, iRadY: 112.515, iRadZ: 82.1868 }
+  },
+  "RHS300X200X125": {
+    kind: "Rhs",
+    naam: "RHS 300x200x12.5",
+    h: 300,
+    b: 200,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 75370100, welY: 951512, welZ: 753701, wplY: 1165470, wplZ: 876978, avZ: 7024.41, it: 156164e3, iw: 0, iRadY: 110.414, iRadZ: 80.2362 }
+  },
+  "RHS300X200X16": {
+    kind: "Rhs",
+    naam: "RHS 300x200x16",
+    h: 300,
+    b: 200,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 91088400, welY: 1159350, welZ: 910884, wplY: 1440540, wplZ: 1079870, avZ: 8820.79, it: 191285e3, iw: 0, iRadY: 108.761, iRadZ: 78.7143 }
+  },
+  "RHS350X250X8": {
+    kind: "Rhs",
+    naam: "RHS 350x250x8",
+    h: 350,
+    b: 250,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 97982600, welY: 939963, welZ: 783861, wplY: 1118e3, wplZ: 887834, avZ: 5410.61, it: 190073e3, iw: 0, iRadY: 133.171, iRadZ: 102.78 }
+  },
+  "RHS350X250X10": {
+    kind: "Rhs",
+    naam: "RHS 350x250x10",
+    h: 350,
+    b: 250,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 119369e3, welY: 1148680, welZ: 954950, wplY: 1375320, wplZ: 1090680, avZ: 6704.07, it: 233165e3, iw: 0, iRadY: 132.254, iRadZ: 101.914 }
+  },
+  "RHS350X250X125": {
+    kind: "Rhs",
+    naam: "RHS 350x250x12.5",
+    h: 350,
+    b: 250,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 14444e4, welY: 1395370, welZ: 1155520, wplY: 1684720, wplZ: 1333720, avZ: 8287.62, it: 284527e3, iw: 0, iRadY: 131.101, iRadZ: 100.829 }
+  },
+  "RHS350X250X16": {
+    kind: "Rhs",
+    naam: "RHS 350x250x16",
+    h: 350,
+    b: 250,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 17654e4, welY: 1714900, welZ: 1412320, wplY: 2095270, wplZ: 1654600, avZ: 10442.4, it: 351748e3, iw: 0, iRadY: 129.478, iRadZ: 99.3069 }
+  },
+  "RHS400X200X8": {
+    kind: "Rhs",
+    naam: "RHS 400x200x8",
+    h: 400,
+    b: 200,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 66598400, welY: 978101, welZ: 665984, wplY: 1203080, wplZ: 742750, avZ: 6183.55, it: 157153e3, iw: 0, iRadY: 145.225, iRadZ: 84.7359 }
+  },
+  "RHS400X200X10": {
+    kind: "Rhs",
+    naam: "RHS 400x200x10",
+    h: 400,
+    b: 200,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 80842500, welY: 1195710, welZ: 808425, wplY: 1480140, wplZ: 910867, avZ: 7661.8, it: 192209e3, iw: 0, iRadY: 144.251, iRadZ: 83.8704 }
+  },
+  "RHS400X200X125": {
+    kind: "Rhs",
+    naam: "RHS 400x200x12.5",
+    h: 400,
+    b: 200,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 97375300, welY: 1453130, welZ: 973753, wplY: 1813340, wplZ: 1111350, avZ: 9471.56, it: 233647e3, iw: 0, iRadY: 143.025, iRadZ: 82.7881 }
+  },
+  "RHS400X200X16": {
+    kind: "Rhs",
+    naam: "RHS 400x200x16",
+    h: 400,
+    b: 200,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 118242e3, welY: 1786880, welZ: 1182420, wplY: 2255600, wplZ: 1374270, avZ: 11934.2, it: 287209e3, iw: 0, iRadY: 141.293, iRadZ: 81.2723 }
+  },
+  "RHS400X200X20": {
+    kind: "Rhs",
+    naam: "RHS 400x200x20",
+    h: 400,
+    b: 200,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 139001e3, welY: 2131400, welZ: 1390010, wplY: 2726940, wplZ: 1649860, avZ: 14647.2, it: 34207e4, iw: 0, iRadY: 139.292, iRadZ: 79.5401 }
+  },
+  "RHS450X250X8": {
+    kind: "Rhs",
+    naam: "RHS 450x250x8",
+    h: 450,
+    b: 250,
+    tw: 8,
+    tf: 8,
+    r: 12,
+    props: { iz: 121417e3, welY: 1336960, welZ: 971334, wplY: 1621770, wplZ: 1081430, avZ: 6991.28, it: 270599e3, iw: 0, iRadY: 166.314, iRadZ: 105.662 }
+  },
+  "RHS450X250X10": {
+    kind: "Rhs",
+    naam: "RHS 450x250x10",
+    h: 450,
+    b: 250,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 148185e3, welY: 1639770, welZ: 1185480, wplY: 1999950, wplZ: 1330680, avZ: 8673.88, it: 332394e3, iw: 0, iRadY: 165.361, iRadZ: 104.798 }
+  },
+  "RHS450X250X125": {
+    kind: "Rhs",
+    naam: "RHS 450x250x12.5",
+    h: 450,
+    b: 250,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 179726e3, welY: 2001170, welZ: 1437810, wplY: 2457580, wplZ: 1630600, avZ: 10740.4, it: 406333e3, iw: 0, iRadY: 164.165, iRadZ: 103.717 }
+  },
+  "RHS450X250X16": {
+    kind: "Rhs",
+    naam: "RHS 450x250x16",
+    h: 450,
+    b: 250,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 220413e3, welY: 2475800, welZ: 1763310, wplY: 3070340, wplZ: 2029e3, avZ: 13565.1, it: 503675e3, iw: 0, iRadY: 162.478, iRadZ: 102.203 }
+  },
+  "RHS450X250X20": {
+    kind: "Rhs",
+    naam: "RHS 450x250x20",
+    h: 450,
+    b: 250,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 262159e3, welY: 2974630, welZ: 2097270, wplY: 3731200, wplZ: 2454130, avZ: 16695.5, it: 606094e3, iw: 0, iRadY: 160.533, iRadZ: 100.471 }
+  },
+  "RHS500X300X10": {
+    kind: "Rhs",
+    naam: "RHS 500x300x10",
+    h: 500,
+    b: 300,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    props: { iz: 244394e3, welY: 2150490, welZ: 1629300, wplY: 2594770, wplZ: 1825500, avZ: 9682.94, it: 523985e3, iw: 0, iRadY: 186.284, iRadZ: 125.598 }
+  },
+  "RHS500X300X125": {
+    kind: "Rhs",
+    naam: "RHS 500x300x12.5",
+    h: 500,
+    b: 300,
+    tw: 12.5,
+    tf: 12.5,
+    r: 18.75,
+    props: { iz: 297805e3, welY: 2632520, welZ: 1985370, wplY: 3195580, wplZ: 2243600, avZ: 12004.6, it: 642903e3, iw: 0, iRadY: 185.107, iRadZ: 124.518 }
+  },
+  "RHS500X300X16": {
+    kind: "Rhs",
+    naam: "RHS 500x300x16",
+    h: 500,
+    b: 300,
+    tw: 16,
+    tf: 16,
+    r: 24,
+    props: { iz: 367682e3, welY: 3271320, welZ: 2451210, wplY: 4005070, wplZ: 2803740, avZ: 15188.3, it: 801239e3, iw: 0, iRadY: 183.45, iRadZ: 123.005 }
+  },
+  "RHS500X300X20": {
+    kind: "Rhs",
+    naam: "RHS 500x300x20",
+    h: 500,
+    b: 300,
+    tw: 20,
+    tf: 20,
+    r: 30,
+    props: { iz: 44078e4, welY: 3951070, welZ: 2938530, wplY: 4885470, wplZ: 3408400, avZ: 18731.7, it: 970533e3, iw: 0, iRadY: 181.542, iRadZ: 121.272 }
+  },
+  "CHS337X26": {
+    kind: "Chs",
+    naam: "CHS 33.7x2.6",
+    h: 33.7,
+    b: 33.7,
+    tw: 2.6,
+    tf: 2.6,
+    r: 0,
+    props: { iz: 30927.1, welY: 1835.44, welZ: 1835.44, wplY: 2520.6, wplZ: 2520.6, avZ: 161.72, it: 61854.2, iw: 0, iRadY: 11.0339, iRadZ: 11.0339 }
+  },
+  "CHS337X32": {
+    kind: "Chs",
+    naam: "CHS 33.7x3.2",
+    h: 33.7,
+    b: 33.7,
+    tw: 3.2,
+    tf: 3.2,
+    r: 0,
+    props: { iz: 36046.6, welY: 2139.26, welZ: 2139.26, wplY: 2987.72, wplZ: 2987.72, avZ: 195.2, it: 72093.1, iw: 0, iRadY: 10.8426, iRadZ: 10.8426 }
+  },
+  "CHS337X4": {
+    kind: "Chs",
+    naam: "CHS 33.7x4",
+    h: 33.7,
+    b: 33.7,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 41898.3, welY: 2486.54, welZ: 2486.54, wplY: 3549.69, wplZ: 3549.69, avZ: 237.6, it: 83796.6, iw: 0, iRadY: 10.5953, iRadZ: 10.5953 }
+  },
+  "CHS424X26": {
+    kind: "Chs",
+    naam: "CHS 42.4x2.6",
+    h: 42.4,
+    b: 42.4,
+    tw: 2.6,
+    tf: 2.6,
+    r: 0,
+    props: { iz: 64644.5, welY: 3049.27, welZ: 3049.27, wplY: 4124.36, wplZ: 4124.36, avZ: 206.96, it: 129289, iw: 0, iRadY: 14.1014, iRadZ: 14.1014 }
+  },
+  "CHS424X4": {
+    kind: "Chs",
+    naam: "CHS 42.4x4",
+    h: 42.4,
+    b: 42.4,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 89908.5, welY: 4240.97, welZ: 4240.97, wplY: 5919.57, wplZ: 5919.57, avZ: 307.2, it: 179817, iw: 0, iRadY: 13.6499, iRadZ: 13.6499 }
+  },
+  "CHS483X4": {
+    kind: "Chs",
+    naam: "CHS 48.3x4",
+    h: 48.3,
+    b: 48.3,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 137676, welY: 5700.86, welZ: 5700.86, wplY: 7871.29, wplZ: 7871.29, avZ: 354.4, it: 275352, iw: 0, iRadY: 15.7261, iRadZ: 15.7261 }
+  },
+  "CHS483X5": {
+    kind: "Chs",
+    naam: "CHS 48.3x5",
+    h: 48.3,
+    b: 48.3,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 161527, welY: 6688.51, welZ: 6688.51, wplY: 9416.12, wplZ: 9416.12, avZ: 433, it: 323055, iw: 0, iRadY: 15.4106, iRadZ: 15.4106 }
+  },
+  "CHS603X32": {
+    kind: "Chs",
+    naam: "CHS 60.3x3.2",
+    h: 60.3,
+    b: 60.3,
+    tw: 3.2,
+    tf: 3.2,
+    r: 0,
+    props: { iz: 234682, welY: 7783.82, welZ: 7783.82, wplY: 10444.2, wplZ: 10444.2, avZ: 365.44, it: 469364, iw: 0, iRadY: 20.2196, iRadZ: 20.2196 }
+  },
+  "CHS603X5": {
+    kind: "Chs",
+    naam: "CHS 60.3x5",
+    h: 60.3,
+    b: 60.3,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 334766, welY: 11103.3, welZ: 11103.3, wplY: 15332.1, wplZ: 15332.1, avZ: 553, it: 669532, iw: 0, iRadY: 19.6313, iRadZ: 19.6313 }
+  },
+  "CHS603X63": {
+    kind: "Chs",
+    naam: "CHS 60.3x6.3",
+    h: 60.3,
+    b: 60.3,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 394869, welY: 13096.8, welZ: 13096.8, wplY: 18454.1, wplZ: 18454.1, avZ: 680.4, it: 789738, iw: 0, iRadY: 19.2214, iRadZ: 19.2214 }
+  },
+  "CHS761X32": {
+    kind: "Chs",
+    naam: "CHS 76.1x3.2",
+    h: 76.1,
+    b: 76.1,
+    tw: 3.2,
+    tf: 3.2,
+    r: 0,
+    props: { iz: 487785, welY: 12819.6, welZ: 12819.6, wplY: 17017, wplZ: 17017, avZ: 466.56, it: 975570, iw: 0, iRadY: 25.7989, iRadZ: 25.7989 }
+  },
+  "CHS761X4": {
+    kind: "Chs",
+    naam: "CHS 76.1x4",
+    h: 76.1,
+    b: 76.1,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 590555, welY: 15520.5, welZ: 15520.5, wplY: 20815, wplZ: 20815, avZ: 576.8, it: 1181110, iw: 0, iRadY: 25.5304, iRadZ: 25.5304 }
+  },
+  "CHS761X63": {
+    kind: "Chs",
+    naam: "CHS 76.1x6.3",
+    h: 76.1,
+    b: 76.1,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 848185, welY: 22291.3, welZ: 22291.3, wplY: 30777.2, wplZ: 30777.2, avZ: 879.48, it: 1696370, iw: 0, iRadY: 24.7783, iRadZ: 24.7783 }
+  },
+  "CHS761X8": {
+    kind: "Chs",
+    naam: "CHS 76.1x8",
+    h: 76.1,
+    b: 76.1,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 1005870, welY: 26435.6, welZ: 26435.6, wplY: 37271.5, wplZ: 37271.5, avZ: 1089.6, it: 2011750, iw: 0, iRadY: 24.2426, iRadZ: 24.2426 }
+  },
+  "CHS889X32": {
+    kind: "Chs",
+    naam: "CHS 88.9x3.2",
+    h: 88.9,
+    b: 88.9,
+    tw: 3.2,
+    tf: 3.2,
+    r: 0,
+    props: { iz: 792059, welY: 17819.1, welZ: 17819.1, wplY: 23513.3, wplZ: 23513.3, avZ: 548.48, it: 1584120, iw: 0, iRadY: 30.3206, iRadZ: 30.3206 }
+  },
+  "CHS889X4": {
+    kind: "Chs",
+    naam: "CHS 88.9x4",
+    h: 88.9,
+    b: 88.9,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 963398, welY: 21673.8, welZ: 21673.8, wplY: 28853.4, wplZ: 28853.4, avZ: 679.2, it: 1926800, iw: 0, iRadY: 30.05, iRadZ: 30.05 }
+  },
+  "CHS889X63": {
+    kind: "Chs",
+    naam: "CHS 88.9x6.3",
+    h: 88.9,
+    b: 88.9,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 1402360, welY: 31549.2, welZ: 31549.2, wplY: 43066.7, wplZ: 43066.7, avZ: 1040.76, it: 2804720, iw: 0, iRadY: 29.2883, iRadZ: 29.2883 }
+  },
+  "CHS889X8": {
+    kind: "Chs",
+    naam: "CHS 88.9x8",
+    h: 88.9,
+    b: 88.9,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 1679660, welY: 37787.7, welZ: 37787.7, wplY: 52529.1, wplZ: 52529.1, avZ: 1294.4, it: 3359320, iw: 0, iRadY: 28.742, iRadZ: 28.742 }
+  },
+  "CHS1143X36": {
+    kind: "Chs",
+    naam: "CHS 114.3x3.6",
+    h: 114.3,
+    b: 114.3,
+    tw: 3.6,
+    tf: 3.6,
+    r: 0,
+    props: { iz: 1919840, welY: 33592.9, welZ: 33592.9, wplY: 44131.7, wplZ: 44131.7, avZ: 797.04, it: 3839670, iw: 0, iRadY: 39.1591, iRadZ: 39.1591 }
+  },
+  "CHS1143X4": {
+    kind: "Chs",
+    naam: "CHS 114.3x4",
+    h: 114.3,
+    b: 114.3,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 2110650, welY: 36931.8, welZ: 36931.8, wplY: 48685.7, wplZ: 48685.7, avZ: 882.4, it: 4221310, iw: 0, iRadY: 39.0226, iRadZ: 39.0226 }
+  },
+  "CHS1143X5": {
+    kind: "Chs",
+    naam: "CHS 114.3x5",
+    h: 114.3,
+    b: 114.3,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 2569200, welY: 44955.4, welZ: 44955.4, wplY: 59774.1, wplZ: 59774.1, avZ: 1093, it: 5138400, iw: 0, iRadY: 38.6838, iRadZ: 38.6838 }
+  },
+  "CHS1143X8": {
+    kind: "Chs",
+    naam: "CHS 114.3x8",
+    h: 114.3,
+    b: 114.3,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 3794920, welY: 66402.8, welZ: 66402.8, wplY: 90568.2, wplZ: 90568.2, avZ: 1700.8, it: 7589840, iw: 0, iRadY: 37.689, iRadZ: 37.689 }
+  },
+  "CHS1143X10": {
+    kind: "Chs",
+    naam: "CHS 114.3x10",
+    h: 114.3,
+    b: 114.3,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 4496630, welY: 78681.1, welZ: 78681.1, wplY: 109118, wplZ: 109118, avZ: 2086, it: 8993250, iw: 0, iRadY: 37.0447, iRadZ: 37.0447 }
+  },
+  "CHS1397X4": {
+    kind: "Chs",
+    naam: "CHS 139.7x4",
+    h: 139.7,
+    b: 139.7,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 3928590, welY: 56243.2, welZ: 56243.2, wplY: 73679.3, wplZ: 73679.3, avZ: 1085.6, it: 7857180, iw: 0, iRadY: 47.998, iRadZ: 47.998 }
+  },
+  "CHS1397X5": {
+    kind: "Chs",
+    naam: "CHS 139.7x5",
+    h: 139.7,
+    b: 139.7,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 4805410, welY: 68796.2, welZ: 68796.2, wplY: 90762.1, wplZ: 90762.1, avZ: 1347, it: 9610820, iw: 0, iRadY: 47.6564, iRadZ: 47.6564 }
+  },
+  "CHS1397X63": {
+    kind: "Chs",
+    naam: "CHS 139.7x6.3",
+    h: 139.7,
+    b: 139.7,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 5886210, welY: 84269.2, welZ: 84269.2, wplY: 112195, wplZ: 112195, avZ: 1680.84, it: 11772400, iw: 0, iRadY: 47.2166, iRadZ: 47.2166 }
+  },
+  "CHS1397X10": {
+    kind: "Chs",
+    naam: "CHS 139.7x10",
+    h: 139.7,
+    b: 139.7,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 8618940, welY: 123392, welZ: 123392, wplY: 168554, wplZ: 168554, avZ: 2594, it: 17237900, iw: 0, iRadY: 45.992, iRadZ: 45.992 }
+  },
+  "CHS1397X125": {
+    kind: "Chs",
+    naam: "CHS 139.7x12.5",
+    h: 139.7,
+    b: 139.7,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 10200100, welY: 146029, welZ: 146029, wplY: 202899, wplZ: 202899, avZ: 3180, it: 20400200, iw: 0, iRadY: 45.1886, iRadZ: 45.1886 }
+  },
+  "CHS1683X4": {
+    kind: "Chs",
+    naam: "CHS 168.3x4",
+    h: 168.3,
+    b: 168.3,
+    tw: 4,
+    tf: 4,
+    r: 0,
+    props: { iz: 6970920, welY: 82839.2, welZ: 82839.2, wplY: 107999, wplZ: 107999, avZ: 1314.4, it: 13941800, iw: 0, iRadY: 58.106, iRadZ: 58.106 }
+  },
+  "CHS1683X5": {
+    kind: "Chs",
+    naam: "CHS 168.3x5",
+    h: 168.3,
+    b: 168.3,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 8558460, welY: 101705, welZ: 101705, wplY: 133376, wplZ: 133376, avZ: 1633, it: 17116900, iw: 0, iRadY: 57.7623, iRadZ: 57.7623 }
+  },
+  "CHS1683X63": {
+    kind: "Chs",
+    naam: "CHS 168.3x6.3",
+    h: 168.3,
+    b: 168.3,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 10534200, welY: 125184, welZ: 125184, wplY: 165421, wplZ: 165421, avZ: 2041.2, it: 21068400, iw: 0, iRadY: 57.3189, iRadZ: 57.3189 }
+  },
+  "CHS1683X10": {
+    kind: "Chs",
+    naam: "CHS 168.3x10",
+    h: 168.3,
+    b: 168.3,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 15639800, welY: 185857, welZ: 185857, wplY: 250922, wplZ: 250922, avZ: 3166, it: 31279700, iw: 0, iRadY: 56.0791, iRadZ: 56.0791 }
+  },
+  "CHS1683X125": {
+    kind: "Chs",
+    naam: "CHS 168.3x12.5",
+    h: 168.3,
+    b: 168.3,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 18683500, welY: 222026, welZ: 222026, wplY: 304072, wplZ: 304072, avZ: 3895, it: 37367100, iw: 0, iRadY: 55.2606, iRadZ: 55.2606 }
+  },
+  "CHS1937X5": {
+    kind: "Chs",
+    naam: "CHS 193.7x5",
+    h: 193.7,
+    b: 193.7,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 13202300, welY: 136317, welZ: 136317, wplY: 178080, wplZ: 178080, avZ: 1887, it: 26404600, iw: 0, iRadY: 66.7389, iRadZ: 66.7389 }
+  },
+  "CHS1937X63": {
+    kind: "Chs",
+    naam: "CHS 193.7x6.3",
+    h: 193.7,
+    b: 193.7,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 16300500, welY: 168306, welZ: 168306, wplY: 221332, wplZ: 221332, avZ: 2361.24, it: 32600900, iw: 0, iRadY: 66.2933, iRadZ: 66.2933 }
+  },
+  "CHS1937X8": {
+    kind: "Chs",
+    naam: "CHS 193.7x8",
+    h: 193.7,
+    b: 193.7,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 20155400, welY: 208109, welZ: 208109, wplY: 276047, wplZ: 276047, avZ: 2971.2, it: 40310700, iw: 0, iRadY: 65.7158, iRadZ: 65.7158 }
+  },
+  "CHS1937X10": {
+    kind: "Chs",
+    naam: "CHS 193.7x10",
+    h: 193.7,
+    b: 193.7,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 24415900, welY: 252100, welZ: 252100, wplY: 337790, wplZ: 337790, avZ: 3674, it: 48831800, iw: 0, iRadY: 65.0439, iRadZ: 65.0439 }
+  },
+  "CHS1937X125": {
+    kind: "Chs",
+    naam: "CHS 193.7x12.5",
+    h: 193.7,
+    b: 193.7,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 29343100, welY: 302975, welZ: 302975, wplY: 411069, wplZ: 411069, avZ: 4530, it: 58686200, iw: 0, iRadY: 64.2161, iRadZ: 64.2161 }
+  },
+  "CHS1937X16": {
+    kind: "Chs",
+    naam: "CHS 193.7x16",
+    h: 193.7,
+    b: 193.7,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 35542600, welY: 366986, welZ: 366986, wplY: 506602, wplZ: 506602, avZ: 5686.4, it: 71085100, iw: 0, iRadY: 63.0806, iRadZ: 63.0806 }
+  },
+  "CHS2191X5": {
+    kind: "Chs",
+    naam: "CHS 219.1x5",
+    h: 219.1,
+    b: 219.1,
+    tw: 5,
+    tf: 5,
+    r: 0,
+    props: { iz: 19280400, welY: 175997, welZ: 175997, wplY: 229236, wplZ: 229236, avZ: 2141, it: 38560900, iw: 0, iRadY: 75.7164, iRadZ: 75.7164 }
+  },
+  "CHS2191X63": {
+    kind: "Chs",
+    naam: "CHS 219.1x6.3",
+    h: 219.1,
+    b: 219.1,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 23861400, welY: 217813, welZ: 217813, wplY: 285372, wplZ: 285372, avZ: 2681.28, it: 47722800, iw: 0, iRadY: 75.2691, iRadZ: 75.2691 }
+  },
+  "CHS2191X8": {
+    kind: "Chs",
+    naam: "CHS 219.1x8",
+    h: 219.1,
+    b: 219.1,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 29596300, welY: 270163, welZ: 270163, wplY: 356676, wplZ: 356676, avZ: 3377.6, it: 59192700, iw: 0, iRadY: 74.6887, iRadZ: 74.6887 }
+  },
+  "CHS2191X125": {
+    kind: "Chs",
+    naam: "CHS 219.1x12.5",
+    h: 219.1,
+    b: 219.1,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 43445800, welY: 396584, welZ: 396584, wplY: 534196, wplZ: 534196, avZ: 5165, it: 86891600, iw: 0, iRadY: 73.1777, iRadZ: 73.1777 }
+  },
+  "CHS2191X16": {
+    kind: "Chs",
+    naam: "CHS 219.1x16",
+    h: 219.1,
+    b: 219.1,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 52965900, welY: 483486, welZ: 483486, wplY: 661359, wplZ: 661359, avZ: 6499.2, it: 105932e3, iw: 0, iRadY: 72.0292, iRadZ: 72.0292 }
+  },
+  "CHS2191X20": {
+    kind: "Chs",
+    naam: "CHS 219.1x20",
+    h: 219.1,
+    b: 219.1,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 62612900, welY: 571547, welZ: 571547, wplY: 795483, wplZ: 795483, avZ: 7964, it: 125226e3, iw: 0, iRadY: 70.7467, iRadZ: 70.7467 }
+  },
+  "CHS2445X63": {
+    kind: "Chs",
+    naam: "CHS 244.5x6.3",
+    h: 244.5,
+    b: 244.5,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 33460300, welY: 273704, welZ: 273704, wplY: 357541, wplZ: 357541, avZ: 3001.32, it: 66920500, iw: 0, iRadY: 84.2459, iRadZ: 84.2459 }
+  },
+  "CHS2445X8": {
+    kind: "Chs",
+    naam: "CHS 244.5x8",
+    h: 244.5,
+    b: 244.5,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 41604500, welY: 340323, welZ: 340323, wplY: 447629, wplZ: 447629, avZ: 3784, it: 83208900, iw: 0, iRadY: 83.6632, iRadZ: 83.6632 }
+  },
+  "CHS2445X10": {
+    kind: "Chs",
+    naam: "CHS 244.5x10",
+    h: 244.5,
+    b: 244.5,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 50731500, welY: 414981, welZ: 414981, wplY: 550236, wplZ: 550236, avZ: 4690, it: 101463e3, iw: 0, iRadY: 82.9836, iRadZ: 82.9836 }
+  },
+  "CHS2445X125": {
+    kind: "Chs",
+    naam: "CHS 244.5x12.5",
+    h: 244.5,
+    b: 244.5,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 61474200, welY: 502856, welZ: 502856, wplY: 673451, wplZ: 673451, avZ: 5800, it: 122948e3, iw: 0, iRadY: 82.1434, iRadZ: 82.1434 }
+  },
+  "CHS2445X16": {
+    kind: "Chs",
+    naam: "CHS 244.5x16",
+    h: 244.5,
+    b: 244.5,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 75329100, welY: 616189, welZ: 616189, wplY: 836761, wplZ: 836761, avZ: 7312, it: 150658e3, iw: 0, iRadY: 80.9848, iRadZ: 80.9848 }
+  },
+  "CHS2445X20": {
+    kind: "Chs",
+    naam: "CHS 244.5x20",
+    h: 244.5,
+    b: 244.5,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 89572e3, welY: 732695, welZ: 732695, wplY: 1010670, wplZ: 1010670, avZ: 8980, it: 179144e3, iw: 0, iRadY: 79.6871, iRadZ: 79.6871 }
+  },
+  "CHS273X63": {
+    kind: "Chs",
+    naam: "CHS 273x6.3",
+    h: 273,
+    b: 273,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 46958200, welY: 344016, welZ: 344016, wplY: 448195, wplZ: 448195, avZ: 3360.42, it: 93916500, iw: 0, iRadY: 94.319, iRadZ: 94.319 }
+  },
+  "CHS273X8": {
+    kind: "Chs",
+    naam: "CHS 273x8",
+    h: 273,
+    b: 273,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 58517100, welY: 428697, welZ: 428697, wplY: 561971, wplZ: 561971, avZ: 4240, it: 117034e3, iw: 0, iRadY: 93.7343, iRadZ: 93.7343 }
+  },
+  "CHS273X125": {
+    kind: "Chs",
+    naam: "CHS 273x12.5",
+    h: 273,
+    b: 273,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 86974500, welY: 637176, welZ: 637176, wplY: 848904, wplZ: 848904, avZ: 6512.5, it: 173949e3, iw: 0, iRadY: 92.2066, iRadZ: 92.2066 }
+  },
+  "CHS273X16": {
+    kind: "Chs",
+    naam: "CHS 273x16",
+    h: 273,
+    b: 273,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 107068e3, welY: 784380, welZ: 784380, wplY: 1058150, wplZ: 1058150, avZ: 8224, it: 214136e3, iw: 0, iRadY: 91.0391, iRadZ: 91.0391 }
+  },
+  "CHS273X20": {
+    kind: "Chs",
+    naam: "CHS 273x20",
+    h: 273,
+    b: 273,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 127984e3, welY: 937614, welZ: 937614, wplY: 1282850, wplZ: 1282850, avZ: 10120, it: 255969e3, iw: 0, iRadY: 89.7281, iRadZ: 89.7281 }
+  },
+  "CHS3239X63": {
+    kind: "Chs",
+    naam: "CHS 323.9x6.3",
+    h: 323.9,
+    b: 323.9,
+    tw: 6.3,
+    tf: 6.3,
+    r: 0,
+    props: { iz: 79289e3, welY: 489589, welZ: 489589, wplY: 635563, wplZ: 635563, avZ: 4001.76, it: 158578e3, iw: 0, iRadY: 112.311, iRadZ: 112.311 }
+  },
+  "CHS3239X8": {
+    kind: "Chs",
+    naam: "CHS 323.9x8",
+    h: 323.9,
+    b: 323.9,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 99100800, welY: 611922, welZ: 611922, wplY: 798513, wplZ: 798513, avZ: 5054.4, it: 198202e3, iw: 0, iRadY: 111.723, iRadZ: 111.723 }
+  },
+  "CHS3239X10": {
+    kind: "Chs",
+    naam: "CHS 323.9x10",
+    h: 323.9,
+    b: 323.9,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 121583e3, welY: 750747, welZ: 750747, wplY: 985665, wplZ: 985665, avZ: 6278, it: 243167e3, iw: 0, iRadY: 111.037, iRadZ: 111.037 }
+  },
+  "CHS3239X16": {
+    kind: "Chs",
+    naam: "CHS 323.9x16",
+    h: 323.9,
+    b: 323.9,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 183899e3, welY: 1135530, welZ: 1135530, wplY: 1518200, wplZ: 1518200, avZ: 9852.8, it: 367799e3, iw: 0, iRadY: 109.006, iRadZ: 109.006 }
+  },
+  "CHS3239X20": {
+    kind: "Chs",
+    naam: "CHS 323.9x20",
+    h: 323.9,
+    b: 323.9,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 22139e4, welY: 1367030, welZ: 1367030, wplY: 1849770, wplZ: 1849770, avZ: 12156, it: 442781e3, iw: 0, iRadY: 107.677, iRadZ: 107.677 }
+  },
+  "CHS3556X8": {
+    kind: "Chs",
+    naam: "CHS 355.6x8",
+    h: 355.6,
+    b: 355.6,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 132014e3, welY: 742485, welZ: 742485, wplY: 966777, wplZ: 966777, avZ: 5561.6, it: 264027e3, iw: 0, iRadY: 122.928, iRadZ: 122.928 }
+  },
+  "CHS3556X10": {
+    kind: "Chs",
+    naam: "CHS 355.6x10",
+    h: 355.6,
+    b: 355.6,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 162235e3, welY: 912458, welZ: 912458, wplY: 1194730, wplZ: 1194730, avZ: 6912, it: 32447e4, iw: 0, iRadY: 122.239, iRadZ: 122.239 }
+  },
+  "CHS3556X125": {
+    kind: "Chs",
+    naam: "CHS 355.6x12.5",
+    h: 355.6,
+    b: 355.6,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 198522e3, welY: 1116550, welZ: 1116550, wplY: 1472120, wplZ: 1472120, avZ: 8577.5, it: 397044e3, iw: 0, iRadY: 121.385, iRadZ: 121.385 }
+  },
+  "CHS3556X16": {
+    kind: "Chs",
+    naam: "CHS 355.6x16",
+    h: 355.6,
+    b: 355.6,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 24663e4, welY: 1387120, welZ: 1387120, wplY: 1846620, wplZ: 1846620, avZ: 10867.2, it: 49326e4, iw: 0, iRadY: 120.2, iRadZ: 120.2 }
+  },
+  "CHS3556X20": {
+    kind: "Chs",
+    naam: "CHS 355.6x20",
+    h: 355.6,
+    b: 355.6,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 297917e3, welY: 1675570, welZ: 1675570, wplY: 2255210, wplZ: 2255210, avZ: 13424, it: 595834e3, iw: 0, iRadY: 118.863, iRadZ: 118.863 }
+  },
+  "CHS4064X8": {
+    kind: "Chs",
+    naam: "CHS 406.4x8",
+    h: 406.4,
+    b: 406.4,
+    tw: 8,
+    tf: 8,
+    r: 0,
+    props: { iz: 198739e3, welY: 978046, welZ: 978046, wplY: 1269950, wplZ: 1269950, avZ: 6374.4, it: 397478e3, iw: 0, iRadY: 140.884, iRadZ: 140.884 }
+  },
+  "CHS4064X10": {
+    kind: "Chs",
+    naam: "CHS 406.4x10",
+    h: 406.4,
+    b: 406.4,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 244758e3, welY: 1204520, welZ: 1204520, wplY: 1571660, wplZ: 1571660, avZ: 7928, it: 489516e3, iw: 0, iRadY: 140.193, iRadZ: 140.193 }
+  },
+  "CHS4064X125": {
+    kind: "Chs",
+    naam: "CHS 406.4x12.5",
+    h: 406.4,
+    b: 406.4,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 300307e3, welY: 1477890, welZ: 1477890, wplY: 1940120, wplZ: 1940120, avZ: 9847.5, it: 600613e3, iw: 0, iRadY: 139.335, iRadZ: 139.335 }
+  },
+  "CHS4064X20": {
+    kind: "Chs",
+    naam: "CHS 406.4x20",
+    h: 406.4,
+    b: 406.4,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 454321e3, welY: 2235830, welZ: 2235830, wplY: 2988770, wplZ: 2988770, avZ: 15456, it: 908643e3, iw: 0, iRadY: 136.796, iRadZ: 136.796 }
+  },
+  "CHS457X10": {
+    kind: "Chs",
+    naam: "CHS 457x10",
+    h: 457,
+    b: 457,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 350913e3, welY: 1535730, welZ: 1535730, wplY: 1998420, wplZ: 1998420, avZ: 8940, it: 701826e3, iw: 0, iRadY: 158.078, iRadZ: 158.078 }
+  },
+  "CHS457X125": {
+    kind: "Chs",
+    naam: "CHS 457x12.5",
+    h: 457,
+    b: 457,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 431448e3, welY: 1888180, welZ: 1888180, wplY: 2470400, wplZ: 2470400, avZ: 11112.5, it: 862896e3, iw: 0, iRadY: 157.217, iRadZ: 157.217 }
+  },
+  "CHS457X16": {
+    kind: "Chs",
+    naam: "CHS 457x16",
+    h: 457,
+    b: 457,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 539594e3, welY: 2361460, welZ: 2361460, wplY: 3113060, wplZ: 3113060, avZ: 14112, it: 107919e4, iw: 0, iRadY: 156.02, iRadZ: 156.02 }
+  },
+  "CHS457X20": {
+    kind: "Chs",
+    naam: "CHS 457x20",
+    h: 457,
+    b: 457,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 656815e3, welY: 2874460, welZ: 2874460, wplY: 3822050, wplZ: 3822050, avZ: 17480, it: 131363e4, iw: 0, iRadY: 154.665, iRadZ: 154.665 }
+  },
+  "CHS508X10": {
+    kind: "Chs",
+    naam: "CHS 508x10",
+    h: 508,
+    b: 508,
+    tw: 10,
+    tf: 10,
+    r: 0,
+    props: { iz: 485202e3, welY: 1910250, welZ: 1910250, wplY: 2480370, wplZ: 2480370, avZ: 9960, it: 970405e3, iw: 0, iRadY: 176.105, iRadZ: 176.105 }
+  },
+  "CHS508X125": {
+    kind: "Chs",
+    naam: "CHS 508x12.5",
+    h: 508,
+    b: 508,
+    tw: 12.5,
+    tf: 12.5,
+    r: 0,
+    props: { iz: 597554e3, welY: 2352570, welZ: 2352570, wplY: 3069650, wplZ: 3069650, avZ: 12387.5, it: 119511e4, iw: 0, iRadY: 175.241, iRadZ: 175.241 }
+  },
+  "CHS508X16": {
+    kind: "Chs",
+    naam: "CHS 508x16",
+    h: 508,
+    b: 508,
+    tw: 16,
+    tf: 16,
+    r: 0,
+    props: { iz: 74909e4, welY: 2949170, welZ: 2949170, wplY: 3874390, wplZ: 3874390, avZ: 15744, it: 149818e4, iw: 0, iRadY: 174.04, iRadZ: 174.04 }
+  },
+  "CHS508X20": {
+    kind: "Chs",
+    naam: "CHS 508x20",
+    h: 508,
+    b: 508,
+    tw: 20,
+    tf: 20,
+    r: 0,
+    props: { iz: 914278e3, welY: 3599520, welZ: 3599520, wplY: 4765550, wplZ: 4765550, avZ: 19520, it: 182856e4, iw: 0, iRadY: 172.679, iRadZ: 172.679 }
+  },
+  "DIE10": {
+    kind: "ISection",
+    naam: "DIE 10",
+    h: 94,
+    b: 99,
+    tw: 5,
+    tf: 8,
+    r: 11,
+    props: { iz: 1297540, welY: 69662.5, welZ: 26212.9, wplY: 79512.6, wplZ: 40206.4, avZ: 709.867, it: 48905.6, iw: 230305e4, iRadY: 39.6954, iRadZ: 24.9891 }
+  },
+  "DIE12": {
+    kind: "ISection",
+    naam: "DIE 12",
+    h: 114,
+    b: 119,
+    tw: 5,
+    tf: 8,
+    r: 11,
+    props: { iz: 2250890, welY: 104844, welZ: 37830.1, wplY: 117751, wplZ: 57771.4, avZ: 809.867, it: 56551.2, iw: 61502e5, iRadY: 48.913, iRadZ: 30.0188 }
+  },
+  "DIE14": {
+    kind: "ISection",
+    naam: "DIE 14",
+    h: 133,
+    b: 138,
+    tw: 5.5,
+    tf: 8.5,
+    r: 12,
+    props: { iz: 3728980, welY: 153374, welZ: 54043.2, wplY: 171379, wplZ: 82485.5, avZ: 1012.36, it: 79408.2, iw: 141001e5, iRadY: 57.2892, iRadZ: 34.6403 }
+  },
+  "DIE16": {
+    kind: "ISection",
+    naam: "DIE 16",
+    h: 150,
+    b: 157,
+    tw: 6,
+    tf: 9,
+    r: 14,
+    props: { iz: 5814690, welY: 211750, welZ: 74072.5, wplY: 235947, wplZ: 113139, avZ: 1266.25, it: 112184, iw: 28173e6, iRadY: 64.7646, iRadZ: 39.1885 }
+  },
+  "DIE18": {
+    kind: "ISection",
+    naam: "DIE 18",
+    h: 172,
+    b: 177,
+    tw: 6.5,
+    tf: 10,
+    r: 14,
+    props: { iz: 9253540, welY: 302934, welZ: 104560, wplY: 336545, wplZ: 159323, avZ: 1501.25, it: 162959, iw: 595018e5, iRadY: 74.4813, iRadZ: 44.3893 }
+  },
+  "DIE20": {
+    kind: "ISection",
+    naam: "DIE 20",
+    h: 190,
+    b: 197,
+    tw: 7,
+    tf: 11,
+    r: 15,
+    props: { iz: 14031900, welY: 408251, welZ: 142456, wplY: 452862, wplZ: 216831, avZ: 1776.14, it: 236137, iw: 110315e6, iRadY: 82.4648, iRadZ: 49.6022 }
+  },
+  "DIE22": {
+    kind: "ISection",
+    naam: "DIE 22",
+    h: 211,
+    b: 217,
+    tw: 7.3,
+    tf: 11.5,
+    r: 15,
+    props: { iz: 19602200, welY: 524612, welZ: 180665, wplY: 579863, wplZ: 274618, avZ: 1994.49, it: 289771, iw: 192045e6, iRadY: 91.8772, iRadZ: 54.6783 }
+  },
+  "DIE24": {
+    kind: "ISection",
+    naam: "DIE 24",
+    h: 229,
+    b: 237,
+    tw: 7.8,
+    tf: 12.5,
+    r: 17,
+    props: { iz: 27758700, welY: 676156, welZ: 234251, wplY: 746895, wplZ: 356069, avZ: 2361.78, it: 409559, iw: 320007e6, iRadY: 99.8564, iRadZ: 59.7928 }
+  },
+  "DIE26": {
+    kind: "ISection",
+    naam: "DIE 26",
+    h: 250,
+    b: 257,
+    tw: 8,
+    tf: 13,
+    r: 17,
+    props: { iz: 36805400, welY: 834595, welZ: 286424, wplY: 919012, wplZ: 434837, avZ: 2586.08, it: 487291, iw: 509728e6, iRadY: 109.366, iRadZ: 64.96 }
+  },
+  "DIE28": {
+    kind: "ISection",
+    naam: "DIE 28",
+    h: 267,
+    b: 277,
+    tw: 8.3,
+    tf: 13.5,
+    r: 18,
+    props: { iz: 47854500, welY: 1000550, welZ: 345520, wplY: 1099740, wplZ: 524327, avZ: 2868.17, it: 588334, iw: 758614e6, iRadY: 117.052, iRadZ: 70.0614 }
+  },
+  "DIE30": {
+    kind: "ISection",
+    naam: "DIE 30",
+    h: 289,
+    b: 297,
+    tw: 8.8,
+    tf: 14.5,
+    r: 18,
+    props: { iz: 63349700, welY: 1243630, welZ: 426597, wplY: 1365890, wplZ: 646891, avZ: 3215.72, it: 761127, iw: 117946e7, iRadY: 126.787, iRadZ: 75.278 }
+  },
+  "DIE32": {
+    kind: "ISection",
+    naam: "DIE 32",
+    h: 308,
+    b: 297,
+    tw: 9.5,
+    tf: 16,
+    r: 20,
+    props: { iz: 69915200, welY: 1464690, welZ: 470810, wplY: 1614350, wplZ: 715064, avZ: 3757.36, it: 1035900, iw: 147042e7, iRadY: 134.496, iRadZ: 74.8797 }
+  },
+  "DIE34": {
+    kind: "ISection",
+    naam: "DIE 34",
+    h: 330,
+    b: 297,
+    tw: 10,
+    tf: 17,
+    r: 20,
+    props: { iz: 74288100, welY: 1674280, welZ: 500257, wplY: 1848660, wplZ: 760427, avZ: 4153.36, it: 1231990, iw: 179628e7, iRadY: 143.576, iRadZ: 74.4535 }
+  },
+  "DIE36": {
+    kind: "ISection",
+    naam: "DIE 36",
+    h: 348,
+    b: 297,
+    tw: 10.5,
+    tf: 18,
+    r: 21,
+    props: { iz: 78667600, welY: 1877160, welZ: 529748, wplY: 2076990, wplZ: 806244, avZ: 4599.56, it: 1471590, iw: 211308e7, iRadY: 150.887, iRadZ: 74.0498 }
+  },
+  "DIE38": {
+    kind: "ISection",
+    naam: "DIE 38",
+    h: 370,
+    b: 297,
+    tw: 11,
+    tf: 19,
+    r: 21,
+    props: { iz: 83042600, welY: 2115420, welZ: 559209, wplY: 2344870, wplZ: 851886, avZ: 5037.56, it: 1719050, iw: 252481e7, iRadY: 159.847, iRadZ: 73.6325 }
+  },
+  "DIE40": {
+    kind: "ISection",
+    naam: "DIE 40",
+    h: 388,
+    b: 297,
+    tw: 11,
+    tf: 20,
+    r: 21,
+    props: { iz: 87410700, welY: 2330390, welZ: 588624, wplY: 2583050, wplZ: 896475, avZ: 5266.56, it: 1959650, iw: 292341e7, iRadY: 167.642, iRadZ: 73.7141 }
+  },
+  "DIE425": {
+    kind: "ISection",
+    naam: "DIE 42.5",
+    h: 415,
+    b: 297,
+    tw: 11.5,
+    tf: 21,
+    r: 21,
+    props: { iz: 91787700, welY: 2635250, welZ: 618099, wplY: 2926200, wplZ: 942479, avZ: 5791.56, it: 2260120, iw: 352066e7, iRadY: 178.603, iRadZ: 73.1747 }
+  },
+  "DIE45": {
+    kind: "ISection",
+    naam: "DIE 45",
+    h: 438,
+    b: 297,
+    tw: 12,
+    tf: 22,
+    r: 23,
+    props: { iz: 96181100, welY: 2939670, welZ: 647684, wplY: 3270980, wplZ: 989540, avZ: 6458.1, it: 2653680, iw: 410695e7, iRadY: 187.819, iRadZ: 72.5959 }
+  },
+  "DIE475": {
+    kind: "ISection",
+    naam: "DIE 47.5",
+    h: 465,
+    b: 297,
+    tw: 12.5,
+    tf: 23,
+    r: 23,
+    props: { iz: 100561e3, welY: 3283730, welZ: 677182, wplY: 3660730, wplZ: 1035940, avZ: 7037.1, it: 3022810, iw: 484973e7, iRadY: 198.616, iRadZ: 72.0834 }
+  },
+  "DIE50": {
+    kind: "ISection",
+    naam: "DIE 50",
+    h: 488,
+    b: 297,
+    tw: 13,
+    tf: 24,
+    r: 24,
+    props: { iz: 104952e3, welY: 3619140, welZ: 706750, wplY: 4042720, wplZ: 1082960, avZ: 7678.44, it: 3461510, iw: 557496e7, iRadY: 207.699, iRadZ: 71.6032 }
+  },
+  "DIE55": {
+    kind: "ISection",
+    naam: "DIE 55",
+    h: 539,
+    b: 297,
+    tw: 13,
+    tf: 24.5,
+    r: 24,
+    props: { iz: 107145e3, welY: 4154610, welZ: 721513, wplY: 4642570, wplZ: 1107130, avZ: 8358.94, it: 3677830, iw: 7006e9, iRadY: 228.644, iRadZ: 70.7297 }
+  },
+  "DIE60": {
+    kind: "ISection",
+    naam: "DIE 60",
+    h: 588,
+    b: 297,
+    tw: 14,
+    tf: 26,
+    r: 26,
+    props: { iz: 113757e3, welY: 4897640, welZ: 766037, wplY: 5497450, wplZ: 1180410, avZ: 9800.28, it: 4521950, iw: 886555e7, iRadY: 247.384, iRadZ: 69.5333 }
+  },
+  "DIE65": {
+    kind: "ISection",
+    naam: "DIE 65",
+    h: 638,
+    b: 297,
+    tw: 14,
+    tf: 26,
+    r: 26,
+    props: { iz: 113768e3, welY: 5422030, welZ: 766114, wplY: 6094400, wplZ: 1182860, avZ: 10500.3, it: 4566900, iw: 105237e8, iRadY: 267.187, iRadZ: 68.5249 }
+  },
+  "DIE70": {
+    kind: "ISection",
+    naam: "DIE 70",
+    h: 688,
+    b: 297,
+    tw: 15,
+    tf: 28,
+    r: 27,
+    props: { iz: 122566e3, welY: 6360460, welZ: 825361, wplY: 7180370, wplZ: 1278940, avZ: 12037.8, it: 5731610, iw: 131809e8, iRadY: 286.062, iRadZ: 67.7053 }
+  },
+  "DIE75": {
+    kind: "ISection",
+    naam: "DIE 75",
+    h: 738,
+    b: 297,
+    tw: 15,
+    tf: 28,
+    r: 27,
+    props: { iz: 12258e4, welY: 6948190, welZ: 825455, wplY: 7858190, wplZ: 1281760, avZ: 12787.8, it: 5788380, iw: 152661e8, iRadY: 305.407, iRadZ: 66.779 }
+  },
+  "DIE80": {
+    kind: "ISection",
+    naam: "DIE 80",
+    h: 792,
+    b: 298,
+    tw: 16,
+    tf: 30,
+    r: 27,
+    props: { iz: 132707e3, welY: 8083050, welZ: 890651, wplY: 9180840, wplZ: 1387690, avZ: 14437.8, it: 7108890, iw: 190412e8, iRadY: 325.465, iRadZ: 66.2698 }
+  },
+  "DIE85": {
+    kind: "ISection",
+    naam: "DIE 85",
+    h: 842,
+    b: 298,
+    tw: 17,
+    tf: 32,
+    r: 30,
+    props: { iz: 141661e3, welY: 9287350, welZ: 950743, wplY: 10592e3, wplZ: 1488820, avZ: 16462.6, it: 8850220, iw: 229289e8, iRadY: 343.848, iRadZ: 65.4491 }
+  },
+  "DIE90": {
+    kind: "ISection",
+    naam: "DIE 90",
+    h: 892,
+    b: 298,
+    tw: 17,
+    tf: 32,
+    r: 30,
+    props: { iz: 141681e3, welY: 10000900, welZ: 950880, wplY: 11429400, wplZ: 1492430, avZ: 17312.6, it: 8931150, iw: 258654e8, iRadY: 362.624, iRadZ: 64.6286 }
+  },
+  "DIE95": {
+    kind: "ISection",
+    naam: "DIE 95",
+    h: 942,
+    b: 298,
+    tw: 17,
+    tf: 32,
+    r: 30,
+    props: { iz: 141702e3, welY: 10728800, welZ: 951017, wplY: 12288e3, wplZ: 1496040, avZ: 18162.6, it: 9013850, iw: 289789e8, iRadY: 381.224, iRadZ: 63.8383 }
+  },
+  "DIE100": {
+    kind: "ISection",
+    naam: "DIE 100",
+    h: 992,
+    b: 298,
+    tw: 17,
+    tf: 32,
+    r: 30,
+    props: { iz: 141722e3, welY: 11470900, welZ: 951155, wplY: 13167900, wplZ: 1499660, avZ: 19012.6, it: 9095370, iw: 322695e8, iRadY: 399.659, iRadZ: 63.0766 }
+  },
+  "DIL10": {
+    kind: "ISection",
+    naam: "DIL 10",
+    h: 100,
+    b: 100,
+    tw: 5,
+    tf: 11,
+    r: 11,
+    props: { iz: 1837140, welY: 94312.2, welZ: 36742.8, wplY: 109301, wplZ: 56002.4, avZ: 790.867, it: 107005, iw: 351276e4, iRadY: 41.8389, iRadZ: 26.1146 }
+  },
+  "DIL12": {
+    kind: "ISection",
+    naam: "DIL 12",
+    h: 120,
+    b: 120,
+    tw: 5,
+    tf: 11,
+    r: 11,
+    props: { iz: 3172010, welY: 141428, welZ: 52866.9, wplY: 160719, wplZ: 80327.4, avZ: 890.867, it: 125561, iw: 919903e4, iRadY: 51.2251, iRadZ: 31.3189 }
+  },
+  "DIL14": {
+    kind: "ISection",
+    naam: "DIL 14",
+    h: 140,
+    b: 140,
+    tw: 4.5,
+    tf: 12,
+    r: 12,
+    props: { iz: 5492510, welY: 210959, welZ: 78464.5, wplY: 237016, wplZ: 118797, avZ: 987.611, it: 182676, iw: 220855e5, iRadY: 60.7175, iRadZ: 37.0298 }
+  },
+  "DIL16": {
+    kind: "ISection",
+    naam: "DIL 16",
+    h: 160,
+    b: 160,
+    tw: 5,
+    tf: 13,
+    r: 14,
+    props: { iz: 8882550, welY: 302776, welZ: 111032, wplY: 338951, wplZ: 168184, avZ: 1267.25, it: 270935, iw: 470696e5, iRadY: 69.614, iRadZ: 42.1561 }
+  },
+  "DIL18": {
+    kind: "ISection",
+    naam: "DIL 18",
+    h: 180,
+    b: 180,
+    tw: 5.5,
+    tf: 14,
+    r: 14,
+    props: { iz: 13617100, welY: 414523, welZ: 151301, wplY: 462349, wplZ: 228938, avZ: 1473.25, it: 372127, iw: 923641e5, iRadY: 78.5642, iRadZ: 47.4647 }
+  },
+  "DIL20": {
+    kind: "ISection",
+    naam: "DIL 20",
+    h: 200,
+    b: 200,
+    tw: 6,
+    tf: 15,
+    r: 15,
+    props: { iz: 20012400, welY: 551956, welZ: 200124, wplY: 614120, wplZ: 302757, avZ: 1753.14, it: 508179, iw: 168759e6, iRadY: 87.4762, iRadZ: 52.6729 }
+  },
+  "DIL22": {
+    kind: "ISection",
+    naam: "DIL 22",
+    h: 220,
+    b: 220,
+    tw: 6.5,
+    tf: 16,
+    r: 15,
+    props: { iz: 28408900, welY: 714383, welZ: 258263, wplY: 793022, wplZ: 390461, avZ: 1999.14, it: 668116, iw: 291972e6, iRadY: 96.4055, iRadZ: 57.9651 }
+  },
+  "DIL24": {
+    kind: "ISection",
+    naam: "DIL 24",
+    h: 240,
+    b: 240,
+    tw: 7,
+    tf: 17,
+    r: 17,
+    props: { iz: 39189600, welY: 909892, welZ: 326580, wplY: 1008710, wplZ: 493934, avZ: 2387.08, it: 887350, iw: 480849e6, iRadY: 105.285, iRadZ: 63.0762 }
+  },
+  "DIL26": {
+    kind: "ISection",
+    naam: "DIL 26",
+    h: 260,
+    b: 260,
+    tw: 7.5,
+    tf: 18,
+    r: 17,
+    props: { iz: 52752500, welY: 1132490, welZ: 405789, wplY: 1253480, wplZ: 613422, avZ: 2675.08, it: 1126340, iw: 763604e6, iRadY: 114.204, iRadZ: 68.3615 }
+  },
+  "DIL28": {
+    kind: "ISection",
+    naam: "DIL 28",
+    h: 280,
+    b: 280,
+    tw: 8,
+    tf: 19,
+    r: 18,
+    props: { iz: 69546100, welY: 1391280, welZ: 496758, wplY: 1538180, wplZ: 750903, avZ: 3050.12, it: 1427910, iw: 117135e7, iRadY: 123.098, iRadZ: 73.5555 }
+  },
+  "DIL30": {
+    kind: "ISection",
+    naam: "DIL 30",
+    h: 300,
+    b: 300,
+    tw: 8.5,
+    tf: 20,
+    r: 18,
+    props: { iz: 90035500, welY: 1683110, welZ: 600237, wplY: 1858690, wplZ: 906997, avZ: 3378.12, it: 1766640, iw: 17475e8, iRadY: 132.007, iRadZ: 78.8317 }
+  },
+  "DIL32": {
+    kind: "ISection",
+    naam: "DIL 32",
+    h: 320,
+    b: 300,
+    tw: 9,
+    tf: 21,
+    r: 20,
+    props: { iz: 94549300, welY: 1902560, welZ: 630329, wplY: 2103780, wplZ: 953709, avZ: 3874.36, it: 2083680, iw: 208931e7, iRadY: 140.388, iRadZ: 78.2402 }
+  },
+  "DIL34": {
+    kind: "ISection",
+    naam: "DIL 34",
+    h: 340,
+    b: 300,
+    tw: 9.5,
+    tf: 22,
+    r: 20,
+    props: { iz: 99055100, welY: 2128540, welZ: 660368, wplY: 2356170, wplZ: 999843, avZ: 4244.36, it: 2388780, iw: 247687e7, iRadY: 148.743, iRadZ: 77.8231 }
+  },
+  "DIL36": {
+    kind: "ISection",
+    naam: "DIL 36",
+    h: 360,
+    b: 300,
+    tw: 10,
+    tf: 23,
+    r: 21,
+    props: { iz: 103568e3, welY: 2372270, welZ: 690451, wplY: 2629450, wplZ: 1046520, avZ: 4714.56, it: 2750670, iw: 290669e7, iRadY: 157.023, iRadZ: 77.3314 }
+  },
+  "DIL38": {
+    kind: "ISection",
+    naam: "DIL 38",
+    h: 380,
+    b: 300,
+    tw: 10.5,
+    tf: 24,
+    r: 21,
+    props: { iz: 108075e3, welY: 2625350, welZ: 720502, wplY: 2913600, wplZ: 1092910, avZ: 5124.56, it: 3117450, iw: 338599e7, iRadY: 165.259, iRadZ: 76.9234 }
+  },
+  "DIL40": {
+    kind: "ISection",
+    naam: "DIL 40",
+    h: 400,
+    b: 300,
+    tw: 11,
+    tf: 25,
+    r: 21,
+    props: { iz: 112584e3, welY: 2892070, welZ: 750560, wplY: 3213850, wplZ: 1139450, avZ: 5553.56, it: 3515880, iw: 391494e7, iRadY: 173.439, iRadZ: 76.5182 }
+  },
+  "DIL425": {
+    kind: "ISection",
+    naam: "DIL 42.5",
+    h: 425,
+    b: 300,
+    tw: 11.5,
+    tf: 26,
+    r: 21,
+    props: { iz: 117094e3, welY: 3218890, welZ: 780629, wplY: 3581020, wplZ: 1186280, avZ: 6059.06, it: 3950260, iw: 461125e7, iRadY: 183.707, iRadZ: 76.0085 }
+  },
+  "DIL45": {
+    kind: "ISection",
+    naam: "DIL 45",
+    h: 450,
+    b: 300,
+    tw: 12,
+    tf: 27,
+    r: 23,
+    props: { iz: 121622e3, welY: 3576200, welZ: 810812, wplY: 3984330, wplZ: 1234310, avZ: 6772.1, it: 4503430, iw: 537599e7, iRadY: 193.88, iRadZ: 75.3767 }
+  },
+  "DIL475": {
+    kind: "ISection",
+    naam: "DIL 47.5",
+    h: 475,
+    b: 300,
+    tw: 12.5,
+    tf: 28,
+    r: 23,
+    props: { iz: 126136e3, welY: 3940610, welZ: 840904, wplY: 4396230, wplZ: 1281540, avZ: 7329.6, it: 5016340, iw: 622825e7, iRadY: 203.987, iRadZ: 74.8874 }
+  },
+  "DIL50": {
+    kind: "ISection",
+    naam: "DIL 50",
+    h: 500,
+    b: 300,
+    tw: 13,
+    tf: 29,
+    r: 24,
+    props: { iz: 13066e4, welY: 4331110, welZ: 871070, wplY: 4839250, wplZ: 1329540, avZ: 8009.44, it: 5620060, iw: 715954e7, iRadY: 214.014, iRadZ: 74.3437 }
+  },
+  "DIL55": {
+    kind: "ISection",
+    naam: "DIL 55",
+    h: 550,
+    b: 300,
+    tw: 13.5,
+    tf: 30,
+    r: 24,
+    props: { iz: 135183e3, welY: 5014220, welZ: 901220, wplY: 5608830, wplZ: 1378310, avZ: 8954.44, it: 6236560, iw: 903551e7, iRadY: 234.342, iRadZ: 73.3741 }
+  },
+  "DIL60": {
+    kind: "ISection",
+    naam: "DIL 60",
+    h: 600,
+    b: 300,
+    tw: 14,
+    tf: 31,
+    r: 26,
+    props: { iz: 139732e3, welY: 5762880, welZ: 931547, wplY: 6457480, wplZ: 1428790, avZ: 10158.3, it: 7025730, iw: 111739e8, iRadY: 254.404, iRadZ: 72.3257 }
+  },
+  "DIN10": {
+    kind: "ISection",
+    naam: "DIN 10",
+    h: 100,
+    b: 100,
+    tw: 6.5,
+    tf: 11,
+    r: 11,
+    props: { iz: 1838940, welY: 95498.5, welZ: 36778.9, wplY: 111582, wplZ: 56416.7, avZ: 924.367, it: 115427, iw: 34901e5, iRadY: 41.2158, iRadZ: 25.5778 }
+  },
+  "DIN12": {
+    kind: "ISection",
+    naam: "DIN 12",
+    h: 120,
+    b: 120,
+    tw: 6.5,
+    tf: 11,
+    r: 11,
+    props: { iz: 3174070, welY: 143389, welZ: 52901.1, wplY: 164321, wplZ: 80827.9, avZ: 1054.37, it: 134931, iw: 915841e4, iRadY: 50.4451, iRadZ: 30.6404 }
+  },
+  "DIN14": {
+    kind: "ISection",
+    naam: "DIN 14",
+    h: 140,
+    b: 140,
+    tw: 8,
+    tf: 12,
+    r: 12,
+    props: { iz: 5499090, welY: 217463, welZ: 78558.5, wplY: 248790, wplZ: 120282, avZ: 1435.61, it: 212498, iw: 219032e5, iRadY: 58.7412, iRadZ: 35.3059 }
+  },
+  "DIN16": {
+    kind: "ISection",
+    naam: "DIN 16",
+    h: 160,
+    b: 160,
+    tw: 9,
+    tf: 14,
+    r: 14,
+    props: { iz: 9576300, welY: 329229, welZ: 119704, wplY: 376822, wplZ: 183156, avZ: 1874.25, it: 380751, iw: 496102e5, iRadY: 67.178, iRadZ: 40.5072 }
+  },
+  "DIN18": {
+    kind: "ISection",
+    naam: "DIN 18",
+    h: 180,
+    b: 180,
+    tw: 9,
+    tf: 14,
+    r: 14,
+    props: { iz: 13628200, welY: 425904, welZ: 151424, wplY: 482565, wplZ: 231161, avZ: 2054.25, it: 422164, iw: 918293e5, iRadY: 76.3463, iRadZ: 45.5229 }
+  },
+  "DIN20": {
+    kind: "ISection",
+    naam: "DIN 20",
+    h: 200,
+    b: 200,
+    tw: 10,
+    tf: 16,
+    r: 15,
+    props: { iz: 21362300, welY: 595153, welZ: 213623, wplY: 674937, wplZ: 325813, avZ: 2513.14, it: 681945, iw: 177097e6, iRadY: 84.8162, iRadZ: 50.8147 }
+  },
+  "DIN22": {
+    kind: "ISection",
+    naam: "DIN 22",
+    h: 220,
+    b: 220,
+    tw: 10,
+    tf: 16,
+    r: 15,
+    props: { iz: 28425300, welY: 732002, welZ: 258412, wplY: 823948, wplZ: 393513, avZ: 2713.14, it: 743155, iw: 290741e6, iRadY: 93.998, iRadZ: 55.8494 }
+  },
+  "DIN24": {
+    kind: "ISection",
+    naam: "DIN 24",
+    h: 240,
+    b: 240,
+    tw: 11,
+    tf: 18,
+    r: 17,
+    props: { iz: 41518600, welY: 973865, welZ: 345988, wplY: 1097850, wplZ: 526877, avZ: 3302.08, it: 1150290, iw: 502426e6, iRadY: 102.459, iRadZ: 61.0707 }
+  },
+  "DIN26": {
+    kind: "ISection",
+    naam: "DIN 26",
+    h: 260,
+    b: 260,
+    tw: 11,
+    tf: 18,
+    r: 17,
+    props: { iz: 52776800, welY: 1157710, welZ: 405975, wplY: 1297390, wplZ: 617482, avZ: 3522.08, it: 1236770, iw: 761006e6, iRadY: 111.656, iRadZ: 66.1196 }
+  },
+  "DIN28": {
+    kind: "ISection",
+    naam: "DIN 28",
+    h: 280,
+    b: 280,
+    tw: 12,
+    tf: 20,
+    r: 18,
+    props: { iz: 73239e3, welY: 1480150, welZ: 523136, wplY: 1661060, wplZ: 795427, avZ: 4118.12, it: 1800240, iw: 121946e7, iRadY: 120.135, iRadZ: 71.4204 }
+  },
+  "DIN30": {
+    kind: "ISection",
+    naam: "DIN 30",
+    h: 300,
+    b: 300,
+    tw: 12,
+    tf: 20,
+    r: 18,
+    props: { iz: 90068500, welY: 1717290, welZ: 600457, wplY: 1917840, wplZ: 912147, avZ: 4358.12, it: 1918130, iw: 174271e7, iRadY: 129.34, iRadZ: 76.4808 }
+  },
+  "DIN32": {
+    kind: "ISection",
+    naam: "DIN 32",
+    h: 320,
+    b: 300,
+    tw: 13,
+    tf: 22,
+    r: 20,
+    props: { iz: 99096700, welY: 2015560, welZ: 660644, wplY: 2260220, wplZ: 1005430, avZ: 5097.36, it: 2579610, iw: 216764e7, iRadY: 137.202, iRadZ: 76.056 }
+  },
+  "DIN34": {
+    kind: "ISection",
+    naam: "DIN 34",
+    h: 340,
+    b: 300,
+    tw: 13,
+    tf: 22,
+    r: 20,
+    props: { iz: 99100300, welY: 2173030, welZ: 660669, wplY: 2432840, wplZ: 1006270, avZ: 5357.36, it: 2594330, iw: 247038e7, iRadY: 145.744, iRadZ: 75.4867 }
+  },
+  "DIN36": {
+    kind: "ISection",
+    naam: "DIN 36",
+    h: 360,
+    b: 300,
+    tw: 14,
+    tf: 24,
+    r: 21,
+    props: { iz: 108129e3, welY: 2506790, welZ: 720860, wplY: 2817180, wplZ: 1099710, avZ: 6090.56, it: 3366300, iw: 300663e7, iRadY: 153.515, iRadZ: 75.1494 }
+  },
+  "DIN38": {
+    kind: "ISection",
+    naam: "DIN 38",
+    h: 380,
+    b: 300,
+    tw: 14,
+    tf: 24,
+    r: 21,
+    props: { iz: 108134e3, welY: 2681530, welZ: 720890, wplY: 3010050, wplZ: 1100690, avZ: 6370.56, it: 3385500, iw: 337772e7, iRadY: 161.946, iRadZ: 74.6075 }
+  },
+  "DIN40": {
+    kind: "ISection",
+    naam: "DIN 40",
+    h: 400,
+    b: 300,
+    tw: 14,
+    tf: 26,
+    r: 21,
+    props: { iz: 117137e3, welY: 3032100, welZ: 780915, wplY: 3405160, wplZ: 1191480, avZ: 6706.56, it: 4154080, iw: 404239e7, iRadY: 170.541, iRadZ: 74.9529 }
+  },
+  "DIN425": {
+    kind: "ISection",
+    naam: "DIN 42.5",
+    h: 425,
+    b: 300,
+    tw: 14,
+    tf: 26,
+    r: 21,
+    props: { iz: 117143e3, welY: 3269770, welZ: 780953, wplY: 3667980, wplZ: 1192700, avZ: 7056.56, it: 4177070, iw: 460422e7, iRadY: 181.036, iRadZ: 74.3335 }
+  },
+  "DIN45": {
+    kind: "ISection",
+    naam: "DIN 45",
+    h: 450,
+    b: 300,
+    tw: 15,
+    tf: 28,
+    r: 23,
+    props: { iz: 126192e3, welY: 3743240, welZ: 841279, wplY: 4214060, wplZ: 1287900, avZ: 8072.1, it: 5282880, iw: 553909e7, iRadY: 190.681, iRadZ: 73.8087 }
+  },
+  "DIN475": {
+    kind: "ISection",
+    naam: "DIN 47.5",
+    h: 475,
+    b: 300,
+    tw: 15,
+    tf: 28,
+    r: 23,
+    props: { iz: 126199e3, welY: 4005130, welZ: 841325, wplY: 4505950, wplZ: 1289310, avZ: 8447.1, it: 5311190, iw: 621919e7, iRadY: 201.023, iRadZ: 73.2205 }
+  },
+  "DIN50": {
+    kind: "ISection",
+    naam: "DIN 50",
+    h: 500,
+    b: 300,
+    tw: 16,
+    tf: 30,
+    r: 24,
+    props: { iz: 135248e3, welY: 4527070, welZ: 901656, wplY: 5110530, wplZ: 1384770, avZ: 9454.44, it: 6550770, iw: 736313e7, iRadY: 210.531, iRadZ: 72.7785 }
+  },
+  "DIN55": {
+    kind: "ISection",
+    naam: "DIN 55",
+    h: 550,
+    b: 300,
+    tw: 16,
+    tf: 30,
+    r: 24,
+    props: { iz: 135266e3, welY: 5103340, welZ: 901770, wplY: 5758890, wplZ: 1387970, avZ: 10254.4, it: 6616040, iw: 902416e7, iRadY: 230.851, iRadZ: 71.669 }
+  },
+  "DIN60": {
+    kind: "ISection",
+    naam: "DIN 60",
+    h: 600,
+    b: 300,
+    tw: 17,
+    tf: 32,
+    r: 26,
+    props: { iz: 144352e3, welY: 6027640, welZ: 962347, wplY: 6825950, wplZ: 1487030, avZ: 11900.3, it: 8166870, iw: 114784e8, iRadY: 250.175, iRadZ: 70.6839 }
+  },
+  "DIN65": {
+    kind: "ISection",
+    naam: "DIN 65",
+    h: 650,
+    b: 300,
+    tw: 17,
+    tf: 32,
+    r: 26,
+    props: { iz: 144372e3, welY: 6670230, welZ: 962483, wplY: 7558890, wplZ: 1490640, avZ: 12750.3, it: 8249530, iw: 136023e8, iRadY: 269.976, iRadZ: 69.6715 }
+  },
+  "DIN70": {
+    kind: "ISection",
+    naam: "DIN 70",
+    h: 700,
+    b: 300,
+    tw: 18,
+    tf: 34,
+    r: 27,
+    props: { iz: 153465e3, welY: 7722560, welZ: 1023100, wplY: 8784580, wplZ: 1590600, avZ: 14449.8, it: 9969020, iw: 167853e8, iRadY: 288.822, iRadZ: 68.8208 }
+  },
+  "DIN75": {
+    kind: "ISection",
+    naam: "DIN 75",
+    h: 750,
+    b: 300,
+    tw: 18,
+    tf: 34,
+    r: 27,
+    props: { iz: 153489e3, welY: 8433500, welZ: 1023260, wplY: 9605870, wplZ: 1594650, avZ: 15349.8, it: 10065800, iw: 194171e8, iRadY: 308.167, iRadZ: 67.8898 }
+  },
+  "DIN80": {
+    kind: "ISection",
+    naam: "DIN 80",
+    h: 800,
+    b: 300,
+    tw: 18,
+    tf: 34,
+    r: 27,
+    props: { iz: 153513e3, welY: 9159650, welZ: 1023420, wplY: 10449700, wplZ: 1598700, avZ: 16249.8, it: 10162300, iw: 222407e8, iRadY: 327.299, iRadZ: 66.9959 }
+  },
+  "DIN85": {
+    kind: "ISection",
+    naam: "DIN 85",
+    h: 850,
+    b: 300,
+    tw: 19,
+    tf: 36,
+    r: 30,
+    props: { iz: 162672e3, welY: 10444500, welZ: 1084480, wplY: 11961700, wplZ: 1702730, avZ: 18398.6, it: 1236e4, iw: 265682e8, iRadY: 345.646, iRadZ: 66.1683 }
+  },
+  "DIN90": {
+    kind: "ISection",
+    naam: "DIN 90",
+    h: 900,
+    b: 300,
+    tw: 19,
+    tf: 36,
+    r: 30,
+    props: { iz: 1627e5, welY: 11245300, welZ: 1084670, wplY: 12902400, wplZ: 1707240, avZ: 19348.6, it: 12477300, iw: 299545e8, iRadY: 364.421, iRadZ: 65.344 }
+  },
+  "DIN95": {
+    kind: "ISection",
+    naam: "DIN 95",
+    h: 950,
+    b: 300,
+    tw: 19,
+    tf: 36,
+    r: 30,
+    props: { iz: 162729e3, welY: 12062200, welZ: 1084860, wplY: 13866900, wplZ: 1711760, avZ: 20298.6, it: 12592400, iw: 335441e8, iRadY: 383.022, iRadZ: 64.5501 }
+  },
+  "DIN100": {
+    kind: "ISection",
+    naam: "DIN 100",
+    h: 1e3,
+    b: 300,
+    tw: 19,
+    tf: 36,
+    r: 30,
+    props: { iz: 162758e3, welY: 12895e3, welZ: 1085050, wplY: 14855100, wplZ: 1716270, avZ: 21248.6, it: 12705400, iw: 37337e9, iRadY: 401.458, iRadZ: 63.7846 }
+  },
+  "INP80": {
+    kind: "ISection",
+    naam: "INP 80",
+    h: 80,
+    b: 42,
+    tw: 3.9,
+    tf: 5.9,
+    r: 3.9,
+    flensHelling: 0.14,
+    props: { iz: 62748.1, welY: 19413.7, welZ: 2988, wplY: 22699.9, wplZ: 4977.01, avZ: 330.601, it: 8175.76, iw: 81087900, iRadY: 32.0248, iRadZ: 9.10339 }
+  },
+  "INP100": {
+    kind: "ISection",
+    naam: "INP 100",
+    h: 100,
+    b: 50,
+    tw: 4.5,
+    tf: 6.8,
+    r: 4.5,
+    flensHelling: 0.14,
+    props: { iz: 121504, welY: 34054.1, welZ: 4860.17, wplY: 39735, wplZ: 8121.37, avZ: 474.246, it: 15094, iw: 249367e3, iRadY: 40.0329, iRadZ: 10.6941 }
+  },
+  "INP120": {
+    kind: "ISection",
+    naam: "INP 120",
+    h: 120,
+    b: 58,
+    tw: 5.1,
+    tf: 7.7,
+    r: 5.1,
+    flensHelling: 0.14,
+    props: { iz: 214055, welY: 54518.3, welZ: 7381.2, wplY: 63534.5, wplZ: 12362.5, avZ: 642.632, it: 25664, iw: 639482e3, iRadY: 48.0292, iRadZ: 12.2863 }
+  },
+  "INP140": {
+    kind: "ISection",
+    naam: "INP 140",
+    h: 140,
+    b: 66,
+    tw: 5.7,
+    tf: 8.6,
+    r: 5.7,
+    flensHelling: 0.14,
+    props: { iz: 351353, welY: 81764.3, welZ: 10647.1, wplY: 95210.6, wplZ: 17863.5, avZ: 835.761, it: 40997.2, iw: 143969e4, iRadY: 56.0183, iRadZ: 13.8794 }
+  },
+  "INP160": {
+    kind: "ISection",
+    naam: "INP 160",
+    h: 160,
+    b: 74,
+    tw: 6.3,
+    tf: 9.5,
+    r: 6.3,
+    flensHelling: 0.14,
+    props: { iz: 545887, welY: 116750, welZ: 14753.7, wplY: 135876, wplZ: 24787.5, avZ: 1053.63, it: 62307, iw: 293837e4, iRadY: 64.0027, iRadZ: 15.4731 }
+  },
+  "INP180": {
+    kind: "ISection",
+    naam: "INP 180",
+    h: 180,
+    b: 82,
+    tw: 6.9,
+    tf: 10.4,
+    r: 6.9,
+    flensHelling: 0.14,
+    props: { iz: 811682, welY: 160434, welZ: 19797.1, wplY: 186642, wplZ: 33297.6, avZ: 1296.24, it: 91019, iw: 555424e4, iRadY: 71.9838, iRadZ: 17.0671 }
+  },
+  "INP200": {
+    kind: "ISection",
+    naam: "INP 200",
+    h: 200,
+    b: 90,
+    tw: 7.5,
+    tf: 11.3,
+    r: 7.5,
+    flensHelling: 0.14,
+    props: { iz: 1164300, welY: 213774, welZ: 25873.3, wplY: 248623, wplZ: 43556.9, avZ: 1563.6, it: 128650, iw: 987101e4, iRadY: 79.9625, iRadZ: 18.6613 }
+  },
+  "INP220": {
+    kind: "ISection",
+    naam: "INP 220",
+    h: 220,
+    b: 98,
+    tw: 8.1,
+    tf: 12.2,
+    r: 8.1,
+    flensHelling: 0.14,
+    props: { iz: 1620830, welY: 277727, welZ: 33078.1, wplY: 322929, wplZ: 55728.5, avZ: 1855.7, it: 176908, iw: 166755e5, iRadY: 87.9393, iRadZ: 20.2556 }
+  },
+  "INP240": {
+    kind: "ISection",
+    naam: "INP 240",
+    h: 240,
+    b: 106,
+    tw: 8.7,
+    tf: 13.1,
+    r: 8.7,
+    flensHelling: 0.14,
+    props: { iz: 2199910, welY: 353253, welZ: 41507.6, wplY: 410674, wplZ: 69975.5, avZ: 2172.54, it: 237499, iw: 270007e5, iRadY: 95.9148, iRadZ: 21.8501 }
+  },
+  "INP260": {
+    kind: "ISection",
+    naam: "INP 260",
+    h: 260,
+    b: 113,
+    tw: 9.4,
+    tf: 14.1,
+    r: 9.4,
+    flensHelling: 0.14,
+    props: { iz: 2873030, welY: 441089, welZ: 50850, wplY: 513371, wplZ: 85836.2, avZ: 2543.18, it: 317715, iw: 414232e5, iRadY: 103.701, iRadZ: 23.2123 }
+  },
+  "INP280": {
+    kind: "ISection",
+    naam: "INP 280",
+    h: 280,
+    b: 119,
+    tw: 10.1,
+    tf: 15.2,
+    r: 10.1,
+    flensHelling: 0.14,
+    props: { iz: 3631180, welY: 541119, welZ: 61028.2, wplY: 630706, wplZ: 103088, avZ: 2944.72, it: 418989, iw: 607284e5, iRadY: 111.425, iRadZ: 24.3947 }
+  },
+  "INP300": {
+    kind: "ISection",
+    naam: "INP 300",
+    h: 300,
+    b: 125,
+    tw: 10.8,
+    tf: 16.2,
+    r: 10.8,
+    flensHelling: 0.14,
+    props: { iz: 4495750, welY: 652361, welZ: 71932, wplY: 761486, wplZ: 121697, avZ: 3374.58, it: 536268, iw: 863781e5, iRadY: 119.09, iRadZ: 25.5262 }
+  },
+  "INP320": {
+    kind: "ISection",
+    naam: "INP 320",
+    h: 320,
+    b: 131,
+    tw: 11.5,
+    tf: 17.3,
+    r: 11.5,
+    flensHelling: 0.14,
+    props: { iz: 5542750, welY: 780864, welZ: 84622.2, wplY: 912550, wplZ: 143260, avZ: 3834.86, it: 684482, iw: 121172e6, iRadY: 126.8, iRadZ: 26.7076 }
+  },
+  "INP340": {
+    kind: "ISection",
+    naam: "INP 340",
+    h: 340,
+    b: 137,
+    tw: 12.2,
+    tf: 18.3,
+    r: 12.2,
+    flensHelling: 0.14,
+    props: { iz: 6717980, welY: 921709, welZ: 98072.8, wplY: 1078460, wplZ: 166268, avZ: 4323.32, it: 851730, iw: 165893e6, iRadY: 134.452, iRadZ: 27.8398 }
+  },
+  "INP360": {
+    kind: "ISection",
+    naam: "INP 360",
+    h: 360,
+    b: 143,
+    tw: 13,
+    tf: 19.5,
+    r: 13,
+    flensHelling: 0.14,
+    props: { iz: 8166280, welY: 1087490, welZ: 114214, wplY: 1274260, wplZ: 193819, avZ: 4881.78, it: 1078070, iw: 225871e6, iRadY: 142.07, iRadZ: 29.0178 }
+  },
+  "INP380": {
+    kind: "ISection",
+    naam: "INP 380",
+    h: 380,
+    b: 149,
+    tw: 13.7,
+    tf: 20.5,
+    r: 13.7,
+    flensHelling: 0.14,
+    props: { iz: 9724710, welY: 1261960, welZ: 130533, wplY: 1480170, wplZ: 221797, avZ: 5431.05, it: 1310930, iw: 299846e6, iRadY: 149.713, iRadZ: 30.1507 }
+  },
+  "INP400": {
+    kind: "ISection",
+    naam: "INP 400",
+    h: 400,
+    b: 155,
+    tw: 14.4,
+    tf: 21.6,
+    r: 14.4,
+    flensHelling: 0.14,
+    props: { iz: 11557500, welY: 1458580, welZ: 149129, wplY: 1712130, wplZ: 253531, avZ: 6011.01, it: 1595230, iw: 394843e6, iRadY: 157.406, iRadZ: 31.3309 }
+  },
+  "INP450": {
+    kind: "ISection",
+    naam: "INP 450",
+    h: 450,
+    b: 170,
+    tw: 16.2,
+    tf: 24.3,
+    r: 16.2,
+    flensHelling: 0.14,
+    props: { iz: 17219e3, welY: 2035090, welZ: 202576, wplY: 2393680, wplZ: 345096, avZ: 7612.65, it: 2502740, iw: 744484e6, iRadY: 176.53, iRadZ: 34.2325 }
+  },
+  "INP500": {
+    kind: "ISection",
+    naam: "INP 500",
+    h: 500,
+    b: 185,
+    tw: 18,
+    tf: 27,
+    r: 18,
+    flensHelling: 0.14,
+    props: { iz: 24731700, welY: 2745870, welZ: 267370, wplY: 3235110, wplZ: 456293, avZ: 9403.23, it: 3750850, iw: 132003e7, iRadY: 195.64, iRadZ: 37.1342 }
+  },
+  "INP550": {
+    kind: "ISection",
+    naam: "INP 550",
+    h: 550,
+    b: 200,
+    tw: 19,
+    tf: 30,
+    r: 19,
+    flensHelling: 0.14,
+    props: { iz: 34880400, welY: 3599800, welZ: 348804, wplY: 4231180, wplZ: 591532, avZ: 10921.5, it: 5311640, iw: 225488e7, iRadY: 216.033, iRadZ: 40.5513 }
+  },
+  "INP600": {
+    kind: "ISection",
+    naam: "INP 600",
+    h: 600,
+    b: 215,
+    tw: 21.6,
+    tf: 32.4,
+    r: 21.6,
+    flensHelling: 0.14,
+    props: { iz: 46799200, welY: 4626250, welZ: 435341, wplY: 5464800, wplZ: 745187, avZ: 13551.2, it: 7579710, iw: 359622e7, iRadY: 233.829, iRadZ: 42.938 }
+  },
+  "L20X20X3": {
+    kind: "Angle",
+    naam: "L 20x20x3",
+    h: 20,
+    b: 20,
+    tw: 3,
+    tf: 3,
+    r: 3.5,
+    r2: 2,
+    props: { iz: 3876.8, welY: 276.208, welZ: 276.208, wplY: 510.412, wplZ: 510.412, avZ: 60, it: 367.726, iw: 8086.92, iRadY: 5.8857, iRadZ: 5.8857 }
+  },
+  "L25X25X3": {
+    kind: "Angle",
+    naam: "L 25x25x3",
+    h: 25,
+    b: 25,
+    tw: 3,
+    tf: 3,
+    r: 3.5,
+    r2: 2,
+    props: { iz: 7961.4, welY: 447.519, welZ: 447.519, wplY: 821.236, wplZ: 821.236, avZ: 75, it: 457.581, iw: 17429.4, iRadY: 7.49006, iRadZ: 7.49006 }
+  },
+  "L40X40X4": {
+    kind: "Angle",
+    naam: "L 40x40x4",
+    h: 40,
+    b: 40,
+    tw: 4,
+    tf: 4,
+    r: 6,
+    r2: 3,
+    props: { iz: 44729.8, welY: 1552.91, welZ: 1552.91, wplY: 2852.37, wplZ: 2852.37, avZ: 160, it: 1825.6, iw: 177300, iRadY: 12.0537, iRadZ: 12.0537 }
+  },
+  "L45X45X5": {
+    kind: "Angle",
+    naam: "L 45x45x5",
+    h: 45,
+    b: 45,
+    tw: 5,
+    tf: 5,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 78409.9, welY: 2434.54, welZ: 2434.54, wplY: 4472.54, wplZ: 4472.54, avZ: 225, it: 3967.8, iw: 480242, iRadY: 13.4996, iRadZ: 13.4996 }
+  },
+  "L50X50X5": {
+    kind: "Angle",
+    naam: "L 50x50x5",
+    h: 50,
+    b: 50,
+    tw: 5,
+    tf: 5,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 109643, welY: 3048.71, welZ: 3048.71, wplY: 5584.53, wplZ: 5584.53, avZ: 250, it: 4383.53, iw: 681266, iRadY: 15.1096, iRadZ: 15.1096 }
+  },
+  "L60X60X6": {
+    kind: "Angle",
+    naam: "L 60x60x6",
+    h: 60,
+    b: 60,
+    tw: 6,
+    tf: 6,
+    r: 8,
+    r2: 4,
+    props: { iz: 227925, welY: 5285.22, welZ: 5285.22, wplY: 9664.94, wplZ: 9664.94, avZ: 360, it: 8995.7, iw: 2044420, iRadY: 18.1635, iRadZ: 18.1635 }
+  },
+  "L70X70X7": {
+    kind: "Angle",
+    naam: "L 70x70x7",
+    h: 70,
+    b: 70,
+    tw: 7,
+    tf: 7,
+    r: 9,
+    r2: 4.5,
+    props: { iz: 422977, welY: 8411.29, welZ: 8411.29, wplY: 15363.9, wplZ: 15363.9, avZ: 490, it: 16546.5, iw: 5172890, iRadY: 21.2161, iRadZ: 21.2161 }
+  },
+  "L80X80X8": {
+    kind: "Angle",
+    naam: "L 80x80x8",
+    h: 80,
+    b: 80,
+    tw: 8,
+    tf: 8,
+    r: 10,
+    r2: 5,
+    props: { iz: 722469, welY: 12575.7, welZ: 12575.7, wplY: 22951.7, wplZ: 22951.7, avZ: 640, it: 28080.8, iw: 11552900, iRadY: 24.2681, iRadZ: 24.2681 }
+  },
+  "L90X90X9": {
+    kind: "Angle",
+    naam: "L 90x90x9",
+    h: 90,
+    b: 90,
+    tw: 9,
+    tf: 9,
+    r: 11,
+    r2: 5.5,
+    props: { iz: 1158330, welY: 17927.4, welZ: 17927.4, wplY: 32698.6, wplZ: 32698.6, avZ: 810, it: 44801, iw: 23468200, iRadY: 27.3195, iRadZ: 27.3195 }
+  },
+  "L100X100X10": {
+    kind: "Angle",
+    naam: "L 100x100x10",
+    h: 100,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 12,
+    r2: 6,
+    props: { iz: 1766760, welY: 24615.2, welZ: 24615.2, wplY: 44875, wplZ: 44875, avZ: 1e3, it: 68068.2, iw: 44229300, iRadY: 30.3706, iRadZ: 30.3706 }
+  },
+  "L110X110X10": {
+    kind: "Angle",
+    naam: "L 110x110x10",
+    h: 110,
+    b: 110,
+    tw: 10,
+    tf: 10,
+    r: 12,
+    r2: 6,
+    props: { iz: 2386990, welY: 30108.2, welZ: 30108.2, wplY: 54798.9, wplZ: 54798.9, avZ: 1100, it: 74721.6, iw: 60323800, iRadY: 33.5911, iRadZ: 33.5911 }
+  },
+  "L120X120X12": {
+    kind: "Angle",
+    naam: "L 120x120x12",
+    h: 120,
+    b: 120,
+    tw: 12,
+    tf: 12,
+    r: 13,
+    r2: 6.5,
+    props: { iz: 3676670, welY: 42734.9, welZ: 42734.9, wplY: 77724.8, wplZ: 77724.8, avZ: 1440, it: 138960, iw: 133098e3, iRadY: 36.5371, iRadZ: 36.5371 }
+  },
+  "L150X150X15": {
+    kind: "Angle",
+    naam: "L 150x150x15",
+    h: 150,
+    b: 150,
+    tw: 15,
+    tf: 15,
+    r: 16,
+    r2: 8,
+    props: { iz: 8980520, welY: 83519.1, welZ: 83519.1, wplY: 151854, wplZ: 151854, avZ: 2250, it: 338531, iw: 50831e4, iRadY: 45.6869, iRadZ: 45.6869 }
+  },
+  "L180X180X18": {
+    kind: "Angle",
+    naam: "L 180x180x18",
+    h: 180,
+    b: 180,
+    tw: 18,
+    tf: 18,
+    r: 18,
+    r2: 9,
+    props: { iz: 18656e3, welY: 144670, welZ: 144670, wplY: 262726, wplZ: 262726, avZ: 3240, it: 696310, iw: 152458e4, iRadY: 54.8956, iRadZ: 54.8956 }
+  },
+  "L200X200X20": {
+    kind: "Angle",
+    naam: "L 200x200x20",
+    h: 200,
+    b: 200,
+    tw: 20,
+    tf: 20,
+    r: 18,
+    r2: 9,
+    props: { iz: 28505900, welY: 199111, welZ: 199111, wplY: 361009, wplZ: 361009, avZ: 4e3, it: 1049240, iw: 288653e4, iRadY: 61.1039, iRadZ: 61.1039 }
+  },
+  "L30X20X3": {
+    kind: "Angle",
+    naam: "L 30x20x3",
+    h: 30,
+    b: 20,
+    tw: 3,
+    tf: 3,
+    r: 3.5,
+    r2: 2,
+    props: { iz: 4370.79, welY: 620.213, welZ: 291.784, wplY: 1130.14, wplZ: 544.486, avZ: 90, it: 457.524, iw: 19676.3, iRadY: 9.36608, iRadZ: 5.54971 }
+  },
+  "L30X20X4": {
+    kind: "Angle",
+    naam: "L 30x20x4",
+    h: 30,
+    b: 20,
+    tw: 4,
+    tf: 4,
+    r: 3.5,
+    r2: 2,
+    props: { iz: 5527.36, welY: 807.18, welZ: 378.897, wplY: 1459.09, wplZ: 715.739, avZ: 120, it: 1033.34, iw: 42744.1, iRadY: 9.2637, iRadZ: 5.46734 }
+  },
+  "L40X20X3": {
+    kind: "Angle",
+    naam: "L 40x20x3",
+    h: 40,
+    b: 20,
+    tw: 3,
+    tf: 3,
+    r: 3.5,
+    r2: 2,
+    props: { iz: 4700.21, welY: 1084.34, welZ: 301.414, wplY: 1914.7, wplZ: 572.679, avZ: 120, it: 547.338, iw: 43184.7, iRadY: 12.7436, iRadZ: 5.22884 }
+  },
+  "L40X20X4": {
+    kind: "Angle",
+    naam: "L 40x20x4",
+    h: 40,
+    b: 20,
+    tw: 4,
+    tf: 4,
+    r: 3.5,
+    r2: 2,
+    props: { iz: 5963.54, welY: 1416.66, welZ: 392.471, wplY: 2483.64, wplZ: 764.559, avZ: 160, it: 1246.07, iw: 95460.6, iRadY: 12.6266, iRadZ: 5.14927 }
+  },
+  "L45X30X4": {
+    kind: "Angle",
+    naam: "L 45x30x4",
+    h: 45,
+    b: 30,
+    tw: 4,
+    tf: 4,
+    r: 4.5,
+    r2: 2,
+    props: { iz: 20525.9, welY: 1912.32, welZ: 908.265, wplY: 3464.16, wplZ: 1664.82, avZ: 180, it: 1621.21, iw: 167522, iRadY: 14.1976, iRadZ: 8.46235 }
+  },
+  "L45X30X5": {
+    kind: "Angle",
+    naam: "L 45x30x5",
+    h: 45,
+    b: 30,
+    tw: 5,
+    tf: 5,
+    r: 4.5,
+    r2: 2,
+    props: { iz: 24662.2, welY: 2345.88, welZ: 1110.39, wplY: 4232.08, wplZ: 2055.97, avZ: 225, it: 3062.94, iw: 309659, iRadY: 14.0807, iRadZ: 8.36291 }
+  },
+  "L50X30X4": {
+    kind: "Angle",
+    naam: "L 50x30x4",
+    h: 50,
+    b: 30,
+    tw: 4,
+    tf: 4,
+    r: 4.5,
+    r2: 2,
+    props: { iz: 21097.9, welY: 2343.87, welZ: 919.247, wplY: 4205.73, wplZ: 1691.17, avZ: 200, it: 1727.62, iw: 219815, iRadY: 15.9048, iRadZ: 8.29494 }
+  },
+  "L50X30X5": {
+    kind: "Angle",
+    naam: "L 50x30x5",
+    h: 50,
+    b: 30,
+    tw: 5,
+    tf: 5,
+    r: 4.5,
+    r2: 2,
+    props: { iz: 25367.5, welY: 2878.92, welZ: 1124.41, wplY: 5144.9, wplZ: 2096.29, avZ: 250, it: 3270.85, iw: 408189, iRadY: 15.7832, iRadZ: 8.19608 }
+  },
+  "L50X40X5": {
+    kind: "Angle",
+    naam: "L 50x40x5",
+    h: 50,
+    b: 40,
+    tw: 5,
+    tf: 5,
+    r: 4,
+    r2: 2,
+    props: { iz: 58895.3, welY: 3018.38, welZ: 2006.71, wplY: 5497.78, wplZ: 3634.33, avZ: 250, it: 3640.33, iw: 523284, iRadY: 15.5966, iRadZ: 11.7482 }
+  },
+  "L60X30X5": {
+    kind: "Angle",
+    naam: "L 60x30x5",
+    h: 60,
+    b: 30,
+    tw: 5,
+    tf: 5,
+    r: 6,
+    r2: 3,
+    props: { iz: 26011.6, welY: 4043.63, welZ: 1121.78, wplY: 7133.25, wplZ: 2154.95, avZ: 300, it: 3838.19, iw: 657552, iRadY: 19.0423, iRadZ: 7.78798 }
+  },
+  "L60X40X5": {
+    kind: "Angle",
+    naam: "L 60x40x5",
+    h: 60,
+    b: 40,
+    tw: 5,
+    tf: 5,
+    r: 6,
+    r2: 3,
+    props: { iz: 61057.9, welY: 4248.87, welZ: 2016.11, wplY: 7719.63, wplZ: 3696.24, avZ: 300, it: 4254.15, iw: 779443, iRadY: 18.944, iRadZ: 11.2919 }
+  },
+  "L60X40X6": {
+    kind: "Angle",
+    naam: "L 60x40x6",
+    h: 60,
+    b: 40,
+    tw: 6,
+    tf: 6,
+    r: 6,
+    r2: 3,
+    props: { iz: 71200.4, welY: 5032.3, welZ: 2382.27, wplY: 9110.94, wplZ: 4398.57, avZ: 360, it: 7159.25, iw: 1295010, iRadY: 18.833, iRadZ: 11.1975 }
+  },
+  "L65X50X5": {
+    kind: "Angle",
+    naam: "L 65x50x5",
+    h: 65,
+    b: 50,
+    tw: 5,
+    tf: 5,
+    r: 6,
+    r2: 3,
+    props: { iz: 119323, welY: 5142.85, welZ: 3185.33, wplY: 9409.54, wplZ: 5764.7, avZ: 325, it: 4877.66, iw: 1147560, iRadY: 20.4559, iRadZ: 14.6778 }
+  },
+  "L70X50X6": {
+    kind: "Angle",
+    naam: "L 70x50x6",
+    h: 70,
+    b: 50,
+    tw: 6,
+    tf: 6,
+    r: 6,
+    r2: 3,
+    props: { iz: 142678, welY: 7042.8, welZ: 3805.46, wplY: 12811.6, wplZ: 6912.91, avZ: 420, it: 8596.31, iw: 2277830, iRadY: 22.0775, iRadZ: 14.4022 }
+  },
+  "L75X50X7": {
+    kind: "Angle",
+    naam: "L 75x50x7",
+    h: 75,
+    b: 50,
+    tw: 7,
+    tf: 7,
+    r: 6.5,
+    r2: 3.5,
+    props: { iz: 164615, welY: 9242.35, welZ: 4386.1, wplY: 16728.7, wplZ: 8051.2, avZ: 525, it: 14069.1, iw: 4108680, iRadY: 23.6382, iRadZ: 14.0846 }
+  },
+  "L75X55X5": {
+    kind: "Angle",
+    naam: "L 75x55x5",
+    h: 75,
+    b: 55,
+    tw: 5,
+    tf: 5,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 162200, welY: 6842.83, welZ: 3885.33, wplY: 12529.1, wplZ: 7027.44, avZ: 375, it: 5629.63, iw: 1717410, iRadY: 23.741, iRadZ: 16.0423 }
+  },
+  "L75X55X7": {
+    kind: "Angle",
+    naam: "L 75x55x7",
+    h: 75,
+    b: 55,
+    tw: 7,
+    tf: 7,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 217552, welY: 9389.95, welZ: 5314.7, wplY: 17105, wplZ: 9682.66, avZ: 525, it: 14784.2, iw: 4454300, iRadY: 23.525, iRadZ: 15.8474 }
+  },
+  "L80X40X6": {
+    kind: "Angle",
+    naam: "L 80x40x6",
+    h: 80,
+    b: 40,
+    tw: 6,
+    tf: 6,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 75938.3, welY: 8728.26, welZ: 2437.24, wplY: 15377.2, wplZ: 4609.84, avZ: 480, it: 8781.2, iw: 2789440, iRadY: 25.5281, iRadZ: 10.4964 }
+  },
+  "L80X40X8": {
+    kind: "Angle",
+    naam: "L 80x40x8",
+    h: 80,
+    b: 40,
+    tw: 8,
+    tf: 8,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 96107, welY: 11385.6, welZ: 3164.93, wplY: 19927.1, wplZ: 6144.12, avZ: 640, it: 19972.8, iw: 6159990, iRadY: 25.2829, iRadZ: 10.3265 }
+  },
+  "L80X60X7": {
+    kind: "Angle",
+    naam: "L 80x60x7",
+    h: 80,
+    b: 60,
+    tw: 7,
+    tf: 7,
+    r: 8,
+    r2: 4,
+    props: { iz: 283722, welY: 10744.4, welZ: 6337.56, wplY: 19633.5, wplZ: 11535, avZ: 560, it: 16214.7, iw: 5566590, iRadY: 25.0822, iRadZ: 17.3931 }
+  },
+  "L80X65X8": {
+    kind: "Angle",
+    naam: "L 80x65x8",
+    h: 80,
+    b: 65,
+    tw: 8,
+    tf: 8,
+    r: 8,
+    r2: 4,
+    props: { iz: 401108, welY: 12315.9, welZ: 8411.25, wplY: 22496.2, wplZ: 15291.3, avZ: 640, it: 24613.7, iw: 8808290, iRadY: 24.8461, iRadZ: 19.0708 }
+  },
+  "L90X60X6": {
+    kind: "Angle",
+    naam: "L 90x60x6",
+    h: 90,
+    b: 60,
+    tw: 6,
+    tf: 6,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 257526, welY: 11723.5, welZ: 5605.76, wplY: 21268.3, wplZ: 10122.5, avZ: 540, it: 10936.2, iw: 4798030, iRadY: 28.7111, iRadZ: 17.2122 }
+  },
+  "L90X60X8": {
+    kind: "Angle",
+    naam: "L 90x60x8",
+    h: 90,
+    b: 60,
+    tw: 8,
+    tf: 8,
+    r: 7,
+    r2: 3.5,
+    props: { iz: 329877, welY: 15346.2, welZ: 7306.56, wplY: 27728.2, wplZ: 13331.7, avZ: 720, it: 25081.8, iw: 10829100, iRadY: 28.472, iRadZ: 17.0014 }
+  },
+  "L100X50X6": {
+    kind: "Angle",
+    naam: "L 100x50x6",
+    h: 100,
+    b: 50,
+    tw: 6,
+    tf: 6,
+    r: 9,
+    r2: 4.5,
+    props: { iz: 152567, welY: 13786.1, welZ: 3854.99, wplY: 24430.4, wplZ: 7191.33, avZ: 600, it: 11394.4, iw: 5641840, iRadY: 32.0623, iRadZ: 13.2221 }
+  },
+  "L100X50X8": {
+    kind: "Angle",
+    naam: "L 100x50x8",
+    h: 100,
+    b: 50,
+    tw: 8,
+    tf: 8,
+    r: 9,
+    r2: 4.5,
+    props: { iz: 195370, welY: 18090.5, welZ: 5041.45, wplY: 31848.8, wplZ: 9598.43, avZ: 800, it: 25893.6, iw: 12713400, iRadY: 31.8361, iRadZ: 13.0643 }
+  },
+  "L100X50X10": {
+    kind: "Angle",
+    naam: "L 100x50x10",
+    h: 100,
+    b: 50,
+    tw: 10,
+    tf: 10,
+    r: 9,
+    r2: 4.5,
+    props: { iz: 234321, welY: 22221, welZ: 6172.4, wplY: 38914, wplZ: 11995.6, avZ: 1e3, it: 48940.3, iw: 23438900, iRadY: 31.592, iRadZ: 12.8973 }
+  },
+  "L100X65X7": {
+    kind: "Angle",
+    naam: "L 100x65x7",
+    h: 100,
+    b: 65,
+    tw: 7,
+    tf: 7,
+    r: 10,
+    r2: 5,
+    props: { iz: 375791, welY: 16614.5, welZ: 7534.56, wplY: 30229.1, wplZ: 13769.2, avZ: 700, it: 19765.9, iw: 10009700, iRadY: 31.7397, iRadZ: 18.3442 }
+  },
+  "L100X65X9": {
+    kind: "Angle",
+    naam: "L 100x65x9",
+    h: 100,
+    b: 65,
+    tw: 9,
+    tf: 9,
+    r: 10,
+    r2: 5,
+    props: { iz: 466970, welY: 21046.5, welZ: 9518.8, wplY: 38106, wplZ: 17548.8, avZ: 900, it: 40488.9, iw: 20331900, iRadY: 31.5295, iRadZ: 18.168 }
+  },
+  "L100X75X9": {
+    kind: "Angle",
+    naam: "L 100x75x9",
+    h: 100,
+    b: 75,
+    tw: 9,
+    tf: 9,
+    r: 10,
+    r2: 5,
+    props: { iz: 709656, welY: 21543.9, welZ: 12704.2, wplY: 39349.6, wplZ: 23137.1, avZ: 900, it: 42914.6, iw: 22984700, iRadY: 31.3257, iRadZ: 21.7167 }
+  },
+  "L120X80X8": {
+    kind: "Angle",
+    naam: "L 120x80x8",
+    h: 120,
+    b: 80,
+    tw: 8,
+    tf: 8,
+    r: 11,
+    r2: 5.5,
+    props: { iz: 807599, welY: 27627.1, welZ: 13165.4, wplY: 50291.5, wplZ: 23897.6, avZ: 960, it: 35418.5, iw: 26666600, iRadY: 38.1677, iRadZ: 22.8336 }
+  },
+  "L120X80X10": {
+    kind: "Angle",
+    naam: "L 120x80x10",
+    h: 120,
+    b: 80,
+    tw: 10,
+    tf: 10,
+    r: 11,
+    r2: 5.5,
+    props: { iz: 981139, welY: 34101.7, welZ: 16210.4, wplY: 61844.8, wplZ: 29628.9, avZ: 1200, it: 67158.7, iw: 50236500, iRadY: 37.9515, iRadZ: 22.6469 }
+  },
+  "L120X80X12": {
+    kind: "Angle",
+    naam: "L 120x80x12",
+    h: 120,
+    b: 80,
+    tw: 12,
+    tf: 12,
+    r: 11,
+    r2: 5.5,
+    props: { iz: 1143330, welY: 40369.5, welZ: 19138.6, wplY: 72976.6, wplZ: 35243.3, avZ: 1440, it: 113237, iw: 83446200, iRadY: 37.72, iRadZ: 22.4476 }
+  },
+  "L130X65X8": {
+    kind: "Angle",
+    naam: "L 130x65x8",
+    h: 130,
+    b: 65,
+    tw: 8,
+    tf: 8,
+    r: 11,
+    r2: 5.5,
+    props: { iz: 447690, welY: 31104.8, welZ: 8720.64, wplY: 54981.2, wplZ: 16236.8, avZ: 1040, it: 34566.1, iw: 29421700, iRadY: 41.7093, iRadZ: 17.2245 }
+  },
+  "L130X65X10": {
+    kind: "Angle",
+    naam: "L 130x65x10",
+    h: 130,
+    b: 65,
+    tw: 10,
+    tf: 10,
+    r: 11,
+    r2: 5.5,
+    props: { iz: 541986, welY: 38391.1, welZ: 10728.3, wplY: 67541.9, wplZ: 20302.3, avZ: 1300, it: 65493.5, iw: 55294200, iRadY: 41.4745, iRadZ: 17.0565 }
+  },
+  "L150X75X9": {
+    kind: "Angle",
+    naam: "L 150x75x9",
+    h: 150,
+    b: 75,
+    tw: 9,
+    tf: 9,
+    r: 10.5,
+    r2: 5.5,
+    props: { iz: 783166, welY: 46845.2, welZ: 13215.2, wplY: 82495.4, wplZ: 24392.8, avZ: 1350, it: 55324.7, iw: 65292600, iRadY: 48.2686, iRadZ: 20.0166 }
+  },
+  "L150X75X11": {
+    kind: "Angle",
+    naam: "L 150x75x11",
+    h: 150,
+    b: 75,
+    tw: 11,
+    tf: 11,
+    r: 10.5,
+    r2: 5.5,
+    props: { iz: 929692, welY: 56600.4, welZ: 15904, wplY: 99325.6, wplZ: 29800.4, avZ: 1650, it: 98751.2, iw: 115393e3, iRadY: 48.0184, iRadZ: 19.8282 }
+  },
+  "L150X100X10": {
+    kind: "Angle",
+    naam: "L 150x100x10",
+    h: 150,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 13,
+    r2: 6.5,
+    props: { iz: 1977520, welY: 54079.2, welZ: 25804, wplY: 98317.8, wplZ: 46745.4, avZ: 1500, it: 85676.7, iw: 102138e3, iRadY: 47.7638, iRadZ: 28.597 }
+  },
+  "L150X100X12": {
+    kind: "Angle",
+    naam: "L 150x100x12",
+    h: 150,
+    b: 100,
+    tw: 12,
+    tf: 12,
+    r: 13,
+    r2: 6.5,
+    props: { iz: 2318690, welY: 64229.2, welZ: 30580.2, wplY: 116437, wplZ: 55715.9, avZ: 1800, it: 144700, iw: 171478e3, iRadY: 47.5413, iRadZ: 28.4032 }
+  },
+  "L180X90X10": {
+    kind: "Angle",
+    naam: "L 180x90x10",
+    h: 180,
+    b: 90,
+    tw: 10,
+    tf: 10,
+    r: 14,
+    r2: 7,
+    props: { iz: 1512490, welY: 75111, welZ: 21158.7, wplY: 132719, wplZ: 38987.9, avZ: 1800, it: 93392.9, iw: 155656e3, iRadY: 57.9548, iRadZ: 24.022 }
+  },
+  "L200X100X10": {
+    kind: "Angle",
+    naam: "L 200x100x10",
+    h: 200,
+    b: 100,
+    tw: 10,
+    tf: 10,
+    r: 15,
+    r2: 7.5,
+    props: { iz: 2103390, welY: 93236.9, welZ: 26334.5, wplY: 164909, wplZ: 48162.7, avZ: 2e3, it: 104543, iw: 216733e3, iRadY: 64.5548, iRadZ: 26.8201 }
+  },
+  "L200X100X12": {
+    kind: "Angle",
+    naam: "L 200x100x12",
+    h: 200,
+    b: 100,
+    tw: 12,
+    tf: 12,
+    r: 15,
+    r2: 7.5,
+    props: { iz: 2472190, welY: 111006, welZ: 31280.2, wplY: 195677, wplZ: 57822.8, avZ: 2400, it: 176620, iw: 366082e3, iRadY: 64.3267, iRadZ: 26.6528 }
+  },
+  "L200X100X14": {
+    kind: "Angle",
+    naam: "L 200x100x14",
+    h: 200,
+    b: 100,
+    tw: 14,
+    tf: 14,
+    r: 15,
+    r2: 7.5,
+    props: { iz: 2822430, welY: 128406, welZ: 36082.9, wplY: 225714, wplZ: 67445.8, avZ: 2800, it: 275295, iw: 567353e3, iRadY: 64.0815, iRadZ: 26.4703 }
+  }
+};
+
 // src/lib/sectionResolver.ts
 var TIMBER_E_MEAN = {
   C14: 7e3,
@@ -11054,16 +16950,135 @@ function onbekendeDoorsneden(staven) {
     const sec = resolveSection(b.material, b.profile);
     if (sec.bron === "default") {
       uit.push({ beamId: b.id, reden: sec.reden ?? "doorsnede onbekend" });
+      continue;
     }
+    const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+    if (verloop.status === "fout") uit.push({ beamId: b.id, reden: verloop.reden });
   }
   return uit;
 }
 function eigenGewichtPerMeter(material, profile) {
   const { A, aBruto } = resolveSection(material, profile);
+  return eigenGewichtVanDoorsnede(material, aBruto ?? A);
+}
+function dichtheidVanMateriaal(material) {
   const mat = material ?? "S235";
   const vrij = parseVrijMateriaal(material);
-  const rho = vrij?.dichtheid ?? TIMBER_RHO_MEAN[mat] ?? (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
-  return -(rho * ((aBruto ?? A) * 1e-6) * G) / 1e3;
+  return vrij?.dichtheid ?? TIMBER_RHO_MEAN[mat] ?? (mat in CONCRETE_E_CM ? RHO_BETON : RHO_STAAL);
+}
+function eigenGewichtVanDoorsnede(material, A_mm2) {
+  return -(dichtheidVanMateriaal(material) * (A_mm2 * 1e-6) * G) / 1e3;
+}
+function rechthoekGrootheden(m) {
+  return { A: m.b * m.h, I: m.b * m.h ** 3 / 12 };
+}
+function gelastIGrootheden(m) {
+  const tw = m.tw ?? 0;
+  const tf = m.tf ?? 0;
+  const hw = m.h - 2 * tf;
+  return {
+    A: 2 * m.b * tf + hw * tw,
+    I: (m.b * m.h ** 3 - (m.b - tw) * hw ** 3) / 12
+  };
+}
+function matenOpPositie(v, t) {
+  const s = Math.min(1, Math.max(0, t));
+  const lin = (a, b) => a + (b - a) * s;
+  const uit = { b: lin(v.begin.b, v.eind.b), h: lin(v.begin.h, v.eind.h) };
+  if (v.begin.tw !== void 0 && v.eind.tw !== void 0) uit.tw = lin(v.begin.tw, v.eind.tw);
+  if (v.begin.tf !== void 0 && v.eind.tf !== void 0) uit.tf = lin(v.begin.tf, v.eind.tf);
+  return uit;
+}
+function doorsnedeOpPositie(v, t) {
+  const maten = matenOpPositie(v, t);
+  const g = v.soort === "rechthoek" ? rechthoekGrootheden(maten) : gelastIGrootheden(maten);
+  return { ...g, maten };
+}
+function soortNaam(kind) {
+  switch (kind) {
+    case "Shs":
+    case "Rhs":
+      return "koker";
+    case "Chs":
+      return "buis";
+    case "Angle":
+      return "hoeklijn";
+    case "Channel":
+      return "U-profiel";
+    default:
+      return kind;
+  }
+}
+function bepaalVerloop(material, profile, profileEnd) {
+  const eind = profileEnd?.trim() ?? "";
+  if (eind === "") return { status: "prismatisch" };
+  const beginNaam = profile?.trim() ?? "";
+  if (eind === beginNaam) return { status: "prismatisch" };
+  if (material === void 0 || material.trim() === "") {
+    return {
+      status: "fout",
+      reden: "er is geen materiaal toegewezen, dus ook geen verlopend profiel"
+    };
+  }
+  const { E, soort } = eVanMateriaal(material);
+  const nietOndersteund = (wat) => ({
+    status: "fout",
+    reden: `verlopend profiel wordt voor deze doorsnede niet ondersteund (${wat}) \u2014 alleen een rechthoek b\xD7h of een I/H-profiel uit de staalcatalogus kan verlopen`
+  });
+  if (soort === "beton") return nietOndersteund("beton");
+  if (isEigenProfiel(profile) || isEigenProfiel(eind)) return nietOndersteund("eigen doorsnede");
+  if (isCltProfiel(profile) || isCltProfiel(eind)) return nietOndersteund("kruislaaghout");
+  const rB = parseRechthoek(profile);
+  const rE = parseRechthoek(eind);
+  if (rB && rE) {
+    if (rB.b === rE.b && rB.h === rE.h) return { status: "prismatisch" };
+    return {
+      status: "verlopend",
+      verloop: { soort: "rechthoek", E, begin: { b: rB.b, h: rB.h }, eind: { b: rE.b, h: rE.h } }
+    };
+  }
+  if (soort === "hout") {
+    if (!rB) return nietOndersteund(`"${profile}"`);
+    return {
+      status: "fout",
+      reden: `eindprofiel "${eind}" is geen rechthoek zoals beginprofiel "${profile}" \u2014 beide profielen van een verlopende houten staaf moeten een rechthoek b\xD7h zijn`
+    };
+  }
+  if (rB || rE) {
+    return {
+      status: "fout",
+      reden: `beginprofiel "${profile}" en eindprofiel "${eind}" zijn niet van dezelfde doorsnedesoort \u2014 een verlopende staaf gaat van rechthoek naar rechthoek of van I/H-profiel naar I/H-profiel`
+    };
+  }
+  const dB = STEEL_SECTION_DIMS[normaliseer(profile ?? "")];
+  const dE = STEEL_SECTION_DIMS[normaliseer(eind)];
+  if (!dB) {
+    return nietOndersteund(`"${profile}"`);
+  }
+  if (!dE) {
+    return {
+      status: "fout",
+      reden: `eindprofiel "${eind}" is niet bekend in de staalcatalogus \u2014 verwacht een I/H-profiel zoals beginprofiel "${dB.naam}"`
+    };
+  }
+  if (dB.kind !== "ISection" || dE.kind !== "ISection") {
+    const wat = dB.kind !== "ISection" ? dB : dE;
+    return nietOndersteund(`${soortNaam(wat.kind)} "${wat.naam}"`);
+  }
+  const schuin = [dB, dE].find((d) => (d.flensHelling ?? 0) > 0);
+  if (schuin) {
+    return nietOndersteund(`I-profiel met toelopende flenzen "${schuin.naam}"`);
+  }
+  if (dB === dE) return { status: "prismatisch" };
+  return {
+    status: "verlopend",
+    verloop: {
+      soort: "gelastI",
+      E,
+      begin: { b: dB.b, h: dB.h, tw: dB.tw, tf: dB.tf },
+      eind: { b: dE.b, h: dE.h, tw: dE.tw, tf: dE.tf }
+    }
+  };
 }
 
 // src/lib/thermalAlpha.ts
@@ -11125,15 +17140,82 @@ function liftSpringK(s) {
   if (s.type === "rotSpring") return s.k * 1e6;
   return void 0;
 }
-function controleerDoorsneden(beams) {
-  const onbekend = onbekendeDoorsneden(beams);
-  if (onbekend.length === 0) return;
+function controleerDoorsneden(beams, opties = {}) {
+  const lijst = Array.from(beams);
+  const onbekend = onbekendeDoorsneden(lijst);
+  if (onbekend.length === 0) {
+    if (!opties.heeftPlaten) return;
+    const verlopend = lijst.filter(
+      (b) => bepaalVerloop(b.material, b.profile, b.profileEnd).status === "verlopend"
+    );
+    if (verlopend.length === 0) return;
+    const reden = "een verlopend profiel wordt in een model met platen nog niet ondersteund \u2014 maak de staaf prismatisch (verwijder het eindprofiel) of haal de platen uit het model";
+    throw new DoorsnedeOnbekendFout(
+      `De berekening is gestopt: ${verlopend.length === 1 ? "staaf" : "staven"} ${verlopend.map((b) => b.id).join(", ")} ${verlopend.length === 1 ? "heeft" : "hebben"} een verlopend profiel en het model bevat platen; ${reden}.`,
+      verlopend.map((b) => ({ beamId: b.id, reden }))
+    );
+  }
   const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
   const rest = onbekend.length - eerste.length;
   throw new DoorsnedeOnbekendFout(
     `De berekening is gestopt: van ${onbekend.length} ${onbekend.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te bepalen. ${eerste.join("; ")}` + (rest > 0 ? `; en nog ${rest} andere` : "") + ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij een ander model dan is ingevoerd.",
     onbekend
   );
+}
+var VERLOOP_SEGMENTEN = 20;
+function aantalVerloopSegmenten(L_mm, aantal = VERLOOP_SEGMENTEN) {
+  if (!(L_mm > 0)) return 1;
+  return Math.max(1, Math.min(aantal, Math.floor(L_mm / MIN_SEGMENT_MM)));
+}
+function segmentenVoorVerloop(verloop, L_mm, aantal = VERLOOP_SEGMENTEN) {
+  const n = aantalVerloopSegmenten(L_mm, aantal);
+  const uit = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    const d = doorsnedeOpPositie(verloop, (t0 + t1) / 2);
+    uit.push({ tStart: t0, tEnd: t1, I: d.I, A: d.A });
+  }
+  return uit;
+}
+function staafLengteMm(b, nodes) {
+  let nA;
+  let nB;
+  for (const n of nodes) {
+    if (n.id === b.from) nA = n;
+    if (n.id === b.to) nB = n;
+  }
+  return nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
+}
+function doorsnedeVeldenVoorSolver(b, L_mm) {
+  const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+  if (verloop.status === "fout") {
+    throw new DoorsnedeOnbekendFout(
+      `Staaf ${b.id}: ${verloop.reden}. De berekening is gestopt.`,
+      [{ beamId: b.id, reden: verloop.reden }]
+    );
+  }
+  if (verloop.status === "prismatisch") {
+    const sec = resolveSection(b.material, b.profile);
+    return { E: sec.E, A: sec.A, I: sec.I };
+  }
+  const v = verloop.verloop;
+  const midden = doorsnedeOpPositie(v, 0.5);
+  return { E: v.E, A: midden.A, I: midden.I, segmenten: segmentenVoorVerloop(v, L_mm) };
+}
+function eigenGewichtLasten(b, L_mm, caseId) {
+  const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+  if (verloop.status !== "verlopend") {
+    const q = eigenGewichtPerMeter(b.material, b.profile);
+    return Math.abs(q) > 1e-9 ? [{ beamId: b.id, q, caseId }] : [];
+  }
+  return segmentenVoorVerloop(verloop.verloop, L_mm).map((s) => ({
+    beamId: b.id,
+    q: eigenGewichtVanDoorsnede(b.material, s.A),
+    startFrac: s.tStart,
+    endFrac: s.tEnd,
+    caseId
+  }));
 }
 function plaatNaarSolverInput(p) {
   const d = withPlateDefaults(p);
@@ -11179,20 +17261,17 @@ function randpuntlastNaarSolverInput(l) {
   };
 }
 function bouwMultiInput(model) {
-  controleerDoorsneden(model.beams);
+  controleerDoorsneden(model.beams, { heeftPlaten: model.plates.length > 0 });
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput = {
     nodes: model.nodes.map((n) => ({ id: n.id, x: n.x, z: n.z })),
     beams: model.beams.map((b) => {
-      const sec = resolveSection(b.material, b.profile);
       const sneden = zoneSneden.get(b.id);
       return {
         id: b.id,
         from: b.from,
         to: b.to,
-        E: sec.E,
-        A: sec.A,
-        I: sec.I,
+        ...doorsnedeVeldenVoorSolver(b, staafLengteMm(b, model.nodes)),
         // Releases naar de engine: buigscharnieren via het legacy paar,
         // en het volledige object (mét Tx/Tz-hulzen in lokale assen)
         // ernaast — de engine kiest zelf het rijkere per-DOF-model zodra
@@ -11229,14 +17308,7 @@ function bouwMultiInput(model) {
     const deadCase = model.loadCases.find((c) => c.type === "dead");
     if (deadCase) {
       for (const b of model.beams) {
-        const q = eigenGewichtPerMeter(b.material, b.profile);
-        if (Math.abs(q) > 1e-9) {
-          multiInput.loads.push({
-            beamId: b.id,
-            q,
-            caseId: deadCase.id
-          });
-        }
+        multiInput.loads.push(...eigenGewichtLasten(b, staafLengteMm(b, model.nodes), deadCase.id));
       }
       for (const p of multiInput.plates ?? []) p.selfWeightCaseId = deadCase.id;
     }
@@ -11976,7 +18048,11 @@ var BEAM_VELDEN = [
   "profile",
   "releases",
   "checkConfig",
-  "loadRole"
+  "loadRole",
+  // Eindprofiel van een verlopende staaf (ontwerp 15 september 2026, §4.1);
+  // `profile` is dan het beginprofiel. Zelfde spiegel in `schema_beams`
+  // (openaec-mcp-server/src/fem_tools.rs), bewaakt door een Rust-test.
+  "profileEnd"
 ];
 var RELEASE_VELDEN = [
   "startTx",
@@ -12397,7 +18473,7 @@ function controleerVelden(rauw) {
     eisGeheel(b.id, `${pad}.id`, fouten);
     eisGeheel(b.from, `${pad}.from`, fouten);
     eisGeheel(b.to, `${pad}.to`, fouten);
-    for (const veld of ["material", "profile"]) {
+    for (const veld of ["material", "profile", "profileEnd"]) {
       if (b[veld] !== void 0 && typeof b[veld] !== "string") {
         fouten.push(`${pad}.${veld}: moet tekst zijn.`);
       }
@@ -12675,6 +18751,15 @@ function valideerModel(rauw, opties = {}) {
       errors.push(
         `Staaf ${b.id}: onbekende combinatie materiaal "${b.material ?? "(leeg)"}" + profiel "${b.profile ?? "(leeg)"}". De solver zou terugvallen op HEA 160 / S235 en met een andere doorsnede rekenen dan opgegeven.`
       );
+    } else {
+      const verloop = bepaalVerloop(b.material, b.profile, b.profileEnd);
+      if (verloop.status === "fout") {
+        errors.push(`Staaf ${b.id}: ${verloop.reden}.`);
+      } else if (verloop.status === "verlopend" && plates.length > 0) {
+        errors.push(
+          `Staaf ${b.id} heeft een verlopend profiel ("${b.profile}" \u2192 "${b.profileEnd}") en het model bevat platen; dat wordt nog niet ondersteund. Maak de staaf prismatisch (verwijder \`profileEnd\`) of haal de platen uit het model.`
+        );
+      }
     }
     const dubbel = dubbelzinnigMateriaal(b.material);
     if (dubbel) {
@@ -13862,6 +19947,7 @@ export {
   LOAD_SOORT_MEERVOUD,
   MAX_VRIJE_GEVALLEN,
   MELDING_ZONE_I,
+  MIN_SEGMENT_MM,
   OUDE_STANDAARDSET,
   PARTIELE_FACTOREN,
   PLAAT_RAND_NAAM_NL,
@@ -13876,6 +19962,10 @@ export {
   RHO_LUCHT,
   RHO_STAAL,
   SOORTEN_BUITEN_STAAL,
+  SPIEGELREGELS_ELEMENTKRACHTEN,
+  SPIEGELREGELS_STAAF,
+  SPIEGELREGELS_TOETSCONFIG,
+  SPRONGBAND_GRADEN,
   STANDAARD_BELASTINGGEVALLEN,
   STANDAARD_CATEGORIE,
   STANDAARD_GEVOLGKLASSE,
@@ -13885,6 +19975,7 @@ export {
   TERREIN_CATEGORIEEN,
   TIMBER_E_MEAN,
   TIMBER_RHO_MEAN,
+  VERLOOP_SEGMENTEN,
   VERTICAAL_VANAF_GRADEN,
   WINDGEBIEDEN,
   WIND_COMBI_PREFIX,
@@ -13892,6 +19983,7 @@ export {
   ZMAX_M,
   aantalAfbeeldingen,
   aantalGebruiksgevallen,
+  aantalVerloopSegmenten,
   analysetypeUitBestand,
   basisSleutel,
   beamLengthMm,
@@ -13902,6 +19994,7 @@ export {
   bepaalDoorbuigingsInvoer,
   bepaalPlaatRand,
   bepaalStandaardRol,
+  bepaalVerloop,
   berekenE,
   berekenPlaatMeshSignatuur,
   berekenStuwdruk,
@@ -13925,8 +20018,13 @@ export {
   defaultCombinations,
   deflectionNotesFor,
   deserializeProject,
+  dichtheidVanMateriaal,
+  doorsnedeOpPositie,
+  doorsnedeVeldenVoorSolver,
   doorsnedeVoorSolver,
+  eigenGewichtLasten,
   eigenGewichtPerMeter,
+  eigenGewichtVanDoorsnede,
   equivalentUdlFromMoments,
   extractFieldDeflectionMm,
   gelijkeCombinatie,
@@ -13937,6 +20035,7 @@ export {
   getSecondOrderInput,
   getSecondOrderState,
   gevolgklasseBijOpenen,
+  gradenTekst,
   handmatigeStuwdruk,
   handtekeningVanGeneratie,
   handtekeningVanModel,
@@ -13956,6 +20055,7 @@ export {
   mapLoadDuration,
   mapServiceClass,
   matchSupportedTimberGrade,
+  matenOpPositie,
   meldingenBelastinggevallen,
   nonlinearVoorBestand,
   onbekendeDoorsneden,
@@ -13970,10 +20070,15 @@ export {
   randlastNaarSolverInput,
   randpuntlastNaarSolverInput,
   redenZuiverStaal,
+  referentieVanStaaf,
   registreerPlaatMeshCacheCommitter,
   resolveSection,
+  resultaatInReferentierichting,
+  richtingssprongNabij,
+  richtingssprongNotities,
   rolVanStaaf,
   sanitizeRestraintFractions,
+  segmentenVoorVerloop,
   selecteerCombinaties,
   serializeProject,
   solve,
@@ -13981,10 +20086,16 @@ export {
   solveAllCasesNonlinear,
   solveCombinationSecondOrder,
   soortVanCombinatie,
+  spiegelElementKrachten,
+  spiegelFracties,
+  spiegelZones,
+  staafInReferentierichting,
+  staafLengteMm,
   startSidecar,
   synchroniseerStandaard,
   synchroniseerWindCombinaties,
   timberDeflectionNumerators,
+  toetsdataInReferentierichting,
   valideerModel,
   valideerPlaatPolygoon,
   veranderlijkeBelastingenZonderLeiding,
@@ -14005,8 +20116,11 @@ export {
   wijzigCombinatie,
   windCombinatiesVoor,
   withPlateDefaults,
+  zeegNotities,
+  zeegVoorToets,
   zetCombinatieResultaat,
   zetGevolgklasse,
   zetSolverLogOpvanger,
-  zijdelingseVerplaatsingMm
+  zijdelingseVerplaatsingMm,
+  zijdenInWereldtermen
 };
