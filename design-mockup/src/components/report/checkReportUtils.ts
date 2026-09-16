@@ -854,4 +854,39 @@ export const CHECK_REPORT_CSS = `
 }
 
 .rpt-chk-notes li { margin-bottom: 0.5mm; }
+
+/* ── Verlopend profiel: de toetsdoorsneden (ontwerp 15-09-2026, §6) ─────
+   Eén tabel per staaf met de zes toetsdoorsneden, het maatgevende punt en de
+   doorsnede waarmee de stabiliteit is gerekend. Compact gezet: hij staat
+   tussen de staafkop en de afleidingen in, en mag die niet wegdrukken. */
+.rpt-verloop {
+  margin: 1.5mm 0 2mm;
+}
+.rpt-verloop-kop {
+  font-weight: 600;
+  font-size: calc(var(--rpt-basis) * 0.92);
+  margin-bottom: 0.8mm;
+}
+.rpt-verloop-tabel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(var(--rpt-basis) * 0.82);
+}
+.rpt-verloop-tabel th,
+.rpt-verloop-tabel td {
+  border: 0.2mm solid #d4d4d4;
+  padding: 0.5mm 1mm;
+  text-align: right;
+  white-space: nowrap;
+}
+.rpt-verloop-tabel th { background: #f4f4f5; font-weight: 600; text-align: right; }
+.rpt-verloop-tabel th:first-child,
+.rpt-verloop-tabel td:first-child { text-align: left; }
+.rpt-verloop-tabel tr.rpt-verloop-maatgevend td { background: #fef3c7; font-weight: 600; }
+.rpt-verloop-reden {
+  font-size: calc(var(--rpt-basis) * 0.8);
+  color: #444;
+  text-align: left;
+  white-space: normal;
+}
 `;

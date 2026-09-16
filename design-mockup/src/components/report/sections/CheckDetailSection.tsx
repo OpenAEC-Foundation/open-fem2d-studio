@@ -45,6 +45,9 @@ import {
 } from "../../../lib/checkTypes";
 // Eén renderer voor élke uitgeschreven keten in het rapport — kip, beton en de
 // meewerkende flensbreedte van 5.3.2.1. Zie `../Deelstappen`.
+import type { VerloopRapport } from "../../../lib/types/steel/VerloopRapport";
+import type { VerloopMaten } from "../../../lib/types/steel/VerloopMaten";
+import type { Toetsdoorsnede } from "../../../lib/types/steel/Toetsdoorsnede";
 import Deelstappen, { Waarden } from "../Deelstappen";
 import {
   CHECK_REPORT_CSS,
@@ -66,6 +69,161 @@ import {
   unityCheckLatex,
   type CheckCalc,
 } from "../checkReportUtils";
+
+/**
+ * VERLOPEND PROFIEL — de toetsdoorsneden van één staaf (ontwerp 15-09-2026, §6).
+ *
+ * De rekenkern heeft elke doorsnedetoets op ELK rekenpunt met de plaatselijke
+ * doorsnede uitgevoerd en levert er zes terug (x = 0, L/5, …, L) plus het
+ * maatgevende punt. Dit blok rendert die gegevens; het rekent niets uit.
+ *
+ * Waarom die tabel in het rapport moet staan: bij een verlopende staaf ligt de
+ * maatgevende plek NIET vanzelf bij de grootste snedekracht — wat telt is de
+ * verhouding van kracht tot plaatselijke weerstand. Een rapport dat alleen de
+ * hoogste unity check noemt, laat de lezer die plek zelf zoeken.
+ */
+/**
+ * Het verlooprapport van een staaf, of `null`.
+ *
+ * Het veld heet bij staal en hout allebei `verloop`, maar de VRIJE
+ * spanningstoets gebruikt diezelfde naam voor iets heel anders (het verloop
+ * van de spanning langs de staaf). Herkennen aan de naam alleen zou die twee
+ * door elkaar halen; `toetsdoorsneden` heeft alleen het verlooprapport.
+ */
+function verloopVan(r: MemberCheckResult): VerloopRapport | null {
+  const v = (r as { verloop?: unknown }).verloop;
+  return v && typeof v === "object" && "toetsdoorsneden" in v ? (v as VerloopRapport) : null;
+}
+
+function VerloopBlok({ verloop }: { verloop: VerloopRapport }) {
+  const { t } = useTranslation("ribbon");
+  const maatX = verloop.maatgevend?.doorsnede.x_mm;
+  const maten = (m: VerloopMaten): string =>
+    m.tw_mm !== undefined && m.tf_mm !== undefined
+      ? `h ${fmtValue(m.h_mm, 1)} · b ${fmtValue(m.b_mm, 1)} · t_w ${fmtValue(m.tw_mm, 1)} · t_f ${fmtValue(m.tf_mm, 1)}`
+      : `${fmtValue(m.b_mm, 1)} × ${fmtValue(m.h_mm, 1)}`;
+  /** De hoogste unity check op één toetsdoorsnede; leeg als er geen is. */
+  const hoogste = (d: Toetsdoorsnede): { id: string; uc: number } | null => {
+    let beste: { id: string; uc: number } | null = null;
+    for (const x of d.toetsen) {
+      if (x.uc === undefined || x.uc === null) continue;
+      if (!beste || x.uc > beste.uc) beste = { id: x.id, uc: x.uc };
+    }
+    return beste;
+  };
+  // De zes gevraagde plaatsen, plus — als hij er niet bij zit — het
+  // MAATGEVENDE rekenpunt. Dat punt valt bij een verlopende staaf zelden
+  // precies op een vijfde van de lengte: de toetsing zoekt over alle
+  // rekenpunten naar de hoogste verhouding van kracht tot plaatselijke
+  // weerstand. Zonder deze regel zou de tabel de zes gevraagde plaatsen tonen
+  // en juist de plaats die het ontwerp begrenst niet.
+  const rijen: Array<{
+    d: Toetsdoorsnede;
+    maatgevend: boolean;
+    uc: { id: string; uc: number } | null;
+  }> = verloop.toetsdoorsneden.map((d) => ({
+    d,
+    maatgevend: maatX !== undefined && d.x_mm === maatX,
+    uc: hoogste(d),
+  }));
+  if (
+    verloop.maatgevend &&
+    !verloop.toetsdoorsneden.some((d) => d.x_mm === verloop.maatgevend!.doorsnede.x_mm)
+  ) {
+    rijen.push({
+      d: verloop.maatgevend.doorsnede,
+      maatgevend: true,
+      // Op deze regel telt de unity check van de maatgevende toets zelf.
+      uc: { id: verloop.maatgevend.toets_id, uc: verloop.maatgevend.uc },
+    });
+  }
+  return (
+    <div className="rpt-verloop">
+      <div className="rpt-verloop-kop">
+        {t("report.verloopTitel", "Verlopend profiel — toetsdoorsneden")}
+      </div>
+      <p className="rpt-note">
+        {t("report.verloopNoot", {
+          defaultValue:
+            "De maten verlopen lineair van {{begin}} bij x = 0 naar {{eind}} bij x = L. Elke doorsnedetoets is op alle {{aantal}} rekenpunten met de plaatselijke doorsnede uitgevoerd; hieronder staan er zes, plus — met een * achter de plaats — het maatgevende rekenpunt.",
+          begin: verloop.begin_naam,
+          eind: verloop.eind_naam,
+          aantal: verloop.aantal_rekenpunten,
+        })}
+      </p>
+      <table className="rpt-verloop-tabel">
+        <thead>
+          <tr>
+            <th>x [mm]</th>
+            <th>t = x/L</th>
+            <th>{t("report.verloopColMaten", "Doorsnede [mm]")}</th>
+            <th>A [mm²]</th>
+            <th>W_y [mm³]</th>
+            <th>{t("report.crossSectionClass", "doorsnedeklasse")}</th>
+            <th>{t("report.verloopColUc", "hoogste UC")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rijen.map(({ d, maatgevend, uc }) => (
+            <tr key={d.x_mm} className={maatgevend ? "rpt-verloop-maatgevend" : ""}>
+              <td>{fmtValue(d.x_mm, 0)}{maatgevend ? " *" : ""}</td>
+              <td>{fmtValue(d.t, 3)}</td>
+              <td>{maten(d.maten)}</td>
+              <td>{fmtValue(d.area_mm2, 0)}</td>
+              <td>{fmtValue(d.w_y_mm3, 0)}</td>
+              <td>{d.klasse ? crossSectionClassLabel(d.klasse) : "—"}</td>
+              <td>{uc ? `${fmtUc(uc.uc)} (${splitsArtikel(uc.id).artikel})` : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {verloop.maatgevend && (
+        <p className="rpt-note">
+          {t("report.verloopMaatgevend", {
+            defaultValue:
+              "Maatgevend punt: x = {{x}} mm (t = {{t}}), toets {{toets}}, UC = {{uc}}.",
+            x: fmtValue(verloop.maatgevend.doorsnede.x_mm, 0),
+            t: fmtValue(verloop.maatgevend.doorsnede.t, 3),
+            toets: splitsArtikel(verloop.maatgevend.toets_id).artikel,
+            uc: fmtUc(verloop.maatgevend.uc),
+          })}
+        </p>
+      )}
+      {verloop.stabiliteit.length > 0 && (
+        <>
+          <div className="rpt-verloop-kop">
+            {t("report.verloopStabiliteit", "Doorsnede voor de stabiliteitstoetsen")}
+          </div>
+          <table className="rpt-verloop-tabel">
+            <thead>
+              <tr>
+                <th>{t("report.verloopStabColToets", "Toets")}</th>
+                <th>x [mm]</th>
+                <th>{t("report.verloopColMaten", "Doorsnede [mm]")}</th>
+                <th>{t("report.verloopStabColReden", "Reden")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {verloop.stabiliteit.map((sd) => (
+                <tr key={sd.toets_id}>
+                  <td>{splitsArtikel(sd.toets_id).artikel}</td>
+                  <td>{fmtValue(sd.x_mm, 0)}</td>
+                  <td>{maten(sd.maten)}</td>
+                  <td className="rpt-verloop-reden">{sd.reden}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {verloop.notities.length > 0 && (
+        <ul className="rpt-chk-notes">
+          {verloop.notities.map((n, i) => <li key={i}>{n}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /** Eén toets, volledig afgeleid — de opmaak van het referentie-rapport. */
 function DerivationBlock({
@@ -242,6 +400,12 @@ function MemberBlock({
           ))}
         </ul>
       )}
+
+      {/* Verlopend profiel: de zes toetsdoorsneden, het maatgevende punt en
+          de doorsnede waarmee de stabiliteit is gerekend. Staat VÓÓR de
+          afleidingen: wie de unity check van een verlopende staaf leest, moet
+          eerst weten wáár die doorsnede zit. */}
+      {verloopVan(result) && <VerloopBlok verloop={verloopVan(result)!} />}
 
       {toetsen.map((named) => (
         <DerivationBlock

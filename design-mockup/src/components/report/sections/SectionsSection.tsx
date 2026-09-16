@@ -26,9 +26,19 @@ import SectionSketch from "./SectionSketch";
 import { betonShape, steelShape, type SectionShape } from "../../shared/profielVorm";
 import { zoekEigenDoorsnede } from "../../../lib/profieleditor/eigenDoorsnedenStore";
 import EigenDoorsnedeTekening from "../../profieleditor/EigenDoorsnedeTekening";
+// Één bron voor de doorsnedenaam en de keuring van een verloop — dezelfde die
+// de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
+import { doorsnedeNaam, keurEindProfiel } from "../../../lib/verloopKeuze";
 
 interface ProfileUse {
   profile: string;
+  /**
+   * Het EINDprofiel van een verlopende staaf. Staat in de sleutel van de
+   * groepering: twee staven met hetzelfde beginprofiel maar een verschillend
+   * verloop zijn niet dezelfde doorsnede, en één blok voor allebei zou dat
+   * verschil wegpoetsen.
+   */
+  profileEnd?: string;
   material: string;
   beamIds: number[];
 }
@@ -81,10 +91,12 @@ export default function SectionsSection() {
   const uses = new Map<string, ProfileUse>();
   for (const b of [...beams].sort((a, z) => a.id - z.id)) {
     const profile = b.profile ?? "";
+    const profileEnd = b.profileEnd?.trim() || undefined;
     const material = b.material ?? "S235";
-    const existing = uses.get(profile);
+    const sleutel = `${profile}|${profileEnd ?? ""}`;
+    const existing = uses.get(sleutel);
     if (existing) existing.beamIds.push(b.id);
-    else uses.set(profile, { profile, material, beamIds: [b.id] });
+    else uses.set(sleutel, { profile, profileEnd, material, beamIds: [b.id] });
   }
   const profiles = [...uses.values()];
 
@@ -97,7 +109,25 @@ export default function SectionsSection() {
           {t("report.noBeams", "Geen staven in het model.")}
         </p>
       ) : (
-        profiles.map(({ profile, material, beamIds }) => {
+        profiles.map(({ profile, profileEnd, material, beamIds }) => {
+          /**
+           * Verlopend profiel: dit hoofdstuk beschrijft de doorsnede van het
+           * BEGIN. Dat mag, mits het er staat — anders leest de lezer de
+           * eigenschappen van één uiteinde als die van de hele staaf. Waar de
+           * doorsnede op elke plaats op uitkomt, staat in "Toetsing per staaf":
+           * daar zetten de zes toetsdoorsneden en het maatgevende punt.
+           */
+          const verloopNoot =
+            keurEindProfiel(material, profile, profileEnd).status === "verlopend" ? (
+              <p className="rpt-note">
+                {t("report.verloopSectieNoot", {
+                  defaultValue:
+                    "Verlopend profiel: deze staven verlopen van {{begin}} naar {{eind}}. De eigenschappen hieronder zijn die van het beginprofiel; de doorsneden langs de staaf staan bij de toetsing van elke staaf.",
+                  begin: profile,
+                  eind: profileEnd,
+                })}
+              </p>
+            ) : null;
           const sec = resolveSection(material, profile);
           const timberRect = sec.bron === "hout-bxh" ? parseRechthoek(profile) : null;
           const steelDims =
@@ -142,6 +172,7 @@ export default function SectionsSection() {
                   {t("report.propUsedBy", "Toegepast op staaf")}:{" "}
                   {beamIdsText(beamIds, t("report.beamsWord", "staven"))}
                 </p>
+                {verloopNoot}
               </div>
             );
           }
@@ -297,8 +328,16 @@ export default function SectionsSection() {
           });
 
           return (
-            <div className="rpt-profile-block" key={profile}>
-              <h3 className="rpt-h3">{eigen ? eigen.naam : profile}</h3>
+            <div className="rpt-profile-block" key={`${profile}|${profileEnd ?? ""}`}>
+              {/* Bij een verlopende staaf draagt de kop begin én eind; de naam
+                  komt dan uit de profielVELDEN en niet uit de bewaarde eigen
+                  doorsnede, want `bepaalVerloop` keurt op die velden. */}
+              <h3 className="rpt-h3">
+                {profileEnd
+                  ? doorsnedeNaam({ material, profile, profileEnd })
+                  : eigen ? eigen.naam : profile}
+              </h3>
+              {verloopNoot}
               <div className="rpt-profile-body">
                 {/* Generieke figuurconventie: figuurblok + vet bijschrift. */}
                 <div className="rpt-profile-sketch rpt-figuur">
