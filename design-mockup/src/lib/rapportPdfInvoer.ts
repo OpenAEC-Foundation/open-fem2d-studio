@@ -85,6 +85,7 @@ import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
 import type { ReportInput } from "./types/steel/ReportInput";
 import type { SpanningBeamCheckResult } from "./types/spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "./types/timber/TimberBeamCheckResult";
+import { bijlageUitBestand } from "./normAanduidingen";
 import type {
   BetonStaafDoorsnedeInvoer,
   StijfheidCombinatie,
@@ -97,6 +98,12 @@ export interface RapportProject {
   engineer: string;
   company: string;
   date: string;
+  /**
+   * De nationale bijlage uit de projectgegevens, zoals gelezen (normnaad). Gaat
+   * als `bijlage` naar de PDF, die er de normaanduidingen van omslag, kop en
+   * tabel uit haalt. Weglaten = niet ingesteld.
+   */
+  nationaleBijlage?: unknown;
 }
 
 /** Het segmentspoor zoals `betonStijfheidStore` het bewaart. */
@@ -375,6 +382,13 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
     date: bron.project.date || new Date().toISOString().slice(0, 10),
     steel_check_results: staal,
   };
+  // De bijlage van het project, zodat de PDF de uitgaven van DIE bijlage
+  // noemt (normnaad). Niet ingesteld = veld weglaten (de enige gevulde rij,
+  // `#[serde(default)]`). Een bijlage die deze uitgave niet kent, gooit hier
+  // met de reden — een PDF met Nederlandse aanduidingen onder een andere vlag
+  // hoort er niet te komen.
+  const bijlage = bijlageUitBestand(bron.project.nationaleBijlage);
+  if (bijlage !== null) invoer.bijlage = bijlage;
   // De optionele velden alleen MEESTUREN als er iets in zit. Ze hebben aan de
   // Rust-kant `#[serde(default)]`, dus een leeg veld en een ontbrekend veld
   // betekenen hetzelfde; weglaten houdt de aanroep leesbaar in de logboeken.

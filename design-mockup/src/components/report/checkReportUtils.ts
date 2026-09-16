@@ -12,7 +12,7 @@ import katex from "katex";
 import type { TFunction } from "i18next";
 import type { CheckSoort, MemberCheckResult } from "../../lib/checkTypes";
 import { checkSoort } from "../../lib/checkTypes";
-import { aanduidingen, STANDAARD_BIJLAGE } from "../../lib/normAanduidingen";
+import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE, type NormAanduidingen } from "../../lib/normAanduidingen";
 import type { Deelstap } from "../../lib/types/steel/Deelstap";
 import type { NamedValue } from "../../lib/types/steel/NamedValue";
 import type { ResistanceCalc } from "../../lib/types/steel/ResistanceCalc";
@@ -39,11 +39,17 @@ export function isStabilityCalc(c: CheckCalc): c is StabilityCalc {
  * waren al uiteengelopen — hier stond nog de houtaanduiding van vóór A2:2014.
  * `lib/normAanduidingen.ts` is nu de enige TS-plaats, en
  * `test-rapportnormen.mjs` legt hem naast de Rust-rij.
+ *
+ * De aanduidingen komen uit de rij van de bijlage VAN HET PROJECT
+ * (`projectInfo.uitgangspunten.nationaleBijlage`), niet uit een vaste
+ * standaardbijlage: een rapport dat een andere bijlage noemt dan de uitgaven
+ * die het toont, spreekt zichzelf tegen. Staat er geen bijlage in het project
+ * (bestand van vóór de naad), dan de enige gevulde. Een bijlage die deze
+ * uitgave niet kent, GOOIT — de aanroeper zet dan de reden in het rapport.
  */
-const AANDUIDINGEN = aanduidingen(STANDAARD_BIJLAGE);
-export const STEEL_NORM_FULL = AANDUIDINGEN.staalVol;
-export const TIMBER_NORM_FULL = AANDUIDINGEN.houtVol;
-export const CONCRETE_NORM_FULL = AANDUIDINGEN.betonVol;
+export function normAanduidingenVoor(bijlage: unknown): NormAanduidingen {
+  return aanduidingen(bijlageUitBestand(bijlage) ?? STANDAARD_BIJLAGE);
+}
 
 /** KaTeX → HTML-string; faalt zacht naar <code> zodat het rapport nooit breekt. */
 export function renderLatexHtml(latex: string, displayMode: boolean): string {
@@ -460,8 +466,25 @@ export function usedNorms(results: MemberCheckResult[]): GebruikteKaders {
  * getoetst, krijgt hier dus geen voetregel — in plaats van de onware
  * "hout: NEN-EN 1995-1-1…" die er stond.
  */
-export function basisText(t: TFunction, results: MemberCheckResult[]): string | null {
+export function basisText(
+  t: TFunction,
+  results: MemberCheckResult[],
+  /** De nationale bijlage uit de projectgegevens, zoals gelezen; weglaten = niet ingesteld. */
+  bijlage?: unknown,
+): string | null {
   const { steel, timber, concrete } = usedNorms(results);
+  if (!steel && !timber && !concrete) return null;
+  let a: NormAanduidingen;
+  try {
+    a = normAanduidingenVoor(bijlage);
+  } catch (e) {
+    // Een bijlage die deze uitgave niet kent: dan staat de REDEN in de
+    // toetsbasis, niet stil de Nederlandse uitgaven.
+    return t("report.bijlageOnbekend", { code: String(bijlage), fout: (e as Error).message });
+  }
+  const STEEL_NORM_FULL = a.staalVol;
+  const TIMBER_NORM_FULL = a.houtVol;
+  const CONCRETE_NORM_FULL = a.betonVol;
   const parts: string[] = [];
   // De aanduiding gaat als variabele de vertaling in. Tot september 2026 stond
   // ze VOLUIT in alle vier de i18n-bestanden (nl/en/de/fr), en die vier
@@ -477,7 +500,7 @@ export function basisText(t: TFunction, results: MemberCheckResult[]): string | 
   // bijlagenaam te verzinnen. Zolang er één bijlage gevuld is, klopt hij.
   // Komt er een tweede rij bij, dan moet deze regel mee: `BIJLAGEN_GEVULD`
   // in `lib/normAanduidingen.ts` is dan langer dan één.
-  const annex = t("report.basisAnnex", `inclusief ${AANDUIDINGEN.bijlageNaam}`);
+  const annex = t("report.basisAnnex", `inclusief ${a.bijlageNaam}`);
   return `${label}: ${parts.join("; ")} — ${annex}.`;
 }
 

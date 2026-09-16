@@ -32,6 +32,7 @@ import { useCheckStore } from "../../../stores/checkStore";
 import { useBetonStijfheidStore } from "../../../stores/betonStijfheidStore";
 import { isToetsStaafZichtbaar, useReportStore } from "../../../stores/reportStore";
 import { useReportData } from "../ReportDataContext";
+import { useRapportProjectInfo } from "../useProjectInfo";
 import { isConcreteCheckResult } from "../../../lib/checkTypes";
 import { parseSectionNaam, DEFAULT_N_STRIPS } from "../../../lib/betonCheckBuilder";
 import { doorsnedeUitToets } from "../../../lib/betonDoorsnedeTerugval";
@@ -49,7 +50,7 @@ import { RAPPORT_KLEUREN } from "../../beton/tekenkleuren";
 import { rijLabel, rijOppervlakMm2, type Wapeningskorf } from "../../beton/wapeningskorf";
 import {
   CHECK_REPORT_CSS,
-  CONCRETE_NORM_FULL,
+  normAanduidingenVoor,
   afleidingLatex,
   fmtCheckedAt,
   fmtUc,
@@ -737,6 +738,15 @@ export default function BetonSection() {
   const kruipAntwoorden = useCheckStore((s) => s.kruip);
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
   const { beams } = useReportData();
+  // De betonuitgave van de bijlage van HET PROJECT (normnaad). Kent deze
+  // uitgave die bijlage niet, dan staat de reden waar de norm zou staan.
+  const projectBijlage = useRapportProjectInfo().uitgangspunten?.nationaleBijlage;
+  let betonNorm: string;
+  try {
+    betonNorm = normAanduidingenVoor(projectBijlage).betonVol;
+  } catch (e) {
+    betonNorm = (e as Error).message;
+  }
   // Is er fysisch niet-lineair gerekend? Zo ja, dan is 5.8 niet overgeslagen
   // en draagt de kern de kruipvermelding van besluit B1 — beide bepalen de
   // tekst van het beperkingenblok hieronder.
@@ -781,7 +791,7 @@ export default function BetonSection() {
             {t("report.betonMethodeNoot", {
               defaultValue:
                 "Methode: doorsnedetoetsing op buiging met normaalkracht volgens {{norm}}, in de uiterste grenstoestand. Twee toetsen op hetzelfde punt: de rechthoekige spanningsverdeling van 3.1.7(3) (de klassieke handberekening) en de M-N-κ-berekening met het parabool-rechthoekdiagram van 3.1.7(1), waarbij M_Rd(N_Ed) het grootste moment op het M-κ-diagram bij N_Ed is. Bij druk geldt de minimale excentriciteit van 6.1(4). Tekenconventie: N positief is trek, M positief is trek in de onderste vezel.",
-              norm: CONCRETE_NORM_FULL,
+              norm: betonNorm,
             })}{" "}
             {weggelaten > 0 &&
               t("report.betonStaafKeuzeNoot", {

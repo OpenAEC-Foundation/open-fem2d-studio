@@ -49,6 +49,7 @@ import type { VerloopRapport } from "../../../lib/types/steel/VerloopRapport";
 import type { VerloopMaten } from "../../../lib/types/steel/VerloopMaten";
 import type { Toetsdoorsnede } from "../../../lib/types/steel/Toetsdoorsnede";
 import Deelstappen, { Waarden } from "../Deelstappen";
+import { useRapportProjectInfo } from "../useProjectInfo";
 import {
   CHECK_REPORT_CSS,
   belastingduurTekst,
@@ -439,7 +440,8 @@ export default function CheckDetailSection() {
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
 
   const checkedTime = fmtCheckedAt(lastRunAt);
-  const basis = basisText(t, results);
+  // De toetsbasis noemt de uitgaven van de bijlage van HET PROJECT (normnaad).
+  const basis = basisText(t, results, useRapportProjectInfo().uitgangspunten?.nationaleBijlage);
 
   // Alleen de aangevinkte staven worden hier uitgeschreven; de rest telt
   // gewoon mee in het toetsingsoverzicht (zie de sectiedocumentatie).

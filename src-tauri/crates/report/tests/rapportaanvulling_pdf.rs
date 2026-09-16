@@ -387,6 +387,7 @@ fn invoer(
     scheefstand: Option<String>,
 ) -> ReportInput {
     ReportInput {
+        bijlage: Default::default(),
         project_name: "Kolom en dekkingslijn".into(),
         project_number: "RK-001".into(),
         engineer: "Test Engineer".into(),

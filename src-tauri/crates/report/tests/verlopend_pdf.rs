@@ -104,6 +104,7 @@ fn ligger(eind: Option<&str>) -> BeamCheckResult {
 
 fn pdf_van(r: BeamCheckResult, naam: &str) -> String {
     let pdf = generate_report_pdf(ReportInput {
+        bijlage: Default::default(),
         project_name: "Verlopend profiel".into(),
         project_number: "VP-001".into(),
         engineer: "Test Engineer".into(),

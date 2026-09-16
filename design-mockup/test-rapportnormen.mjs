@@ -425,6 +425,30 @@ log("\n[12] Elk toetsresultaat krijgt de norm van zijn eigen rekenkern");
     /1993/.test(gemengd) && !/1995/.test(gemengd), gemengd);
   checkWaar("en hout noemt zijn norm gewoon",
     /1995/.test(basisText(terugval, [houtToets])));
+  // De toetsbasis noemt de bijlage van HET PROJECT (issue #17): NL en niet
+  // ingesteld geven dezelfde tekst; een bijlage die deze uitgave niet kent,
+  // geeft de reden in plaats van de Nederlandse uitgaven.
+  checkGelijk("toetsbasis met bijlage NL = zonder bijlage",
+    basisText(terugval, [staalToets], "NL"), basisText(terugval, [staalToets]));
+  const vertaalMetWaarden = (sleutel, opties) =>
+    sleutel === "report.bijlageOnbekend" ? `ONBEKEND ${opties.code}: ${opties.fout}` : opties;
+  const onbekend = basisText(vertaalMetWaarden, [staalToets], "DE");
+  checkWaar("toetsbasis met een onbekende bijlage noemt de reden, geen NEN-uitgave",
+    typeof onbekend === "string" && /ONBEKEND DE/.test(onbekend) && !/NEN-EN/.test(onbekend), onbekend);
+
+  // En de PDF-invoer draagt de bijlage van het project.
+  const { bouwRapportInvoer } = await import("./src/lib/rapportPdfInvoer.ts");
+  const project = { name: "p", projectNumber: "", engineer: "", company: "", date: "2026-09-17" };
+  checkGelijk("PDF-invoer: bijlage NL uit het project gaat mee",
+    bouwRapportInvoer({ project: { ...project, nationaleBijlage: "NL" }, checkResults: [] }).bijlage, "NL");
+  checkWaar("PDF-invoer: niet ingesteld = veld weggelaten (serde default)",
+    !("bijlage" in bouwRapportInvoer({ project, checkResults: [] })));
+  {
+    let fout = null;
+    try { bouwRapportInvoer({ project: { ...project, nationaleBijlage: "DE" }, checkResults: [] }); }
+    catch (e) { fout = e.message; }
+    checkWaar("PDF-invoer: een onbekende bijlage wordt geweigerd", fout !== null && /niet gevuld/.test(fout), fout);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -464,9 +488,18 @@ log("\n[13] Scherm, CSV en PDF noemen dezelfde norm, of géén");
 
   // En de volledige aanduidingen: de TS-kant leest ze uit dezelfde rij, dus
   // de twee mogen niet uiteenlopen.
+  // Sinds issue #17 komen ze uit de rij van de bijlage VAN HET PROJECT
+  // (`normAanduidingenVoor`); de NL-rij hoort gelijk te zijn aan de naad.
+  const { normAanduidingenVoor } = await import("./src/components/report/checkReportUtils.ts");
   const {
-    STEEL_NORM_FULL, TIMBER_NORM_FULL, CONCRETE_NORM_FULL,
-  } = await import("./src/components/report/checkReportUtils.ts");
+    staalVol: STEEL_NORM_FULL, houtVol: TIMBER_NORM_FULL, betonVol: CONCRETE_NORM_FULL,
+  } = normAanduidingenVoor("NL");
+  checkGelijk("niet ingesteld = de enige gevulde rij", normAanduidingenVoor(undefined), normAanduidingenVoor("NL"));
+  {
+    let fout = null;
+    try { normAanduidingenVoor("DE"); } catch (e) { fout = e.message; }
+    checkWaar("een onbekende bijlage wordt geweigerd, niet stil NL", fout !== null && /niet gevuld/.test(fout), fout);
+  }
   checkGelijk("volledige aanduiding staal = naad", STEEL_NORM_FULL, naadVeld("norm_staal_vol"));
   checkGelijk("volledige aanduiding hout = naad", TIMBER_NORM_FULL, naadVeld("norm_hout_vol"));
   checkGelijk("volledige aanduiding beton = naad", CONCRETE_NORM_FULL, naadVeld("norm_beton_vol"));

@@ -340,6 +340,7 @@ fn invoer(
     trace: Option<BetonStijfheidSpoor>,
 ) -> ReportInput {
     ReportInput {
+        bijlage: Default::default(),
         project_name: "Betonportaal".into(),
         project_number: "BT-001".into(),
         engineer: "Test Engineer".into(),

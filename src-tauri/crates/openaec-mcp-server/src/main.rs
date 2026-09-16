@@ -428,6 +428,7 @@ fn tool_definitions() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
+                    "bijlage": schema_bijlage(),
                     "project_name":        { "type": "string" },
                     "project_number":      { "type": "string" },
                     "engineer":            { "type": "string" },

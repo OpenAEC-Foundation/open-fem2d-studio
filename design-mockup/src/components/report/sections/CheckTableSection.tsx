@@ -33,6 +33,7 @@ import {
   type MemberCheckResult,
 } from "../../../lib/checkTypes";
 import { useReportData } from "../ReportDataContext";
+import { useRapportProjectInfo } from "../useProjectInfo";
 import {
   CHECK_REPORT_CSS,
   alsBreuk,
@@ -156,7 +157,8 @@ export default function CheckTableSection() {
   // Het detailniveau stuurt dus alleen nog de afleidingen, niet deze tabel.
 
   const checkedTime = fmtCheckedAt(lastRunAt);
-  const basis = basisText(t, results);
+  // De toetsbasis noemt de uitgaven van de bijlage van HET PROJECT (normnaad).
+  const basis = basisText(t, results, useRapportProjectInfo().uitgangspunten?.nationaleBijlage);
 
   return (
     <div className="rpt-block">

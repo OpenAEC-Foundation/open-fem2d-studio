@@ -85,6 +85,7 @@ fn ligger(steunen: &[f64]) -> BeamCheckResult {
 
 fn pdf_van(r: BeamCheckResult, naam: &str) -> String {
     let pdf = generate_report_pdf(ReportInput {
+        bijlage: Default::default(),
         project_name: "Kiplengte".into(),
         project_number: "KL-001".into(),
         engineer: "Test Engineer".into(),
