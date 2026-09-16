@@ -600,6 +600,17 @@ fn toets_per_klasse(input: &CltBeamCheckInput, mech: &CltMechanics, groepen: &[G
 }
 
 pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
+    // De doorbuigingsnoemers eerst: een opgegeven noemer van 0 of kleiner gaf
+    // tot september 2026 een oneindige grens, UC 0 en status Ok. Zelfde regel
+    // en zelfde weigering als bij massief hout (`check_timber_beam`).
+    if let Err(reden) =
+        deflection::keur_noemers(input.deflection_limit_fin, input.deflection_limit_add)
+    {
+        let mut r = foutresultaat(&input, reden.clone());
+        r.notes = vec![format!("Niet getoetst: {reden}")];
+        return r;
+    }
+
     let mech = match input.layup.mechanics() {
         Ok(m) => m,
         Err(e) => return foutresultaat(&input, e),

@@ -572,6 +572,30 @@ pub(crate) fn uc_of(c: &NamedCheck) -> f64 {
 }
 
 pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
+    // 0. DE DOORBUIGINGSNOEMERS. Een noemer van 0 of kleiner geeft geen grens
+    //    L/n; tot september 2026 werd dat bij klasse 'Custom' een oneindige
+    //    grens met UC 0 en status Ok. Het is een invoerfout, dus de staaf
+    //    wordt geweigerd met de reden — dezelfde vorm als een onbekende
+    //    staalsoort hieronder. Vóór de verloopafslag, zodat een verlopende
+    //    staaf dezelfde keuring krijgt.
+    if let Err(reden) = crate::deflection::keur_noemers(
+        input.deflection_limit_class,
+        input.deflection_limit_numerator,
+        input.deflection_add_limit_numerator,
+    ) {
+        return BeamCheckResult {
+            beam_id: input.beam_id,
+            profile_name: input.profile_name.clone(),
+            steel_grade: input.steel_grade.clone(),
+            classification: CrossSectionClass::Class1,
+            checks: vec![],
+            uc_max: 0.0,
+            status: CheckStatus::NotApplicable,
+            governing_check_id: format!("ERROR: {reden}"),
+            verloop: None,
+        };
+    }
+
     // 1. VERLOPEND PROFIEL? Dan gaat de staaf langs een eigen weg
     //    (`crate::verlopend`), die deze functie per rekenpunt opnieuw aanroept
     //    met de PLAATSELIJKE doorsnede. Zonder eindprofiel — en dat is elke

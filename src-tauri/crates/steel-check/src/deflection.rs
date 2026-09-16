@@ -35,8 +35,9 @@ use nen_en_1993_1_1_section::{CheckStatus, NamedValue, ResistanceCalc, UnityChec
 ///   A1.4.3(3), dus in w_add); daarom nooit ruimer dan een gewone vloer.
 /// * `Cantilever` = 150 op de **staaflengte**. Met ℓ_rep = 2·L komt dat neer
 ///   op ℓ_rep/300, opnieuw strenger dan de ℓ_rep/250 uit A1.4.3(4).
-/// * `Custom` — volledig door de aanroeper opgegeven.
-pub fn default_numerator(class: DeflectionClass, custom: u32) -> u32 {
+/// * `Custom` — volledig door de aanroeper opgegeven. Een noemer van 0 of
+///   kleiner is daar geen keuze maar een invoerfout; zie [`keur_noemers`].
+pub fn default_numerator(class: DeflectionClass, custom: i32) -> i32 {
     match class {
         DeflectionClass::Floor => 333,
         DeflectionClass::FloorBrittlePartitions => 333,
@@ -44,6 +45,50 @@ pub fn default_numerator(class: DeflectionClass, custom: u32) -> u32 {
         DeflectionClass::Cantilever => 150,
         DeflectionClass::Custom => custom,
     }
+}
+
+/// Keurt de twee doorbuigingsnoemers VOORDAT er getoetst wordt.
+///
+/// WAAROM. Een grenswaarde L/n bestaat alleen voor n > 0. Tot september 2026
+/// maakte de kern van `Custom` met n = 0 een grens van oneindig; de UC werd
+/// dan 0 en de toets op w_fin meldde "Ok" zonder iets getoetst te hebben. Bij
+/// w_add viel hetzelfde geval terug op 3/1 000 · ℓ_rep, en een negatieve
+/// w_add-noemer werd gelezen als "niet opgegeven".
+///
+/// DE REGEL, voor w_fin én w_add gelijk: een noemer die de aanroeper OPGEEFT
+/// moet een eindig getal groter dan nul zijn. Is hij dat niet, dan is dat een
+/// invoerfout en wordt de staaf geweigerd met deze reden — dezelfde vorm als
+/// een onbekende staalsoort. Er wordt geen noemer geraden: welke categorie
+/// uit NEN-EN 1990:2002/NB:2019 A1.4.3(3) of (4) van toepassing is, weet
+/// alleen wie de klasse 'Custom' koos.
+///
+/// Wat GEEN fout is:
+/// * een w_fin-noemer bij een andere klasse dan `Custom`: die wordt niet
+///   gelezen (zie [`default_numerator`]);
+/// * een w_add-noemer van precies 0: dat is de gedocumenteerde betekenis
+///   "leid de noemer af uit de klasse" (zie [`w_add_grens`]). Bij `Custom`
+///   is dat de opgegeven w_fin-noemer, die hier dan al gekeurd is.
+pub fn keur_noemers(
+    class: DeflectionClass,
+    limit_numerator: i32,
+    w_add_limit_numerator: f64,
+) -> Result<(), String> {
+    if class == DeflectionClass::Custom && limit_numerator <= 0 {
+        return Err(format!(
+            "doorbuigingsklasse 'Custom' met noemer {limit_numerator}: de grens L/n bestaat \
+             alleen voor n > 0, dus de toetsen op w_fin (NEN-EN 1990:2002/NB:2019 A1.4.3(4)) en \
+             w_add (A1.4.3(3)) zijn niet uit te voeren; geef een noemer groter dan nul op of \
+             kies een andere klasse — er is niet getoetst"
+        ));
+    }
+    if !w_add_limit_numerator.is_finite() || w_add_limit_numerator < 0.0 {
+        return Err(format!(
+            "noemer voor de bijkomende doorbuiging w_add is {w_add_limit_numerator}: de grens \
+             L/n bestaat alleen voor n > 0 (0 = afleiden uit de klasse volgens \
+             NEN-EN 1990:2002/NB:2019 A1.4.3(3)) — er is niet getoetst"
+        ));
+    }
+    Ok(())
 }
 
 /// Leesbare naam van een klasse, voor het rapport.
@@ -61,11 +106,13 @@ pub fn check_deflection(
     actual_mm: f64,
     length_m: f64,
     class: DeflectionClass,
-    limit_numerator: u32,
+    limit_numerator: i32,
 ) -> ResistanceCalc {
     let numerator = default_numerator(class, limit_numerator);
-    let limit_mm = (length_m * 1000.0) / numerator.max(1) as f64;
-    let uc = if limit_mm > 0.0 { actual_mm / limit_mm } else { 0.0 };
+    // Geen `max(1)` meer: L/1 is geen grens maar een toets die altijd slaagt.
+    let limit_mm = grens_mm(length_m * 1000.0, numerator as f64);
+    let getoetst = limit_mm.is_finite() && limit_mm > 0.0;
+    let uc = if getoetst { actual_mm / limit_mm } else { 0.0 };
 
     ResistanceCalc {
         deelstappen: Vec::new(),
@@ -80,13 +127,30 @@ pub fn check_deflection(
         ],
         value: limit_mm,
         unit: "mm".to_string(),
-        uc: Some(UnityCheck {
+        uc: getoetst.then(|| UnityCheck {
             ed: actual_mm, rd: limit_mm, uc,
             formula_latex: r"\delta / \delta_{lim}".to_string(),
         }),
-        status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
-        notes: vec![],
+        status: if !getoetst {
+            CheckStatus::NotApplicable
+        } else if uc <= 1.0 {
+            CheckStatus::Ok
+        } else {
+            CheckStatus::NotOk
+        },
+        notes: if getoetst { vec![] } else { vec![niet_getoetst(numerator as f64)] },
     }
+}
+
+/// Reden bij een doorbuigingstoets zonder bruikbare grens. Via
+/// `steel_check::check_beam` komt het zover niet ([`keur_noemers`] weigert de
+/// staaf eerder); deze regel is er voor wie de functies hier rechtstreeks
+/// aanroept, zodat ook die nooit een "Ok" zonder toets krijgt.
+fn niet_getoetst(noemer: f64) -> String {
+    format!(
+        "Niet getoetst: noemer n = {noemer} geeft geen grenswaarde L/n (n moet groter dan nul \
+         zijn)."
+    )
 }
 
 /// Eindzakking: w_fin = w_z + w_zeeg.
@@ -122,8 +186,12 @@ pub fn w_add_mm(w_z_mm: f64, w_sls_permanent_mm: f64) -> f64 {
 }
 
 /// Grenswaarde L/noemer in mm.
+///
+/// Voor een noemer die geen grens geeft (0, negatief, niet eindig) is de
+/// uitkomst oneindig; wie dat getal gebruikt, moet de toets als niet
+/// uitgevoerd melden en niet als voldaan.
 pub fn grens_mm(lengte_mm: f64, noemer: f64) -> f64 {
-    if noemer.abs() < 1e-9 { return f64::INFINITY; }
+    if !noemer.is_finite() || noemer < 1e-9 { return f64::INFINITY; }
     lengte_mm / noemer
 }
 
@@ -190,11 +258,12 @@ fn noemer_tekst(n: f64) -> String {
 ///
 /// `fin_noemer` is de noemer van de eindzakking; hij telt alleen mee bij
 /// klasse `Custom`, waar dezelfde opgegeven n voor w_fin én w_add geldt —
-/// dezelfde afspraak als de houttoetsing hanteert.
+/// dezelfde afspraak als de houttoetsing hanteert. Een `Custom`-noemer van 0
+/// of kleiner wordt NIET vervangen; [`keur_noemers`] weigert die invoer.
 pub fn w_add_grens(
     lengte_mm: f64,
     class: DeflectionClass,
-    fin_noemer: u32,
+    fin_noemer: i32,
     opgegeven_noemer: f64,
     is_cantilever: bool,
 ) -> WAddGrens {
@@ -237,36 +306,26 @@ pub fn w_add_grens(
 
     // ── Custom: één opgegeven n voor w_fin én w_add ─────────────────────────
     if class == DeflectionClass::Custom {
-        // n = 0 is geen keuze maar een gat in de invoer. Terugvallen op de
-        // NB-waarde van een gewone vloer mag, maar niet stilzwijgend.
-        let (n, gat) = if fin_noemer > 0 {
-            (fin_noemer as f64, None)
-        } else {
-            (
-                NDP_1990.w_add_noemer_intensief,
-                Some(format!(
-                    "Klasse 'Custom' zonder noemer: er is teruggevallen op 3/1 000 · ℓ_rep \
-                     ({NB_A1_4_3_3}, tweede gedachtestreepje). Geef een noemer op als een \
-                     andere categorie van toepassing is."
-                )),
-            )
-        };
-        let mut toelichting = vec![
-            definitie,
-            format!(
-                "Klasse 'Custom': de opgegeven noemer n = {tekst} geldt voor w_fin én w_add, en \
-                 is op de staaflengte toegepast. Grens = {grens:.1} mm. {NB_OVERZICHT}",
-                tekst = noemer_tekst(n),
-                grens = grens_mm(lengte_mm, n),
-            ),
-        ];
-        toelichting.extend(gat);
+        // Tot september 2026 viel n <= 0 hier terug op 3/1 000 · ℓ_rep, terwijl
+        // w_fin met dezelfde invoer stil "Ok" gaf. Nu één regel voor beide:
+        // [`keur_noemers`] weigert die invoer, en wie deze functie toch met
+        // n <= 0 aanroept krijgt een oneindige grens, die
+        // [`check_deflection_pair`] als "niet getoetst" meldt.
+        let n = fin_noemer as f64;
         return WAddGrens {
             noemer: n,
             l_rep_mm: lengte_mm,
             grens_mm: grens_mm(lengte_mm, n),
             artikel: "NEN-EN 1990 (BGT) — noemer opgegeven",
-            toelichting,
+            toelichting: vec![
+                definitie,
+                format!(
+                    "Klasse 'Custom': de opgegeven noemer n = {tekst} geldt voor w_fin én w_add, \
+                     en is op de staaflengte toegepast. Grens = {grens:.1} mm. {NB_OVERZICHT}",
+                    tekst = noemer_tekst(n),
+                    grens = grens_mm(lengte_mm, n),
+                ),
+            ],
         };
     }
 
@@ -364,7 +423,7 @@ pub fn check_deflection_pair(
     w_sls_permanent_mm: f64,
     length_m: f64,
     class: DeflectionClass,
-    limit_numerator: u32,
+    limit_numerator: i32,
     w_add_limit_numerator: f64,
     is_cantilever: bool,
 ) -> (ResistanceCalc, ResistanceCalc) {
@@ -385,7 +444,14 @@ pub fn check_deflection_pair(
                 latex: &str,
                 notes: Vec<String>| {
         let grens = grens_mm(referentie_mm, noemer);
-        let uc = if grens.is_finite() && grens > 0.0 { w.abs() / grens } else { 0.0 };
+        // Zonder eindige, positieve grens is er niets getoetst. Dan ook geen
+        // UC (een UC van 0 leest als "ruim voldaan") en geen status Ok.
+        let getoetst = grens.is_finite() && grens > 0.0;
+        let uc = if getoetst { w.abs() / grens } else { 0.0 };
+        let mut notes = notes;
+        if !getoetst {
+            notes.push(niet_getoetst(noemer));
+        }
         ResistanceCalc {
             deelstappen: Vec::new(),
             id: id.to_string(),
@@ -402,11 +468,17 @@ pub fn check_deflection_pair(
             ],
             value: grens,
             unit: "mm".to_string(),
-            uc: Some(UnityCheck {
+            uc: getoetst.then(|| UnityCheck {
                 ed: w.abs(), rd: grens, uc,
                 formula_latex: r"|w| / w_{max}".to_string(),
             }),
-            status: if uc <= 1.0 { CheckStatus::Ok } else { CheckStatus::NotOk },
+            status: if !getoetst {
+                CheckStatus::NotApplicable
+            } else if uc <= 1.0 {
+                CheckStatus::Ok
+            } else {
+                CheckStatus::NotOk
+            },
             notes,
         }
     };
@@ -514,11 +586,49 @@ mod tests {
         assert_relative_eq!(g.noemer, 400.0);
         assert_relative_eq!(g.grens_mm, 15.0);
 
-        // Custom zonder noemer valt terug op de NB-waarde van een gewone
-        // vloer, met een notitie die dat zegt.
+        // Custom zonder bruikbare noemer valt NIET meer terug op 3/1 000 ·
+        // ℓ_rep (issue #9): de grens is oneindig, de toets meldt "niet
+        // getoetst", en de invoer zelf weigert `keur_noemers`.
         let leeg = w_add_grens(6000.0, DeflectionClass::Custom, 0, 0.0, false);
-        assert_relative_eq!(leeg.noemer, 1000.0 / 3.0);
-        assert!(leeg.toelichting.iter().any(|n| n.contains("zonder noemer")));
+        assert!(leeg.grens_mm.is_infinite());
+    }
+
+    /// Issue #9: `Custom` met noemer 0 of negatief is een invoerfout, voor
+    /// w_fin en w_add gelijk; een negatieve of niet-eindige w_add-noemer ook.
+    #[test]
+    fn keur_noemers_weigert_nul_en_negatief() {
+        for n in [0, -1, -333] {
+            let fout = keur_noemers(DeflectionClass::Custom, n, 0.0).unwrap_err();
+            assert!(fout.contains("'Custom'") && fout.contains("niet getoetst"), "{fout}");
+        }
+        for n in [-1.0, -150.0, f64::NAN, f64::INFINITY] {
+            let fout = keur_noemers(DeflectionClass::Floor, 333, n).unwrap_err();
+            assert!(fout.contains("w_add") && fout.contains("niet getoetst"), "{fout}");
+        }
+        // Geen fout: de klassenoemer bij een andere klasse wordt niet gelezen,
+        // en w_add = 0 betekent "afleiden uit de klasse".
+        assert!(keur_noemers(DeflectionClass::Floor, 0, 0.0).is_ok());
+        assert!(keur_noemers(DeflectionClass::Custom, 400, 0.0).is_ok());
+        assert!(keur_noemers(DeflectionClass::Roof, -5, 150.0).is_ok());
+    }
+
+    /// Wie de toetsfuncties rechtstreeks aanroept met een noemer zonder grens,
+    /// krijgt "niet getoetst" — geen UC en nooit status Ok.
+    #[test]
+    fn noemer_zonder_grens_is_nooit_ok() {
+        for n in [0, -300] {
+            let (fin, add) = check_deflection_pair(
+                -5.0, 0.0, 0.0, 6.0, DeflectionClass::Custom, n, 0.0, false,
+            );
+            for c in [&fin, &add] {
+                assert_eq!(c.status, CheckStatus::NotApplicable, "{} bij n = {n}", c.id);
+                assert!(c.uc.is_none(), "{} bij n = {n}", c.id);
+                assert!(c.notes.iter().any(|t| t.starts_with("Niet getoetst")), "{}", c.id);
+            }
+            let los = check_deflection(-5.0, 6.0, DeflectionClass::Custom, n);
+            assert_eq!(los.status, CheckStatus::NotApplicable);
+            assert!(los.uc.is_none());
+        }
     }
 
     /// De reden staat in het rapport: categorie, artikel en combinatie.

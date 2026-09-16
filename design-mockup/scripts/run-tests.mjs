@@ -361,6 +361,10 @@ const ALLEEN_BRON = new Map([
   ["profieleditor-transform", "test het verplaatsen en roteren in de editor, niet de solver"],
   ["clt-builder", "test de invoerbouwer voor de houttoetsing, niet de solver"],
   [
+    "doorbuigingsnoemer",
+    "issue #9: een doorbuigingsnoemer van 0 of kleiner wordt geweigerd. Raakt de MCP-modelkeuring `keurCheckConfig` (src/mcp, niet in de barrel) en start de toetsbrug en de MCP-server als apart proces voor de echte EN 1993- en EN 1995-kern; tegen de bundel zou de test juist de kernen overslaan die de weigering doen. De sidecarweg zelf loopt mee in het slotblok via `check_fem_model`",
+  ],
+  [
     "clt-doorbuiging",
     "de doorbuigingstoets van kruislaaghout met een opgegeven k_def (tabel 3.2 kent er geen): de CLT-bouwer staat niet in de barrel, dus de bouwerkant kan alleen tegen de bron. De bundelweg is er wél in afgedekt: het slotblok stuurt hetzelfde model door `check_fem_model` van de gebouwde MCP-server, en die bouwt de CLT-invoer uit de sidecarbundel",
   ],

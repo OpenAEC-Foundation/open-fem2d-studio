@@ -57,7 +57,16 @@ buckling_length_y_m: number,
  * `nen_en_1993_1_1_stability::kniklengte` voor de regel en de normgrond;
  * de gebruikte waarde en haar herkomst staan in de toets.
  */
-buckling_length_z_m: number, deflection_limit_class: DeflectionClass, deflection_limit_numerator: number, deflection_actual_max_mm: number, 
+buckling_length_z_m: number, deflection_limit_class: DeflectionClass, 
+/**
+ * Noemer n in de eis L/n; alleen gelezen bij klasse `Custom`.
+ *
+ * `i32` en niet `u32`: een negatieve noemer is een invoerfout die de kern
+ * per staaf met reden weigert ([`crate::deflection::keur_noemers`]). Met
+ * `u32` liep zo'n getal al vast bij het inlezen, en dan viel de hele
+ * aanroep met alle staven weg in plaats van alleen deze staaf.
+ */
+deflection_limit_numerator: number, deflection_actual_max_mm: number, 
 /**
  * Is deze staaf een uitkraging?
  *
