@@ -8,7 +8,7 @@
  */
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
-import { plaatRandLabel, bepaalPlaatRand } from "../../fem/femTypes";
+import { plaatRandLabel, bepaalPlaatlastRand } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
@@ -26,7 +26,7 @@ export default function LoadsSection() {
   const { beams, nodes, plates, loads, loadCases, selfWeightEnabled } = useReportData();
 
   /**
-   * Randlengte (m) van een plaatlast, langs `bepaalPlaatRand` — dezelfde regel
+   * Randlengte (m) van een plaatlast, langs `bepaalPlaatlastRand` — dezelfde regel
    * als de rekenkern, zodat "1,25 – 2,50 m" in het rapport dezelfde meters
    * zijn als waarmee gerekend is. `null` bij een ongeldig adres; de tabel
    * valt dan terug op fracties.
@@ -36,7 +36,8 @@ export default function LoadsSection() {
     if (!plaat) return null;
     const hoeken = plaat.nodeIds.map((id) => nodes.find((n) => n.id === id));
     if (hoeken.some((h) => h === undefined)) return null;
-    const rand = bepaalPlaatRand(hoeken.map((h) => ({ x: h!.x, z: h!.z })), l);
+    const rand = bepaalPlaatlastRand(
+      hoeken.map((h) => ({ x: h!.x, z: h!.z })), plaat.openingen, l);
     return rand.ok ? rand.lengte / 1000 : null;
   };
 
@@ -75,12 +76,13 @@ export default function LoadsSection() {
 
   /**
    * De rand zoals ingevoerd. Een rand-index heet "rand i+1"; alleen een
-   * benoemde rand krijgt zijn naam. Hier stond `EDGE_LABELS[l.edge ?? "top"]`,
+   * benoemde rand krijgt zijn naam, en een last op een openingsrand noemt zijn
+   * opening ("rand 3 van opening 2"). Hier stond `EDGE_LABELS[l.edge ?? "top"]`,
    * waardoor een randlast op een polygoonrand in het rapport als "bovenrand"
    * verscheen.
    */
   const randTekst = (l: Load): string =>
-    l.edge !== undefined && l.edgeIndex === undefined
+    l.edge !== undefined && l.edgeIndex === undefined && l.openingId === undefined
       ? EDGE_LABELS[l.edge]
       : plaatRandLabel(l);
 

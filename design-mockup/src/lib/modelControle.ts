@@ -30,7 +30,7 @@
  * kanttekening in `mcp/valideerModel.ts`.
  */
 import type { Beam, Load, LoadCase, Node, Plate, Support } from "../components/fem/femTypes";
-import { bepaalPlaatRand, valideerPlaatOpeningen } from "../components/fem/femTypes";
+import { bepaalPlaatlastRand, valideerPlaatOpeningen } from "../components/fem/femTypes";
 // De lastmapping zelf is de enige waarheid over "telt deze last mee": de
 // controle MEET met `bouwMultiInput` in plaats van de if/else-keten na te
 // schrijven. Zie `teltLastMee` hieronder.
@@ -173,9 +173,10 @@ function puntOpLijnstuk(
 /**
  * Plaatlasten waarvan de rand of de positie niet te bepalen is: een benoemde
  * rand op een polygoon, een rand-index die geen zijde is, beide of geen adres,
- * een plaat die niet bestaat, of een puntlast op een plaatrand zonder positie.
+ * een plaat die niet bestaat, een opening die niet bestaat (of een benoemde
+ * rand op een opening), of een puntlast op een plaatrand zonder positie.
  *
- * DEZELFDE regel als de engine en de MCP-droogloop (`bepaalPlaatRand`), maar
+ * DEZELFDE regel als de engine en de MCP-droogloop (`bepaalPlaatlastRand`), maar
  * al terwijl je tekent: sleept de gebruiker een rechthoek scheef, dan wordt
  * een benoemde randlast ongeldig, en dat hoort hier te staan en niet pas als
  * melding na "Berekenen". Geen herstelactie: welke rand bedoeld was, weet
@@ -197,7 +198,8 @@ export function zoekPlaatlastFouten(model: ControleModel): Bevinding[] {
     }
     const hoeken = plaat.nodeIds.map((id) => model.nodes.find((n) => n.id === id));
     if (hoeken.some((h) => !h)) continue;       // een ontbrekende hoek meldt de plaat zelf
-    const rand = bepaalPlaatRand(hoeken.map((h) => ({ x: h!.x, z: h!.z })), l, CONTROLE_TOL_MM);
+    const rand = bepaalPlaatlastRand(
+      hoeken.map((h) => ({ x: h!.x, z: h!.z })), plaat.openingen, l, CONTROLE_TOL_MM);
     if (!rand.ok) {
       uit.push({
         soort: "plaatlast", ernst: "fout", nodeIds: [...plaat.nodeIds],

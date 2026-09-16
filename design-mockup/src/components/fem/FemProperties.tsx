@@ -24,7 +24,7 @@ import type {
 } from "./femTypes";
 import {
   withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
-  plaatRandLabel, bepaalPlaatRand, effectiefPlaatMeshType, plaatRekentAlsRaster,
+  plaatRandLabel, bepaalPlaatlastRand, effectiefPlaatMeshType, plaatRekentAlsRaster,
   PLAAT_MESH_TYPEN, PLATE_DEFAULTS,
 } from "./femTypes";
 // Het materiaal van een plaat: één bepaling voor paneel, solver, MCP-poort en
@@ -1161,8 +1161,9 @@ const LOAD_TYPE_LABEL: Record<Load["type"], string> = {
 
 /**
  * De rand van een plaatlast zoals ingevoerd: "rand i+1" bij een rand-index,
- * de naam bij een benoemde rand. Hier stond `EDGE_LABEL[load.edge ?? "top"]`,
- * waardoor een randlast op een polygoonrand als "bovenrand" verscheen.
+ * de naam bij een benoemde rand, en bij een openingsrand de opening erbij.
+ * Hier stond `EDGE_LABEL[load.edge ?? "top"]`, waardoor een randlast op een
+ * polygoonrand als "bovenrand" verscheen.
  */
 const randLabel = (load: Load): string => plaatRandLabel(load);
 
@@ -1271,7 +1272,8 @@ function LoadProperties({
     if (nA && nB) beamLen = Math.hypot(nB.x - nA.x, nB.z - nA.z);
   }
   // Plaatlast (randlast of puntlast op een plaatrand): de rand zoals de
-  // rekenkern hem leest (`bepaalPlaatRand`, van de beginhoek af), zodat de
+  // rekenkern hem leest (`bepaalPlaatlastRand`, van de beginhoek af — ook op
+  // de rand van een opening), zodat de
   // begin-/eind-/positie-invoer in m langs dezelfde as telt als de berekening.
   // Een ongeldig adres geeft randLen 0; de modelcontrole meldt dat apart.
   const plaat = load.plateId !== undefined ? (plates ?? []).find(p => p.id === load.plateId) : undefined;
@@ -1279,7 +1281,8 @@ function LoadProperties({
   if (plaat) {
     const hoeken = plaat.nodeIds.map(id => nodes.find(n => n.id === id));
     if (hoeken.every(h => h !== undefined)) {
-      const rand = bepaalPlaatRand(hoeken.map(h => ({ x: h!.x, z: h!.z })), load);
+      const rand = bepaalPlaatlastRand(
+        hoeken.map(h => ({ x: h!.x, z: h!.z })), plaat.openingen, load);
       if (rand.ok) randLen = rand.lengte;
     }
   }

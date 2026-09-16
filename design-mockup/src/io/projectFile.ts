@@ -51,6 +51,18 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      meshcache `quads`, `meshSoort` en `openingEdgeNodeIndices`. De
  *      handtekening van een cache zonder openingen en zonder keuze is
  *      ongewijzigd, zodat bestaande caches geldig blijven.
+ *      Vervolg op stap 2 (september 2026, optioneel — geen versie-bump):
+ *      `Load.openingId` — een randlast of een puntlast op een plaatrand mag op
+ *      de rand van een OPENING staan in plaats van op de omtrek. Het veld
+ *      draagt het id van die `PlaatOpening`; `Load.edgeIndex` telt dan langs de
+ *      hoeken van die opening en `startFrac`/`endFrac`/`posFrac` vanaf
+ *      openingshoek j. Reist automatisch mee met de loads-array, precies zoals
+ *      `Load.edgeIndex`. ONTBREEKT het veld — elk bestaand bestand — dan staat
+ *      de last op de omtrek en verandert er geen enkel getal. Een oudere versie
+ *      van de app die het veld niet kent, zou de last op de OMTREK leggen; dat
+ *      is de reden dat het bestandsformaat verder ongewijzigd blijft maar de
+ *      huidige app zo'n adres nooit stil verschuift: hier weigert elke route
+ *      (engine, modelcontrole, MCP-poort) een opening die niet bestaat.
  *      Stap 3 van het platenspoor (september 2026, optioneel — geen
  *      versie-bump): `Plate.materiaal` (dezelfde grammatica als
  *      `Beam.material`: staalsoort, betonklasse, houtsterkteklasse,

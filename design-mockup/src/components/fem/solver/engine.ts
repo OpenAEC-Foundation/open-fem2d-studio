@@ -32,7 +32,7 @@ import {
   verdeelRandlastConsistent, verdeelRandpuntlastConsistent,
 } from "../../../core/fem/PlateLoads";
 import {
-  valideerPlaatPolygoon, berekenPlaatMeshSignatuur, bepaalPlaatRand,
+  valideerPlaatPolygoon, berekenPlaatMeshSignatuur, bepaalPlaatlastRand,
   plaatRekentAlsRaster, effectiefPlaatMeshType, valideerPlaatOpeningen, PLAAT_MESH_TYPEN,
 } from "../femTypes";
 import type { PlaatMeshCache, PlaatPunt } from "../femTypes";
@@ -67,10 +67,23 @@ type PlateRegionInfo = {
   edgeNodeIds?: number[][];
   /**
    * Hoekcoördinaten (mm) in de volgorde van de plaatinvoer — de invoer voor
-   * `bepaalPlaatRand`, zodat elke plaatlast zijn rand langs dezelfde regel
+   * `bepaalPlaatlastRand`, zodat elke plaatlast zijn rand langs dezelfde regel
    * vindt als de validatie en het canvas.
    */
   hoeken: PlaatPunt[];
+  /**
+   * De openingen van de plaat, in de volgorde van `Plate.openingen` — nodig om
+   * het adres van een last op een OPENINGSRAND te kunnen omzetten.
+   */
+  openingen: { id: number; punten: PlaatPunt[] }[];
+  /**
+   * Per opening (zelfde volgorde), per openingsrand j (hoek j → hoek j+1) de
+   * geordende mesh-knoop-ids op die rand: de bron voor een randlast of
+   * randpuntlast op een openingsrand. Komt uit `RasterMesh.openingEdgeNodeIndices`
+   * (rasterpad) of `PlaatMeshCache.openingEdgeNodeIndices` (CDT-pad) — beide
+   * al gekeurd, zodat de lijst werkelijk van hoek tot hoek loopt.
+   */
+  openingEdgeNodeIds: number[][][];
 };
 
 /** Eén kinematische randkoppeling, zie `NonlinearSolverOptions.randKoppelingen`. */
@@ -1148,7 +1161,14 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
         left: naarIds(raster.randen.left), right: naarIds(raster.randen.right),
       }, false);
       mesh.addPlateRegion(region);
-      plateInfo.push({ plateId: p.id, region, hoeken: punten });
+      plateInfo.push({
+        plateId: p.id, region, hoeken: punten,
+        openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
+        // Het raster levert de knopen per openingsrand zelf (gridlijnen lopen
+        // door elke openingsrand); omzetten naar mesh-knoop-ids.
+        openingEdgeNodeIds: raster.openingEdgeNodeIndices.map((randen) =>
+          randen.map((rand) => naarIds(rand))),
+      });
       pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
@@ -1167,16 +1187,25 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
       mesh.addPlateRegion(region);
       const edgeNodeIds = cache.edgeNodeIndices.map((rand) =>
         rand.map((i) => k.knoopIdPerPunt[i]));
-      plateInfo.push({ plateId: p.id, region, edgeNodeIds, hoeken: punten });
+      plateInfo.push({
+        plateId: p.id, region, edgeNodeIds, hoeken: punten,
+        openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
+        // De cache is hierboven al gekeurd (één lijst per openingsrand, van
+        // hoek tot hoek); zonder openingen blijft de lijst leeg.
+        openingEdgeNodeIds: (cache.openingEdgeNodeIndices ?? []).map((randen) =>
+          randen.map((rand) => rand.map((i) => k.knoopIdPerPunt[i]))),
+      });
       pasPlaatEigengewichtToe(p, k.elementIds);
     }
   }
 
   // ── Randknopen van een plaatrand ──────────────────────────────────────────
-  // ADRESSERING: één regel, `bepaalPlaatRand` (femTypes). Hij zet `edge` of
-  // `edgeIndex` om naar het hoekpaar van de rand; de randknopen komen daarna
-  // uit het gridmesh (rechthoek: de zijde met die naam) of uit de CDT-cache
-  // (polygoon: de lijst van die rand-index). Een adres dat daar niet doorheen
+  // ADRESSERING: één regel, `bepaalPlaatlastRand` (femTypes). Hij zet `edge` of
+  // `edgeIndex` om naar het hoekpaar van de rand — van de OMTREK, of van de
+  // OPENING die `openingId` aanwijst; de randknopen komen daarna uit het
+  // gridmesh (rechthoek: de zijde met die naam), uit de CDT-cache (polygoon:
+  // de lijst van die rand-index) of uit de openingsrandlijsten van het
+  // rekenmesh (beide paden leveren die). Een adres dat daar niet doorheen
   // komt, en een last op een plaat die niet in het model staat, WEIGEREN de
   // hele berekening met een reden. Tot september 2026 vielen zulke lasten stil
   // weg of kwamen ze op een andere rand terecht; een ontbrekende last leest in
@@ -1189,7 +1218,8 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
    * randlengte `L` (m). `wat` noemt de last in een eventuele melding.
    */
   const randKnopenVan = (
-    plateId: number, adres: { edge?: string; edgeIndex?: number }, wat: string,
+    plateId: number, adres: { edge?: string; edgeIndex?: number; openingId?: number },
+    wat: string,
   ): { nodeIds: number[]; s: number[]; L: number } => {
     // Elke melding begint met "Plaat N": zo herkent de MCP-foutafbeelding
     // (mcp/fouten.ts) hem als Nederlandse modelmelding en geeft hem
@@ -1200,7 +1230,7 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
         `Plaat ${plateId} staat niet in het model, maar ${wat} verwijst ernaar. ` +
         "Een last zonder plaat overslaan zou een berekening geven zonder die last.");
     }
-    const rand = bepaalPlaatRand(info.hoeken, adres, TOL_MM);
+    const rand = bepaalPlaatlastRand(info.hoeken, info.openingen, adres, TOL_MM);
     if (!rand.ok) throw new Error(`Plaat ${plateId}: ${wat} — ${rand.reden}`);
     // De bron van de randknopen volgt het REKENPAD van de plaat, niet de
     // vorm: het rasterpad kent de vier benoemde zijden, het CDT-pad kent de
@@ -1208,7 +1238,21 @@ export function buildMesh(input: SolverInput | MultiInput, loadFactor?: (caseId?
     // rechthoek (benoemde randen zijn geldig) maar rekent via de CDT; de
     // benoemde rand wordt dan op zijn hoekpaar (hoekVan → hoekNaar) afgebeeld.
     let kandidaten: number[];
-    if (info.edgeNodeIds) {
+    if (rand.openingIndex !== undefined) {
+      // OPENINGSRAND. Beide rekenpaden leggen knopen op de openingsrand en
+      // melden ze per rand; welk pad de plaat nam, doet er hier niet toe. Een
+      // ontbrekende lijst is een fout in het rekenmesh, geen reden om op de
+      // omtrek uit te wijken.
+      const randen = info.openingEdgeNodeIds[rand.openingIndex];
+      const lijst = randen?.[rand.edgeIndex!];
+      if (!lijst) {
+        throw new Error(
+          `Plaat ${plateId}: ${wat} — rand ${rand.edgeIndex! + 1} van opening ` +
+          `${rand.openingId} heeft geen rekenknopen in het rekenmesh. Wijzig de ` +
+          "plaat zodat het mesh opnieuw wordt gemaakt.");
+      }
+      kandidaten = lijst;
+    } else if (info.edgeNodeIds) {
       const n = info.hoeken.length;
       let k = rand.edgeIndex;
       if (k === undefined) {

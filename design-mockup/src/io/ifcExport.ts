@@ -159,7 +159,7 @@
 import type {
   Node, Beam, Support, Load, LoadCase,
 } from "../components/fem/femTypes";
-import { rolVanStaaf, BEAM_LOAD_ROLE_LABEL, bepaalPlaatRand } from "../components/fem/femTypes";
+import { rolVanStaaf, BEAM_LOAD_ROLE_LABEL, bepaalPlaatlastRand } from "../components/fem/femTypes";
 import { bepaalPlaatStijfheid } from "../lib/plaatMateriaal";
 import {
   parseRechthoek, resolveSection, CONCRETE_E_CM,
@@ -865,7 +865,10 @@ export function bouwIfcRekenmodel(
         : []),
     ];
     schrijfEigenschappen(w, "OpenFEM2D_Plaat", `plaat:${plaat.id}`, eig, [member]);
-    plaatInfo.set(plaat.id, { member, nodeIds: ids, knopen: knoopPerId, vertexPerKnoop });
+    plaatInfo.set(plaat.id, {
+      member, nodeIds: ids, knopen: knoopPerId, vertexPerKnoop,
+      openingen: openingen.map((o) => ({ id: o.id, punten: o.punten })),
+    });
   }
 
   // ── Lasten ───────────────────────────────────────────────────────────────
@@ -1694,28 +1697,57 @@ interface PlaatInfo {
   nodeIds: number[];
   knopen: Map<number, Node>;
   vertexPerKnoop: Map<number, number>;
+  /**
+   * De openingen van de plaat, in de volgorde van `Plate.openingen` — nodig om
+   * een last op een OPENINGSRAND te kunnen adresseren. Een opening hangt aan
+   * geen knoop, dus haar randpunten krijgen eigen IfcCartesianPoints (zie
+   * `randEindpunten`), net als de binnenlus van het vlak zelf.
+   */
+  openingen: { id: number; punten: { x: number; z: number }[] }[];
 }
 
 /**
- * De twee hoekknopen van een plaatrand, in de richting waarin de fracties
- * langs de rand tellen (knoop bij fractie 0, knoop bij fractie 1).
+ * De twee eindpunten van een plaatrand, in de richting waarin de fracties
+ * langs de rand tellen (fractie 0 → fractie 1), met voor elk een
+ * IfcVertexPoint waaraan de last gehangen kan worden.
  *
- * Langs `bepaalPlaatRand`, dezelfde regel als de rekenkern: een rand-index i
- * loopt van hoek i naar hoek i+1, een benoemde rand bestaat alleen bij een
- * asgelijnde rechthoek. Een eigen afleiding stond hier eerder ("onder = de
- * twee laagste knopen") en gaf bij een polygoon met een benoemde rand stil
- * twee willekeurige hoeken; nu levert zo'n adres `undefined`, en de aanroeper
- * meldt dat de last niet geëxporteerd is.
+ * Langs `bepaalPlaatlastRand`, dezelfde regel als de rekenkern: een rand-index
+ * i loopt van hoek i naar hoek i+1, een benoemde rand bestaat alleen bij een
+ * asgelijnde rechthoek, en met een `openingId` is het een rand van DIE
+ * OPENING. Een eigen afleiding stond hier eerder ("onder = de twee laagste
+ * knopen") en gaf bij een polygoon met een benoemde rand stil twee
+ * willekeurige hoeken; nu levert zo'n adres `undefined`, en de aanroeper meldt
+ * dat de last niet geëxporteerd is.
+ *
+ * OMTREK versus OPENING. Een omtrekrand hergebruikt de bestaande hoekvertices
+ * van de plaat — daardoor blijft het bestand van een model zonder
+ * openingslasten byte-gelijk aan voorheen. Een openingsrand hangt aan geen
+ * knoop en krijgt daarom twee eigen punten, dezelfde vorm als de binnenlus van
+ * het vlak en als de staafgebonden puntlast.
  */
-function randKnopen(info: PlaatInfo, last: Load): [number, number] | undefined {
+function randEindpunten(
+  w: SpfSchrijver, info: PlaatInfo, last: Load,
+): { a: { x: number; z: number }; b: { x: number; z: number };
+     vertexA: number; vertexB: number } | undefined {
   const punten = info.nodeIds.map((id) => info.knopen.get(id));
   if (punten.some((k) => k === undefined)) return undefined;
-  const rand = bepaalPlaatRand(
+  const rand = bepaalPlaatlastRand(
     punten.map((k) => ({ x: k!.x, z: k!.z })),
-    { edge: last.edge, edgeIndex: last.edgeIndex },
+    info.openingen,
+    { edge: last.edge, edgeIndex: last.edgeIndex, openingId: last.openingId },
   );
   if (!rand.ok) return undefined;
-  return [info.nodeIds[rand.hoekVan], info.nodeIds[rand.hoekNaar]];
+  if (rand.openingIndex !== undefined) {
+    const vertex = (q: { x: number; z: number }): number =>
+      w.ent("IFCVERTEXPOINT",
+        ref(w.ent("IFCCARTESIANPOINT", `(${meter(q.x)},0.,${meter(q.z)})`)));
+    return { a: rand.van, b: rand.naar, vertexA: vertex(rand.van), vertexB: vertex(rand.naar) };
+  }
+  const idA = info.nodeIds[rand.hoekVan], idB = info.nodeIds[rand.hoekNaar];
+  const kA = info.knopen.get(idA), kB = info.knopen.get(idB);
+  const vA = info.vertexPerKnoop.get(idA), vB = info.vertexPerKnoop.get(idB);
+  if (!kA || !kB || vA === undefined || vB === undefined) return undefined;
+  return { a: kA, b: kB, vertexA: vA, vertexB: vB };
 }
 
 function schrijfLast(
@@ -1785,10 +1817,14 @@ function schrijfLast(
     // eindhoek zoals `randKnopen` (en de rekenkern) die telt — gekoppeld aan
     // het vlaklid. Dezelfde vorm als de staafgebonden puntlast hierboven.
     const plaat = last.plateId !== undefined ? plaatInfo.get(last.plateId) : undefined;
-    const randPaar = plaat ? randKnopen(plaat, last) : undefined;
-    if (plaat !== undefined && randPaar !== undefined && last.type === "pointForce") {
-      const kA = plaat.knopen.get(randPaar[0])!;
-      const kB = plaat.knopen.get(randPaar[1])!;
+    // Alleen voor een KRACHT: een membraan draagt in zijn knopen geen moment,
+    // dus een puntmoment op een plaatrand bestaat niet en er hoeft ook geen
+    // randpunt voor aangemaakt te worden.
+    const randGeo = plaat !== undefined && last.type === "pointForce"
+      ? randEindpunten(w, plaat, last) : undefined;
+    if (plaat !== undefined && randGeo !== undefined) {
+      const kA = randGeo.a;
+      const kB = randGeo.b;
       const f = Math.min(1, Math.max(0, last.posFrac ?? 0));
       const xMm = kA.x + f * (kB.x - kA.x);
       const zMm = kA.z + f * (kB.z - kA.z);
@@ -1815,7 +1851,7 @@ function schrijfLast(
     // hoekknopen), gekoppeld aan het vlaklid. Altijd in wereldassen: qDir
     // "x" of "z", kN/m → N/m.
     const info = last.plateId !== undefined ? plaatInfo.get(last.plateId) : undefined;
-    const paar = info ? randKnopen(info, last) : undefined;
+    const paar = info ? randEindpunten(w, info, last) : undefined;
     if (!info || !paar) {
       console.warn(`[ifcExport] Randlast ${last.id} verwijst naar een plaat of rand die niet in het bestand staat — overgeslagen.`);
       return undefined;
@@ -1827,7 +1863,7 @@ function schrijfLast(
         last.qDir === "x" ? `IFCLINEARFORCEMEASURE(${reeel(q_kNm * 1e3)})` : "$", "$",
         last.qDir === "x" ? "$" : `IFCLINEARFORCEMEASURE(${reeel(q_kNm * 1e3)})`,
         "$", "$", "$");
-    const rand = w.ent("IFCEDGE", ref(info.vertexPerKnoop.get(paar[0])!), ref(info.vertexPerKnoop.get(paar[1])!));
+    const rand = w.ent("IFCEDGE", ref(paar.vertexA), ref(paar.vertexB));
     const topo = w.ent("IFCTOPOLOGYREPRESENTATION", ref(context), "'Reference'", "'Edge'", lijst([rand]));
     const vorm = w.ent("IFCPRODUCTDEFINITIONSHAPE", "$", "$", lijst([topo]));
     const qA = last.qStart ?? last.q ?? 0;
@@ -1849,7 +1885,7 @@ function schrijfLast(
       // de rand, in m vanaf de beginhoek). Knikpunten op 0 (nul), a (qA),
       // b (qB) en L (nul); de punten buiten het belaste deel vallen weg als
       // a = 0 of b = L. De lezer interpoleert lineair tussen de posities.
-      const kA = info.knopen.get(paar[0])!, kB = info.knopen.get(paar[1])!;
+      const kA = paar.a, kB = paar.b;
       const L = Math.hypot(kB.x - kA.x, kB.z - kA.z) / 1000;
       const waarden: number[] = [];
       const posities: string[] = [];

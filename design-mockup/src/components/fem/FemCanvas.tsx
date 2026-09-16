@@ -59,7 +59,7 @@ import type {
 import {
   withPlateDefaults, PLATE_DEFAULTS,
   isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur,
-  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD, bepaalPlaatRand, plaatRandLabel,
+  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD, bepaalPlaatlastRand, plaatRandLabel,
   plaatRekentAlsRaster, effectiefPlaatMeshType, valideerPlaatOpeningen,
   plaatMeshSignatuurVan, type PlaatOpening, type PlaatMeshType,
 } from "./femTypes";
@@ -260,19 +260,34 @@ function isPolygoonPlaat(punten: PlaatPunt[]): boolean {
 /**
  * De rand van een plaatlast zoals de REKENKERN hem leest: van de beginhoek
  * (fractie 0) naar de eindhoek (fractie 1), met de lengte in mm. Langs
- * `bepaalPlaatRand`, dezelfde regel als engine, droogloop en IFC-export —
+ * `bepaalPlaatlastRand`, dezelfde regel als engine, droogloop en IFC-export —
  * zo tekent het canvas een deellast of een randpuntlast op precies de plek
- * waar er ook mee gerekend wordt. `null` bij een ongeldig adres (de
- * modelcontrole meldt dat apart).
+ * waar er ook mee gerekend wordt, ook op de rand van een OPENING. `null` bij
+ * een ongeldig adres (de modelcontrole meldt dat apart).
  */
 function plaatRandGeometrie(
-  pl: Plate, nodes: Node[], adres: { edge?: string; edgeIndex?: number },
+  pl: Plate, nodes: Node[], adres: { edge?: string; edgeIndex?: number; openingId?: number },
 ): { a: PlaatPunt; b: PlaatPunt; lengteMm: number } | null {
   const punten = plaatHoekPunten(pl, nodes);
   if (!punten) return null;
-  const rand = bepaalPlaatRand(punten, adres);
+  const rand = bepaalPlaatlastRand(punten, pl.openingen, adres);
   if (!rand.ok) return null;
   return { a: rand.van, b: rand.naar, lengteMm: rand.lengte };
+}
+
+/**
+ * Eindpunten (mm) van rand `edgeIndex` van de opening met dit id (hoek j →
+ * hoek j+1, cyclisch). Voor het AANWIJZEN in het canvas: `findSnapPlateEdge`
+ * moet de openingsranden net zo goed kunnen vinden als de omtrekranden, anders
+ * is een last op een sparing alleen via de MCP of het projectbestand te maken.
+ */
+function plaatOpeningRandSegment(
+  pl: Plate, openingId: number, edgeIndex: number,
+): { a: PlaatPunt; b: PlaatPunt } | null {
+  const opening = (pl.openingen ?? []).find((o) => o.id === openingId);
+  const n = opening?.punten.length ?? 0;
+  if (!opening || n < 3 || edgeIndex < 0 || edgeIndex >= n) return null;
+  return { a: opening.punten[edgeIndex], b: opening.punten[(edgeIndex + 1) % n] };
 }
 
 /** Eindpunten (mm) van polygonrand `edgeIndex` (hoek i → hoek i+1, cyclisch). */
@@ -637,6 +652,11 @@ export default function FemCanvas(props: FemCanvasProps) {
     plateId?: number; edge?: PlaatRand;
     /** edgeLoad op een polygonplaat (P4.3): rand-index i.p.v. benoemde rand. */
     edgeIndex?: number;
+    /**
+     * De rand hoort bij een OPENING van de plaat (id van die opening);
+     * `edgeIndex` telt dan langs de openingshoeken. Leeg = de omtrek.
+     */
+    openingId?: number;
     sx: number; sy: number;
   } | null>(null);
 
@@ -1179,12 +1199,19 @@ export default function FemCanvas(props: FemCanvasProps) {
   // één tool zowel staaf-lijnlasten als plaatrandlasten plaatst.
   // Rechthoeken leveren een BENOEMDE rand, polygonplaten een RAND-INDEX
   // (rand van hoek i naar hoek i+1, in klikvolgorde).
+  // OPENINGEN: elke openingsrand doet mee, met `openingId` + de rand-index van
+  // die opening. Ze staan bewust NA de omtrekranden in dezelfde "dichtstbij
+  // wint"-vergelijking: een opening ligt per definitie minstens 10 mm van de
+  // omtrek (PLAAT_OPENING_MIN_AFSTAND_MM), dus de twee soorten randen kunnen
+  // elkaar alleen bij ver uitgezoomd beeld overlappen, en dan wint de
+  // dichtstbijzijnde — niet de omtrek "omdat hij eerst kwam".
   const findSnapPlateEdge = useCallback((sx: number, sy: number):
-    { plateId: number; edge?: PlaatRand; edgeIndex?: number } | null => {
+    { plateId: number; edge?: PlaatRand; edgeIndex?: number; openingId?: number } | null => {
     const RADIUS_PX = 8;
-    let best: { plateId: number; edge?: PlaatRand; edgeIndex?: number; d: number } | null = null;
+    let best:
+      { plateId: number; edge?: PlaatRand; edgeIndex?: number; openingId?: number; d: number } | null = null;
     const probeer = (plateId: number, seg: { a: PlaatPunt; b: PlaatPunt } | null,
-                     doel: { edge?: PlaatRand; edgeIndex?: number }) => {
+                     doel: { edge?: PlaatRand; edgeIndex?: number; openingId?: number }) => {
       if (!seg) return;
       const pa = worldToScreen(seg.a.x, seg.a.z);
       const pb = worldToScreen(seg.b.x, seg.b.z);
@@ -1209,10 +1236,17 @@ export default function FemCanvas(props: FemCanvasProps) {
           probeer(pl.id, plaatRandSegment(pl, nodes, rand), { edge: rand });
         }
       }
+      for (const opening of pl.openingen ?? []) {
+        for (let j = 0; j < opening.punten.length; j++) {
+          probeer(pl.id, plaatOpeningRandSegment(pl, opening.id, j),
+            { openingId: opening.id, edgeIndex: j });
+        }
+      }
     }
     if (!best) return null;
-    const b = best as { plateId: number; edge?: PlaatRand; edgeIndex?: number };
-    return { plateId: b.plateId, edge: b.edge, edgeIndex: b.edgeIndex };
+    const b = best as
+      { plateId: number; edge?: PlaatRand; edgeIndex?: number; openingId?: number };
+    return { plateId: b.plateId, edge: b.edge, edgeIndex: b.edgeIndex, openingId: b.openingId };
   }, [plates, nodes, worldToScreen]);
 
   // ── Selection helpers (multi-aware) ─────────────────────────────────────
@@ -1864,7 +1898,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         const p = worldToScreen(geo.a.x + vx * frac, geo.a.z + vz * frac);
         setPopover({
           kind, plateId: pe.plateId, edge: pe.edge, edgeIndex: pe.edgeIndex,
-          posFrac: frac, sx: p.x, sy: p.y,
+          openingId: pe.openingId, posFrac: frac, sx: p.x, sy: p.y,
         });
         return;
       }
@@ -1892,7 +1926,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           if (pe) {
             setPopover({
               kind: "edgeLoad", plateId: pe.plateId,
-              edge: pe.edge, edgeIndex: pe.edgeIndex,
+              edge: pe.edge, edgeIndex: pe.edgeIndex, openingId: pe.openingId,
               sx, sy,
             });
           }
@@ -4875,6 +4909,9 @@ export default function FemCanvas(props: FemCanvasProps) {
             ? {
               type: "pointForce", plateId: p.plateId,
               ...(p.edgeIndex !== undefined ? { edgeIndex: p.edgeIndex } : { edge: p.edge }),
+              // Openingsrand: alleen mee als de klik er een aanwees, zodat een
+              // last op de omtrek precies dezelfde velden houdt als voorheen.
+              ...(p.openingId !== undefined ? { openingId: p.openingId } : {}),
               posFrac: posFrac ?? p.posFrac ?? 0, fx, fz,
             }
             : opStaaf
@@ -4929,9 +4966,11 @@ export default function FemCanvas(props: FemCanvasProps) {
       const randGeo = plaat ? plaatRandGeometrie(plaat, nodes, p) : null;
       const randLenM = (randGeo?.lengteMm ?? 0) / 1000;
       return <PopoverEdgeLoadForm
-        randLabel={p.edgeIndex !== undefined
-          ? `rand ${p.edgeIndex + 1}`
-          : RAND_LABEL[p.edge ?? "top"]}
+        randLabel={p.openingId !== undefined
+          ? `rand ${(p.edgeIndex ?? 0) + 1} van opening ${p.openingId}`
+          : p.edgeIndex !== undefined
+            ? `rand ${p.edgeIndex + 1}`
+            : RAND_LABEL[p.edge ?? "top"]}
         randLenM={randLenM}
         startP={w.q ?? -5}
         startDir={w.qDir ?? "z"}
@@ -4939,6 +4978,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         onSubmit={(pWaarde, dir, startFrac, endFrac) => cbs.onAddLoad({
           type: "edgeLoad", plateId: p.plateId,
           ...(p.edgeIndex !== undefined ? { edgeIndex: p.edgeIndex } : { edge: p.edge ?? "top" }),
+          ...(p.openingId !== undefined ? { openingId: p.openingId } : {}),
           q: pWaarde, qDir: dir,
           ...(startFrac !== undefined ? { startFrac } : {}),
           ...(endFrac !== undefined ? { endFrac } : {}),
