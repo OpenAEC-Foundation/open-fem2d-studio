@@ -81,6 +81,9 @@ pub mod betonzones;
 pub mod figuur;
 pub mod houtfiguren;
 pub mod houthoofdstuk;
+/// Verlopend profiel: de toetsdoorsneden van één staaf op papier
+/// (ontwerp 15-09-2026, §6). Zie de moduledocumentatie.
+pub mod verloopblok;
 
 use openaec_layout::{
     doc_template::{DocTemplate, RawPage},
@@ -101,7 +104,7 @@ use concrete_check::dekkingslijn::DekkingslijnAntwoord;
 use concrete_check::ConcreteBeamCheckResult;
 use nen_en_1993_1_1_section::{CheckStatus, Deelstap, NamedValue};
 use spanning_check::SpanningBeamCheckResult;
-use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck};
+use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck, VerloopRapport};
 use timber_check::clt::CltBeamCheckResult;
 use timber_check::TimberBeamCheckResult;
 
@@ -326,6 +329,12 @@ pub struct ReportMember<'a> {
     pub status: &'a CheckStatus,
     pub governing_check_id: &'a str,
     pub checks: &'a [NamedCheck],
+    /// Het verlooprapport van een VERLOPENDE staaf: de zes toetsdoorsneden,
+    /// het maatgevende punt en de doorsnede waarmee de stabiliteit is
+    /// gerekend. `None` bij elke prismatische staaf — en bij elke kern die het
+    /// begrip niet kent (beton, kruislaaghout, de vrije spanningstoets), want
+    /// een verlopende doorsnede wordt daar geweigerd en niet stil benaderd.
+    pub verloop: Option<&'a VerloopRapport>,
 }
 
 impl ReportMember<'_> {
@@ -357,6 +366,7 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
             status: &r.status,
             governing_check_id: &r.governing_check_id,
             checks: &r.checks,
+            verloop: r.verloop.as_ref(),
         });
     }
 
@@ -370,6 +380,7 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
             status: &r.status,
             governing_check_id: &r.governing_check_id,
             checks: &r.checks,
+            verloop: r.verloop.as_ref(),
         });
     }
 
@@ -385,6 +396,8 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
             status: &r.status,
             governing_check_id: &r.governing_check_id,
             checks: &r.checks,
+            // Kruislaaghout kan niet verlopen (ontwerp §9).
+            verloop: None,
         });
     }
 
@@ -398,6 +411,8 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
             status: &r.status,
             governing_check_id: &r.governing_check_id,
             checks: &r.checks,
+            // Een verlopende betonstaaf wordt geweigerd, niet benaderd.
+            verloop: None,
         });
     }
 
@@ -414,6 +429,11 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
             status: &r.status,
             governing_check_id: &r.governing_check_id,
             checks: &r.checks,
+            // De vrije spanningstoets draagt een veld `verloop`, maar dat is
+            // het verloop van de SPANNING langs de staaf — iets anders dan een
+            // verlopende doorsnede. Ze hier op naam gelijkstellen zou twee
+            // ongelijke dingen in één tabel zetten.
+            verloop: None,
         });
     }
 
@@ -833,6 +853,16 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
         // staal, hout en elke betonstaaf met één korf over de hele lengte.
         if let Some(z) = betonzones::zones_van(&input.concrete_reinforcement_zones, m.beam_id) {
             betonzones::extend_met_zoneblok(&mut flow, z, m.checks, m.governing_check_id);
+        }
+
+        // VERLOPEND PROFIEL: de zes toetsdoorsneden, het maatgevende punt en
+        // de doorsnede waarmee de stabiliteit is gerekend. Staat VÓÓR de
+        // toetsblokken, want wie een unity check van een verlopende staaf
+        // leest, moet eerst weten wáár die doorsnede zit. Blijft weg bij elke
+        // prismatische staaf, zodat de PDF van een bestaand model ongewijzigd
+        // blijft.
+        if let Some(v) = m.verloop {
+            verloopblok::extend_met_verloopblok(&mut flow, v);
         }
 
         for nc in m.checks {

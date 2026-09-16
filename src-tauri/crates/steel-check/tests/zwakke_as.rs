@@ -91,6 +91,7 @@ fn staaf(
         staafeinden: None,
         staaf_notities: None,
         profile_end: None,
+        custom_section_end: None,
     })
 }
 

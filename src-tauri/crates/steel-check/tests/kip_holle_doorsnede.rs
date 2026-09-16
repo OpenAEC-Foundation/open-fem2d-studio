@@ -68,6 +68,7 @@ fn koker(l_m: f64, q_n_per_mm: f64) -> BeamCheckResult {
         staafeinden: None,
         staaf_notities: None,
         profile_end: None,
+        custom_section_end: None,
     })
 }
 

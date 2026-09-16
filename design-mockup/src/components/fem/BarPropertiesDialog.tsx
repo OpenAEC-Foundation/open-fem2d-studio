@@ -26,6 +26,9 @@ import { matchSupportedTimberGrade } from "../../lib/timberCheckBuilder";
 import { sanitizeRestraintFractions } from "../../lib/steelCheckBuilder";
 import { parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
+// Één bron voor de doorsnedenaam en de begin-/eindmaten van een verlopende
+// staaf — dezelfde keuring als de solver en de rekenkern; zie lib/verloopKeuze.
+import { doorsnedeNaam, verloopMaten } from "../../lib/verloopKeuze";
 import "./BarPropertiesDialog.css";
 
 /**
@@ -81,6 +84,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   // Hydrate from the beam so re-opening shows previously-saved values.
   const [material, setMaterial] = useState(beam.material ?? "S235");
   const [profile, setProfile]   = useState(beam.profile  ?? "HEA160");
+  // Het EINDprofiel van een verlopende staaf (ontwerp 15-09-2026). Leeg =
+  // prismatisch; de wizard levert het samen met `profile`, zodat de twee niet
+  // los van elkaar kunnen raken.
+  const [profileEnd, setProfileEnd] = useState<string | undefined>(beam.profileEnd);
   // ProfielKiezer-wizard (profiel + materiaal als één combinatie) — de keuze
   // landt in de lokale dialoogstate en wordt pas bij OK gecommit.
   const [kiezerOpen, setKiezerOpen] = useState(false);
@@ -88,6 +95,8 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   // via AansluitingKeuze; pas bij OK gecommit.
   const [releases, setReleases] = useState<BeamReleases | undefined>(beam.releases);
   const [veren, setVeren] = useState<BeamEindVeren | undefined>(beam.veren);
+  /** Begin- en eindmaten zolang de dialoogkeuze een geldig verloop oplevert. */
+  const verlopendeMaten = verloopMaten({ material, profile, profileEnd });
 
   // ── Staaf op bedding ─────────────────────────────────────────────────────
   // Aan/uit plus k en b als tekst, zodat een leeg veld leeg kan blijven tot
@@ -257,7 +266,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   };
 
   const handleConfirm = () => {
-    onUpdate?.({ material, profile, releases, veren, checkConfig: buildCheckConfig(), bedding: buildBedding() });
+    onUpdate?.({
+      material, profile, profileEnd,
+      releases, veren, checkConfig: buildCheckConfig(), bedding: buildBedding(),
+    });
     onClose();
   };
 
@@ -272,7 +284,8 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
    * oude profiel staan, terwijl de gebruiker het wel degelijk had toegewezen.
    */
   const huidigeInvoer = JSON.stringify({
-    material, profile, releases, veren, cfg: buildCheckConfig() ?? null, bedding: buildBedding() ?? null,
+    material, profile, profileEnd: profileEnd ?? null,
+    releases, veren, cfg: buildCheckConfig() ?? null, bedding: buildBedding() ?? null,
   });
   const [beginInvoer] = useState(huidigeInvoer);
   const gewijzigd = huidigeInvoer !== beginInvoer;
@@ -424,8 +437,26 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     (ProfielKiezer) vervangt de losse invoervelden. */}
                 <div className="bar-props-row">
                   <span>Profiel</span>
-                  <code>{profile} — {material}</code>
+                  <code>{doorsnedeNaam({ material, profile, profileEnd })} — {material}</code>
                 </div>
+                {/* Begin en eind apart, met de maten erbij — alleen bij een
+                    staaf die werkelijk verloopt. */}
+                {verlopendeMaten && (
+                  <>
+                    <div className="bar-props-row">
+                      <span>Begin (knoop A)</span>
+                      <code>
+                        h = {verlopendeMaten.begin.h} mm, b = {verlopendeMaten.begin.b} mm
+                      </code>
+                    </div>
+                    <div className="bar-props-row">
+                      <span>Eind (knoop B)</span>
+                      <code>
+                        h = {verlopendeMaten.eind.h} mm, b = {verlopendeMaten.eind.b} mm
+                      </code>
+                    </div>
+                  </>
+                )}
                 <div className="bar-props-row">
                   <span></span>
                   <button
@@ -440,7 +471,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                   <ProfielKiezer
                     open
                     onClose={() => setKiezerOpen(false)}
-                    huidig={{ material, profile }}
+                    huidig={{ material, profile, profileEnd }}
                     huidigBeton={{
                       korf: betonCfg.betonKorf,
                       milieuklasse: betonCfg.betonMilieuklasse ?? null,
@@ -450,6 +481,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     onApply={(keuze) => {
                       setMaterial(keuze.material);
                       setProfile(keuze.profile);
+                      // `profileEnd` komt ALTIJD mee uit de wizard, ook als
+                      // `undefined`: wie een prismatisch profiel kiest op een
+                      // staaf die verliep, hoort dat verloop kwijt te raken.
+                      setProfileEnd(keuze.profileEnd);
                       if (keuze.beton) {
                         setBetonCfg((c) => ({
                           ...c,
@@ -543,7 +578,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
               <div className="bar-props-section">
                 <div className="bar-props-section-title">Materiaal + doorsnede</div>
                 <div className="bar-props-row"><span>Materiaal</span><code>{material}</code></div>
-                <div className="bar-props-row"><span>Profiel</span><code>{profile}</code></div>
+                <div className="bar-props-row"><span>Profiel</span><code>{doorsnedeNaam({ material, profile, profileEnd })}</code></div>
                 <div className="bar-props-row">
                   <span>Norm</span>
                   <code>

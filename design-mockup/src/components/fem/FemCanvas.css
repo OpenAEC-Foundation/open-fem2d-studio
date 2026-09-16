@@ -808,3 +808,17 @@
   align-self: flex-end;
   margin-top: 2px;
 }
+
+/* ── Verlopende staaf: de omtrek van de doorsnede (ontwerp 15-09-2026) ────
+   Alleen een staaf met een eindprofiel krijgt deze wig; een prismatische
+   staaf blijft precies de lijn die hij altijd was. De vulling is licht en de
+   rand dun, zodat de systeemlijn, de scharnierbolletjes en de
+   snedekrachtendiagrammen er doorheen blijven staan. */
+.fem-member-verloop {
+  fill: var(--theme-accent);
+  fill-opacity: 0.12;
+  stroke: var(--theme-accent);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}

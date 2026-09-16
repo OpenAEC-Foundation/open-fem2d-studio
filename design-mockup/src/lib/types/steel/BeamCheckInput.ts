@@ -198,10 +198,27 @@ staaf_notities?: Array<string>,
  * elke doorsnedetoets op elk punt; de stabiliteitstoetsen rekenen met de
  * kleinste doorsnede in het betreffende veld. Zie `crate::verlopend`.
  *
- * Beide profielen moeten I/H-profielen uit de catalogus zijn; een koker,
+ * Beide uiteinden moeten I/H-profielen zijn: uit de catalogus, of als
+ * GELASTE dubbelsymmetrische I uit drie platen ([`Self::custom_section`]
+ * voor het begin, [`Self::custom_section_end`] voor het eind). Dat laatste
+ * is geen uitbreiding om de uitbreiding: het SPLITSEN van een verlopende
+ * staaf laat op de splitsplaats precies zo'n doorsnede achter, en zonder
+ * dit pad zou een gesplitste staaf niet meer te toetsen zijn. Een koker,
  * buis, hoeklijn, U-profiel, een I-profiel met toelopende flenzen of een
- * eigen doorsnede (`custom_section`) wordt geweigerd met reden. `None`,
+ * eigen doorsnede van een andere vorm wordt geweigerd met reden. `None`,
  * leeg of gelijk aan `profile_name` = prismatisch: dan verandert er
  * niets aan de bestaande toetsing, tot op het laatste getal.
  */
-profile_end?: string, };
+profile_end?: string, 
+/**
+ * De doorsnede aan het EIND van een verlopende staaf, wanneer dat eind
+ * geen catalogusprofiel is maar een gelaste dubbelsymmetrische I uit drie
+ * platen. Alleen gelezen wanneer [`Self::profile_end`] gevuld is; de naam
+ * erin is de naam die in het rapport komt.
+ *
+ * Waarom een apart veld en niet gewoon een naam: een gelaste doorsnede
+ * staat in geen enkele catalogus, dus er is geen naam waaraan haar maten
+ * te ontlenen zijn. Zou de kern ze uit de naam moeten raden, dan zou zij
+ * rekenen met iets wat niemand heeft opgegeven.
+ */
+custom_section_end?: CustomSection, };

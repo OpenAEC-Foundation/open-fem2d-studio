@@ -51,6 +51,9 @@ import { isOverwegendVerticaal, VERTICAAL_VANAF_GRADEN, STEEL_GRADES } from "../
 // lib/referentierichting.ts.
 import { gradenTekst, richtingssprongNabij } from "../../lib/referentierichting";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
+// De doorsnedenaam van een staaf komt uit één plaats — dezelfde keuring als de
+// solver en de rekenkern gebruiken; zie lib/verloopKeuze.
+import { doorsnedeNaam, verloopMaten } from "../../lib/verloopKeuze";
 import AansluitingKeuze from "./AansluitingKeuze";
 
 interface SectionProps {
@@ -200,14 +203,21 @@ function MultiProperties({ selection, beams, updateBeams }: {
 
   const gekozen = beams.filter((b) => selection.beamIds.includes(b.id));
   // Combinaties profiel + materiaal met hun aantal, in modelvolgorde.
-  const combinaties = new Map<string, { profile: string; material: string; ids: number[] }>();
+  // Het EINDprofiel hoort in de sleutel: twee staven met hetzelfde
+  // beginprofiel maar een ander verloop zijn niet dezelfde doorsnede, en één
+  // regel voor allebei zou dat verschil wegpoetsen.
+  const combinaties = new Map<
+    string,
+    { profile: string; profileEnd?: string; material: string; ids: number[] }
+  >();
   for (const b of gekozen) {
     const profile = b.profile ?? "HEA160";
+    const profileEnd = b.profileEnd?.trim() || undefined;
     const material = b.material ?? "S235";
-    const sleutel = `${profile}|${material}`;
+    const sleutel = `${profile}|${profileEnd ?? ""}|${material}`;
     const bestaand = combinaties.get(sleutel);
     if (bestaand) bestaand.ids.push(b.id);
-    else combinaties.set(sleutel, { profile, material, ids: [b.id] });
+    else combinaties.set(sleutel, { profile, profileEnd, material, ids: [b.id] });
   }
   const rijen = [...combinaties.values()];
   // Eén combinatie → die staat voorgeselecteerd in de wizard; meerdere →
@@ -262,8 +272,8 @@ function MultiProperties({ selection, beams, updateBeams }: {
         {gekozen.length > 0 && (
           <Section title="Doorsnede">
             {rijen.map((r) => (
-              <Row key={`${r.profile}|${r.material}`} label={`${r.ids.length}× staaf`}>
-                <code>{r.profile} — {r.material}</code>
+              <Row key={`${r.profile}|${r.profileEnd ?? ""}|${r.material}`} label={`${r.ids.length}× staaf`}>
+                <code>{doorsnedeNaam(r)} — {r.material}</code>
               </Row>
             ))}
             <button
@@ -278,7 +288,13 @@ function MultiProperties({ selection, beams, updateBeams }: {
               <ProfielKiezer
                 open
                 onClose={() => setKiezerOpen(false)}
-                huidig={eenduidig ? { material: eenduidig.material, profile: eenduidig.profile } : undefined}
+                huidig={eenduidig
+                  ? {
+                      material: eenduidig.material,
+                      profile: eenduidig.profile,
+                      profileEnd: eenduidig.profileEnd,
+                    }
+                  : undefined}
                 // De korf van de eerste geselecteerde betonstaaf als startpunt;
                 // is er geen, dan begint de kiezer met de standaardkorf.
                 huidigBeton={betonVanEerste}
@@ -438,6 +454,8 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   // ProfielKiezer-wizard: profiel + materiaal zijn één combinatie. Conditioneel
   // gemount zodat elke keer openen met de actuele staafwaarden voorselecteert.
   const [kiezerOpen, setKiezerOpen] = useState(false);
+  /** Begin- en eindmaten wanneer deze staaf verloopt; anders `null`. */
+  const verloopBeamMaten = verloopMaten(beam);
 
   // Aansluitingen per einde (N/V/M: vast, scharnier of veer) landen in
   // `releases` én `veren`; AansluitingKeuze levert beide velden samen.
@@ -1030,8 +1048,30 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             voorgeselecteerd; Toepassen schrijft beide velden in één keer. */}
         <Section title="Doorsnede">
           <Row label="Profiel">
-            <code>{profile} — {material}</code>
+            <code>{doorsnedeNaam(beam)} — {material}</code>
           </Row>
+          {/* VERLOPEND PROFIEL: begin én eind, met de maten erbij. Staat er
+              alleen bij een staaf die werkelijk verloopt; bij een prismatische
+              staaf zou een lege regel "Verloop" alleen ruis zijn. */}
+          {verloopBeamMaten && (
+            <>
+              <Row label="Begin (knoop 1)">
+                <code>
+                  {beam.profile} · h = {verloopBeamMaten.begin.h} mm, b = {verloopBeamMaten.begin.b} mm
+                </code>
+              </Row>
+              <Row label="Eind (knoop 2)">
+                <code>
+                  {beam.profileEnd} · h = {verloopBeamMaten.eind.h} mm, b = {verloopBeamMaten.eind.b} mm
+                </code>
+              </Row>
+              <div className="fem-prop-hint">
+                De maten verlopen lineair over de staaf. De solver deelt haar
+                daarvoor in stukken op; de toetsing rekent elke doorsnedetoets
+                op elk rekenpunt met de doorsnede die daar werkelijk staat.
+              </div>
+            </>
+          )}
           {isHout ? (
             <Row label="Norm"><code>EN 338 / EN 1995-1-1</code></Row>
           ) : (
@@ -1053,7 +1093,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             <ProfielKiezer
               open
               onClose={() => setKiezerOpen(false)}
-              huidig={{ material, profile }}
+              huidig={{ material, profile, profileEnd: beam.profileEnd }}
               huidigBeton={betonKiezerKorf}
               // De korf en de milieuklasse landen in `checkConfig` en niet op
               // de staaf zelf; ze worden hier op de BESTAANDE toetsconfig
