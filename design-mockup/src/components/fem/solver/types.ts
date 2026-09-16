@@ -249,9 +249,11 @@ export interface SolverBeamPointLoadInput {
  * wandschijf. De engine zet de last om in consistente knooplasten op de
  * mesh-randknopen — ΣF = p·L exact.
  *
- * ADRESSERING: precies één van `edge` en `edgeIndex`, omgezet door
- * `femTypes.bepaalPlaatRand` (de enige regel daarvoor). Elk ander geval wordt
- * door de engine GEWEIGERD met een reden — nooit stil een andere of geen rand.
+ * ADRESSERING: precies één van `edge` en `edgeIndex`, en desgewenst
+ * `openingId` om een rand van een OPENING aan te wijzen in plaats van de
+ * omtrek; omgezet door `femTypes.bepaalPlaatlastRand` (de enige regel
+ * daarvoor). Elk ander geval wordt door de engine GEWEIGERD met een reden —
+ * nooit stil een andere of geen rand.
  */
 export interface SolverEdgeLoadInput {
   /** UI-plaat-id (SolverPlateInput.id). */
@@ -268,6 +270,15 @@ export interface SolverEdgeLoadInput {
    * tellen vanaf hoek i.
    */
   edgeIndex?: number;
+  /**
+   * De last staat op de rand van een OPENING: het `id` van die opening
+   * (`SolverPlateInput.openingen`). Ontbreekt → de OMTREK, precies als
+   * voorheen. Samen met `edgeIndex`: rand j van de opening loopt van
+   * openingshoek j naar hoek j+1, en de fracties tellen vanaf hoek j. Een
+   * benoemde rand (`edge`) bestaat bij een opening niet; een onbekend of dubbel
+   * id, of een ontbrekende/te grote `edgeIndex`: weigering met reden.
+   */
+  openingId?: number;
   /** Lastgrootte per meter randlengte (N/mm = kN/m); negatief = tegen de +richting in. */
   p: number;
   /**
@@ -307,6 +318,11 @@ export interface SolverEdgePointLoadInput {
   plateId: number;
   edge?: "bottom" | "top" | "left" | "right";
   edgeIndex?: number;
+  /**
+   * De rand van een OPENING in plaats van de omtrek — zie
+   * `SolverEdgeLoadInput.openingId`.
+   */
+  openingId?: number;
   /**
    * Positie als fractie 0..1 langs de rand vanaf de beginhoek. Verplicht: een
    * ontbrekende of onmogelijke positie wordt geweigerd, niet op 0 gezet.

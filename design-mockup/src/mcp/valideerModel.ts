@@ -54,7 +54,7 @@ import {
   plaatRekentAlsRaster,
   valideerPlaatOpeningen,
   PLAAT_MESH_TYPEN,
-  bepaalPlaatRand,
+  bepaalPlaatlastRand,
   valideerPlaatPolygoon,
   type PlaatPunt,
 } from "../components/fem/femTypes";
@@ -260,7 +260,7 @@ const MESHSOORTEN = ["driehoeken", "vierhoeken", "gemengd"] as const;
 const LOAD_VELDEN = [
   "id", "type", "caseId", "nodeId", "fx", "fz", "my", "beamId", "posFrac",
   "q", "qStart", "qEnd", "qDir", "qCoord", "startFrac", "endFrac", "deltaT",
-  "plateId", "edge", "edgeIndex", "gegenereerdDoor", "omschrijving",
+  "plateId", "edge", "edgeIndex", "openingId", "gegenereerdDoor", "omschrijving",
 ] as const;
 
 const LOADCASE_VELDEN = ["id", "name", "type", "categorie", "gegenereerd"] as const;
@@ -1016,7 +1016,7 @@ export function controleerVelden(rauw: unknown): string[] {
     } else {
       keurEnum(l.type, LOAD_TYPES, `${pad}.type`, fouten);
     }
-    for (const veld of ["nodeId", "beamId", "plateId", "edgeIndex"] as const) {
+    for (const veld of ["nodeId", "beamId", "plateId", "edgeIndex", "openingId"] as const) {
       if (l[veld] !== undefined && !isGeheel(l[veld])) {
         fouten.push(`${pad}.${veld}: moet een geheel getal zijn.`);
       }
@@ -1516,16 +1516,27 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     if (l.plateId !== undefined && !plateIds.has(l.plateId as number)) {
       errors.push(`Last ${id} verwijst naar plaat ${l.plateId}, die niet bestaat.`);
     } else if (l.plateId !== undefined) {
-      // Het randadres langs DEZELFDE regel als de engine (`bepaalPlaatRand`):
-      // een benoemde rand op een polygoon, een rand-index die geen zijde is,
-      // beide of geen adres. De engine weigert die gevallen; de droogloop
+      // Het randadres langs DEZELFDE regel als de engine
+      // (`bepaalPlaatlastRand`): een benoemde rand op een polygoon, een
+      // rand-index die geen zijde is, beide of geen adres, en bij een last op
+      // een OPENINGSRAND een opening die niet bestaat, dubbel voorkomt of geen
+      // rand met die index heeft. De engine weigert die gevallen; de droogloop
       // hoort ze dus ook te melden, en met dezelfde reden.
       const plaat = plates.find((p) => p.id === l.plateId);
       const hoeken = (plaat?.nodeIds ?? []).map((nid) => knoopById.get(nid));
       if (plaat && hoeken.every((h) => h !== undefined)) {
-        const rand = bepaalPlaatRand(
+        // Alleen openingen met een bruikbare vorm; een beschadigde opening
+        // meldt de structuurkeuring (`OPENING_VELDEN`) zelf al.
+        const openingen = (Array.isArray(plaat.openingen) ? plaat.openingen : [])
+          .filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten));
+        const rand = bepaalPlaatlastRand(
           hoeken as PlaatPunt[],
-          { edge: l.edge as string | undefined, edgeIndex: l.edgeIndex as number | undefined },
+          openingen,
+          {
+            edge: l.edge as string | undefined,
+            edgeIndex: l.edgeIndex as number | undefined,
+            openingId: l.openingId as number | undefined,
+          },
           1,
         );
         if (!rand.ok) errors.push(`Last ${id} op plaat ${l.plateId}: ${rand.reden}`);
@@ -1547,7 +1558,8 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     // zonder plaat hoort bij niets. Een puntlast op een plaatrand zonder
     // positie wordt niet als "beginhoek" gelezen maar geweigerd, net als in de
     // engine, en een randlast met een leeg of omgekeerd belast deel ook.
-    const heeftRandadres = l.edge !== undefined || l.edgeIndex !== undefined;
+    const heeftRandadres =
+      l.edge !== undefined || l.edgeIndex !== undefined || l.openingId !== undefined;
     if (l.plateId !== undefined && l.type !== "edgeLoad" && l.type !== "pointForce") {
       errors.push(
         `Last ${id} (type "${String(l.type)}") noemt een plaat (\`plateId\`), maar op een ` +
@@ -1557,7 +1569,7 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     }
     if (heeftRandadres && l.plateId === undefined) {
       errors.push(
-        `Last ${id} noemt een plaatrand (\`edge\`/\`edgeIndex\`) maar geen plaat ` +
+        `Last ${id} noemt een plaatrand (\`edge\`/\`edgeIndex\`/\`openingId\`) maar geen plaat ` +
           "(`plateId`); die rand hoort bij niets en wordt niet meegerekend.",
       );
     }

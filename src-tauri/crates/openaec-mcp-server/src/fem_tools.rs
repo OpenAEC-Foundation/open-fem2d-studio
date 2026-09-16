@@ -1043,7 +1043,7 @@ fn schema_loadcases() -> Value {
 fn schema_loads() -> Value {
     json!({
         "type": "array",
-        "description": "Lasten. `type` bepaalt welke velden meetellen: pointForce (fx/fz op nodeId, op beamId met posFrac, of op een plaatrand met plateId + edgeIndex/edge + posFrac), pointMoment (my), lineLoad (q of qStart/qEnd op beamId), thermal (deltaT op beamId), edgeLoad (q langs een plaatrand, desgewenst als deellast of trapezium met startFrac/endFrac/qStart/qEnd). Een plaatrand heeft precies één adres: `edgeIndex` (werkt bij elke plaat) of `edge` (alleen bij een asgelijnde rechthoek); beide, geen, of een benoemde rand op een polygoon wordt geweigerd met een reden.",
+        "description": "Lasten. `type` bepaalt welke velden meetellen: pointForce (fx/fz op nodeId, op beamId met posFrac, of op een plaatrand met plateId + edgeIndex/edge + posFrac), pointMoment (my), lineLoad (q of qStart/qEnd op beamId), thermal (deltaT op beamId), edgeLoad (q langs een plaatrand, desgewenst als deellast of trapezium met startFrac/endFrac/qStart/qEnd). Een plaatrand heeft precies één adres: `edgeIndex` (werkt bij elke plaat) of `edge` (alleen bij een asgelijnde rechthoek); beide, geen, of een benoemde rand op een polygoon wordt geweigerd met een reden. Staat er ook een `openingId`, dan ligt de last op de rand van DIE OPENING (edgeIndex telt dan langs de openingshoeken) in plaats van op de omtrek; een opening die niet bestaat of een benoemde rand op een opening wordt geweigerd — er wordt nooit stil op de omtrek teruggevallen.",
         "items": {
             "type": "object",
             "additionalProperties": false,
@@ -1075,7 +1075,9 @@ fn schema_loads() -> Value {
                 "edge": { "type": "string", "enum": ["bottom", "top", "left", "right"],
                     "description": "Benoemde plaatrand, alleen bij een asgelijnde rechthoek (op een polygoon: weigering). Fracties tellen vanaf de kleinste x (bottom/top) of z (left/right). Niet samen met edgeIndex." },
                 "edgeIndex": { "type": "integer", "minimum": 0,
-                    "description": "Plaatrand als index: rand i loopt van hoek i naar hoek i+1 (volgorde van nodeIds), bij elke plaatvorm; fracties tellen vanaf hoek i. Niet samen met edge." },
+                    "description": "Plaatrand als index: rand i loopt van hoek i naar hoek i+1 (volgorde van nodeIds), bij elke plaatvorm; fracties tellen vanaf hoek i. Niet samen met edge. Met openingId erbij telt de index langs de hoeken van die opening." },
+                "openingId": { "type": "integer",
+                    "description": "De last ligt op de rand van de OPENING met dit id (`plates[].openingen[].id`) in plaats van op de omtrek. Verplicht samen met edgeIndex (rand j loopt van openingshoek j naar hoek j+1); een benoemde rand (edge) bestaat bij een opening niet. Fracties en posFrac tellen vanaf openingshoek j. Ontbreekt het veld, dan ligt de last op de omtrek." },
                 "gegenereerdDoor": { "type": "string", "enum": ["wind"],
                     "description": "Herkomst; ontbreekt = handmatig ingevoerd." },
                 "omschrijving": { "type": "string",
@@ -1425,6 +1427,41 @@ mod tests {
         let opening = &schema_openingen()["items"];
         assert_eq!(sleutels(opening), poort("OPENING_VELDEN"), "schema_openingen en OPENING_VELDEN lopen uiteen");
         assert_eq!(opening["additionalProperties"], json!(false));
+    }
+
+    /// `schema_loads` is de spiegel van `LOAD_VELDEN`, de lastpoort van de
+    /// sidecar. Zonder deze test kon een lastveld aan één kant bijkomen
+    /// (september 2026: `openingId`, het adres van een last op een
+    /// OPENINGSRAND) en beloofde het schema iets dat de poort weigerde — of
+    /// weigerde de poort iets wat het schema niet noemde. Beide gevallen zijn
+    /// stille wegval: de last verdwijnt of de aanroep struikelt zonder dat het
+    /// schema uitlegt waarom.
+    #[test]
+    fn schema_loads_spiegelt_de_lastpoort_van_de_sidecar() {
+        let pad = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../design-mockup/src/mcp/valideerModel.ts");
+        let bron = std::fs::read_to_string(&pad)
+            .unwrap_or_else(|e| panic!("{} niet leesbaar: {e}", pad.display()));
+        let start = bron
+            .find("const LOAD_VELDEN = [")
+            .expect("LOAD_VELDEN staat niet (meer) in valideerModel.ts");
+        let rest = &bron[start..];
+        let blok = &rest[..rest.find("] as const;").expect("LOAD_VELDEN is niet gesloten")];
+        let poort: std::collections::BTreeSet<String> = blok
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .flat_map(|l| l.split('"').skip(1).step_by(2).map(str::to_owned).collect::<Vec<_>>())
+            .collect();
+        let items = &schema_loads()["items"];
+        let schema: std::collections::BTreeSet<String> = items["properties"]
+            .as_object()
+            .expect("properties")
+            .keys()
+            .cloned()
+            .collect();
+        assert!(poort.contains("openingId"), "{poort:?}");
+        assert_eq!(schema, poort, "schema_loads en LOAD_VELDEN lopen uiteen");
+        assert_eq!(items["additionalProperties"], json!(false));
     }
 
     /// E, A en I mogen niet los op een staaf: de doorsnede volgt uit

@@ -926,6 +926,29 @@ export function valideerPlaatOpeningen(
 // benaderd: beide adressen tegelijk, geen adres, een index buiten bereik, een
 // benoemde rand op een polygoon, en een rand-index die bij een rechthoek met
 // hoeken buiten omtrekvolgorde een diagonaal zou zijn.
+//
+// DE RAND VAN EEN OPENING (september 2026)
+// Een plaat heeft naast zijn omtrek ook de randen van zijn OPENINGEN, en het
+// rekenmesh legt daar knopen op (`PlaatMeshCache.openingEdgeNodeIndices`,
+// `RasterMesh.openingEdgeNodeIndices`). Een last kan daarop staan: een lateibalk
+// draagt op de bovenrand van een sparing, een kozijn hangt eraan.
+// De adressering is bewust DEZELFDE als voor de omtrek — één extra veld dat
+// zegt WELKE contour bedoeld is:
+//   - `openingId` ontbreekt  → de rand van de OMTREK, precies als voorheen;
+//   - `openingId` = het id van een `PlaatOpening` → `edgeIndex` j is dan de
+//     rand van die opening, van openingshoek j naar hoek j+1 (cyclisch), met
+//     dezelfde telrichting voor `startFrac`/`endFrac`/`posFrac`.
+// Een benoemde rand (`edge`) bestaat bij een opening NIET: "onderrand" van een
+// sparing is geen begrip dat de mesher kent, en raden zou stil de verkeerde
+// rand belasten. `openingId` zonder `edgeIndex`, een onbekend of dubbel
+// openings-id, of een rand-index buiten het aantal openingshoeken: allemaal een
+// WEIGERING met reden. Stil op de omtrek terugvallen is het ergste wat hier
+// kan gebeuren — die last ziet er in het resultaat volkomen normaal uit.
+//
+// `bepaalPlaatRand` kent alleen de omtrek en WEIGERT daarom elk adres met een
+// `openingId`; wie openingen moet kunnen bedienen, roept `bepaalPlaatlastRand`
+// aan (die de openingen van de plaat meekrijgt). Zo kan een vergeten aanroeper
+// nooit stil op de omtrek uitkomen.
 
 /** Benoemde rand van een asgelijnde rechthoekplaat, in modelassen. */
 export type PlaatRandNaam = "bottom" | "top" | "left" | "right";
@@ -937,12 +960,26 @@ export const PLAAT_RAND_NAAM_NL: Record<PlaatRandNaam, string> = {
 
 const PLAAT_RAND_NAMEN: readonly PlaatRandNaam[] = ["bottom", "top", "left", "right"];
 
+/**
+ * Het randadres zoals een plaatlast hem draagt: een benoemde rand (`edge`) of
+ * een rand-index (`edgeIndex`), en desgewenst de opening waarvan het een rand
+ * is (`openingId`). Zie het blokcommentaar hierboven.
+ */
+export interface PlaatRandAdres {
+  edge?: string;
+  edgeIndex?: number;
+  openingId?: number;
+}
+
 /** Uitkomst van `bepaalPlaatRand`: de canonieke rand, of de reden van weigeren. */
 export type PlaatRandUitkomst =
   | {
       ok: true;
-      /** Rekenpad van de plaat: grid (rechthoek) of CDT-cache (polygoon). */
-      soort: "rechthoek" | "polygoon";
+      /**
+       * Waar de rand bij hoort: de omtrek van een rechthoekplaat, de omtrek van
+       * een polygoonplaat, of de rand van een OPENING (elke plaatvorm).
+       */
+      soort: "rechthoek" | "polygoon" | "opening";
       /** Hoekindex (in `Plate.nodeIds`) waar fractie 0 langs de rand ligt. */
       hoekVan: number;
       /** Hoekindex waar fractie 1 ligt. */
@@ -956,6 +993,15 @@ export type PlaatRandUitkomst =
       naam?: PlaatRandNaam;
       /** De rand-index — alleen als de last hem zelf opgaf. */
       edgeIndex?: number;
+      /**
+       * Bij `soort: "opening"`: de index van die opening in `Plate.openingen`
+       * — waarmee de rekenknopen in `openingEdgeNodeIndices` te vinden zijn.
+       * `hoekVan`/`hoekNaar` zijn dan hoekindices IN DE OPENING, niet in
+       * `Plate.nodeIds`.
+       */
+      openingIndex?: number;
+      /** Bij `soort: "opening"`: het `PlaatOpening.id` van die opening. */
+      openingId?: number;
     }
   | { ok: false; reden: string };
 
@@ -967,7 +1013,7 @@ export type PlaatRandUitkomst =
  */
 export function bepaalPlaatRand(
   punten: PlaatPunt[],
-  adres: { edge?: string; edgeIndex?: number },
+  adres: PlaatRandAdres,
   tolMm = 1,
 ): PlaatRandUitkomst {
   const n = punten.length;
@@ -975,6 +1021,21 @@ export function bepaalPlaatRand(
   const soort = rechthoek ? "rechthoek" as const : "polygoon" as const;
   const heeftNaam = adres.edge !== undefined;
   const heeftIndex = adres.edgeIndex !== undefined;
+  // OPENINGSADRES BIJ EEN LEZER DIE ALLEEN DE OMTREK KENT. Deze functie krijgt
+  // de openingen van de plaat niet mee en kan zo'n rand dus niet vinden. Het
+  // adres NEGEREN zou de last stil op de omtrek zetten — een last op een
+  // volstrekt andere plaats, die in geen enkel resultaat opvalt. Daarom een
+  // weigering; `bepaalPlaatlastRand` is de aanroep die openingen wél kan.
+  if (adres.openingId !== undefined) {
+    return {
+      ok: false,
+      reden:
+        "de last staat op de rand van een opening (`openingId`), maar hij wordt " +
+        "hier gelezen door een route die alleen de omtrek van de plaat kent. " +
+        "Meld dit: het adres wordt bewust geweigerd in plaats van stil op de " +
+        "omtrek gelegd.",
+    };
+  }
   if (heeftNaam && heeftIndex) {
     return {
       ok: false,
@@ -1074,11 +1135,126 @@ export function bepaalPlaatRand(
 }
 
 /**
+ * Het randadres van een PLAATLAST omzetten naar de canonieke rand — de omtrek
+ * óf de rand van een opening. Dit is de aanroep die elke lezer van een
+ * plaatlast hoort te gebruiken (engine, modelcontrole, MCP-droogloop, canvas,
+ * eigenschappenpaneel, rapport, IFC-export); `bepaalPlaatRand` is de
+ * omtrek-helft ervan en weigert een openingsadres.
+ *
+ * `openingen` zijn de openingen van DEZE plaat, in de volgorde van
+ * `Plate.openingen` — dezelfde volgorde als `openingEdgeNodeIndices` in het
+ * rekenmesh, zodat `openingIndex` uit de uitkomst meteen de knopenlijst wijst.
+ *
+ * Bij een openingsadres zijn `hoekVan`/`hoekNaar` hoekindices IN DE OPENING.
+ */
+export function bepaalPlaatlastRand(
+  punten: PlaatPunt[],
+  openingen: readonly { id: number; punten: PlaatPunt[] }[] | undefined,
+  adres: PlaatRandAdres,
+  tolMm = 1,
+): PlaatRandUitkomst {
+  if (adres.openingId === undefined) return bepaalPlaatRand(punten, adres, tolMm);
+
+  // Een opening heeft geen onder-, boven-, linker- of rechterrand: het
+  // rekenmesh nummert haar randen langs de hoekvolgorde en verder niets.
+  if (adres.edge !== undefined) {
+    return {
+      ok: false,
+      reden:
+        "de last noemt zowel een opening (`openingId`) als een benoemde rand " +
+        "(`edge`). Een opening heeft geen benoemde randen; kies de rand met " +
+        "`edgeIndex` (rand j loopt van openingshoek j naar hoek j+1).",
+    };
+  }
+  if (!Number.isInteger(adres.openingId)) {
+    return {
+      ok: false,
+      reden: `\`openingId\` ${adres.openingId} is geen geheel getal; geef het id van een opening van deze plaat.`,
+    };
+  }
+  const lijst = openingen ?? [];
+  if (lijst.length === 0) {
+    return {
+      ok: false,
+      reden:
+        `de last staat op opening ${adres.openingId}, maar deze plaat heeft geen openingen.`,
+    };
+  }
+  const treffers = lijst
+    .map((o, i) => ({ o, i }))
+    .filter(({ o }) => o.id === adres.openingId);
+  if (treffers.length === 0) {
+    return {
+      ok: false,
+      reden:
+        `opening ${adres.openingId} bestaat niet op deze plaat. Aanwezig: ` +
+        `${lijst.map((o) => o.id).join(", ")}.`,
+    };
+  }
+  if (treffers.length > 1) {
+    // Dubbele id's kunnen alleen uit een handgeschreven of beschadigd model
+    // komen; welke opening bedoeld is, valt dan niet te zeggen.
+    return {
+      ok: false,
+      reden:
+        `opening ${adres.openingId} komt ${treffers.length} keer voor op deze plaat; ` +
+        "het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.",
+    };
+  }
+  const { o: opening, i: openingIndex } = treffers[0];
+  const n = opening.punten.length;
+  if (n < 3) {
+    return {
+      ok: false,
+      reden: `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`,
+    };
+  }
+  if (adres.edgeIndex === undefined) {
+    return {
+      ok: false,
+      reden:
+        `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef ` +
+        `\`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`,
+    };
+  }
+  const i = adres.edgeIndex;
+  if (!Number.isInteger(i) || i < 0 || i >= n) {
+    return {
+      ok: false,
+      reden:
+        `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening ` +
+        `heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
+    };
+  }
+  const j = (i + 1) % n;
+  const van = opening.punten[i], naar = opening.punten[j];
+  const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
+  if (!(lengte > tolMm)) {
+    return {
+      ok: false,
+      reden:
+        `rand ${i + 1} van opening ${adres.openingId} heeft lengte ${lengte.toFixed(3)} mm ` +
+        "en kan geen last dragen.",
+    };
+  }
+  return {
+    ok: true, soort: "opening", hoekVan: i, hoekNaar: j, van, naar, lengte,
+    edgeIndex: i, openingIndex, openingId: adres.openingId,
+  };
+}
+
+/**
  * Korte Nederlandse naam van een randadres, zoals de gebruiker hem invoerde:
  * "rand 3" bij een rand-index (1-based, zoals het canvas hem toont), anders de
- * benoemde rand. Zegt niets over geldigheid — daarvoor is `bepaalPlaatRand`.
+ * benoemde rand; bij een openingsrand staat de opening erbij. Zegt niets over
+ * geldigheid — daarvoor is `bepaalPlaatlastRand`.
  */
-export function plaatRandLabel(adres: { edge?: string; edgeIndex?: number }): string {
+export function plaatRandLabel(adres: PlaatRandAdres): string {
+  if (adres.openingId !== undefined) {
+    return adres.edgeIndex !== undefined
+      ? `rand ${adres.edgeIndex + 1} van opening ${adres.openingId}`
+      : `opening ${adres.openingId} (rand onbekend)`;
+  }
   if (adres.edgeIndex !== undefined) return `rand ${adres.edgeIndex + 1}`;
   if (adres.edge !== undefined && (PLAAT_RAND_NAMEN as readonly string[]).includes(adres.edge)) {
     return PLAAT_RAND_NAAM_NL[adres.edge as PlaatRandNaam];
@@ -1238,8 +1414,24 @@ export interface Load {
    * `Plate.nodeIds`). Fracties langs de rand tellen vanaf hoek i. Bij een
    * rechthoek moet dat hoekpaar een zijde zijn (hoeken in omtrekvolgorde),
    * anders volgt een weigering.
+   *
+   * Staat er ook een `openingId`, dan telt `edgeIndex` langs de hoeken van DIE
+   * OPENING in plaats van langs de omtrek.
    */
   edgeIndex?: number;
+  /**
+   * De last staat op de rand van een OPENING van de plaat: het `id` van die
+   * `PlaatOpening`. Ontbreekt het veld — elk bestaand projectbestand — dan
+   * staat de last op de OMTREK en verandert er niets.
+   *
+   * Samen met `edgeIndex`: rand j van de opening loopt van openingshoek j naar
+   * hoek j+1 (cyclisch), en `startFrac`/`endFrac`/`posFrac` tellen vanaf hoek
+   * j — dezelfde betekenis als op de omtrek. Een benoemde rand (`edge`) bestaat
+   * bij een opening niet; een onbekend of dubbel openings-id, een ontbrekende
+   * of te grote `edgeIndex`: allemaal een WEIGERING met reden (nooit stil de
+   * omtrek). Zie `bepaalPlaatlastRand`.
+   */
+  openingId?: number;
   /**
    * Herkomst van deze last. ONTBREEKT het veld, dan is de last HANDMATIG
    * ingevoerd en raakt geen enkele generator hem aan. Staat er `"wind"`, dan

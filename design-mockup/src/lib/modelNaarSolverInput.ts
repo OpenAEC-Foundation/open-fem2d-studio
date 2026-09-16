@@ -349,6 +349,9 @@ export function randlastNaarSolverInput(
     plateId: l.plateId,
     ...(l.edge !== undefined ? { edge: l.edge } : {}),
     ...(l.edgeIndex !== undefined ? { edgeIndex: l.edgeIndex } : {}),
+    // Openingsrand: alleen mee als het veld er staat, zodat een randlast op de
+    // omtrek byte-gelijke solverinvoer houdt.
+    ...(l.openingId !== undefined ? { openingId: l.openingId } : {}),
     p: l.q,
     // Deellast en trapezium: dezelfde velden en dezelfde betekenis als bij een
     // staaf, maar langs de rand vanaf de beginhoek. Alleen aanwezig als ze
@@ -375,6 +378,7 @@ export function randpuntlastNaarSolverInput(
     plateId: l.plateId,
     ...(l.edge !== undefined ? { edge: l.edge } : {}),
     ...(l.edgeIndex !== undefined ? { edgeIndex: l.edgeIndex } : {}),
+    ...(l.openingId !== undefined ? { openingId: l.openingId } : {}),
     posFrac: l.posFrac,
     fx: (l.fx ?? 0) * 1000,
     fz: (l.fz ?? 0) * 1000,
