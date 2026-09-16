@@ -13674,6 +13674,7 @@ function collinearContinuations(beam, nodes, beams, supports) {
     if (opgelegd.has(gedeeld[0])) continue;
     if ((other.profile ?? "") !== (beam.profile ?? "")) continue;
     if ((other.material ?? "") !== (beam.material ?? "")) continue;
+    if ((other.profileEnd ?? "") !== "" || (beam.profileEnd ?? "") !== "") continue;
     const d2 = beamDirection(other, nodes);
     if (!d2) continue;
     if (Math.abs(dir.x * d2.z - dir.z * d2.x) > 1e-6) continue;
@@ -14062,6 +14063,11 @@ function buildSteelCheckInputs(ruweData) {
       });
       continue;
     }
+    const verloop = bepaalVerloop(beam.material, profileName, beam.profileEnd);
+    if (verloop.status === "fout") {
+      skipped.push({ beamId: beam.id, reason: verloop.reden });
+      continue;
+    }
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
     let govComboId = forcesEnvelope[0].combination_id;
     let govAbsMy = 0;
@@ -14087,6 +14093,17 @@ function buildSteelCheckInputs(ruweData) {
       beam_id: beam.id,
       profile_name: eigen ? eigen.naam : profileName,
       ...eigen ? { custom_section: naarCustomSection(eigen) } : {},
+      // VERLOPEND PROFIEL (ontwerp 15-09-2026, §5). Alleen meegeven als
+      // `bepaalVerloop` een werkelijk verloop ziet — dus niet bij een leeg
+      // eindprofiel, niet bij hetzelfde profiel en ook niet bij dezelfde
+      // doorsnede in een andere schrijfwijze ("IPE 300" naast "IPE300"). Zo
+      // blijft de invoer van elke prismatische staaf byte-gelijk aan die van
+      // vóór dit veld en verandert er aan haar toetsing geen enkel getal. De
+      // staaf staat hier al in zijn referentierichting, dus `profile` is het
+      // begin (x = 0) en `profileEnd` het eind (x = L) —
+      // `toetsdataInReferentierichting` heeft ze bij een gespiegelde staaf al
+      // verwisseld.
+      ...verloop.status === "verlopend" ? { profile_end: (beam.profileEnd ?? "").trim() } : {},
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1e3,
       forces_envelope: forcesEnvelope,
@@ -14325,6 +14342,8 @@ function buildTimberCheckInputs(ruweData) {
     let custom;
     let bMm;
     let hMm;
+    let bEindMm;
+    let hEindMm;
     if (isEigenProfiel(beam.profile)) {
       const eigen = zoekEigenDoorsnede(beam.profile);
       if (!eigen) {
@@ -14363,6 +14382,15 @@ function buildTimberCheckInputs(ruweData) {
       }
       bMm = rect.bMm;
       hMm = rect.hMm;
+      const verloop = bepaalVerloop(beam.material, beam.profile, beam.profileEnd);
+      if (verloop.status === "fout") {
+        skipped.push({ beamId: beam.id, reason: verloop.reden });
+        continue;
+      }
+      if (verloop.status === "verlopend") {
+        bEindMm = verloop.verloop.eind.b;
+        hEindMm = verloop.verloop.eind.h;
+      }
     }
     const lengthMm = beamLengthMm(beam, data.nodes);
     if (lengthMm <= 0) {
@@ -14426,6 +14454,11 @@ function buildTimberCheckInputs(ruweData) {
       beam_id: beam.id,
       width_mm: bMm,
       height_mm: hMm,
+      // VERLOPENDE STAAF: de rechthoek aan het eind (x = L). Alleen aanwezig
+      // als er werkelijk een verloop is; de kern toetst dan elk rekenpunt met
+      // de plaatselijke b(x) × h(x) en met k_h uit de hoogte ter plaatse.
+      ...bEindMm !== void 0 ? { width_end_mm: bEindMm } : {},
+      ...hEindMm !== void 0 ? { height_end_mm: hEindMm } : {},
       // Aanwezig = samengestelde doorsnede uit de profieleditor; de kern
       // rekent dan met de lamellen in plaats van met b × h. Afwezig = de
       // rechthoek hierboven, precies zoals voorheen.
