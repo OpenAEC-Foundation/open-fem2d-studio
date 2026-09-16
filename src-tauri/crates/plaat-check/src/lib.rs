@@ -22,6 +22,9 @@
 //!   6.1.5, 6.1.7 en 6.2.2 in de materiaalassen, zie [`hout`]. Trek loodrecht
 //!   op de vezel (6.1.3) niet: daar geeft de norm geen uitdrukking voor.
 //! * **Kruislaaghout** — geweigerd: geen normgrondslag op schijf.
+//! * **Beton** — de benodigde wapening in het vlak volgens NEN-EN 1992-1-1
+//!   bijlage F en de betondrukdiagonaal (6.55)/(6.56), zie [`beton`]. De
+//!   aanwezige wapening wordt niet getoetst (de app kent haar nog niet).
 //! * Elk ander materiaal wordt GEWEIGERD met reden: er komt geen UC uit die
 //!   als "voldoet" kan lezen.
 //!
@@ -31,6 +34,7 @@
 //! toetsbrug-opdracht van die naam, het MCP-gereedschap `check_plates` en de
 //! plaattoets binnen `check_fem_model` roepen allemaal deze functie aan.
 
+pub mod beton;
 pub mod hout;
 pub mod input;
 pub mod latex;
@@ -40,7 +44,8 @@ mod verzamel;
 
 pub use input::{PlaatCombinatie, PlaatElementSpanning, PlaatMateriaalSoort, PlateCheckInput};
 pub use result::{
-    PlaatCombinatieUitkomst, PlaatElementUitkomst, PlaatNietGetoetst, PlateCheckResult,
+    PlaatCombinatieUitkomst, PlaatElementUitkomst, PlaatNietGetoetst, PlaatWapening,
+    PlaatWapeningElement, PlateCheckResult,
 };
 
 use nen_en_1993_1_1_section::CheckStatus;
@@ -90,12 +95,7 @@ pub fn check_plate(input: &PlateCheckInput) -> PlateCheckResult {
              niet op schijf"
                 .to_string(),
         ),
-        PlaatMateriaalSoort::Beton => geweigerd(
-            input,
-            "de plaattoets voor beton (wapening in het vlak volgens NEN-EN 1992-1-1 bijlage F) \
-             is nog niet beschikbaar; er is niet getoetst"
-                .to_string(),
-        ),
+        PlaatMateriaalSoort::Beton => beton::toets(input),
         PlaatMateriaalSoort::Vrij => geweigerd(
             input,
             format!(
@@ -126,6 +126,7 @@ pub(crate) fn geweigerd(input: &PlateCheckInput, reden: String) -> PlateCheckRes
         elementen: vec![],
         niet_getoetst: vec![],
         geweigerd: Some(reden),
+        wapening: None,
         notes: input.notities.clone(),
     }
 }

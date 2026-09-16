@@ -48,6 +48,34 @@ pub struct PlaatNietGetoetst {
     pub bepaalt_status: bool,
 }
 
+/// Beton: de benodigde trekkracht in de wapening van één element, per
+/// wapeningsrichting, volgens NEN-EN 1992-1-1 bijlage F — het maximum over de
+/// combinaties. In kN per m wand (= f'_td · t): deel door f_yd voor A_s in
+/// mm²/m (over beide zijden samen).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/plaat/")]
+pub struct PlaatWapeningElement {
+    pub element_id: u32,
+    /// Wapening in de horizontale modelrichting (x).
+    pub n_td_x_kn_per_m: f64,
+    pub combination_x: u32,
+    /// Wapening in de verticale modelrichting (z).
+    pub n_td_z_kn_per_m: f64,
+    pub combination_z: u32,
+}
+
+/// Beton: de benodigde wapening over de hele plaat.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/plaat/")]
+pub struct PlaatWapening {
+    /// Het element met de grootste benodigde trekkracht in x.
+    pub max_x: PlaatWapeningElement,
+    /// Het element met de grootste benodigde trekkracht in z.
+    pub max_z: PlaatWapeningElement,
+    /// Per element, in de volgorde van het rekenmesh.
+    pub elementen: Vec<PlaatWapeningElement>,
+}
+
 /// Resultaat van de toets van één plaat.
 ///
 /// Geen `PartialEq`: `NamedCheck` heeft die niet. Vergelijk twee antwoorden
@@ -88,6 +116,10 @@ pub struct PlateCheckResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub geweigerd: Option<String>,
+    /// Alleen bij beton: de benodigde wapening volgens bijlage F.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub wapening: Option<PlaatWapening>,
     /// Kanttekeningen bij de plaat als geheel.
     pub notes: Vec<String>,
 }

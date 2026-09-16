@@ -749,7 +749,10 @@
     "plaatGeweigerd": "Nicht nachgewiesen",
     "plaatOvergeslagen": "Nicht nachgewiesen",
     "plaatNietGetoetst": "Nicht nachgewiesen:",
-    "plaatElementgemiddeld": "elementgemittelte Spannungen; das Element steht in den Anmerkungen"
+    "plaatElementgemiddeld": "elementgemittelte Spannungen; das Element steht in den Anmerkungen",
+    "plaatWapeningKop": "Erforderliche Bewehrung nach Anhang F",
+    "plaatRichting": "Richtung",
+    "plaatWapeningNoot": "n_td = f'_td · t: die erforderliche Zugkraft in der Bewehrung je Meter Wand, beide Seiten zusammen, in horizontaler (x) und vertikaler (z) Modellrichtung; A_s = n_td / f_yd. Die vorhandene Bewehrung ist nicht nachgewiesen."
   },
   "viewer": {
     "file": "Datei",

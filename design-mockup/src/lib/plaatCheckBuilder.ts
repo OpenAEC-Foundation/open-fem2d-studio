@@ -16,8 +16,8 @@
  * materiaal niet herkend wordt, rekent niet eens. Beide komen met reden in
  * `skipped` — zichtbaar in paneel, rapport en MCP-antwoord.
  *
- * Een herkend materiaal dat de kern (nog) niet toetst — kruislaaghout, beton,
- * een vrij materiaal — gaat WEL naar de kern, zodat de weigering met haar
+ * Een herkend materiaal dat de kern (nog) niet toetst — kruislaaghout, een
+ * vrij materiaal — gaat WEL naar de kern, zodat de weigering met haar
  * normreden van één plek komt. Omdat die weigering niet van de spanningen
  * afhangt, gaan de spanningen dan niet mee: een wand van duizenden elementen
  * hoort niet door de brug te reizen om met een zin terug te komen.
@@ -78,7 +78,7 @@ const KERN_SOORT: Record<PlaatMateriaalSoort, KernSoort> = {
  * een besparing op wat er over de brug gaat: wat getoetst wordt, beslist de
  * kern.
  */
-const SOORT_MET_SPANNINGEN: ReadonlySet<KernSoort> = new Set<KernSoort>(["Staal", "Hout"]);
+const SOORT_MET_SPANNINGEN: ReadonlySet<KernSoort> = new Set<KernSoort>(["Staal", "Hout", "Beton"]);
 
 /** Klimaatklasse van een plaat → kernenum; ontbreekt = 1, zoals bij een houten staaf. */
 function klimaatklasse(k: Plate["klimaatklasse"]): ServiceClass {

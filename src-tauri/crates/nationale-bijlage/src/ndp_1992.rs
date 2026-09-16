@@ -62,6 +62,12 @@ pub struct Ndp1992 {
     /// is doorgehaald; de NB-versie geeft voor druk α₆ = 1 bij elk
     /// overlappingspercentage.
     pub alpha_6_druk: f64,
+    /// De noemer 250 in ν' = 1 − f_ck/250, (6.57N) bij 6.5.2(2): de
+    /// sterktereductie van een betonnen drukstaaf met trek in dwarsrichting,
+    /// σ_Rd,max = 0,6·ν'·f_cd (6.56). NB: "De waarde van ν' moet gelijk aan
+    /// 1 − f_ck/250 zijn genomen." Gebruikt door de plaattoets voor beton
+    /// (bijlage F).
+    pub nu_accent_noemer: f64,
 }
 
 impl Ndp1992 {
@@ -98,6 +104,7 @@ pub const NDP_1992_NL: Ndp1992 = Ndp1992 {
     lambda_lim_coefficient: 20.0,
     lambda_lim_is_eis: true,
     alpha_6_druk: 1.0,
+    nu_accent_noemer: 250.0,
 };
 
 #[cfg(test)]
@@ -129,5 +136,6 @@ mod tests {
         assert_eq!(n.lambda_lim_coefficient, 20.0);
         assert!(n.lambda_lim_is_eis);
         assert_eq!(n.alpha_6_druk, 1.0);
+        assert_eq!(n.nu_accent_noemer, 250.0);
     }
 }

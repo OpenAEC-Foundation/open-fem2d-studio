@@ -23,6 +23,8 @@ steel-check = { path = "../steel-check" }
 # de staaftoets, zodat de invoerbouwer één afleiding gebruikt.
 nen-en-1995-1-1 = { path = "../nen-en-1995-1-1" }
 timber-check = { path = "../timber-check" }
+# Beton: tabel 3.1 (f_ck) voor bijlage F en de drukdiagonaal.
+nen-en-1992-1-1 = { path = "../nen-en-1992-1-1" }
 
 [dev-dependencies]
 approx = { workspace = true }
@@ -35,3 +37,7 @@ path = "tests/handberekening_staal.rs"
 [[test]]
 name = "handberekening_hout"
 path = "tests/handberekening_hout.rs"
+
+[[test]]
+name = "handberekening_beton"
+path = "tests/handberekening_beton.rs"

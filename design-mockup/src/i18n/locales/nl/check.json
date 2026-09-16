@@ -1192,6 +1192,7 @@
     "elementInCombinatie": "element {{element}} in combinatie {{combinatie}}",
     "nietGetoetst": "Niet getoetst",
     "krachtregel": "Combinatie {{combinatie}} — elementgemiddelde spanningen in het vlak; het element staat in de toelichting",
-    "overgeslagenTitel": "Overgeslagen platen"
+    "overgeslagenTitel": "Overgeslagen platen",
+    "wapening": "Benodigde wapening (bijlage F): x tot {{x}} kN/m (element {{ex}}), z tot {{z}} kN/m (element {{ez}}) — aanwezige wapening niet getoetst"
   }
 }

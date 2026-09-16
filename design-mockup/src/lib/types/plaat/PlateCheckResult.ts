@@ -5,6 +5,7 @@ import type { PlaatCombinatieUitkomst } from "./PlaatCombinatieUitkomst";
 import type { PlaatElementUitkomst } from "./PlaatElementUitkomst";
 import type { PlaatMateriaalSoort } from "./PlaatMateriaalSoort";
 import type { PlaatNietGetoetst } from "./PlaatNietGetoetst";
+import type { PlaatWapening } from "./PlaatWapening";
 
 /**
  * Resultaat van de toets van één plaat.
@@ -46,6 +47,10 @@ niet_getoetst: Array<PlaatNietGetoetst>,
  * `NotApplicable` en `uc_max` 0.
  */
 geweigerd?: string, 
+/**
+ * Alleen bij beton: de benodigde wapening volgens bijlage F.
+ */
+wapening?: PlaatWapening, 
 /**
  * Kanttekeningen bij de plaat als geheel.
  */

@@ -264,6 +264,10 @@ const BUNDEL_TESTS = new Set([
   // óók tegen de bundel: laat de bundel de belastingduur of de hoofdrichting
   // vallen, dan weigert of toetst de MCP-weg een andere plaat dan de app.
   "plaat-toets-hout",
+  // Plaattoets beton (issue #15, stap 3): bouwer via de in-proces sidecar en de
+  // kern (bijlage F) via de toetsbrug. Hoort óók tegen de bundel: de MCP-weg
+  // moet dezelfde spanningen doorgeven, anders klopt de benodigde wapening niet.
+  "plaat-toets-beton",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",

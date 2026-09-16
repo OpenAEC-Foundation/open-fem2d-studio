@@ -179,6 +179,37 @@ export function PlaatToetsRapport({
               </>
             )}
 
+            {r.wapening && (
+              <>
+                <p className="rpt-note"><strong>{t("report.plaatWapeningKop")}</strong></p>
+                <table className="rpt-table">
+                  <thead>
+                    <tr>
+                      <th>{t("report.plaatRichting")}</th>
+                      <th className="rpt-num">n_td,max [kN/m]</th>
+                      <th>{t("report.colGoverningElem", "Maatgevend element")}</th>
+                      <th>{t("report.colGoverningCombo", "Maatgevende combinatie")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>x</td>
+                      <td className="rpt-num">{fmtValue(r.wapening.max_x.n_td_x_kn_per_m, 1)}</td>
+                      <td className="rpt-num">{r.wapening.max_x.element_id}</td>
+                      <td>{comboNaam(r.wapening.max_x.combination_x)}</td>
+                    </tr>
+                    <tr>
+                      <td>z</td>
+                      <td className="rpt-num">{fmtValue(r.wapening.max_z.n_td_z_kn_per_m, 1)}</td>
+                      <td className="rpt-num">{r.wapening.max_z.element_id}</td>
+                      <td>{comboNaam(r.wapening.max_z.combination_z)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="rpt-note">{t("report.plaatWapeningNoot")}</p>
+              </>
+            )}
+
             <table className="rpt-table">
               <thead>
                 <tr>

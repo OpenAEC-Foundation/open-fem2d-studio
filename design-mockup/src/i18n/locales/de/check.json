@@ -1192,6 +1192,7 @@
     "elementInCombinatie": "Element {{element}} in Kombination {{combinatie}}",
     "nietGetoetst": "Nicht nachgewiesen",
     "krachtregel": "Kombination {{combinatie}} — elementgemittelte Spannungen in der Ebene; das Element steht in den Anmerkungen",
-    "overgeslagenTitel": "Übersprungene Platten"
+    "overgeslagenTitel": "Übersprungene Platten",
+    "wapening": "Erforderliche Bewehrung (Anhang F): x bis {{x}} kN/m (Element {{ex}}), z bis {{z}} kN/m (Element {{ez}}) — vorhandene Bewehrung nicht nachgewiesen"
   }
 }

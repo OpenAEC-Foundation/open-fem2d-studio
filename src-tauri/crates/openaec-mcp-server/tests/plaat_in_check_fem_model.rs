@@ -163,15 +163,21 @@ async fn plaat_zonder_materiaal_staat_met_reden_in_skipped_plates() {
     assert!(skip[0]["reason"].as_str().unwrap().contains("geen materiaal"), "{}", skip[0]);
 }
 
+/// Betonnen trekwand: C30/37, t = 20 mm, UGT 3,0·Q → σ_y = +150 N/mm² (trek).
+/// Bijlage F: σ_Edx = 0 (x), σ_Edy = −150 (z, trek) → f'_td,z = 150 N/mm²,
+/// n_td,z = 150·20 = 3000 kN/m; σ_cd = 0 → UC 0. Wapening nodig en niet
+/// getoetst → NotApplicable; een UC 0 is dan geen oordeel.
 #[tokio::test]
-async fn betonnen_wand_wordt_geweigerd_met_reden_en_telt_niet_als_maatgevend() {
+async fn betonnen_wand_geeft_benodigde_wapening_en_heet_niet_voldoet() {
     eis_node().await;
     let uit = check_fem_model(json!({ "model": wand(Some("C30/37")), "combinations": combinaties() })).await;
     let r = &uit["plate_results"][0];
     assert_eq!(r["soort"], "Beton");
+    assert!(r["geweigerd"].is_null(), "{r}");
     assert_eq!(r["status"], "NotApplicable");
-    assert!(r["geweigerd"].as_str().unwrap().contains("bijlage F"), "{r}");
-    assert!(uit["governing_plate"].is_null(), "een weigering is geen oordeel: {}", uit["governing_plate"]);
+    let nz = r["wapening"]["max_z"]["n_td_z_kn_per_m"].as_f64().unwrap();
+    assert!((nz - 3000.0).abs() <= 0.02 * 3000.0, "n_td,z {nz}");
+    assert!(r["niet_getoetst"].as_array().unwrap().iter().any(|n| n["id"] == "wapening_aanwezig"));
 }
 
 /// Houten drukwand — dezelfde handberekening als

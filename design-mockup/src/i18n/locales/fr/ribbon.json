@@ -749,7 +749,10 @@
     "plaatGeweigerd": "Non vérifié",
     "plaatOvergeslagen": "Non vérifié",
     "plaatNietGetoetst": "Non vérifié :",
-    "plaatElementgemiddeld": "contraintes moyennes par élément ; l'élément figure dans les remarques"
+    "plaatElementgemiddeld": "contraintes moyennes par élément ; l'élément figure dans les remarques",
+    "plaatWapeningKop": "Armatures nécessaires selon l'annexe F",
+    "plaatRichting": "Direction",
+    "plaatWapeningNoot": "n_td = f'_td · t : l'effort de traction nécessaire dans les armatures par mètre de voile, les deux faces ensemble, dans la direction horizontale (x) et verticale (z) du modèle ; A_s = n_td / f_yd. Les armatures en place ne sont pas vérifiées."
   },
   "viewer": {
     "file": "Fichier",

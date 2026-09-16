@@ -64,10 +64,16 @@ const invoer = [
       { element_id: 8, sigma_x_mpa: 0, sigma_y_mpa: 0, tau_xy_mpa: 10 },
     ] }] },
   { plate_id: 2, soort: "Kruislaaghout", materiaal: "CLT C24 40/20/40", thickness_mm: 100, combinations: [] },
+  // Beton, zuivere afschuiving τ = 3: bijlage F (F.2)/(F.3) f'_td = 3 N/mm² in
+  // beide richtingen → n_td = 3·200 = 600 kN/m.
+  { plate_id: 4, soort: "Beton", materiaal: "C30/37", thickness_mm: 200,
+    combinations: [{ combination_id: 4, elements: [
+      { element_id: 1, sigma_x_mpa: 0, sigma_y_mpa: 0, tau_xy_mpa: 3 },
+    ] }] },
 ];
 const r = spawnSync(TOETSBRUG, [], { input: JSON.stringify({ opdracht: "check_plates", inputs: invoer }), encoding: "utf8" });
 const res = JSON.parse(r.stdout);
-checkTrue("kern antwoordt met twee platen", Array.isArray(res) && res.length === 2, r.stdout.slice(0, 200));
+checkTrue("kern antwoordt met drie platen", Array.isArray(res) && res.length === 3, r.stdout.slice(0, 200));
 
 log("\n[a] kaart van een getoetste plaat");
 {
@@ -85,6 +91,12 @@ log("\n[b] kaart van een geweigerde plaat");
   checkTrue("geen unity check", !/\b0\.00\b/.test(t) && !t.includes("cp-card-uc"), t);
 }
 
+log("\n[b2] kaart van een betonnen plaat");
+{
+  const t = tekst(renderToStaticMarkup(React.createElement(PlaatToetsKaart, { result: res[2] })));
+  checkTrue("benodigde wapening zonder openklappen", t.includes("Benodigde wapening") && t.includes("600"), t);
+}
+
 log("\n[c] rapportsectie");
 {
   const html = renderToStaticMarkup(React.createElement(PlaatToetsRapport, {
@@ -92,7 +104,7 @@ log("\n[c] rapportsectie");
     plateSkipped: [{ plateId: 3, reason: "geen materiaal — test" }],
     lastRunAt: null,
     gedetailleerd: true,
-    aantalPlaten: 3,
+    aantalPlaten: 4,
     combinations: [{ id: 4, name: "UGT 6.10b" }],
   }));
   const t = tekst(html);
@@ -104,6 +116,7 @@ log("\n[c] rapportsectie");
   checkTrue("afleiding met artikel", t.includes("6.2.1(5)"), t);
   checkTrue("krachtregel zonder snedekrachten", !t.includes("kNm"), t);
   checkTrue("niet getoetst: plooi met reden", t.includes("NEN-EN 1993-1-5"), t);
+  checkTrue("benodigde wapening in het rapport", t.includes("Benodigde wapening volgens bijlage F") && t.includes("600"), t);
 }
 
 log("\n[d] zonder platen");

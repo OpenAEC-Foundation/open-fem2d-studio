@@ -749,7 +749,10 @@
     "plaatGeweigerd": "Niet getoetst",
     "plaatOvergeslagen": "Niet getoetst",
     "plaatNietGetoetst": "Niet getoetst:",
-    "plaatElementgemiddeld": "elementgemiddelde spanningen; het element staat in de toelichting"
+    "plaatElementgemiddeld": "elementgemiddelde spanningen; het element staat in de toelichting",
+    "plaatWapeningKop": "Benodigde wapening volgens bijlage F",
+    "plaatRichting": "Richting",
+    "plaatWapeningNoot": "n_td = f'_td · t: de benodigde trekkracht in de wapening per meter wand, over beide zijden samen, in de horizontale (x) en verticale (z) modelrichting; A_s = n_td / f_yd. De aanwezige wapening is niet getoetst."
   },
   "viewer": {
     "file": "Bestand",

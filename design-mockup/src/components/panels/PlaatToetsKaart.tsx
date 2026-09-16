@@ -78,6 +78,19 @@ export function PlaatToetsKaart({ result }: { result: PlateCheckResult }) {
         </div>
       )}
 
+      {/* Beton: de benodigde wapening (bijlage F), zonder openklappen — zij
+          is de reden dat een betonnen wand "n.v.t." heet. */}
+      {result.wapening && (
+        <div className="cp-card-onuitgevoerd">
+          {t("plaat.wapening", {
+            x: nl(result.wapening.max_x.n_td_x_kn_per_m, 1),
+            ex: result.wapening.max_x.element_id,
+            z: nl(result.wapening.max_z.n_td_z_kn_per_m, 1),
+            ez: result.wapening.max_z.element_id,
+          })}
+        </div>
+      )}
+
       {open && (
         <div className="cp-card-body">
           {result.niet_getoetst.length > 0 && (

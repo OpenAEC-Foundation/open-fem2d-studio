@@ -194,7 +194,8 @@ fn weigeringen_met_reden() {
     geweigerd(check_plate(&plaat("S235", 10.0, vec![(1, vec![el(1, f64::NAN, 0.0, 0.0)])])), "geen getal");
     for (soort, woord) in [
         (PlaatMateriaalSoort::Kruislaaghout, "kruislaaghout"),
-        (PlaatMateriaalSoort::Beton, "bijlage F"),
+        // Beton wordt sinds stap 3 getoetst; een onbekende klasse weigert.
+        (PlaatMateriaalSoort::Beton, "betonklasse"),
         (PlaatMateriaalSoort::Vrij, "vrij materiaal"),
     ] {
         let mut p = plaat("X", 100.0, e());

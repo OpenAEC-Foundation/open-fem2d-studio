@@ -334,6 +334,7 @@ pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
         elementen: v.per_element,
         niet_getoetst,
         geweigerd: None,
+        wapening: None,
         notes,
     }
 }
