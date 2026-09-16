@@ -2949,6 +2949,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 
 [[package]]
+name = "plaat-check"
+version = "0.1.0"
+dependencies = [
+ "approx",
+ "mechanics",
+ "nationale-bijlage",
+ "nen-en-1993-1-1-section",
+ "serde",
+ "serde_json",
+ "steel-check",
+ "ts-rs",
+]
+
+[[package]]
 name = "plist"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
