@@ -342,6 +342,22 @@ pub const MELDING_AFSCHUIVING_HOEKPROFIEL: &str =
 
 /// Melding bij de normaalkrachttoets 6.2.4 van een hoekprofiel dat met één
 /// been kan zijn aangesloten (6.2.3(5)).
+/// Aanname die bij elke koker en buis uit de catalogus hoort: warmvervaardigd.
+///
+/// NEN-EN 1993-1-1 tabel 6.2, rij "Buisprofielen": warmvervaardigd → kromme a
+/// (S460: a0), koudgevormd → kromme c. De catalogus is opgebouwd volgens
+/// EN 10210-2 (buitenhoekstraal 1,5·t, binnenhoekstraal 1,0·t) en draagt
+/// daarom kromme a. Voor een koudgevormde koker volgens EN 10219 gelden een
+/// andere meetkunde (A en I 2–3 % kleiner) én kromme c; bij λ̄ ≈ 1 scheelt dat
+/// ruim 20 % in N_b,Rd. Die reeks staat niet in de catalogus.
+pub const MELDING_KOKER_WARMVERVAARDIGD: &str =
+    "Aanname: dit profiel is een WARMVERVAARDIGDE koker of buis volgens EN 10210 (hoekstraal \
+     1,5·t), zoals alle kokers en buizen in de catalogus; daarvoor geeft NEN-EN 1993-1-1 tabel \
+     6.2 knikkromme a (bij S460 a0; de kern houdt a aan, wat aan de veilige kant ligt). Is het \
+     werkelijke profiel KOUDGEVORMD volgens EN 10219, dan geldt kromme c (α = 0,49) en een iets \
+     kleinere doorsnede, en is deze knikweerstand tot circa 25 % te hoog; die reeks staat niet \
+     in de catalogus.";
+
 pub const MELDING_AANSLUITING_HOEKPROFIEL: &str =
     "Hoekprofiel: is de staaf met slechts één been aangesloten, dan gelden voor de trek- en \
      drukweerstand de aanvullende regels van NEN-EN 1993-1-8 3.10.3 (NEN-EN 1993-1-1 6.2.3(5)); \

@@ -600,6 +600,21 @@ pub fn m_b_rd_channel(
     z_a_mm: f64,
     force_state: ForceStateSnapshot,
 ) -> StabilityCalc {
+    m_b_rd_channel_met_veld(p, grade, l_g_mm, velden, q_equiv_n_per_mm, z_a_mm, force_state).0
+}
+
+/// Als [`m_b_rd_channel`], plus de index (vanaf 0 bij het staafbegin) van het
+/// maatgevende kipveld in `velden`. De interactietoets van 6.3.3 heeft die
+/// nodig: C_mLT (bijlage B, tabel B.3) hoort bij het momentenverloop van het
+/// kipveld waaruit χ_LT komt, niet bij dat van de hele staaf.
+pub fn m_b_rd_channel_met_veld(
+    p: &SectionProperties, grade: &SteelGrade,
+    l_g_mm: f64,
+    velden: &[Kipveld],
+    q_equiv_n_per_mm: f64,
+    z_a_mm: f64,
+    force_state: ForceStateSnapshot,
+) -> (StabilityCalc, usize) {
     let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
     let (v, alle_velden) = maatgevend_kipveld(
@@ -642,7 +657,7 @@ pub fn m_b_rd_channel(
         NamedValue { symbol: r"\chi_{LT}".to_string(), value: chi_lt, unit: "-".to_string() },
     ]);
 
-    StabilityCalc {
+    let calc = StabilityCalc {
         id: "6.3.2_ltb_channel".to_string(),
         title: "Kip (U-profiel, monosymmetrisch)".to_string(),
         article: "art. 6.3.2.3 + NB.NB.4/NB.7/NB.11/NB.13, met een M_cr buiten de norm om"
@@ -695,7 +710,8 @@ pub fn m_b_rd_channel(
             n.extend(nb_waarschuwingen(l_g_mm, &v, z_a_mm, p.h_mm, p.tf_mm));
             n
         },
-    }
+    };
+    (calc, v.index)
 }
 
 /// Wat de doorsnedemotor over de monosymmetrie weet — **inclusief of hij het
@@ -1052,6 +1068,21 @@ pub fn m_b_rd(
     profielsoort: Kipprofiel,
     force_state: ForceStateSnapshot,
 ) -> StabilityCalc {
+    m_b_rd_met_veld(p, grade, l_g_mm, velden, q_equiv_n_per_mm, z_a_mm, profielsoort, force_state).0
+}
+
+/// Als [`m_b_rd`], plus de index (vanaf 0 bij het staafbegin) van het
+/// maatgevende kipveld in `velden`; zie [`m_b_rd_channel_met_veld`].
+#[allow(clippy::too_many_arguments)]
+pub fn m_b_rd_met_veld(
+    p: &SectionProperties, grade: &SteelGrade,
+    l_g_mm: f64,
+    velden: &[Kipveld],
+    q_equiv_n_per_mm: f64,
+    z_a_mm: f64,
+    profielsoort: Kipprofiel,
+    force_state: ForceStateSnapshot,
+) -> (StabilityCalc, usize) {
     let s_mm = nb_annex::s_parameter(p.h_mm, nb_annex::E_MPA, p.iz_mm4, nb_annex::G_MPA, p.it_mm4);
     let k_red = nb_annex::k_red(p.h_mm, p.tf_mm, p.tw_mm, p.b_mm, l_g_mm);
     let (v, alle_velden) = maatgevend_kipveld(
@@ -1112,7 +1143,7 @@ pub fn m_b_rd(
         NamedValue { symbol: r"\chi_{LT}".to_string(), value: chi_lt, unit: "-".to_string() },
     ]);
 
-    StabilityCalc {
+    let calc = StabilityCalc {
         id: "6.3.2_ltb".to_string(),
         title: "Kipweerstand".to_string(),
         article: "art. 6.3.2.3 (tabel 6.3/6.5) + NB.NB.2/NB.4/NB.7/NB.11/NB.13".to_string(),
@@ -1190,5 +1221,6 @@ pub fn m_b_rd(
             n.extend(nb_waarschuwingen(l_g_mm, &v, z_a_mm, p.h_mm, p.tf_mm));
             n
         },
-    }
+    };
+    (calc, v.index)
 }

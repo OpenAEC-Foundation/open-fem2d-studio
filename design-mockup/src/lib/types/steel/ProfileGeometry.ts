@@ -8,4 +8,12 @@ export type ProfileGeometry = { h: number, b: number, tw: number, tf: number, t:
  * Voor elke andere soort blijft dit veld nul, en dat is ook precies wat
  * de bestaande regels in `profiles.json` opleveren — ze noemen het niet.
  */
-r2: number, };
+r2: number, 
+/**
+ * Flenshelling als verhouding (0,08 voor UNP volgens DIN 1026-1, 0,14
+ * voor INP volgens DIN 1025-1); 0 voor evenwijdige flenzen. Staat al in
+ * `profiles.json` bij die reeksen en beslist welke contour de
+ * doorsnedemotor bouwt; wie hem negeert rekent een INP als I met
+ * evenwijdige flenzen en zit 19 % naast I_z.
+ */
+flange_slope: number, };

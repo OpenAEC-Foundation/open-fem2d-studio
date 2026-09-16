@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/calc2_beam2.rs
-assertion_line: 188
+assertion_line: 200
 expression: run()
 ---
 {
@@ -57,7 +57,9 @@ expression: run()
             "formula_latex": "N_{Ed} / N_{c,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -109,7 +111,9 @@ expression: run()
             "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -161,7 +165,9 @@ expression: run()
             "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -213,7 +219,9 @@ expression: run()
             "formula_latex": "V_{z,Ed} / V_{c,z,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -265,7 +273,9 @@ expression: run()
             "formula_latex": "V_{y,Ed}/V_{c,y,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -1061,7 +1071,8 @@ expression: run()
             "Om de y-as (in het vlak): L_cr,y = 5000 mm (opgegeven), λ̄_y = 0,786, knikkromme b (α = 0,34), χ_y = 0,7329, N_b,Rd,y = 935,2 kN, UC = 0,258.",
             "Om de z-as (uit het vlak): L_cr,z = 5000 mm (opgegeven), λ̄_z = 1,316, knikkromme c (α = 0,49), χ_z = 0,3822, N_b,Rd,z = 487,7 kN, UC = 0,495.",
             "Maatgevend is knik om de z-as (uit het vlak): N_b,Rd = 487,7 kN.",
-            "Knik om de z-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: de toets met χ is daarvoor altijd nodig."
+            "Knik om de z-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: de toets met χ is daarvoor altijd nodig.",
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
           ]
         }
       }
@@ -1660,7 +1671,8 @@ expression: run()
           "notes": [
             "Gewalst I-profiel met h/b = 1,000 → kipkromme b volgens tabel 6.5; α_LT = 0,34 volgens tabel 6.3.",
             "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig.",
-            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 0 tot x = 2500 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
+            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 0 tot x = 2500 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten.",
+            "Tabel 3.1: dikste element t = 13 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
           ]
         }
       }
@@ -1694,7 +1706,17 @@ expression: run()
             },
             {
               "symbol": "k_{yz}",
-              "value": 0.6095576009213031,
+              "value": 1.0159293348688385,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{my}",
+              "value": 0.6,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mz}",
+              "value": 1.0,
               "unit": "-"
             }
           ],
@@ -1725,7 +1747,12 @@ expression: run()
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "C_my tabel B.3, rij 1 (alleen eindmomenten, lineair verloop): M = 126,67 kNm en ψ·M met ψ = 0,000 → C_m = 0,6 + 0,4·ψ = 0,600 (ondergrens 0,4).",
+            "C_mz tabel B.3: geen buigend moment over dit veld, C_m = 1,0 aangehouden (rekent niet mee omdat de momentterm nul is).",
+            "C_mLT (kipveld 1 van 1, x = 0–5000 mm) tabel B.3: de momentenlijn loopt monotoon van 0,00 naar 126,67 kNm maar wijkt van de rechte lijn af (grootste afwijking 63,34 kNm); zo'n verloop heeft geen eigen rij. Aangehouden is de grootste van rij 1 (ψ = 0,000, C_m = 0,600) en rij 2 met het gemiddelde moment over het veld als veldmoment (M_s = 95,00 kNm, α_s = 0,750, gelijkmatig verdeelde belasting, C_m = 0,800): C_m = 0,800.",
+            "k_zy volgens tabel B.2 (staaf gevoelig voor vervormingen door torsie: open doorsnede met χ_LT < 1): k_zy = 1 − 0,1·λ̄_z·n_z/(C_mLT − 0,25) ≥ 1 − 0,1·n_z/(C_mLT − 0,25) met λ̄_z = 1,316, n_z = N_Ed/(χ_z·N_Rk/γ_M1) = 0,495 en C_mLT = 0,800 → k_zy = 0,910. k_yy, k_yz en k_zz volgens tabel B.1."
+          ]
         }
       }
     },
@@ -1753,12 +1780,27 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{zy}",
-              "value": 0.414494321937473,
+              "value": 0.9099720054396453,
               "unit": "-"
             },
             {
               "symbol": "k_{zz}",
-              "value": 1.0159293348688385,
+              "value": 1.6932155581147308,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{my}",
+              "value": 0.6,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mz}",
+              "value": 1.0,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mLT}",
+              "value": 0.8,
               "unit": "-"
             }
           ],
@@ -1770,7 +1812,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.6769847956994801,
+              "value": 1.4862380003548867,
               "unit": "-"
             },
             {
@@ -1780,16 +1822,21 @@ expression: run()
             }
           ],
           "deelstappen": [],
-          "value": 1.1721387657814308,
+          "value": 1.9813919704368375,
           "unit": "-",
           "uc": {
-            "ed": 1.1721387657814308,
+            "ed": 1.9813919704368375,
             "rd": 1.0,
-            "uc": 1.1721387657814308,
+            "uc": 1.9813919704368375,
             "formula_latex": "Sum of terms"
           },
           "status": "NotOk",
-          "notes": []
+          "notes": [
+            "C_my tabel B.3, rij 1 (alleen eindmomenten, lineair verloop): M = 126,67 kNm en ψ·M met ψ = 0,000 → C_m = 0,6 + 0,4·ψ = 0,600 (ondergrens 0,4).",
+            "C_mz tabel B.3: geen buigend moment over dit veld, C_m = 1,0 aangehouden (rekent niet mee omdat de momentterm nul is).",
+            "C_mLT (kipveld 1 van 1, x = 0–5000 mm) tabel B.3: de momentenlijn loopt monotoon van 0,00 naar 126,67 kNm maar wijkt van de rechte lijn af (grootste afwijking 63,34 kNm); zo'n verloop heeft geen eigen rij. Aangehouden is de grootste van rij 1 (ψ = 0,000, C_m = 0,600) en rij 2 met het gemiddelde moment over het veld als veldmoment (M_s = 95,00 kNm, α_s = 0,750, gelijkmatig verdeelde belasting, C_m = 0,800): C_m = 0,800.",
+            "k_zy volgens tabel B.2 (staaf gevoelig voor vervormingen door torsie: open doorsnede met χ_LT < 1): k_zy = 1 − 0,1·λ̄_z·n_z/(C_mLT − 0,25) ≥ 1 − 0,1·n_z/(C_mLT − 0,25) met λ̄_z = 1,316, n_z = N_Ed/(χ_z·N_Rk/γ_M1) = 0,495 en C_mLT = 0,800 → k_zy = 0,910. k_yy, k_yz en k_zz volgens tabel B.1."
+          ]
         }
       }
     },
@@ -1901,7 +1948,7 @@ expression: run()
       }
     }
   ],
-  "uc_max": 1.6332788167882408,
+  "uc_max": 1.9813919704368375,
   "status": "NotOk",
-  "governing_check_id": "6.3.2_ltb"
+  "governing_check_id": "6.3.3_eq_6_62"
 }

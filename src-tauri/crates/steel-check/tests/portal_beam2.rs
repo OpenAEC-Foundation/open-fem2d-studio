@@ -135,13 +135,28 @@ fn portal_beam2_shear() {
     assert_relative_eq!(uc_value(r, "6.2.6_shear_z"), 0.08, max_relative = 0.04);
 }
 
+/// De referentie-uitwerking geeft voor 6.3.3 UC = 0,79 en "voldoet". Deze
+/// fixture kan dat sinds september 2026 (bijlage B, basisaudit nr 7) niet
+/// meer reproduceren, en dat is een eigenschap van de FIXTURE, niet van de
+/// kern: zij draagt per combinatie één krachtpunt (x = 0), dus het
+/// momentenverloop is onbekend. De kern houdt dan een constant moment aan
+/// (C_my = C_mLT = 1,0; tabel B.3, ψ = 1) — de bovengrens van de tabel — waar
+/// de referentie met het volledige momentenverloop van de kolom rekent (van
+/// M aan de voet naar ongeveer nul aan de kop, ψ ≈ 0 → C_m ≈ 0,6). Met C_m =
+/// 0,6 zou vgl. 6.61 hier 0,1961 + 0,6227·66,04/80,54 = 0,707 zijn, in de buurt
+/// van de 0,79 van de referentie; met C_m = 1,0 is het
+///   k_yy = 1 + (0,3931 − 0,2)·0,1961 = 1,0379, 6.61 = 0,1961 + 1,0379·66,04/80,54 = 1,0470
+///   k_zy = max(1 − 0,1·0,6579·0,2427/0,75; 1 − 0,1·0,2427/0,75) = 0,9787, 6.62 = 1,0451
+/// De fixture is bewust niet uitgebreid: het is referentie-afgeleide invoer,
+/// en die binnen deze reparatie herschrijven maakt de snapshot onnavolgbaar.
+/// De test legt de veilige uitkomst vast in plaats van "Ok" te eisen op een
+/// aanname die de invoer niet draagt.
 #[test]
 fn portal_beam2_governing_ok() {
     let r = run();
-    // Reference governing: 6.3.3 UC=0.79; beam is OK.
-    // TODO Phase 13: assert governing_check_id == "6.3.3_n_my" once verified.
-    assert!(r.uc_max < 1.0, "expected uc_max < 1.0 (reference: 0.79), got {}", r.uc_max);
-    assert_eq!(r.status, CheckStatus::Ok);
+    assert_eq!(r.governing_check_id, "6.3.3_eq_6_61");
+    assert_relative_eq!(r.uc_max, 1.0470, max_relative = 1e-4);
+    assert_eq!(r.status, CheckStatus::NotOk);
 }
 
 /// Regressiesnapshot van het volledige resultaat.
@@ -176,6 +191,28 @@ fn portal_beam2_governing_ok() {
 /// doordat (1,4 − 0,8·1) = 0,6 op de ondergrens 1,0 werd afgekapt. En HEB 160
 /// heeft h/b = 1,0 ≤ 2, dus tabel 6.5 geeft kromme b: α_LT = 0,34, dezelfde
 /// waarde die er vast stond.
+/// September 2026 (f) — bijlage B en tabel 3.1 (basisaudit nr 7, 17, 36).
+/// Drie wijzigingen, alle drie per veld nagelopen en met de hand nagerekend
+/// (formules van tabel B.1/B.2/B.3, invoer uit deze snapshot zelf):
+///  * 6.3.3 rekent niet meer met een vaste C_m = 0,6 en tabel B.1, maar met
+///    C_my, C_mz en C_mLT uit tabel B.3 (uit het momentenverloop van
+///    respectievelijk de staaf, de staaf om z en het maatgevende kipveld) en,
+///    voor een open doorsnede met χ_LT < 1, k_zy uit tabel B.2. De variabelen
+///    C_my, C_mz en C_mLT komen erbij en de notities beschrijven de rij van
+///    tabel B.3 en de gebruikte tabel voor k_zy.
+///  * Elke gerekende toets met f_y in haar formule krijgt de notitie van
+///    tabel 3.1 (dikteklasse t ≤ 40 mm; f_y en f_u ongewijzigd voor deze
+///    doorsnede).
+///  * Geen enkele weerstand, χ, λ̄, M_cr of doorbuiging verandert.
+/// Getallen (HEB 160, klasse 1, λ̄_y = 0,3931, λ̄_z = 0,6579, n_y = 0,1961,
+/// n_z = 0,2427, χ_LT = 0,9682 → tabel B.2, M_b,Rd = 80,544 kNm). Eén
+/// krachtpunt per combinatie → constant moment, C_my = C_mLT = 1,0:
+///   k_yy = 1 + 0,1931·0,1961 = 1,0379 (was 0,6227), k_yz = 0,6·k_zz = 0,7042,
+///   k_zy = max(1 − 0,1·0,6579·0,2427/0,75; 1 − 0,1·0,2427/0,75) = 0,9787 (was 0,3736)
+///   6.61 = 0,1961 + 1,0379·66,04/80,544 = 1,0470 (was 0,7067) → maatgevend, NotOk
+///   6.62 = 0,2427 + 0,9787·66,04/80,544 = 1,0451 (was 0,5490).
+/// Zie `portal_beam2_governing_ok` voor waarom de referentie (0,79) hier niet
+/// gehaald wordt: de fixture draagt het momentenverloop niet.
 #[test]
 fn portal_beam2_snapshot() {
     insta::assert_json_snapshot!("portal_beam2", run());

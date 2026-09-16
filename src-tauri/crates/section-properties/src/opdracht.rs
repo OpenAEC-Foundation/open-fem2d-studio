@@ -557,7 +557,7 @@ fn vorm_van_maten(
     r2: f64,
 ) -> Result<Profielvorm, String> {
     let dikte = if t > 0.0 { t } else { tw };
-    Ok(match soort {
+    let vorm = match soort {
         "ISection" => Profielvorm::IProfiel { h, b, tw, tf, r },
         // Toelopende flenzen (INP, DIN 1025-1).
         "ISectionSchuin" => Profielvorm::IProfielSchuin { h, b, tw, tf, r },
@@ -574,7 +574,12 @@ fn vorm_van_maten(
         // beide wordt uit de ander afgeleid.
         "Angle" => Profielvorm::Hoeklijn { h, b, t: dikte, r1: r, r2 },
         anders => return Err(format!("onbekende soort: {anders}")),
-    })
+    };
+    // Onmogelijke maten worden hier geweigerd, vóór er een contour of mesh
+    // van gemaakt wordt; zie `Profielvorm::controleer_maten`.
+    vorm.controleer_maten()
+        .map_err(|e| format!("onmogelijke maten voor {soort}: {e}"))?;
+    Ok(vorm)
 }
 
 fn vorm_van(i: &Invoer) -> Result<Profielvorm, String> {
@@ -1140,6 +1145,14 @@ fn reken_contour(i: &Invoer) -> Result<Uitvoer, String> {
     }
     if t.losse_delen {
         meldingen.push("de doorsnede bestaat uit losse delen: Iw en het schuifmiddelpunt zijn betekenisloos (0 resp. zwaartepunt aangehouden)".into());
+    }
+    if mesh.randherstel_onvolledig {
+        meldingen.push(
+            "het randherstel van de mesh is afgebroken op zijn bovengrens: de contour is \
+             vermoedelijk zelfsnijdend of ontaard; It, Iw en het schuifmiddelpunt zijn \
+             onbetrouwbaar"
+                .into(),
+        );
     }
 
     // ── Uitgebreide grootheden ────────────────────────────────────────────────

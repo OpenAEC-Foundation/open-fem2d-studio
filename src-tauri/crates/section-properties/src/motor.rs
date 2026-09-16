@@ -67,6 +67,115 @@ pub enum Profielvorm {
 }
 
 impl Profielvorm {
+    /// Controleert of de maten een bestaanbare doorsnede beschrijven.
+    ///
+    /// Zonder deze controle rekende de motor stilzwijgend door op onmogelijke
+    /// maten (basisaudit nr 35): een flens dikker dan de halve hoogte geeft
+    /// een zelfsnijdende contour waarop de mesher tot honderden megabytes
+    /// doorgroeit, een negatieve hoogte gaf een positief oppervlak met een
+    /// negatieve torsieconstante, een lijf breder dan de flens een oppervlak
+    /// groter dan h·b, en een buiswand dikker dan de halve diameter werd stil
+    /// een massieve staaf. Elke regel hieronder is meetkunde, geen normkeuze:
+    /// alle maten positief en eindig, plaatdikten kleiner dan de ruimte
+    /// waarin ze liggen, afrondingen niet groter dan het vlak waarop ze
+    /// staan.
+    pub fn controleer_maten(&self) -> Result<(), String> {
+        fn positief(naam: &str, v: f64) -> Result<(), String> {
+            if !v.is_finite() || v <= 0.0 {
+                return Err(format!("{naam} = {v} moet een positief, eindig getal zijn"));
+            }
+            Ok(())
+        }
+        fn niet_negatief(naam: &str, v: f64) -> Result<(), String> {
+            if !v.is_finite() || v < 0.0 {
+                return Err(format!("{naam} = {v} moet een eindig getal ≥ 0 zijn"));
+            }
+            Ok(())
+        }
+        match *self {
+            Profielvorm::IProfiel { h, b, tw, tf, r }
+            | Profielvorm::IProfielSchuin { h, b, tw, tf, r }
+            | Profielvorm::UProfiel { h, b, tw, tf, r }
+            | Profielvorm::UProfielSchuin { h, b, tw, tf, r } => {
+                positief("h", h)?;
+                positief("b", b)?;
+                positief("t_w", tw)?;
+                positief("t_f", tf)?;
+                niet_negatief("r", r)?;
+                if 2.0 * tf >= h {
+                    return Err(format!(
+                        "flensdikte t_f = {tf} mm laat geen lijf over bij h = {h} mm (eis 2·t_f < h)"
+                    ));
+                }
+                if tw >= b {
+                    return Err(format!(
+                        "lijfdikte t_w = {tw} mm is niet kleiner dan de flensbreedte b = {b} mm"
+                    ));
+                }
+                // Twee uitrondingen naast elkaar op een I, één op een U; en de
+                // uitronding mag de vrije lijfhoogte niet overschrijden.
+                let ruimte_breedte = match self {
+                    Profielvorm::IProfiel { .. } | Profielvorm::IProfielSchuin { .. } => (b - tw) / 2.0,
+                    _ => b - tw,
+                };
+                if r > ruimte_breedte || 2.0 * r > h - 2.0 * tf {
+                    return Err(format!(
+                        "walsuitronding r = {r} mm past niet tussen lijf en flens (breedte {} mm, \
+                         lijfhoogte {} mm)",
+                        ruimte_breedte,
+                        h - 2.0 * tf
+                    ));
+                }
+                Ok(())
+            }
+            Profielvorm::Koker { h, b, t } => {
+                positief("h", h)?;
+                positief("b", b)?;
+                positief("t", t)?;
+                if 2.0 * t >= h.min(b) {
+                    return Err(format!(
+                        "wanddikte t = {t} mm laat geen holte over bij {b}×{h} mm (eis 2·t < min(b, h))"
+                    ));
+                }
+                // EN 10210-2: buitenhoekstraal 1,5·t moet in de halve zijde passen.
+                if 3.0 * t > h.min(b) {
+                    return Err(format!(
+                        "wanddikte t = {t} mm is te groot voor de hoekafronding 1,5·t bij {b}×{h} mm"
+                    ));
+                }
+                Ok(())
+            }
+            Profielvorm::Buis { d, t } => {
+                positief("d", d)?;
+                positief("t", t)?;
+                if 2.0 * t >= d {
+                    return Err(format!(
+                        "wanddikte t = {t} mm laat geen holte over bij d = {d} mm (eis 2·t < d)"
+                    ));
+                }
+                Ok(())
+            }
+            Profielvorm::Rechthoek { h, b } => {
+                positief("h", h)?;
+                positief("b", b)
+            }
+            Profielvorm::Hoeklijn { h, b, t, r1, r2 } => {
+                positief("h", h)?;
+                positief("b", b)?;
+                positief("t", t)?;
+                niet_negatief("r1", r1)?;
+                niet_negatief("r2", r2)?;
+                if t >= h.min(b) {
+                    return Err(format!(
+                        "beendikte t = {t} mm is niet kleiner dan het kortste been ({} mm)",
+                        h.min(b)
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+
     /// De exacte contour van deze vorm, linkeronderhoek op de oorsprong.
     pub fn doorsnede(&self) -> Doorsnede {
         match *self {

@@ -386,7 +386,7 @@ fn tool_definitions() -> Value {
         },
         {
             "name": "compute_section_properties",
-            "description": "Recompute section properties (A, Iy, Iz, Wel, Wpl, It, Iw, etc.) from the catalogue geometry of a named profile. Uses the analytical helpers in section-properties (i_section_props, channel_section_props, rhs_section_props). For CHS profiles falls back to catalogue values.",
+            "description": "Herberekent de doorsnedegrootheden (A, Iy, Iz, Wel, Wpl, Av, It, Iw, traagheidsstralen, zwaartepunt, schuifmiddelpunt, plastische neutrale lijn) van een catalogusprofiel uit zijn genormeerde maten met de exacte doorsnedemotor van section-properties: contourintegralen voor de meetkundige grootheden, een numerieke torsieoplossing (met insluiting van It) voor It en Iw. Dezelfde motor die de catalogus vult; flenshelling van UNP en INP, walsuitrondingen en de EN 10210-hoekstralen van kokers zitten erin. Het antwoord is plat (area_mm2, iy_mm4, ...) plus diagnostiek (a_mesh_afwijking, it_onzekerheid, meldingen, tijd_ms). Voor de opgeslagen cataloguswaarden zelf: list_steel_profiles.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -509,40 +509,36 @@ async fn dispatch_tool(name: &str, args: Value) -> Result<Value, RpcError> {
     }
 }
 
-fn compute_section_props(
-    profile_name: &str,
-) -> Result<section_properties::SectionProperties, RpcError> {
+fn compute_section_props(profile_name: &str) -> Result<section_properties::opdracht::Uitvoer, RpcError> {
     use steel_profiles::ProfileKind;
+    // Tot september 2026 rekende dit gereedschap met oude handboekformules
+    // (basisaudit nr 34): zonder flenshelling (UNP: I_z +15 %, W_pl,z −32 %),
+    // met een grove It en Iw. Nu gaat het door `section_properties::opdracht`,
+    // dezelfde ingang als het generatiescript dat de catalogus vult, zodat
+    // het antwoord de catalogus reproduceert in plaats van tegenspreekt.
     let profile = steel_profiles::db()
         .find(profile_name)
         .ok_or_else(|| RpcError::invalid_params(format!("unknown profile: {profile_name}")))?;
     let g = &profile.geometry;
-    let props = match profile.kind {
-        ProfileKind::ISection => {
-            section_properties::i_section::i_section_props(g.h, g.b, g.tw, g.tf, g.r)
-        }
-        ProfileKind::Channel => {
-            section_properties::channel::channel_section_props(g.h, g.b, g.tw, g.tf, g.r)
-        }
-        ProfileKind::Rhs | ProfileKind::Shs => {
-            section_properties::rhs::rhs_section_props(g.h, g.b, g.t, g.r)
-        }
-        ProfileKind::Chs => {
-            // Not implemented analytically — fall back to catalogue values.
-            profile.properties
-        }
-        ProfileKind::Angle => {
-            // Voor een hoeklijn bestaat hier geen gesloten formulepad zoals
-            // `i_section_props` dat voor de I heeft, en er hoort er ook geen
-            // te komen: de exacte contour van `section_properties::contour`
-            // vult de catalogus al, inclusief I_yz en de hoofdassen. Die
-            // waarden teruggeven is dus geen terugval maar de bron zelf. Een
-            // I-, U- of kokerformule op deze vorm loslaten zou stilzwijgend
-            // een verkeerde doorsnede opleveren.
-            profile.properties
-        }
+    let schuin = g.flange_slope > 0.0;
+    let soort = match profile.kind {
+        ProfileKind::ISection if schuin => "ISectionSchuin",
+        ProfileKind::ISection => "ISection",
+        ProfileKind::Channel if schuin => "ChannelSchuin",
+        ProfileKind::Channel => "Channel",
+        ProfileKind::Rhs => "Rhs",
+        ProfileKind::Shs => "Shs",
+        ProfileKind::Chs => "Chs",
+        ProfileKind::Angle => "Angle",
     };
-    Ok(props)
+    let invoer: section_properties::opdracht::Invoer = serde_json::from_value(json!({
+        "naam": profile.name,
+        "soort": soort,
+        "h": g.h, "b": g.b, "tw": g.tw, "tf": g.tf, "t": g.t, "r": g.r, "r2": g.r2,
+    }))
+    .map_err(|e| RpcError::tool_exec(format!("doorsnedemotor-invoer: {e}")))?;
+    section_properties::opdracht::reken(&invoer)
+        .map_err(|e| RpcError::tool_exec(format!("doorsnedemotor: {e}")))
 }
 
 // ── JSON-RPC method dispatch ────────────────────────────────────────────────

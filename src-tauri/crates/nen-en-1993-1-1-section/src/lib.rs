@@ -24,16 +24,160 @@ pub struct SteelGrade {
     pub gamma_m2: f64,
 }
 
+// NEN-EN 1993-1-1+A1:2014+NB:2016 tabel 3.1, "Nominale waarden van de
+// vloeigrens f_y en de treksterkte f_u voor warmgewalst constructiestaal",
+// kolom t ≤ 40 mm. S235, S275 en S355 volgens EN 10025-2; S420 en S460
+// volgens EN 10025-3 (N/NL). De kolom 40 mm < t ≤ 80 mm staat in
+// [`SteelGrade::voor_dikte`].
+//
+// f_u van S355 was hier 510 N/mm². Dat is de waarde van S355H uit EN 10210-1
+// (warmvervaardigde buisprofielen); voor het gewalste plaat- en profielstaal
+// van EN 10025-2 geeft tabel 3.1 490 N/mm². De lastoets (NEN-EN 1993-1-8,
+// f_vw,d = f_u/√3/(β_w·γ_M2)) was daarmee 4 % te gunstig. Zie basisaudit
+// §3.2 punt 1.
 pub const S235: SteelGrade = SteelGrade { name: "S235", fy_mpa: 235.0, fu_mpa: 360.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
 pub const S275: SteelGrade = SteelGrade { name: "S275", fy_mpa: 275.0, fu_mpa: 430.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
-pub const S355: SteelGrade = SteelGrade { name: "S355", fy_mpa: 355.0, fu_mpa: 510.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
+pub const S355: SteelGrade = SteelGrade { name: "S355", fy_mpa: 355.0, fu_mpa: 490.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
 pub const S420: SteelGrade = SteelGrade { name: "S420", fy_mpa: 420.0, fu_mpa: 520.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
 pub const S460: SteelGrade = SteelGrade { name: "S460", fy_mpa: 460.0, fu_mpa: 540.0, gamma_m0: 1.0, gamma_m1: 1.0, gamma_m2: 1.25 };
+
+/// Bovengrens van de dikteklasse t ≤ 40 mm in tabel 3.1.
+pub const DIKTE_GRENS_40_MM: f64 = 40.0;
+/// Bovengrens van tabel 3.1: boven 80 mm geeft de tabel geen waarde meer.
+pub const DIKTE_GRENS_80_MM: f64 = 80.0;
+
+/// De dikteklasse van tabel 3.1 waarin een element valt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Dikteklasse {
+    /// t ≤ 40 mm — de kolom waaruit de constanten hierboven komen.
+    TotEnMet40,
+    /// 40 mm < t ≤ 80 mm — lagere f_y en f_u.
+    Van40Tot80,
+}
+
+impl Dikteklasse {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::TotEnMet40 => "t ≤ 40 mm",
+            Self::Van40Tot80 => "40 mm < t ≤ 80 mm",
+        }
+    }
+}
+
+impl SteelGrade {
+    /// Tabel 3.1, kolom 40 mm < t ≤ 80 mm, als `(f_y, f_u)` in N/mm².
+    ///
+    /// EN 10025-2: S235 215/360, S275 255/410, S355 335/470;
+    /// EN 10025-3 (N/NL): S420 390/520, S460 430/540.
+    fn dik(&self) -> Option<(f64, f64)> {
+        match self.name {
+            "S235" => Some((215.0, 360.0)),
+            "S275" => Some((255.0, 410.0)),
+            "S355" => Some((335.0, 470.0)),
+            "S420" => Some((390.0, 520.0)),
+            "S460" => Some((430.0, 540.0)),
+            _ => None,
+        }
+    }
+
+    /// De staalsoort voor een element met nominale dikte `t_mm`, volgens
+    /// tabel 3.1: tot en met 40 mm de waarden van de constante, van 40 tot en
+    /// met 80 mm de lagere kolom, en daarboven een fout — tabel 3.1 houdt bij
+    /// 80 mm op en de kern raadt daar niets. Een dikte van nul of kleiner
+    /// betekent "onbekend"; dan geldt de kolom t ≤ 40 mm en zegt de notitie
+    /// dat.
+    ///
+    /// Geeft de aangepaste staalsoort (zelfde naam, andere f_y en f_u), de
+    /// dikteklasse en een notitie voor het rapport.
+    pub fn voor_dikte(&self, t_mm: f64) -> Result<(SteelGrade, Dikteklasse, String), String> {
+        if !t_mm.is_finite() || t_mm <= 0.0 {
+            return Ok((
+                *self,
+                Dikteklasse::TotEnMet40,
+                format!(
+                    "Tabel 3.1: de elementdikte is niet bekend; aangehouden is de kolom t ≤ 40 mm \
+                     met f_y = {} N/mm² en f_u = {} N/mm². Bij platen dikker dan 40 mm gelden \
+                     lagere waarden.",
+                    self.fy_mpa, self.fu_mpa
+                ),
+            ));
+        }
+        if t_mm <= DIKTE_GRENS_40_MM {
+            return Ok((
+                *self,
+                Dikteklasse::TotEnMet40,
+                format!(
+                    "Tabel 3.1: dikste element t = {} mm ≤ 40 mm, dus f_y = {} N/mm² en \
+                     f_u = {} N/mm² ({}).",
+                    nl_mm(t_mm), self.fy_mpa, self.fu_mpa, self.name
+                ),
+            ));
+        }
+        if t_mm <= DIKTE_GRENS_80_MM {
+            let (fy, fu) = self.dik().ok_or_else(|| {
+                format!(
+                    "staalsoort {} heeft in tabel 3.1 geen kolom 40 mm < t ≤ 80 mm",
+                    self.name
+                )
+            })?;
+            return Ok((
+                SteelGrade { fy_mpa: fy, fu_mpa: fu, ..*self },
+                Dikteklasse::Van40Tot80,
+                format!(
+                    "Tabel 3.1: dikste element t = {} mm ligt in de klasse 40 mm < t ≤ 80 mm, dus \
+                     f_y = {} N/mm² en f_u = {} N/mm² in plaats van {} en {} ({}).",
+                    nl_mm(t_mm), fy, fu, self.fy_mpa, self.fu_mpa, self.name
+                ),
+            ));
+        }
+        Err(format!(
+            "elementdikte t = {} mm ligt boven de 80 mm van NEN-EN 1993-1-1 tabel 3.1; voor \
+             dikkere elementen geeft de norm geen f_y en f_u en toetst de kern niet",
+            nl_mm(t_mm)
+        ))
+    }
+}
+
+/// Een maat in mm met decimaalkomma, zonder loze ",0".
+fn nl_mm(v: f64) -> String {
+    let s = format!("{v:.1}");
+    s.strip_suffix(".0").unwrap_or(&s).replace('.', ",")
+}
 
 pub fn grade_by_name(name: &str) -> Option<SteelGrade> {
     match name {
         "S235" => Some(S235), "S275" => Some(S275), "S355" => Some(S355),
         "S420" => Some(S420), "S460" => Some(S460), _ => None,
+    }
+}
+
+#[cfg(test)]
+mod dikte_tests {
+    use super::*;
+
+    #[test]
+    fn tabel_3_1_per_dikteklasse() {
+        let (g, k, _) = S235.voor_dikte(15.0).unwrap();
+        assert_eq!(k, Dikteklasse::TotEnMet40);
+        assert_eq!((g.fy_mpa, g.fu_mpa), (235.0, 360.0));
+        let (g, k, n) = S235.voor_dikte(50.0).unwrap();
+        assert_eq!(k, Dikteklasse::Van40Tot80);
+        assert_eq!((g.fy_mpa, g.fu_mpa), (215.0, 360.0));
+        assert!(n.contains("40 mm < t ≤ 80 mm"));
+        assert_eq!(S355.voor_dikte(40.0).unwrap().0.fy_mpa, 355.0);
+        assert_eq!(S355.voor_dikte(40.5).unwrap().0.fy_mpa, 335.0);
+        assert_eq!(S355.voor_dikte(80.0).unwrap().0.fu_mpa, 470.0);
+        assert_eq!(S460.voor_dikte(60.0).unwrap().0.fy_mpa, 430.0);
+        assert!(S355.voor_dikte(80.1).is_err());
+        // Onbekende dikte: kolom t ≤ 40 mm, met een notitie die dat zegt.
+        let (g, _, n) = S355.voor_dikte(0.0).unwrap();
+        assert_eq!(g.fy_mpa, 355.0);
+        assert!(n.contains("niet bekend"));
+    }
+
+    #[test]
+    fn f_u_van_s355_is_de_waarde_van_en_10025_2() {
+        assert_eq!(S355.fu_mpa, 490.0);
     }
 }
 

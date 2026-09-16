@@ -18,10 +18,10 @@ use nen_en_1993_1_1_stability::{
     buckling_curve::BucklingCurve,
     column_buckling::{n_b_rd, Knikas, Knikassen},
     kniklengte::{bepaal_kniklengte, Kniklengte, Steunen, Steunrand},
-    interaction_factors::{interaction_factors_method_2, cm_uniform_or_psi},
+    interaction_factors::{cm_uit_momentenlijn, interaction_factors_method_2, CmUitkomst},
     combined_n_m::{check_combined_n_my, check_combined_n_mz},
 };
-use nen_en_1993_1_1_ltb::{m_b_rd, m_b_rd_channel, Kipprofiel, Kipveld};
+use nen_en_1993_1_1_ltb::{m_b_rd_channel_met_veld, m_b_rd_met_veld, Kipprofiel, Kipveld};
 use section_properties::SectionProperties;
 use steel_profiles::{db, ProfileKind};
 use crate::input::{
@@ -29,7 +29,7 @@ use crate::input::{
     MELDING_AFSCHUIVING_HOEKPROFIEL, MELDING_BUIGING_HOEKPROFIEL, MELDING_KNIK_HOOFDASSEN,
     MELDING_VORM_NIET_CONTROLEERBAAR, REDEN_GESLOTEN_CEL_NIET_GEDECLAREERD,
     REDEN_INTERACTIE_ZONDER_KIP, REDEN_KIP_HOEKPROFIEL, REDEN_KIP_NIET_DUBBELSYMMETRISCH,
-    REDEN_KLASSE_4, reden_lijfplooi,
+    REDEN_KLASSE_4, reden_lijfplooi, MELDING_KOKER_WARMVERVAARDIGD,
 };
 use crate::result::{BeamCheckResult, NamedCheck, CheckKind};
 use crate::deflection::check_deflection_pair;
@@ -139,6 +139,11 @@ struct Doorsnede {
     /// afleiding van 6.3.1.
     kromme_toelichting: String,
     is_channel: bool,
+    /// Gesloten doorsnede (koker of buis). Zo'n staaf is volgens bijlage B
+    /// "niet gevoelig voor vervormingen door torsie": de interactiefactoren
+    /// komen dan uit tabel B.1, ook als de (behoudende) kipcontrole een
+    /// χ_LT < 1 geeft.
+    gesloten: bool,
     /// Welke rij van tabel 6.5 de kipkromme levert (art. 6.3.2.3). Dit is een
     /// ANDERE tabel dan de 6.2 waar `curve_y`/`curve_z` uit komen: die gaan
     /// over kolomknik en hebben de grens h/b = 1,2, tabel 6.5 gaat over kip en
@@ -178,6 +183,32 @@ fn plak_notitie(c: &mut NamedCheck, tekst: &str) {
 fn hang_toets_notities(checks: &mut [NamedCheck], notities: &[(&'static str, String)]) {
     for (id, tekst) in notities {
         for c in checks.iter_mut().filter(|c| c.id == *id) {
+            plak_notitie(c, tekst);
+        }
+    }
+}
+
+/// De toetsen waarin f_y (of f_u) rechtstreeks in de formule staat; daar
+/// hoort de dikteklasse van tabel 3.1 bij vermeld te worden.
+const TOETSEN_MET_F_Y: [&str; 7] = [
+    "6.2.4_compression",
+    "6.2.5_bending_y",
+    "6.2.5_bending_z",
+    "6.2.6_shear_z",
+    "6.2.6_shear_y",
+    "6.3.1_buckling",
+    "6.3.2_ltb",
+];
+
+/// Plakt de dikteklasse-notitie van tabel 3.1 achter elke GEREKENDE toets uit
+/// [`TOETSEN_MET_F_Y`]; een geweigerde toets (`NotApplicable`) blijft ongemoeid.
+fn hang_dikte_notitie(checks: &mut [NamedCheck], tekst: &str) {
+    for c in checks.iter_mut().filter(|c| TOETSEN_MET_F_Y.contains(&c.id.as_str())) {
+        let gerekend = match &c.kind {
+            CheckKind::Resistance(r) => !matches!(r.status, CheckStatus::NotApplicable),
+            CheckKind::Stability(s) => !matches!(s.status, CheckStatus::NotApplicable),
+        };
+        if gerekend {
             plak_notitie(c, tekst);
         }
     }
@@ -297,7 +328,14 @@ fn resolveer_doorsnede(
         // de beschrijvingsassen samenvalt. Wat daar aan beperkingen uit volgt,
         // hangt hieronder BIJ de toetsen waarop het slaat.
         let is_hoeklijn = matches!(profile.kind, ProfileKind::Angle);
-        let toets_notities: Vec<(&'static str, String)> = if is_hoeklijn {
+        // Koker of buis: de catalogus bevat uitsluitend warmvervaardigde
+        // (EN 10210) exemplaren, en dat is een aanname die de lezer bij de
+        // kniktoets hoort te zien — een koudgevormde koker (EN 10219) valt in
+        // tabel 6.2 onder kromme c en niet onder a (basisaudit nr 36).
+        let is_hol = matches!(profile.kind, ProfileKind::Shs | ProfileKind::Rhs | ProfileKind::Chs);
+        let toets_notities: Vec<(&'static str, String)> = if is_hol {
+            vec![("6.3.1_buckling", MELDING_KOKER_WARMVERVAARDIGD.to_string())]
+        } else if is_hoeklijn {
             vec![
                 ("6.2.4_compression", MELDING_AANSLUITING_HOEKPROFIEL.to_string()),
                 ("6.2.5_bending_y", MELDING_BUIGING_HOEKPROFIEL.to_string()),
@@ -317,12 +355,24 @@ fn resolveer_doorsnede(
                 .unwrap_or(BucklingCurve::B),
             curve_z: BucklingCurve::from_char(profile.buckling_curves.z_axis)
                 .unwrap_or(BucklingCurve::C),
-            kromme_toelichting: format!(
-                "Tabel 6.2 via de profieldatabase: bij {} staat knikkromme '{}' om de eerste as en \
-                 '{}' om de tweede as.",
-                input.profile_name, profile.buckling_curves.y_axis, profile.buckling_curves.z_axis
-            ),
+            kromme_toelichting: if is_hol {
+                format!(
+                    "Tabel 6.2, rij 'buisprofielen, warmvervaardigd': knikkromme '{}' om de eerste \
+                     as en '{}' om de tweede as bij {}. {}",
+                    profile.buckling_curves.y_axis,
+                    profile.buckling_curves.z_axis,
+                    input.profile_name,
+                    MELDING_KOKER_WARMVERVAARDIGD
+                )
+            } else {
+                format!(
+                    "Tabel 6.2 via de profieldatabase: bij {} staat knikkromme '{}' om de eerste as en \
+                     '{}' om de tweede as.",
+                    input.profile_name, profile.buckling_curves.y_axis, profile.buckling_curves.z_axis
+                )
+            },
             is_channel: matches!(profile.kind, ProfileKind::Channel),
+            gesloten: matches!(profile.kind, ProfileKind::Shs | ProfileKind::Rhs | ProfileKind::Chs),
             // Tabel 6.5 kent alleen rijen voor I-profielen. Alles uit de
             // catalogus is gewalst; kokers, buizen en hoeklijnen vallen buiten
             // de tabel — bij de hoeklijn draait de kiptoets sowieso niet.
@@ -474,6 +524,9 @@ fn resolveer_doorsnede(
             curve_z.letter()
         ),
         is_channel: false,
+        // Kip (en daarmee 6.3.3) draait inline alleen op de dubbelsymmetrische
+        // gelaste I, een open doorsnede.
+        gesloten: false,
         // Een inline doorsnede heeft geen catalogusgeschiedenis en is per
         // definitie uit platen samengesteld, dus gelast. Kip draait hier
         // bovendien alleen op de dubbelsymmetrische gelaste I (zie
@@ -555,6 +608,38 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         forces: gov_shear.forces,
     };
 
+    // 3b. De vloeigrens hangt aan de elementdikte (NEN-EN 1993-1-1 tabel 3.1:
+    //     t ≤ 40 mm, 40 mm < t ≤ 80 mm, daarboven niets). De dikste plaat
+    //     beslist: bij een catalogusprofiel de flens (of de wand van een
+    //     koker, buis of hoeklijn), bij een samengestelde doorsnede de dikste
+    //     lamel. Dat moet VÓÓR de doorsnede wordt opgelost, want de
+    //     classificatie volgens tabel 5.2 rekent al met ε = √(235/f_y).
+    //     Tot september 2026 kreeg een plaat van 50 mm dezelfde f_y als een
+    //     van 10 mm (basisaudit nr 17); een plaat boven 80 mm wordt nu
+    //     geweigerd in plaats van stilzwijgend met de volle f_y getoetst.
+    let dikte_mm = match input.custom_section.as_ref() {
+        Some(c) => c.flensdikte_mm(),
+        None => db()
+            .find(&input.profile_name)
+            .map(|p| if p.geometry.tf > 0.0 { p.geometry.tf } else { p.geometry.t })
+            .unwrap_or(0.0),
+    };
+    let (grade, _dikteklasse, dikte_notitie) = match grade.voor_dikte(dikte_mm) {
+        Ok(x) => x,
+        Err(reden) => {
+            return BeamCheckResult {
+                beam_id: input.beam_id,
+                profile_name: input.profile_name.clone(),
+                steel_grade: input.steel_grade.clone(),
+                classification: CrossSectionClass::Class1,
+                checks: vec![],
+                uc_max: 0.0,
+                status: CheckStatus::NotApplicable,
+                governing_check_id: format!("ERROR: {reden}"),
+            }
+        }
+    };
+
     // 4. Resolveer de doorsnede: inline (D4.3) of uit de database, inclusief
     //    de classificatie (buiging drijft de classificatie) en de expliciete
     //    weigeringen die bij die doorsnede horen.
@@ -622,7 +707,9 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
 
         // Ook op het klasse-4-pad hoort een doorsnedegebonden beperking bij de
         // toets te staan waarop zij slaat; de toets is er, hij is alleen
-        // geweigerd.
+        // geweigerd. De dikteklasse (tabel 3.1) staat alleen bij gerekende
+        // toetsen, en hier is er geen; ε voor de klasse-indeling kwam wel uit
+        // de dikte-afhankelijke f_y.
         hang_toets_notities(&mut checks, &doorsnede.toets_notities);
 
         let mut uc_max = 0.0_f64;
@@ -792,6 +879,8 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             soort: Steunrand::Flens,
         }),
     );
+    // L_cr,y blijft nodig voor de sway-kanttekening bij C_my (stap 8).
+    let l_cr_y_mm = kniklengte_1.l_cr_mm;
     let knikassen = [
         Knikas {
             kniklengte: kniklengte_1,
@@ -1016,12 +1105,30 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             .unwrap_or(f64::NAN)
     }
 
+    /// χ_LT zoals de kiptoets hem in haar tussenwaarden zette. Ontbreekt het
+    /// symbool, dan geldt 0,0: de staaf telt dan als kipgevoelig en 6.3.3
+    /// neemt tabel B.2 — de strengere tabel, nooit stilzwijgend de gunstige.
+    fn chi_lt_van(ltb: &nen_en_1993_1_1_stability::StabilityCalc) -> f64 {
+        ltb.variables
+            .iter()
+            .chain(ltb.intermediate_values.iter())
+            .find(|v| v.symbol == r"\chi_{LT}")
+            .map(|v| v.value)
+            .unwrap_or(0.0)
+    }
+
+    // Het maatgevende kipveld (index in `kipvelden`) en χ_LT gaan door naar
+    // 6.3.3: C_mLT hoort bij het momentenverloop van dát veld (bijlage B,
+    // tabel B.3, laatste regel: "C_mLT: buigingsas y-y, punten gesteund in
+    // richting y-y"), en of tabel B.2 geldt hangt aan χ_LT < 1.
+    let mut kipveld_maatgevend: usize = 0;
+    let mut chi_lt: f64 = 1.0;
     let ltb_check = if let Some(reden_kip) = kip_weigering.clone() {
         m_b_rd_knm = f64::NAN; // bestaat niet; elke afnemer is hieronder geweigerd
         let (titel, artikel, stab) = toetsgegevens("6.3.2_ltb");
         weigering("6.3.2_ltb", titel, artikel, stab, vec![reden_kip], bend_state)
     } else if is_channel {
-        let mut ltb = m_b_rd_channel(
+        let (mut ltb, veld) = m_b_rd_channel_met_veld(
             p, &grade, l_g_mm, &kipvelden,
             input.q_equiv_n_per_mm,
             input.z_a_mm,
@@ -1030,9 +1137,11 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         ltb.notes.extend(envelop_notities.iter().cloned());
         ltb.notes.extend(uitkraging_notities.iter().cloned());
         m_b_rd_knm = m_b_rd_van(&ltb);
+        kipveld_maatgevend = veld;
+        chi_lt = chi_lt_van(&ltb);
         make_stability(ltb)
     } else {
-        let mut ltb = m_b_rd(
+        let (mut ltb, veld) = m_b_rd_met_veld(
             p, &grade, l_g_mm, &kipvelden,
             input.q_equiv_n_per_mm,
             input.z_a_mm,
@@ -1045,6 +1154,8 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
         ltb.notes.extend(envelop_notities.iter().cloned());
         ltb.notes.extend(uitkraging_notities.iter().cloned());
         m_b_rd_knm = m_b_rd_van(&ltb);
+        kipveld_maatgevend = veld;
+        chi_lt = chi_lt_van(&ltb);
         make_stability(ltb)
     };
     checks.push(ltb_check);
@@ -1068,12 +1179,87 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     }
 
     // 8. Combined N+M 6.3.3 (bending-governing location)
-    let cm_y = cm_uniform_or_psi(0.0);
-    let cm_z = cm_uniform_or_psi(0.0);
+    //
+    // De interactiefactoren volgens bijlage B (NB bij 6.3.3(5): verplicht).
+    // C_my, C_mz en C_mLT komen uit tabel B.3, uit het momentenverloop tussen
+    // de gesteunde punten:
+    //   C_my  — buiging om y-y, gesteund in richting z-z: de hele staaf tussen
+    //           haar knopen (het vlak van het model);
+    //   C_mz  — buiging om z-z, gesteund in richting y-y: idem, over M_z;
+    //   C_mLT — buiging om y-y, gesteund in richting y-y: het maatgevende
+    //           kipveld, tussen de kipsteunen aan de gedrukte flens.
+    // Tot september 2026 stond hier C_m = 0,6 vast (basisaudit nr 7): bij een
+    // constant moment 40 % te gunstig, en k_zy kwam altijd uit tabel B.1, ook
+    // voor een kipgevoelige staaf.
+    let momentenlijn = |waarde: fn(&InternalForces) -> f64| -> Vec<(f64, f64)> {
+        let mut pts: Vec<(f64, f64)> = input
+            .forces_envelope
+            .iter()
+            .filter(|p| p.combination_id == combo_id)
+            .map(|p| (p.position_mm, waarde(&p.forces)))
+            .collect();
+        if pts.is_empty() {
+            pts = input.forces_envelope.iter().map(|p| (p.position_mm, waarde(&p.forces))).collect();
+        }
+        pts
+    };
+    let mut cm_y: CmUitkomst = cm_uit_momentenlijn(&momentenlijn(|f| f.my_ed));
+    // Tabel B.3, onder de tabel: bij een knikvorm met verplaatsbare knopen
+    // ("sway") geldt C_my = 0,9. Of het raamwerk verplaatsbaar is, weet de kern
+    // niet; een opgegeven L_cr,y groter dan de staaflengte wijst erop. Dan is
+    // de grootste van beide waarden aangehouden, zodat de sway-regel nooit
+    // stilzwijgend een lagere C_m oplevert dan het momentenverloop zelf.
+    if l_cr_y_mm > l_staaf_mm * (1.0 + 1e-6) && cm_y.cm < 0.9 {
+        cm_y.toelichting.push_str(&format!(
+            " L_cr,y = {} mm is groter dan de staaflengte {} mm, wat op een knikvorm met \
+             verplaatsbare knopen wijst; tabel B.3 schrijft daarvoor C_my = 0,9 voor, en die \
+             is hier als ondergrens aangehouden (C_my = 0,9).",
+            nl_getal(l_cr_y_mm),
+            nl_getal(l_staaf_mm)
+        ));
+        cm_y.cm = 0.9;
+    }
+    let cm_z: CmUitkomst = cm_uit_momentenlijn(&momentenlijn(|f| f.mz_ed));
+    let cm_lt: CmUitkomst = {
+        // Het maatgevende kipveld: de bemonsterde punten erbinnen, plus de
+        // (geïnterpoleerde) momenten op de veldgrenzen zelf.
+        // De veldgrenzen volgen uit de kipvelden zelf: die liggen aaneengesloten
+        // vanaf x = 0 (bij een uitkraging is het ene veld het spiegelbeeld 2·L,
+        // waarvan de bemonsterde punten 0–L erbinnen vallen).
+        let (w0, w1) = {
+            // fold vanaf +0,0: `Sum` voor f64 begint bij -0,0 en dat zou als "-0" in de notitie komen.
+            let voor: f64 = kipvelden.iter().take(kipveld_maatgevend).fold(0.0, |a, v| a + v.l_st_mm);
+            match kipvelden.get(kipveld_maatgevend) {
+                Some(v) => (voor, voor + v.l_st_mm),
+                None => (0.0, l_g_mm),
+            }
+        };
+        let mut pts: Vec<(f64, f64)> = momentenlijn(|f| f.my_ed)
+            .into_iter()
+            .filter(|(x, _)| *x > w0 && *x < w1)
+            .collect();
+        pts.push((w0, interpolate_my_at(&input.forces_envelope, w0, combo_id)));
+        pts.push((w1, interpolate_my_at(&input.forces_envelope, w1, combo_id)));
+        let mut u = cm_uit_momentenlijn(&pts);
+        u.toelichting = format!(
+            "(kipveld {} van {}, x = {}–{} mm) {}",
+            kipveld_maatgevend + 1,
+            kipvelden.len().max(1),
+            nl_getal(w0),
+            nl_getal(w1),
+            u.toelichting
+        );
+        u
+    };
+    // Bijlage B, tabel B.2 geldt voor staven die gevoelig zijn voor
+    // vervormingen door torsie: een open doorsnede die kipt (χ_LT < 1). Een
+    // gesloten doorsnede is dat per definitie niet; een open doorsnede met
+    // χ_LT = 1 evenmin (tabel B.1).
+    let torsiegevoelig = !doorsnede.gesloten && chi_lt < 1.0 - 1e-9;
     let is_class_1_or_2 = matches!(classification, CrossSectionClass::Class1 | CrossSectionClass::Class2);
     let factors = interaction_factors_method_2(
         gov_bending.forces.n_ed.abs(), n_b_rd_y_kn, n_b_rd_z_kn,
-        lambda_bar_y, lambda_bar_z, cm_y, cm_z, is_class_1_or_2,
+        lambda_bar_y, lambda_bar_z, &cm_y, &cm_z, &cm_lt, torsiegevoelig, is_class_1_or_2,
     );
     let m_z_c_rd_knm = if is_class_1_or_2 {
         p.wpl_z_mm3 * grade.fy_mpa / grade.gamma_m0 * 1e-6
@@ -1093,14 +1279,14 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
             gov_bending.forces.n_ed.abs(), n_b_rd_y_kn,
             gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
             gov_bending.forces.mz_ed, m_z_c_rd_knm,
-            factors, bend_state,
+            &factors, bend_state,
         );
         checks.push(make_stability(n_my));
         let n_mz = check_combined_n_mz(
             gov_bending.forces.n_ed.abs(), n_b_rd_z_kn,
             gov_bending.forces.my_ed, m_b_rd_knm.max(1e-9),
             gov_bending.forces.mz_ed, m_z_c_rd_knm,
-            factors, bend_state,
+            &factors, bend_state,
         );
         checks.push(make_stability(n_mz));
     }
@@ -1134,6 +1320,10 @@ pub fn check_beam(input: BeamCheckInput) -> BeamCheckResult {
     //     knikweerstand van een hoeklijn leest, hoort dáár te zien dat de
     //     slankheid om u-u en v-v is bepaald.
     hang_toets_notities(&mut checks, &doorsnede.toets_notities);
+    // 9c. De dikteklasse van tabel 3.1 bij elke GEREKENDE toets die f_y in
+    //     haar formule heeft. Een geweigerde toets heeft geen f_y gebruikt en
+    //     krijgt de regel niet; haar notities zijn de reden van de weigering.
+    hang_dikte_notitie(&mut checks, &dikte_notitie);
 
     // 9c. De toelichtingen van de bouwer bij de staaf als geheel (een
     //     doorgaande lijn die als één staaf is getoetst) — bij de drie toetsen

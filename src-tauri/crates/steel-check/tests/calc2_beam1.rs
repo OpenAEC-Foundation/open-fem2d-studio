@@ -218,6 +218,30 @@ fn calc2_beam1_governing_is_bending() {
 /// De exacte doorsnedemotor onderschrijft de keuze: die geeft voor dit
 /// profiel It = 312 065 mm⁴, waar de verwijderde regel 313 664 had (+0,51%)
 /// en de behouden regel 312 000 (-0,02%).
+/// September 2026 (f) — bijlage B en tabel 3.1 (basisaudit nr 7, 17, 36).
+/// Drie wijzigingen, alle drie per veld nagelopen en met de hand nagerekend
+/// (formules van tabel B.1/B.2/B.3, invoer uit deze snapshot zelf):
+///  * 6.3.3 rekent niet meer met een vaste C_m = 0,6 en tabel B.1, maar met
+///    C_my, C_mz en C_mLT uit tabel B.3 (uit het momentenverloop van
+///    respectievelijk de staaf, de staaf om z en het maatgevende kipveld) en,
+///    voor een open doorsnede met χ_LT < 1, k_zy uit tabel B.2. De variabelen
+///    C_my, C_mz en C_mLT komen erbij en de notities beschrijven de rij van
+///    tabel B.3 en de gebruikte tabel voor k_zy.
+///  * Elke gerekende toets met f_y in haar formule krijgt de notitie van
+///    tabel 3.1 (dikteklasse t ≤ 40 mm; f_y en f_u ongewijzigd voor deze
+///    doorsnede).
+///  * Geen enkele weerstand, χ, λ̄, M_cr of doorbuiging verandert.
+/// Getallen (HEB 160, klasse 1, λ̄_y = 0,7862, λ̄_z = 1,3158, n_y = 0,2417,
+/// n_z = 0,4634, χ_LT = 0,9323 → tabel B.2, M_b,Rd = 77,557 kNm):
+///   C_my  = 0,6   — rij 1: M(0) = 0 en M(2500) = −87,84, ψ = 0.
+///   C_mLT = 0,8   — kipveld 0–5000 mm met het eindmoment op 5000 vastgehouden
+///                   (−87,84): monotoon met bolling, rij 2 met het gemiddelde
+///                   moment −65,88 als M_s, α_s = 0,75 → 0,2 + 0,6 = 0,8.
+///   k_yy = 0,6·(1 + 0,5862·0,2417) = 0,6850 (ongewijzigd, C_my bleef 0,6)
+///   k_yz = 0,6·k_zz, k_zz = 1,0·(1 + (2·1,3158 − 0,6)·0,4634) = 1,6488 (was 0,9893 bij C_mz = 0,6)
+///   k_zy = max(1 − 0,1·1,3158·0,4634/0,55; 1 − 0,1·0,4634/0,55) = 0,9157 (was 0,6·k_yy = 0,4110)
+///   6.61 = 0,2417 + 0,6850·87,84/77,557 = 1,0175 (ongewijzigd)
+///   6.62 = 0,4634 + 0,9157·87,84/77,557 = 1,5006 (was 0,9289) → maatgevend, NotOk.
 #[test]
 fn calc2_beam1_snapshot() {
     insta::assert_json_snapshot!("calc2_beam1", run());

@@ -238,6 +238,29 @@ fn portal_beam4_governing_ok() {
 /// (1,4 − 0,8) op de ondergrens 1,0 af). λ_LT blijft 0,209 en dus χ_LT = 1,00,
 /// zoals in de referentie (λ_LT = 0,236). HEB 300 heeft h/b = 1,0 ≤ 2, dus
 /// tabel 6.5 geeft kromme b met dezelfde α_LT = 0,34 die er vast stond.
+/// September 2026 (f) — bijlage B en tabel 3.1 (basisaudit nr 7, 17, 36).
+/// Drie wijzigingen, alle drie per veld nagelopen en met de hand nagerekend
+/// (formules van tabel B.1/B.2/B.3, invoer uit deze snapshot zelf):
+///  * 6.3.3 rekent niet meer met een vaste C_m = 0,6 en tabel B.1, maar met
+///    C_my, C_mz en C_mLT uit tabel B.3 (uit het momentenverloop van
+///    respectievelijk de staaf, de staaf om z en het maatgevende kipveld) en,
+///    voor een open doorsnede met χ_LT < 1, k_zy uit tabel B.2. De variabelen
+///    C_my, C_mz en C_mLT komen erbij en de notities beschrijven de rij van
+///    tabel B.3 en de gebruikte tabel voor k_zy.
+///  * Elke gerekende toets met f_y in haar formule krijgt de notitie van
+///    tabel 3.1 (dikteklasse t ≤ 40 mm; f_y en f_u ongewijzigd voor deze
+///    doorsnede).
+///  * Geen enkele weerstand, χ, λ̄, M_cr of doorbuiging verandert.
+/// Getallen (HEB 300, klasse 1, λ̄_y = 0,4096, λ̄_z = 0,7024, n_y = 0,0057,
+/// n_z = 0,0073, χ_LT = 1,0 → tabel B.1):
+///   C_my = 0,5698 — rij 1: M(2491) = 273,13, M(5000) = −20,60, ψ = −0,075.
+///   C_mLT = 1,0 — het maatgevende kipveld is het eerste (0–1667 mm), waar de
+///   bemonstering vóór x = 2491 het moment vasthoudt op 273,13: constant,
+///   ψ = 1. Rekent niet mee: bij χ_LT = 1 geldt tabel B.1 en k_zy = 0,6·k_yy.
+///   k_yy = 0,5698·(1 + 0,2096·0,0057) = 0,5705 (was 0,6007), k_zy = 0,3423,
+///   k_zz = 1 + (2·0,7024 − 0,6)·0,0073 = 1,0059, k_yz = 0,6035.
+///   6.61 = 0,0057 + 0,5705·273,13/439,45 = 0,3603 (was 0,3791); 6.62 = 0,2201
+///   (was 0,2313). uc_max blijft 0,6215 op 6.2.5.
 #[test]
 fn portal_beam4_snapshot() {
     insta::assert_json_snapshot!("portal_beam4", run());

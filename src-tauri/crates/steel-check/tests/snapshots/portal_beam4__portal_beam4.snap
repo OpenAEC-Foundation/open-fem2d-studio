@@ -1,6 +1,6 @@
 ---
 source: crates/steel-check/tests/portal_beam4.rs
-assertion_line: 217
+assertion_line: 241
 expression: run()
 ---
 {
@@ -109,7 +109,9 @@ expression: run()
             "formula_latex": "M_{y,Ed} / M_{y,c,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 19 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -161,7 +163,9 @@ expression: run()
             "formula_latex": "M_{z,Ed} / M_{z,c,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 19 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -213,7 +217,9 @@ expression: run()
             "formula_latex": "V_{z,Ed} / V_{c,z,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 19 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -265,7 +271,9 @@ expression: run()
             "formula_latex": "V_{y,Ed}/V_{c,y,Rd}"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "Tabel 3.1: dikste element t = 19 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
+          ]
         }
       }
     },
@@ -1061,7 +1069,8 @@ expression: run()
             "Om de y-as (in het vlak): L_cr,y = 5000 mm (opgegeven), λ̄_y = 0,410, knikkromme b (α = 0,34), χ_y = 0,9222, N_b,Rd,y = 3229,2 kN, UC = 0,006.",
             "Om de z-as (uit het vlak): L_cr,z = 5000 mm (opgegeven), λ̄_z = 0,702, knikkromme c (α = 0,49), χ_z = 0,7232, N_b,Rd,z = 2532,2 kN, UC = 0,007.",
             "Maatgevend is knik om de z-as (uit het vlak): N_b,Rd = 2532,2 kN.",
-            "Knik om de z-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: de toets met χ is daarvoor altijd nodig."
+            "Knik om de z-as ziet de raamwerkberekening nooit, ook niet in een tweede-orde-berekening: de toets met χ is daarvoor altijd nodig.",
+            "Tabel 3.1: dikste element t = 19 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
           ]
         }
       }
@@ -1627,7 +1636,8 @@ expression: run()
           "notes": [
             "Gewalst I-profiel met h/b = 1,000 → kipkromme b volgens tabel 6.5; α_LT = 0,34 volgens tabel 6.3.",
             "Vgl. (6.58) — χ_LT,mod = χ_LT/f met f uit de correctiefactor k_c — is niet toegepast. f ≤ 1, dus χ_LT,mod ≥ χ_LT: weglaten is veilig-zijdig.",
-            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 2491 tot x = 5000 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten."
+            "De momentenlijn van de maatgevende combinatie is bemonsterd van x = 2491 tot x = 5000 mm op een staaf van 5000 mm. Buiten dat bereik is de laatst bemonsterde waarde vastgehouden, dus de eindmomenten waaruit β en B* volgen (NB.NB.4.3) zijn doorgetrokken en niet gemeten.",
+            "Tabel 3.1: dikste element t = 19 mm ≤ 40 mm, dus f_y = 235 N/mm² en f_u = 360 N/mm² (S235)."
           ]
         }
       }
@@ -1656,12 +1666,22 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{yy}",
-              "value": 0.6007197747691793,
+              "value": 0.5705124199207352,
               "unit": "-"
             },
             {
               "symbol": "k_{yz}",
-              "value": 0.36211442727437326,
+              "value": 0.6035240454572888,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{my}",
+              "value": 0.5698288392187013,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mz}",
+              "value": 1.0,
               "unit": "-"
             }
           ],
@@ -1673,7 +1693,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.37337033947338666,
+              "value": 0.354595311901354,
               "unit": "-"
             },
             {
@@ -1683,16 +1703,20 @@ expression: run()
             }
           ],
           "deelstappen": [],
-          "value": 0.3790928124943144,
+          "value": 0.3603177849222818,
           "unit": "-",
           "uc": {
-            "ed": 0.3790928124943144,
+            "ed": 0.3603177849222818,
             "rd": 1.0,
-            "uc": 0.3790928124943144,
+            "uc": 0.3603177849222818,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "C_my tabel B.3, rij 1 (alleen eindmomenten, lineair verloop): M = 273,13 kNm en ψ·M met ψ = -0,075 → C_m = 0,6 + 0,4·ψ = 0,570 (ondergrens 0,4).",
+            "C_mz tabel B.3: geen buigend moment over dit veld, C_m = 1,0 aangehouden (rekent niet mee omdat de momentterm nul is).",
+            "k_ij volgens tabel B.1 (staaf niet gevoelig voor vervormingen door torsie): k_zy = 0,6·k_yy = 0,342."
+          ]
         }
       }
     },
@@ -1720,12 +1744,27 @@ expression: run()
           "variables": [
             {
               "symbol": "k_{zy}",
-              "value": 0.3604318648615075,
+              "value": 0.3423074519524411,
               "unit": "-"
             },
             {
               "symbol": "k_{zz}",
-              "value": 0.6035240454572888,
+              "value": 1.0058734090954813,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{my}",
+              "value": 0.5698288392187013,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mz}",
+              "value": 1.0,
+              "unit": "-"
+            },
+            {
+              "symbol": "C_{mLT}",
+              "value": 1.0,
               "unit": "-"
             }
           ],
@@ -1737,7 +1776,7 @@ expression: run()
             },
             {
               "symbol": "term_{M_y}",
-              "value": 0.22402220368403197,
+              "value": 0.2127571871408124,
               "unit": "-"
             },
             {
@@ -1747,16 +1786,20 @@ expression: run()
             }
           ],
           "deelstappen": [],
-          "value": 0.23131970309750427,
+          "value": 0.2200546865542847,
           "unit": "-",
           "uc": {
-            "ed": 0.23131970309750427,
+            "ed": 0.2200546865542847,
             "rd": 1.0,
-            "uc": 0.23131970309750427,
+            "uc": 0.2200546865542847,
             "formula_latex": "Sum of terms"
           },
           "status": "Ok",
-          "notes": []
+          "notes": [
+            "C_my tabel B.3, rij 1 (alleen eindmomenten, lineair verloop): M = 273,13 kNm en ψ·M met ψ = -0,075 → C_m = 0,6 + 0,4·ψ = 0,570 (ondergrens 0,4).",
+            "C_mz tabel B.3: geen buigend moment over dit veld, C_m = 1,0 aangehouden (rekent niet mee omdat de momentterm nul is).",
+            "k_ij volgens tabel B.1 (staaf niet gevoelig voor vervormingen door torsie): k_zy = 0,6·k_yy = 0,342."
+          ]
         }
       }
     },

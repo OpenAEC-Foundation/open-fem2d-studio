@@ -508,9 +508,25 @@ log("\n[i] Echte rekenkern: het stalen portaal komt door de toetsing");
     // het profiel bepaalt, bij de 5 m kolom het hoekmoment op de ongesteunde
     // binnenflens. Zou dat verschuiven, dan is er iets veranderd dat de lezer
     // van het startmodel moet weten.
+    //
+    // Sinds september 2026 (bijlage B, basisaudit nr 7) heet de maatgevende
+    // toets van de kolommen 6.3.3 vgl. (6.62) en niet meer 6.3.2: dat is
+    // dezelfde kip (χ_LT en M_b,Rd), maar nu met de normaalkracht erbij en
+    // k_zy uit tabel B.2 (≈ 0,98 voor een kipgevoelige kolom) in plaats van
+    // de oude 0,6·k_yy die de interactie kunstmatig onder de kip hield. De
+    // kip blijft de drijvende term: de UC van 6.3.2 zit vlak onder die van
+    // 6.62, en beide blijven onder 1.
     const per = new Map(resultaten.map((r) => [r.beam_id, r]));
-    check("kolom 1: maatgevende toets", per.get(1)?.governing_check_id, "6.3.2_ltb");
-    check("kolom 2: maatgevende toets", per.get(2)?.governing_check_id, "6.3.2_ltb");
+    check("kolom 1: maatgevende toets", per.get(1)?.governing_check_id, "6.3.3_eq_6_62");
+    check("kolom 2: maatgevende toets", per.get(2)?.governing_check_id, "6.3.3_eq_6_62");
+    for (const id of [1, 2]) {
+      const r = per.get(id);
+      const kip = (r?.checks ?? []).find((c) => c.id === "6.3.2_ltb");
+      const ucKip = (kip?.kind?.data ?? kip)?.uc?.uc ?? 0;
+      ok(`kolom ${id}: kip is de drijvende term van vgl. 6.62`,
+        ucKip > 0.8 * (r?.uc_max ?? 0) && ucKip < (r?.uc_max ?? 0),
+        `uc kip = ${ucKip.toFixed(3)}, uc 6.62 = ${(r?.uc_max ?? 0).toFixed(3)}`);
+    }
     check("regel: maatgevende toets", per.get(3)?.governing_check_id, "deflection_w_add");
 
     // DE KIPSTEUNEN ZIJN NIET COSMETISCH. Dezelfde regel nog eens, maar met de

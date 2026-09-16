@@ -29,8 +29,13 @@ export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) =
   { id: "DIN", label: "DIN (oud)", match: (n) => n.startsWith("DIN") },
   // Normaalprofiel DIN 1025-1, toelopende flenzen; zelfde generator.
   { id: "INP", label: "INP (oud)", match: (n) => n.startsWith("INP") },
-  { id: "KOKER", label: "Koker (SHS/RHS)", match: (n) => n.startsWith("SHS") || n.startsWith("RHS") || n.startsWith("HFRHS") },
-  { id: "CHS", label: "Buis (CHS)", match: (n) => n.startsWith("CHS") },
+  // Alle kokers en buizen in de catalogus zijn WARMVERVAARDIGD volgens
+  // EN 10210-2 (hoekstraal 1,5·t) en krijgen daarmee knikkromme a uit
+  // NEN-EN 1993-1-1 tabel 6.2. Een koudgevormde koker (EN 10219) heeft een
+  // andere meetkunde én knikkromme c; die reeks staat niet in de catalogus,
+  // en dat hoort de gebruiker in het label te zien in plaats van het te raden.
+  { id: "KOKER", label: "Koker warmvervaardigd (SHS/RHS, EN 10210)", match: (n) => n.startsWith("SHS") || n.startsWith("RHS") || n.startsWith("HFRHS") },
+  { id: "CHS", label: "Buis warmvervaardigd (CHS, EN 10210)", match: (n) => n.startsWith("CHS") },
   // Hoeklijnen (EN 10056-1) in twee reeksen. Beide heten "L lang×kort×dikte",
   // dus het onderscheid zit in de eerste twee getallen: gelijk = gelijkbenig.
   // Ze door elkaar in één lijst zetten geeft een keuzelijst waarin

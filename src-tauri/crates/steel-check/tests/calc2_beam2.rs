@@ -197,6 +197,27 @@ fn calc2_beam2_governing_not_ok() {
 /// kipreparatie herschrijven maakt de snapshot onnavolgbaar. Het staat als open
 /// punt in §B.15 van het validatiedossier, en de kern meldt de onvolledigheid
 /// sinds september 2026 zelf in het rapport.
+/// September 2026 (f) — bijlage B en tabel 3.1 (basisaudit nr 7, 17, 36).
+/// Drie wijzigingen, alle drie per veld nagelopen en met de hand nagerekend
+/// (formules van tabel B.1/B.2/B.3, invoer uit deze snapshot zelf):
+///  * 6.3.3 rekent niet meer met een vaste C_m = 0,6 en tabel B.1, maar met
+///    C_my, C_mz en C_mLT uit tabel B.3 (uit het momentenverloop van
+///    respectievelijk de staaf, de staaf om z en het maatgevende kipveld) en,
+///    voor een open doorsnede met χ_LT < 1, k_zy uit tabel B.2. De variabelen
+///    C_my, C_mz en C_mLT komen erbij en de notities beschrijven de rij van
+///    tabel B.3 en de gebruikte tabel voor k_zy.
+///  * Elke gerekende toets met f_y in haar formule krijgt de notitie van
+///    tabel 3.1 (dikteklasse t ≤ 40 mm; f_y en f_u ongewijzigd voor deze
+///    doorsnede).
+///  * Geen enkele weerstand, χ, λ̄, M_cr of doorbuiging verandert.
+/// Getallen (HEB 160, klasse 1, λ̄_y = 0,7862, λ̄_z = 1,3158, n_y = 0,2582,
+/// n_z = 0,4952, χ_LT = 0,9323 → tabel B.2, M_b,Rd = 77,557 kNm):
+///   C_my = 0,6 (rij 1, M(0) = 0 → M(2500) = 126,67, ψ = 0); C_mLT = 0,8
+///   (kipveld 0–5000 met het eindmoment vastgehouden: gemiddelde 95,00,
+///   α_s = 0,75). k_zz = 1 + (2·1,3158 − 0,6)·0,4952 = 1,6932, k_yz = 1,0159;
+///   k_zy = max(1 − 0,1·1,3158·0,4952/0,55; 1 − 0,1·0,4952/0,55) = 0,9100
+///   (was 0,4145). 6.61 = 1,3865 (ongewijzigd), 6.62 = 0,4952 +
+///   0,9100·126,67/77,557 = 1,9814 (was 1,1721) → maatgevend.
 #[test]
 fn calc2_beam2_snapshot() {
     insta::assert_json_snapshot!("calc2_beam2", run());
