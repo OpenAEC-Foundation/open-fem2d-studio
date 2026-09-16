@@ -28,7 +28,13 @@ import { parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
 import "./BarPropertiesDialog.css";
 
-export const STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
+/**
+ * De staalsoorten die de kern kent. Stond hier als eigen lijst NAAST die in
+ * `lib/steelCheckBuilder.ts`; sinds de plaatmateriaalkeuze dezelfde lijst
+ * nodig heeft is er één bron, en dit is nog uitsluitend de doorgeefpost voor
+ * de schermen die hem hier al importeerden.
+ */
+export { STEEL_GRADES } from "../../lib/steelCheckBuilder";
 
 /** Suggesties voor de profiel-combobox: staalprofielen + houtdoorsneden. */
 export const PROFILE_SUGGESTIONS = [

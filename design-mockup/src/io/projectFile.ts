@@ -50,6 +50,19 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      meshcache `quads`, `meshSoort` en `openingEdgeNodeIndices`. De
  *      handtekening van een cache zonder openingen en zonder keuze is
  *      ongewijzigd, zodat bestaande caches geldig blijven.
+ *      Stap 3 van het platenspoor (september 2026, optioneel — geen
+ *      versie-bump): `Plate.materiaal` (dezelfde grammatica als
+ *      `Beam.material`: staalsoort, betonklasse, houtsterkteklasse,
+ *      "CLT <klasse> <opbouw>" of "VRIJ:…") en `Plate.hoofdrichting` (hoek in
+ *      graden voor een richtingsafhankelijk materiaal). Ontbreken ze — elk
+ *      bestaand bestand — dan rekent de plaat isotroop met haar losse E, ν en
+ *      ρ, precies zoals voorheen. Staat er WEL een materiaal, dan komen E, ν
+ *      en ρ daaruit en vult het laden ze niet meer met de staaldefaults aan
+ *      (zie femTypes.withPlateDefaults); een los ingevuld veld blijft de
+ *      expliciete overschrijving. Een oudere versie van de app negeert het
+ *      materiaalveld en leest de plaat dan met haar eigen E/ν/ρ of, als die
+ *      ontbreken, met de staaldefaults — dat verschil is zichtbaar in het
+ *      rapport (materiaal en E-bron staan erin) en niet stil.
  *      Eveneens optioneel binnen v2: `analysetype` (drie standen) en
  *      `betonSegmentLengteMm`. `nonlinearEnabled` BLIJFT geschreven worden en
  *      blijft leidend zolang `analysetype` ontbreekt — zie

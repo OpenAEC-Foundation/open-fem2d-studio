@@ -25,21 +25,27 @@ import type {
 import {
   withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
   plaatRandLabel, bepaalPlaatRand, effectiefPlaatMeshType, plaatRekentAlsRaster,
-  PLAAT_MESH_TYPEN,
+  PLAAT_MESH_TYPEN, PLATE_DEFAULTS,
 } from "./femTypes";
+// Het materiaal van een plaat: één bepaling voor paneel, solver, MCP-poort en
+// rapport, zodat het paneel geen eigen oordeel velt over wat een geldig
+// materiaal is.
+import { bepaalPlaatStijfheid } from "../../lib/plaatMateriaal";
+import { CLT_VOORINSTELLINGEN } from "../../lib/cltVoorinstellingen.generated";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import {
   formatConcreteSection,
   matchSupportedConcreteClass,
   parseConcreteSection,
+  SUPPORTED_CONCRETE_CLASSES,
 } from "../../lib/betonCheckBuilder";
 import { BetonKorfPaneel, KolomVelden, type Wapeningskorf } from "../beton";
 // §5.8-invoer wordt aangeboden waar de meetkunde een kolom vermoedt. Dezelfde
 // drempel van 75° als `bepaalStandaardRol` hierboven; twee drempels in één app
 // zou betekenen dat dezelfde staaf in de staaftypentabel een kolom is en in dit
 // paneel niet.
-import { isOverwegendVerticaal, VERTICAAL_VANAF_GRADEN } from "../../lib/steelCheckBuilder";
+import { isOverwegendVerticaal, VERTICAAL_VANAF_GRADEN, STEEL_GRADES } from "../../lib/steelCheckBuilder";
 // Dicht bij de sprong van "boven" (een naar links hellende staaf rond 75°) een
 // waarschuwing bij de kipsteunen en de korf; zie DE SPRONG BIJ 75° in
 // lib/referentierichting.ts.
@@ -1681,28 +1687,43 @@ function PlateProperties({ plate, nodes, updatePlate }: {
   const d = withPlateDefaults(plate);
   // String-state per veld; commit onBlur/Enter (zelfde patroon als
   // NodeProperties). Ongeldige invoer springt terug naar de huidige waarde.
+  // Met een materiaal mogen E, ν en ρ LEEG staan: dan volgen ze het
+  // materiaal. Een leeg veld is dus geen ontbrekende invoer maar een keuze,
+  // en `tekst` maakt daar "" van in plaats van "undefined".
+  const tekst = (v: number | undefined) => (v === undefined ? "" : String(v));
   const [dikteStr, setDikteStr] = useState(String(d.thickness));
-  const [eStr, setEStr]         = useState(String(d.E));
-  const [nuStr, setNuStr]       = useState(String(d.nu));
-  const [rhoStr, setRhoStr]     = useState(String(d.rho));
+  const [eStr, setEStr]         = useState(tekst(d.E));
+  const [nuStr, setNuStr]       = useState(tekst(d.nu));
+  const [rhoStr, setRhoStr]     = useState(tekst(d.rho));
   const [meshStr, setMeshStr]   = useState(String(d.meshSize));
   useEffect(() => {
     setDikteStr(String(d.thickness));
-    setEStr(String(d.E));
-    setNuStr(String(d.nu));
-    setRhoStr(String(d.rho));
+    setEStr(tekst(d.E));
+    setNuStr(tekst(d.nu));
+    setRhoStr(tekst(d.rho));
     setMeshStr(String(d.meshSize));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plate.id, plate.thickness, plate.E, plate.nu, plate.rho, plate.meshSize]);
+  }, [plate.id, plate.thickness, plate.E, plate.nu, plate.rho, plate.meshSize, plate.materiaal]);
 
   type PlaatRekenveld = "thickness" | "E" | "nu" | "rho" | "meshSize";
   const commitVeld = (
     raw: string, veld: PlaatRekenveld,
     geldig: (v: number) => boolean,
     terug: () => void,
+    /** Mag het veld leeggemaakt worden (dan volgt het weer het materiaal)? */
+    leegMag = false,
   ) => {
+    if (!updatePlate) { terug(); return; }
+    if (leegMag && raw.trim() === "") {
+      // Leeg = "volg het materiaal": de overschrijving wordt gewist. Dat kan
+      // alleen als er een materiaal is; zonder materiaal zou de plaat dan
+      // zonder E komen te staan.
+      if (d[veld] !== undefined) updatePlate(plate.id, { [veld]: undefined });
+      else terug();
+      return;
+    }
     const v = Number(raw);
-    if (!Number.isFinite(v) || !geldig(v) || !updatePlate) { terug(); return; }
+    if (!Number.isFinite(v) || !geldig(v)) { terug(); return; }
     if (v !== d[veld]) updatePlate(plate.id, { [veld]: v });
     else terug(); // ongewijzigd — invoer terug in het nette formaat
   };
@@ -1734,6 +1755,57 @@ function PlateProperties({ plate, nodes, updatePlate }: {
     const rest = openingen.filter((o) => o.id !== id);
     updatePlate(plate.id, { openingen: rest.length > 0 ? rest : undefined });
   };
+  // ── Materiaal (stap 3) ──────────────────────────────────────────────
+  // Eén bepaling voor paneel, solver en rapport: `bepaalPlaatStijfheid`.
+  // Wordt het materiaal niet herkend, dan staat de reden hier — dezelfde
+  // tekst die de solver en de MCP-poort geven, zodat de gebruiker hem hier
+  // ziet en niet pas bij het rekenen.
+  const [materiaalStr, setMateriaalStr] = useState(plate.materiaal ?? "");
+  const [hoekStr, setHoekStr] = useState(plate.hoofdrichting !== undefined ? String(plate.hoofdrichting) : "");
+  useEffect(() => {
+    setMateriaalStr(plate.materiaal ?? "");
+    setHoekStr(plate.hoofdrichting !== undefined ? String(plate.hoofdrichting) : "");
+  }, [plate.id, plate.materiaal, plate.hoofdrichting]);
+  const stijfheidUit = bepaalPlaatStijfheid(d);
+  const stijfheid = stijfheidUit.ok ? stijfheidUit.stijfheid : null;
+  const materiaalFout = stijfheidUit.ok ? null : stijfheidUit.reden;
+  const heeftMateriaal = (plate.materiaal ?? "").trim() !== "";
+  // Keuzelijst: de klassen die de kern kent, plus de kruislaaghout-
+  // voorinstellingen met C24 als lamelklasse. Vrije invoer blijft mogelijk —
+  // "VRIJ:…" en een eigen opbouw typ je gewoon.
+  const materiaalSuggesties = [
+    ...STEEL_GRADES,
+    ...SUPPORTED_CONCRETE_CLASSES,
+    ...SUPPORTED_TIMBER_GRADES,
+    ...CLT_VOORINSTELLINGEN.map((v) => `CLT C24 ${v.thicknesses_mm.join("/")}`),
+  ];
+  const commitMateriaal = () => {
+    if (!updatePlate) return;
+    const nieuw = materiaalStr.trim();
+    if (nieuw === (plate.materiaal ?? "")) return;
+    // Een materiaal kiezen WIST de losse E, ν en ρ, zodat ze uit het
+    // materiaal komen; die velden zijn met de PLATE_DEFAULTS gevuld en zouden
+    // anders als "handmatige overschrijving" gelezen worden en het materiaal
+    // stil overrulen. Het materiaal weghalen zet ze weer op de defaults,
+    // want zonder materiaal MOET de plaat eigen getallen hebben.
+    if (nieuw === "") {
+      updatePlate(plate.id, {
+        materiaal: undefined,
+        E: plate.E ?? PLATE_DEFAULTS.E,
+        nu: plate.nu ?? PLATE_DEFAULTS.nu,
+        rho: plate.rho ?? PLATE_DEFAULTS.rho,
+      });
+    } else {
+      updatePlate(plate.id, {
+        materiaal: nieuw,
+        ...(heeftMateriaal ? {} : { E: undefined, nu: undefined, rho: undefined }),
+      });
+    }
+  };
+  const bronTekst: Record<string, string> = {
+    materiaal: "uit het materiaal", handmatig: "handmatig ingevuld", standaard: "standaardwaarde",
+  };
+
   const openingMaat = (p: { x: number; z: number }[]) => {
     const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
     const b = Math.max(...xs) - Math.min(...xs), h = Math.max(...zs) - Math.min(...zs);
@@ -1763,6 +1835,61 @@ function PlateProperties({ plate, nodes, updatePlate }: {
           })}
         </Section>
         <Section title="Materiaal en dikte">
+          <Row label="Materiaal">
+            <input
+              type="text"
+              list={`plaatmat${plate.id}`}
+              className="fem-prop-input fem-prop-input-mono"
+              value={materiaalStr}
+              placeholder="leeg = eigen E, ν en ρ"
+              onChange={(e) => setMateriaalStr(e.target.value)}
+              onBlur={commitMateriaal}
+              onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+              title={
+                "Staalsoort (S235–S460), betonklasse (C20/25…), houtsterkteklasse (C24, GL28h…), " +
+                "kruislaaghout (\"CLT C24 40/20/40/20/40\") of een vrij materiaal " +
+                "(\"VRIJ:Natuursteen E=60000 rho=2700 f=8\"). Leeg laten = rekenen met de losse " +
+                "E, ν en ρ hieronder, zoals voorheen."
+              }
+            />
+          </Row>
+          <datalist id={`plaatmat${plate.id}`}>
+            {materiaalSuggesties.map((m) => <option key={m} value={m} />)}
+          </datalist>
+          {materiaalFout && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-danger, #dc2626)" }}>
+              <strong>Materiaal geweigerd:</strong> {materiaalFout} Zolang dit niet klopt weigert
+              de berekening met dezelfde melding.
+            </div>
+          )}
+          {stijfheid && stijfheid.soort !== null && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
+              {stijfheid.herkomst}
+            </div>
+          )}
+          {stijfheid?.orthotroop && (
+            <Row label="Hoofdrichting (°)">
+              <input
+                {...inputProps} step="15" value={hoekStr}
+                onChange={(e) => setHoekStr(e.target.value)}
+                onBlur={() => {
+                  if (!updatePlate) return;
+                  const leeg = hoekStr.trim() === "";
+                  const v = Number(hoekStr);
+                  if (!leeg && !Number.isFinite(v)) { setHoekStr(plate.hoofdrichting !== undefined ? String(plate.hoofdrichting) : ""); return; }
+                  updatePlate(plate.id, { hoofdrichting: leeg ? undefined : v });
+                }}
+                title="Hoek tegen de klok in vanaf de globale x-as naar richting 1: de vezelrichting, bij kruislaaghout de richting van de lengtelagen. Leeg of 0 = horizontaal."
+              />
+            </Row>
+          )}
+          {stijfheid?.orthotroop && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
+              Richtingsafhankelijk: E₁ = {Math.round(stijfheid.E1)} N/mm² in richting 1,
+              E₂ = {Math.round(stijfheid.E2)} N/mm² daar loodrecht op,
+              G₁₂ = {Math.round(stijfheid.G12)} N/mm², ν₁₂ = {stijfheid.nu12}.
+            </div>
+          )}
           <Row label="Dikte (mm)">
             <input
               {...inputProps} step="1" min="0.1" value={dikteStr}
@@ -1775,30 +1902,45 @@ function PlateProperties({ plate, nodes, updatePlate }: {
           <Row label="E (N/mm²)">
             <input
               {...inputProps} step="1000" min="1" value={eStr}
+              placeholder={heeftMateriaal && stijfheid ? `${Math.round(stijfheid.E1)} (materiaal)` : ""}
               onChange={e => setEStr(e.target.value)}
               onBlur={() => commitVeld(eStr, "E",
-                v => v > 0, () => setEStr(String(d.E)))}
-              title="Elasticiteitsmodulus (staal 210000, beton ~30000)"
+                v => v > 0, () => setEStr(tekst(d.E)), heeftMateriaal)}
+              title={heeftMateriaal
+                ? "Overschrijft de E van het materiaal, in BEIDE richtingen — de plaat rekent dan isotroop. Leeg laten = de waarde van het materiaal volgen."
+                : "Elasticiteitsmodulus (staal 210000, beton ~30000)"}
             />
           </Row>
           <Row label="ν (—)">
             <input
               {...inputProps} step="0.05" min="0" max="0.49" value={nuStr}
+              placeholder={heeftMateriaal && stijfheid ? `${stijfheid.nu12} (materiaal)` : ""}
               onChange={e => setNuStr(e.target.value)}
               onBlur={() => commitVeld(nuStr, "nu",
-                v => v >= 0 && v < 0.5, () => setNuStr(String(d.nu)))}
-              title="Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"
+                v => v >= 0 && v < 0.5, () => setNuStr(tekst(d.nu)), heeftMateriaal)}
+              title={heeftMateriaal
+                ? "Overschrijft ν₁₂ van het materiaal. Leeg laten = de waarde van het materiaal volgen."
+                : "Dwarscontractiecoëfficiënt (0 ≤ ν < 0,5; staal 0,3, beton 0,2)"}
             />
           </Row>
           <Row label="ρ (kg/m³)">
             <input
               {...inputProps} step="50" min="0" value={rhoStr}
+              placeholder={heeftMateriaal && stijfheid ? `${Math.round(stijfheid.rho)} (materiaal)` : ""}
               onChange={e => setRhoStr(e.target.value)}
               onBlur={() => commitVeld(rhoStr, "rho",
-                v => v >= 0, () => setRhoStr(String(d.rho)))}
-              title="Volumieke massa — gebruikt voor het eigengewicht (staal 7850, beton 2500)"
+                v => v >= 0, () => setRhoStr(tekst(d.rho)), heeftMateriaal)}
+              title={heeftMateriaal
+                ? "Overschrijft ρ van het materiaal, en daarmee het eigen gewicht ρ·t·A. Leeg laten = de waarde van het materiaal volgen."
+                : "Volumieke massa — gebruikt voor het eigengewicht (staal 7850, beton 2500)"}
             />
           </Row>
+          {stijfheid && (
+            <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
+              Bron: E {bronTekst[stijfheid.bronE]}, ν {bronTekst[stijfheid.bronNu]},
+              ρ {bronTekst[stijfheid.bronRho]}.
+            </div>
+          )}
         </Section>
         <Section title="Rekenmesh">
           <Row label="Meshgrootte (mm)">

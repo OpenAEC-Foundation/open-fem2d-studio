@@ -57,6 +57,12 @@ export * from "../lib/steelCheckBuilder";
 export * from "../lib/referentierichting";
 export * from "../lib/timberCheckBuilder";
 export * from "../lib/sectionResolver";
+// Het materiaal van een PLAAT (stap 3): pure rekencode die de bestaande
+// materiaaltabellen leest. Zit al in de bundel via `engine.ts` en
+// `valideerModel`, maar zonder deze regel is hij in de bundelstand van de
+// regressierunner niet aanroepbaar — en juist de weigering van een onbekend
+// materiaal hoort in het MCP-artefact net zo hard te zijn als in de bron.
+export * from "../lib/plaatMateriaal";
 export * from "../lib/modelNaarSolverInput";
 export * from "../components/fem/femTypes";
 // De plaatmesher (raster met openingen, koppeling tot vierhoeken, keuring van

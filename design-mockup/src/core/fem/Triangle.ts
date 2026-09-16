@@ -11,7 +11,94 @@ export function calculateTriangleArea(n1: INode, n2: INode, n3: INode): number {
   return area;
 }
 
+/**
+ * Orthotrope materiaalmatrix voor VLAKSPANNING, in de materiaalassen 1-2.
+ *
+ *          1                 | E₁       ν₂₁·E₁   0                    |
+ *   D_m = ───────────────── ·| ν₁₂·E₂   E₂       0                    |
+ *          1 − ν₁₂·ν₂₁       | 0        0        G₁₂·(1 − ν₁₂·ν₂₁)    |
+ *
+ * met de symmetrie van de compliantiematrix ν₂₁ = ν₁₂·E₂/E₁, zodat D_m
+ * symmetrisch is (ν₂₁·E₁ = ν₁₂·E₂) en de stijfheidsmatrix dat ook blijft.
+ *
+ * ISOTROOP IS HET BIJZONDERE GEVAL. Vul E₁ = E₂ = E, ν₁₂ = ν en
+ * G₁₂ = E/(2(1+ν)) in, dan is ν₂₁ = ν, wordt de voorfactor E/(1−ν²) en komt
+ * er precies de isotrope matrix uit die hieronder staat. `test-plaat-materiaal`
+ * rekent dat na.
+ */
+function orthotropeVlakspanning(o: NonNullable<IMaterial["orthotroop"]>): Matrix {
+  const { E1, E2, nu12, G12 } = o;
+  const nu21 = (nu12 * E2) / E1;
+  const noemer = 1 - nu12 * nu21;
+  if (!(noemer > 0)) {
+    // ν₁₂·ν₂₁ ≥ 1 betekent een niet-positief-definiete materiaalmatrix: de
+    // schijf zou energie leveren in plaats van opnemen. Hard weigeren, want
+    // de oplossing die eruit rolt zou er normaal uitzien.
+    throw new Error(
+      `Orthotroop materiaal is onmogelijk: ν₁₂·ν₂₁ = ${(nu12 * nu21).toFixed(4)} ≥ 1 ` +
+      `(E₁ = ${E1}, E₂ = ${E2}, ν₁₂ = ${nu12}). De dwarscontractie moet voldoen aan ` +
+      `ν₁₂ < √(E₁/E₂).`,
+    );
+  }
+  const D = new Matrix(3, 3);
+  const f1 = E1 / noemer;
+  const f2 = E2 / noemer;
+  D.set(0, 0, f1);
+  D.set(0, 1, f1 * nu21);
+  D.set(1, 0, f2 * nu12);
+  D.set(1, 1, f2);
+  D.set(2, 2, G12);
+  return D;
+}
+
+/**
+ * Draai een materiaalmatrix van de materiaalassen naar de globale assen:
+ * D_g = Tε(θ)ᵀ · D_m · Tε(θ), met θ de hoek van de globale x-as naar
+ * richting 1 en Tε de rekentransformatie bij ingenieursschuifrek
+ *
+ *           | c²     s²     c·s      |
+ *   Tε(θ) = | s²     c²     −c·s     |          (ε_materiaal = Tε · ε_globaal)
+ *           | −2c·s  2c·s   c² − s²  |
+ *
+ * De vorm Tεᵀ·D·Tε volgt uit Tσ⁻¹ = Tεᵀ en houdt D_g symmetrisch.
+ * Bij θ = 90° (c = 0, s = 1) wisselen rij en kolom 1 en 2 om: E₁ en E₂
+ * verwisselen en G₁₂ blijft staan — de proef die `test-plaat-materiaal` doet.
+ */
+function draaiMateriaalmatrix(Dm: Matrix, hoek: number): Matrix {
+  const c = Math.cos(hoek), s = Math.sin(hoek);
+  const T = new Matrix(3, 3);
+  T.set(0, 0, c * c);   T.set(0, 1, s * s);    T.set(0, 2, c * s);
+  T.set(1, 0, s * s);   T.set(1, 1, c * c);    T.set(1, 2, -c * s);
+  T.set(2, 0, -2 * c * s); T.set(2, 1, 2 * c * s); T.set(2, 2, c * c - s * s);
+  const D = new Matrix(3, 3);
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      let som = 0;
+      for (let k = 0; k < 3; k++) {
+        for (let l = 0; l < 3; l++) som += T.get(k, i) * Dm.get(k, l) * T.get(l, j);
+      }
+      D.set(i, j, som);
+    }
+  }
+  return D;
+}
+
 export function getConstitutiveMatrix(material: IMaterial, type: AnalysisType): Matrix {
+  // Richtingsafhankelijk materiaal (hout, kruislaaghout): eigen matrix in de
+  // materiaalassen, daarna naar de globale assen gedraaid. Een materiaal
+  // ZONDER dit blok loopt hieronder door exact dezelfde formules als
+  // voorheen — geen enkel bestaand getal verandert daardoor.
+  if (material.orthotroop) {
+    if (type !== 'plane_stress') {
+      throw new Error(
+        'Richtingsafhankelijk (orthotroop) materiaal is alleen voor vlakspanning ' +
+        `uitgewerkt, niet voor "${type}". Een wandschijf rekent in vlakspanning; ` +
+        'kies een isotroop materiaal of meld dit geval.',
+      );
+    }
+    return draaiMateriaalmatrix(orthotropeVlakspanning(material.orthotroop), material.orthotroop.hoek);
+  }
+
   const E = material.E;
   const nu = material.nu;
   const D = new Matrix(3, 3);

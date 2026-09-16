@@ -71,6 +71,7 @@ import {
   type StandaardCombinatie,
 } from "../components/fem/solver/normcombinaties";
 import { materiaalVanStaaf } from "./variantInvoer";
+import { bepaalPlaatStijfheid } from "./plaatMateriaal";
 
 /** Eén combinatie die niet is doorgerekend, met de reden erbij. */
 export interface OvergeslagenCombinatie {
@@ -130,8 +131,15 @@ export function redenZuiverStaal(combo: LoadCombination): string {
  * te leiden, en dat is geen bewijs van staal.
  *
  * Platen: die worden door geen enkele EN-toets aangeraakt, maar een plaat met
- * een andere E-modulus dan staal is geen stalen plaat. Hij houdt de
+ * een ander materiaal dan staal is geen stalen plaat. Hij houdt de
  * combinaties dus aan — de goedkope kant van de vergissing.
+ *
+ * Sinds een plaat een MATERIAALNAAM kan dragen (stap 3) kan dat oordeel niet
+ * meer op de E-modulus alleen rusten: een houten plaat laat het E-veld leeg
+ * en zou met `p.E ?? PLATE_DEFAULTS.E` als staal gelezen worden, waarna de
+ * hout- en betoncombinaties stil zouden wegvallen. Draagt de plaat een
+ * materiaal, dan telt de SOORT; draagt ze er geen, dan blijft de oude regel
+ * gelden (E gelijk aan die van staal).
  */
 export function isZuivereStaalconstructie(
   beams: Beam[],
@@ -139,7 +147,14 @@ export function isZuivereStaalconstructie(
 ): boolean {
   if (beams.length === 0) return false;
   if (!beams.every((b) => materiaalVanStaaf(b) === "staal")) return false;
-  return plates.every((p) => (p.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E);
+  return plates.every((p) => {
+    if ((p.materiaal ?? "").trim() !== "") {
+      const uit = bepaalPlaatStijfheid(p);
+      // Een materiaal dat niet herkend wordt is geen bewijs van staal.
+      return uit.ok && uit.stijfheid.soort === "staal" && uit.stijfheid.bronE === "materiaal";
+    }
+    return (p.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E;
+  });
 }
 
 /** Factorenkaarten zijn gelijk als ze dezelfde gevallen met dezelfde factor dragen. */

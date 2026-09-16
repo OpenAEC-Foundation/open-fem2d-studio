@@ -19,6 +19,30 @@ export interface INode {
   };
 }
 
+/**
+ * Richtingsafhankelijke (orthotrope) stijfheid van een membraan — hout en
+ * kruislaaghout in het vlak van een wandschijf.
+ *
+ * Richting 1 is de hoofdrichting (bij hout de vezelrichting, bij
+ * kruislaaghout de richting van de lengtelagen); richting 2 staat daar
+ * loodrecht op, in hetzelfde vlak. `hoek` draait het materiaalassenstelsel
+ * ten opzichte van de globale assen.
+ *
+ * WAAROM APART EN OPTIONEEL. Een materiaal zonder dit blok is isotroop en
+ * loopt door exact dezelfde formules als vóór deze uitbreiding — geen
+ * bestaand getal verandert. Het blok staat los van `E`/`nu` zodat het later
+ * naar drie dimensies kan groeien (E₃, ν₁₃, ν₂₃, G₁₃, G₂₃) zonder dat de
+ * bestaande velden van betekenis veranderen; `hoek` is dan de draaiing om de
+ * normaal van het element en krijgt gezelschap van de overige oriëntatie.
+ */
+export interface IOrthotroopVlak {
+  E1: number;     // Young's modulus in hoofdrichting 1 (Pa)
+  E2: number;     // Young's modulus loodrecht daarop, in het vlak (Pa)
+  nu12: number;   // Dwarscontractie: rek in 2 door spanning in 1
+  G12: number;    // Glijdingsmodulus in het vlak (Pa)
+  hoek: number;   // Hoek van de globale x-as naar richting 1 (radialen, tegen de klok in)
+}
+
 export interface IMaterial {
   id: number;
   name: string;
@@ -27,6 +51,12 @@ export interface IMaterial {
   rho: number;    // Density (kg/m³)
   color: string;  // Display color
   alpha?: number; // Thermal expansion coefficient (1/°C)
+  /**
+   * Richtingsafhankelijke stijfheid in het vlak. ONTBREEKT het veld — elk
+   * materiaal van vóór september 2026 en elk isotroop materiaal — dan gelden
+   * `E` en `nu` en verandert er niets aan de rekenwijze.
+   */
+  orthotroop?: IOrthotroopVlak;
 }
 
 export interface IElement {

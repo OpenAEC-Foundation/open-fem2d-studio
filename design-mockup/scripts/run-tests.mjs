@@ -181,6 +181,18 @@ const BUNDEL_TESTS = new Set([
   // opening precies zo meshen als de app, anders rekent de sidecar stil een
   // dichte wand.
   "plaat-vierhoeken",
+  // Materiaalkeuze per plaat (stap 3): E, ν en ρ uit de materiaalnaam, de
+  // richtingsafhankelijke stijfheid van hout en kruislaaghout, het eigen
+  // gewicht ρ·t·A en de weigering van een onbekend materiaal. Praat met
+  // `engine`, `femTypes`, `plaatMateriaal`, `sectionResolver`,
+  // `bouwMultiInput` en `valideerModel` — allemaal in de barrel. Hoort juist
+  // óók tegen de bundel: laat het MCP-artefact het materiaalveld vallen, dan
+  // rekent de sidecar een houten wand stil met E = 210 000 in plaats van
+  // 11 000/370, en dat is een factor dertig in de dwarsrichting. De
+  // spiegeltest op de houttabellen leest src-tauri/.../data.rs van schijf;
+  // de herschreven bundelkopie staat naast het origineel, dus dat pad blijft
+  // kloppen.
+  "plaat-materiaal",
   "plaat-openingen",
   "plaat-randstaaf",
   "plaat-validatie",
@@ -259,6 +271,10 @@ const ALLEEN_BRON = new Map([
     "leest het solverlogboek uit de zustand-store en geeft de kern rechtstreeks een onLog-callback; de store hoort niet in de barrel en de sidecar zet juist géén opvanger — tegen de bundel zou deze test dus het tegenovergestelde bewijzen van wat hij moet bewaken",
   ],
   ["plaat-schijf", "raakt kerninterne klassen (Triangle, Quad4, GaussElimination)"],
+  [
+    "plaat-orthotroop",
+    "meet de materiaalmatrix zelf (core/fem/Triangle.getConstitutiveMatrix met core/math/Matrix): kerninterne code die bewust buiten de barrel blijft. De uitkomsten ervan worden wél tegen de bundel bewezen, in test-plaat-materiaal",
+  ],
   [
     "oplossers",
     "vergelijkt de twee stelseloplossers rechtstreeks (Matrix, GaussElimination, SkylineSolver, LinearSolver); die staan bewust niet in de barrel",

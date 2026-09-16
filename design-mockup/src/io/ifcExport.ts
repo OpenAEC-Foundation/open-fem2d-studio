@@ -160,6 +160,7 @@ import type {
   Node, Beam, Support, Load, LoadCase,
 } from "../components/fem/femTypes";
 import { rolVanStaaf, BEAM_LOAD_ROLE_LABEL, bepaalPlaatRand } from "../components/fem/femTypes";
+import { bepaalPlaatStijfheid } from "../lib/plaatMateriaal";
 import {
   parseRechthoek, resolveSection, CONCRETE_E_CM,
 } from "../lib/sectionResolver";
@@ -230,6 +231,13 @@ export interface IfcRekenmodelInput {
      */
     meshType?: string;
     openingen?: { id: number; punten: { x: number; z: number }[] }[];
+    /**
+     * Materiaal en hoofdrichting (stap 3). Uit het materiaal volgen E, ν en ρ
+     * zoals de solver ze gebruikt; de losse velden hierboven zijn dan de
+     * expliciete overschrijving. Ontbreekt het materiaal, dan gelden E/ν/ρ.
+     */
+    materiaal?: string;
+    hoofdrichting?: number;
   }[];
   /** Staat de eigen-gewichtsberekening aan? Alleen voor de beperkingenlijst. */
   eigenGewicht?: boolean;
@@ -786,14 +794,35 @@ export function bouwIfcRekenmodel(
         w.guid(`plaatrel:${plaat.id}:${id}`), "$", "$", "$",
         ref(member), ref(connectiePerKnoop.get(id)!), "$", "$", "$", "$");
     }
+    // E, ν en ρ zoals de SOLVER ze gebruikt: met een materiaal komen ze
+    // daaruit en staan de losse velden leeg. Werd hier `plaat.E ?? 210000`
+    // geschreven, dan zou het IFC-bestand van een houten of betonnen plaat
+    // stil de staalwaarden dragen. Een geweigerd materiaal levert geen
+    // stijfheidseigenschappen op maar de reden, zodat de lezer niet met
+    // verzonnen getallen achterblijft.
+    const stUit = bepaalPlaatStijfheid(plaat);
+    const st = stUit.ok ? stUit.stijfheid : null;
     const eig: Eigenschap[] = [
       eGeheel("Plaatnummer", plaat.id),
       eMaat("Dikte", "IFCPOSITIVELENGTHMEASURE", dikteMm / 1000),
-      eMaat("Elasticiteitsmodulus", "IFCMODULUSOFELASTICITYMEASURE", (plaat.E ?? 210000) * 1e6),
-      eMaat("Dwarscontractiecoefficient", "IFCRATIOMEASURE", plaat.nu ?? 0.3),
-      eMaat("Dichtheid", "IFCMASSDENSITYMEASURE", plaat.rho ?? 7850),
+      ...(st ? [
+        eMaat("Elasticiteitsmodulus", "IFCMODULUSOFELASTICITYMEASURE", st.E1 * 1e6),
+        eMaat("Dwarscontractiecoefficient", "IFCRATIOMEASURE", st.nu12),
+        eMaat("Dichtheid", "IFCMASSDENSITYMEASURE", st.rho),
+      ] : [eLabel("Materiaalfout", stUit.ok ? "" : stUit.reden)]),
       eMaat("Meshgrootte", "IFCPOSITIVELENGTHMEASURE", (plaat.meshSize ?? 500) / 1000),
       eLabel("Hoekknopen", ids.join(", ")),
+      // Materiaal en richtingsafhankelijkheid (stap 3) — alleen als de plaat
+      // een materiaal draagt, zodat het bestand van een plaat zonder
+      // materiaal byte-gelijk blijft aan voorheen.
+      ...(st && st.soort !== null ? [
+        eLabel("Materiaal", plaat.materiaal ?? ""),
+      ] : []),
+      ...(st?.orthotroop ? [
+        eMaat("ElasticiteitsmodulusDwars", "IFCMODULUSOFELASTICITYMEASURE", st.E2 * 1e6),
+        eMaat("Glijdingsmodulus", "IFCMODULUSOFELASTICITYMEASURE", st.G12 * 1e6),
+        eMaat("Hoofdrichting", "IFCPLANEANGLEMEASURE", (st.hoekGraden * Math.PI) / 180),
+      ] : []),
       // Elementkeuze en openingen (stap 2) — alleen als ze er zijn, zodat het
       // bestand van een plaat zonder beide byte-gelijk blijft aan voorheen.
       ...(plaat.meshType ? [eLabel("Elementtype", plaat.meshType)] : []),

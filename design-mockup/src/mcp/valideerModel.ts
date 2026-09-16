@@ -62,6 +62,7 @@ import { puntInPolygoon, afstandTotLijnstuk } from "../core/fem/PlaatMesher";
 import { zoekDubbeleKnopen } from "../lib/modelControle";
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
+import { keurPlaatMateriaal } from "../lib/plaatMateriaal";
 // De geldige bronnen van de scheefstand — één lijst met de app en de sidecar.
 import { SCHEEFSTAND_BRONNEN } from "../lib/scheefstandNorm";
 // De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
@@ -212,7 +213,7 @@ const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 
 const PLATE_VELDEN = [
   "id", "nodeIds", "thickness", "E", "nu", "rho", "meshSize", "meshCache",
-  "meshType", "openingen",
+  "meshType", "openingen", "materiaal", "hoofdrichting",
 ] as const;
 
 /** Velden van één opening in een plaat (`PlaatOpening`). */
@@ -725,6 +726,20 @@ export function controleerVelden(rauw: unknown): string[] {
     keurGetal(p.nu, `${pad}.nu`, fouten);
     keurGetal(p.rho, `${pad}.rho`, fouten, { positief: true });
     keurGetal(p.meshSize, `${pad}.meshSize`, fouten, { positief: true });
+    // Materiaal (stap 3): DEZELFDE grammatica als bij een staaf, en dezelfde
+    // regel — een naam die niet herkend wordt is een fout en geen stille
+    // terugval op staal. `keurPlaatMateriaal` is de enige bron van dat
+    // oordeel; de engine en het eigenschappenpaneel gebruiken hem ook.
+    if (p.materiaal !== undefined) {
+      if (typeof p.materiaal !== "string") {
+        fouten.push(`${pad}.materiaal: tekst verwacht (een materiaalnaam).`);
+      } else {
+        const reden = keurPlaatMateriaal(p.materiaal);
+        if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
+      }
+    }
+    // Hoofdrichting in graden; elke eindige hoek mag, ook negatief of > 360.
+    keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);
     // Elementkeuze: een tikfout ("vierhoek") zou stil de standaard geven.
     keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
     // Openingen: vorm van het veld; de ligging (binnen de omtrek, los van
