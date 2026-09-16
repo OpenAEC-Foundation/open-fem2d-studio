@@ -668,6 +668,10 @@ function App() {
           bestandsklasse === "CC1" || bestandsklasse === "CC2" || bestandsklasse === "CC3"
             ? bestandsklasse
             : undefined,
+        // De bijlage van het BESTAND, om dezelfde reden als de klasse: de
+        // standaardcombinaties die bij het openen ontstaan, horen bij γ en ψ
+        // van dit project (normnaad).
+        nationaleBijlage: (uitgangspunten as { nationaleBijlage?: unknown } | undefined)?.nationaleBijlage,
         idTellers: parsed.idTellers,
         combinatiesVervangenBijOpenen: parsed.combinatiesVervangenBijOpenen,
       });
@@ -2562,6 +2566,7 @@ function App() {
         onSluitAfwijking={fem.sluitCombinatieAfwijking}
         onWindOpnieuw={() => { setLoadCasesOpen(false); setWindGeneratorOpen(true); }}
         gevolgklasse={fem.gevolgklasse}
+        bijlage={fem.combinatieBijlage}
         addLoadCase={fem.addLoadCase}
         updateLoadCase={fem.updateLoadCase}
         removeLoadCase={fem.removeLoadCase}

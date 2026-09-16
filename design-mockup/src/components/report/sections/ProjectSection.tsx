@@ -24,11 +24,8 @@ import {
 import { usedNorms } from "../checkReportUtils";
 import { useReportData } from "../ReportDataContext";
 import { useProjectInfo, useRapportProjectInfo } from "../useProjectInfo";
-import {
-  DEFAULT_UITGANGSPUNTEN,
-  K_FI,
-} from "../../project/ProjectSettingsDialog";
-import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
+import { DEFAULT_UITGANGSPUNTEN } from "../../project/ProjectSettingsDialog";
+import { kFi, partieleFactoren } from "../../fem/solver/normcombinaties";
 import { vrijstaandDakUitgangspunten } from "../../../lib/wind/windGenerator";
 import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE } from "../../../lib/normAanduidingen";
 
@@ -190,24 +187,34 @@ export default function ProjectSection() {
           toon.en1995 && t("report.normEc5"),
           toon.en1992 && t("report.normEc2"),
         ].filter(Boolean) as string[];
-        const kfi = K_FI[u.gevolgklasse].toFixed(2).replace(".", ",");
         // Wat er met de klasse GEBEURT, niet alleen welke het is. Tot
         // september 2026 stond hier "CCx (K_FI = …)" terwijl de combinaties
         // altijd met de CC2-factoren rekenden. Nu kiest de klasse de factoren
         // van de standaardcombinaties; een eigen UGT-combinatie volgt hem niet,
         // en dat hoort de lezer ook te weten.
-        const pf = PARTIELE_FACTOREN[u.gevolgklasse];
+        // De factoren komen uit de rij van de bijlage van het project
+        // (normnaad). Kent deze uitgave die bijlage niet, dan staat hier de
+        // weigering en geen Nederlandse factoren onder een andere vlag.
         const n = (x: number) => String(x).replace(".", ",");
         const eigenUgt = combinations.filter((c) => c.type === "uls" && !c.standaard).length;
-        const gevolgklasseTekst =
-          t("report.gevolgklasseTekst", {
-            klasse: u.gevolgklasse,
-            kfi,
-            bron: pf.bron,
-            g610a: n(pf.gGsup610a),
-            g610b: n(pf.gGsup610b),
-            gq: n(pf.gQ),
-          }) + (eigenUgt > 0 ? t("report.gevolgklasseEigenUgt", { aantal: eigenUgt }) : "");
+        let gevolgklasseTekst: string;
+        try {
+          const bijlage = bijlageUitBestand(u.nationaleBijlage) ?? STANDAARD_BIJLAGE;
+          const pf = partieleFactoren(u.gevolgklasse, bijlage);
+          gevolgklasseTekst =
+            t("report.gevolgklasseTekst", {
+              klasse: u.gevolgklasse,
+              kfi: kFi(u.gevolgklasse, bijlage).toFixed(2).replace(".", ","),
+              bron: pf.bron,
+              g610a: n(pf.gGsup610a),
+              g610b: n(pf.gGsup610b),
+              gq: n(pf.gQ),
+            }) + (eigenUgt > 0 ? t("report.gevolgklasseEigenUgt", { aantal: eigenUgt }) : "");
+        } catch (e) {
+          gevolgklasseTekst = t("report.bijlageOnbekend", {
+            code: String(u.nationaleBijlage), fout: (e as Error).message,
+          });
+        }
         // De omschrijving van de klasse zonder het voorvoegsel "Klasse n — ".
         const levensduur = t(`report.levensduur_${u.levensduurklasse}`);
         const rijen: Array<[string, ReactNode]> = [

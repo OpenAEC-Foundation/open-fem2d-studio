@@ -11,6 +11,7 @@ import type { LoadCombination } from "../components/fem/solver/combinations";
 import {
   GEVOLGKLASSEN, type CombinatieSoort, type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
+import { BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../lib/normAanduidingen";
 import type { EigenDoorsnede } from "../lib/profieleditor/types";
 import type { KruipInvoerProject } from "../lib/kruipcoefficient";
 import type { EigenCltOpbouw } from "../lib/profieleditor/cltOpbouwenStore";
@@ -142,7 +143,7 @@ export interface ProjectFileCombination {
   formula: string;
   factors: Record<string, number>;
   /** Kenmerk van een standaardcombinatie; ontbreekt bij een eigen combinatie. */
-  standaard?: { sleutel: string; soort: string; gevolgklasse: string };
+  standaard?: { sleutel: string; soort: string; gevolgklasse: string; bijlage?: string };
 }
 
 const SOORTEN: readonly CombinatieSoort[] = ["6.10a", "6.10b", "6.14b", "6.15b", "6.16b"];
@@ -170,10 +171,19 @@ function kenmerkUitBestand(raw: unknown): LoadCombination["standaard"] {
   if (typeof k.sleutel !== "string") return undefined;
   if (!SOORTEN.includes(k.soort as CombinatieSoort)) return undefined;
   if (!GEVOLGKLASSEN.includes(k.gevolgklasse as Gevolgklasse)) return undefined;
+  // De bijlage van de set (normnaad, september 2026). Ontbreekt het veld, dan
+  // is het bestand van vóór de naad en kon het alleen met NL rekenen. Een code
+  // die deze uitgave niet kent, maakt het kenmerk onleesbaar — dezelfde
+  // veilige kant als hierboven: dan is het een eigen combinatie, en de
+  // bijlage van het project zelf wordt bij het openen geweigerd.
+  if (k.bijlage !== undefined && !(BIJLAGEN_GEVULD as readonly unknown[]).includes(k.bijlage)) {
+    return undefined;
+  }
   return {
     sleutel: k.sleutel,
     soort: k.soort as CombinatieSoort,
     gevolgklasse: k.gevolgklasse as Gevolgklasse,
+    bijlage: (k.bijlage as NationaleBijlageCode | undefined) ?? STANDAARD_BIJLAGE,
   };
 }
 

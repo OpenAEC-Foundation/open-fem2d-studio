@@ -24,7 +24,7 @@ import { useReportData } from "../ReportDataContext";
 import { fmtFactor } from "../reportFormat";
 import { meldingenBelastinggevallen } from "../../../lib/combinatieBeheer";
 import { matchSupportedTimberGrade } from "../../../lib/timberCheckBuilder";
-import { PARTIELE_FACTOREN } from "../../fem/solver/normcombinaties";
+import { partieleFactoren } from "../../fem/solver/normcombinaties";
 
 export default function CombinationsSection() {
   const { t } = useTranslation("ribbon");
@@ -41,7 +41,11 @@ export default function CombinationsSection() {
     loadCases, combinations: actief, alleCombinaties: combinations, gevolgklasse, loads, selfWeightEnabled,
     metHout: beams.some((b) => matchSupportedTimberGrade(b.material) !== null),
   });
-  const klassen = [...new Set(combinations.flatMap((c) => (c.standaard ? [c.standaard.gevolgklasse] : [])))];
+  // Klasse én bijlage uit het kenmerk: de bron hoort bij de rij waar de
+  // factoren werkelijk uit kwamen (normnaad), niet bij een vaste tabel.
+  const bronnen = [...new Set(combinations.flatMap((c) => (
+    c.standaard ? [partieleFactoren(c.standaard.gevolgklasse, c.standaard.bijlage).bron] : []
+  )))];
   const aantalEigen = combinations.filter((c) => !c.standaard).length;
 
   return (
@@ -100,11 +104,9 @@ export default function CombinationsSection() {
           )}
 
           <p className="rpt-note">
-            {klassen.length > 0
+            {bronnen.length > 0
               ? t("report.comboStandaardNoot", {
-                  bronnen: klassen
-                    .map((k) => PARTIELE_FACTOREN[k].bron)
-                    .join(` ${t("report.woordEn")} `),
+                  bronnen: bronnen.join(` ${t("report.woordEn")} `),
                 })
               : t("report.comboGeenStandaard")}
             {aantalEigen > 0

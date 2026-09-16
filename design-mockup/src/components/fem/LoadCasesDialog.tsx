@@ -22,8 +22,9 @@ import type { LoadCase } from "./femTypes";
 import { GEBRUIKSCATEGORIEEN } from "./femTypes";
 import type { LoadCombination } from "./solver/combinations";
 import {
-  PARTIELE_FACTOREN, PSI_GEBRUIK, STANDAARD_CATEGORIE, type Gevolgklasse,
+  partieleFactoren, psiGebruik, STANDAARD_CATEGORIE, type Gevolgklasse,
 } from "./solver/normcombinaties";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../../lib/normAanduidingen";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 import type {
   CombinatieAfwijking, CombinatieVervanging, GevalMelding,
@@ -60,6 +61,11 @@ interface Props {
   onWindOpnieuw?: () => void;
   /** Gevolgklasse van het project, voor de uitleg bij de combinaties. */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * Nationale bijlage waarmee de standaardcombinaties rekenen (normnaad); de
+   * ψ-waarden in de keuzelijst en de bron bij de combinaties komen uit die rij.
+   */
+  bijlage?: NationaleBijlageCode;
   addLoadCase: (name: string) => void;
   updateLoadCase: (id: number, patch: Partial<Omit<LoadCase, "id">>) => void;
   removeLoadCase: (id: number) => void;
@@ -76,6 +82,7 @@ export default function LoadCasesDialog({
   belastingMeldingen = [], combinatieAfwijking = null, combinatieVervanging = null,
   onMaakVervangingOngedaan, onVervangDoorStandaard, onSluitAfwijking, onWindOpnieuw,
   gevolgklasse = "CC2",
+  bijlage = STANDAARD_BIJLAGE,
   addLoadCase, updateLoadCase, removeLoadCase,
   addCombination, updateCombination, removeCombination,
 }: Props) {
@@ -116,7 +123,7 @@ export default function LoadCasesDialog({
     setNewComboName("");
   };
 
-  const bron = PARTIELE_FACTOREN[gevolgklasse].bron;
+  const bron = partieleFactoren(gevolgklasse, bijlage).bron;
 
   return (
     <div className="lcd-overlay" onClick={onClose}>
@@ -184,11 +191,11 @@ export default function LoadCasesDialog({
                           <select
                             className="lcd-input"
                             value={lc.categorie ?? STANDAARD_CATEGORIE}
-                            title={PSI_GEBRUIK[lc.categorie ?? STANDAARD_CATEGORIE].omschrijving}
+                            title={psiGebruik(lc.categorie ?? STANDAARD_CATEGORIE, bijlage).omschrijving}
                             onChange={(e) => updateLoadCase(lc.id, { categorie: e.target.value as LoadCase["categorie"] })}
                           >
                             {GEBRUIKSCATEGORIEEN.map((cat) => {
-                              const ψ = PSI_GEBRUIK[cat];
+                              const ψ = psiGebruik(cat, bijlage);
                               return (
                                 <option key={cat} value={cat} title={ψ.omschrijving}>
                                   {cat} — ψ {String(ψ.psi0).replace(".", ",")}/{String(ψ.psi1).replace(".", ",")}/{String(ψ.psi2).replace(".", ",")}

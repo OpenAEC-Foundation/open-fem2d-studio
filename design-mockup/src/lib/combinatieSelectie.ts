@@ -117,6 +117,7 @@ import {
   type Gevolgklasse,
   type StandaardCombinatie,
 } from "../components/fem/solver/normcombinaties";
+import type { NationaleBijlageCode } from "./normAanduidingen";
 import { materiaalVanStaaf } from "./variantInvoer";
 import { bepaalPlaatStijfheid } from "./plaatMateriaal";
 import { blijvendeBgtCombinaties } from "./blijvendeZakking";
@@ -245,6 +246,8 @@ export interface SelectieOpties {
   loadCases?: readonly GevalInvoer[];
   /** De gevolgklasse van het project; ontbreekt → CC2. */
   gevolgklasse?: Gevolgklasse;
+  /** De nationale bijlage van het project (normnaad); ontbreekt → de enige gevulde. */
+  bijlage?: NationaleBijlageCode;
   /**
    * De knopen van het model: nodig om te zien of een staaf overwegend
    * verticaal staat (en dus geen vloer-/dakeis krijgt). Ontbreekt dit, dan is
@@ -301,6 +304,7 @@ export function selecteerCombinaties(
   const standaardSet = genereerStandaardCombinaties(
     gevallen,
     opties.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
+    opties.bijlage,
   );
 
   // DE BLIJVENDE BGT-COMBINATIE BLIJFT ALTIJD STAAN, ook in een zuivere

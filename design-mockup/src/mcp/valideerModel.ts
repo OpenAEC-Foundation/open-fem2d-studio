@@ -72,6 +72,7 @@ import { SUPPORTED_REINFORCEMENT_GRADES } from "../lib/betonCheckBuilder";
 import type { LoadCase } from "../components/fem/femTypes";
 import type { LoadCombination } from "../components/fem/solver/combinations";
 import type { Gevolgklasse } from "../components/fem/solver/normcombinaties";
+import type { NationaleBijlageCode } from "../lib/normAanduidingen";
 // Eén regel voor "telt dit geval mee": dezelfde functie voedt de projectboom,
 // het rapport en de solve-waarschuwingen van de sidecar.
 import { meldingenBelastinggevallen } from "../lib/combinatieBeheer";
@@ -1252,6 +1253,8 @@ export interface ValidatieOpties {
    */
   alleCombinaties?: LoadCombination[];
   gevolgklasse?: Gevolgklasse;
+  /** De nationale bijlage waarmee de standaardset is opgesteld (normnaad). */
+  bijlage?: NationaleBijlageCode;
 }
 
 export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): ValidatieUitkomst {
@@ -1717,6 +1720,7 @@ export function valideerModel(rauw: unknown, opties: ValidatieOpties = {}): Vali
     combinations: opties.combinaties ?? [],
     alleCombinaties: opties.alleCombinaties,
     gevolgklasse: opties.gevolgklasse,
+    bijlage: opties.bijlage,
     loads: loads as unknown as { caseId: number }[],
     selfWeightEnabled: m.selfWeightEnabled === true,
     // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod,

@@ -27,9 +27,10 @@
 import type { Beam, Load, LoadCase, Node } from "../../components/fem/femTypes";
 import { rolVanStaaf, type BeamLoadRole } from "../../components/fem/femTypes";
 import {
-  begeleidendeOpstellingen, PARTIELE_FACTOREN, PSI_BRON, PSI_WIND,
+  begeleidendeOpstellingen, partieleFactoren, psiBron, psiKlimaat,
   STANDAARD_GEVOLGKLASSE, type GevalInvoer, type Gevolgklasse, type PsiWaarden,
 } from "../../components/fem/solver/normcombinaties";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../normAanduidingen";
 import {
   berekenE, berekenStuwdruk, handmatigeStuwdruk, cpeWand,
   CPE_PLAT_DAK, CPE_PLAT_DAK_BRON, CPI_BRON, CPI_ONBEKEND, CPE10_BRON,
@@ -442,6 +443,11 @@ export interface WindModelInvoer {
    * (CC2) en NB.5 (CC1, CC3). Ontbreekt → CC2.
    */
   gevolgklasse?: Gevolgklasse;
+  /**
+   * Nationale bijlage van het project (normnaad); bepaalt de tabellen waar γ
+   * en ψ uit komen. Ontbreekt → de enige gevulde bijlage.
+   */
+  bijlage?: NationaleBijlageCode;
 }
 
 /**
@@ -1629,7 +1635,8 @@ function combinatiesMetMeldingen(
   if (inst.combinatiesGenereren) {
     const eigen = model.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
     const klasse = model.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
-    const f = PARTIELE_FACTOREN[klasse];
+    const bijlage = model.bijlage ?? STANDAARD_BIJLAGE;
+    const f = partieleFactoren(klasse, bijlage);
     const overig = eigen.filter((c) => c.type === "other");
     if (overig.length > 0) {
       meldingen.push({
@@ -1639,7 +1646,7 @@ function combinatiesMetMeldingen(
           "gegenereerde combinaties. Geef ze een type, of neem ze handmatig op.",
       });
     }
-    combinaties.push(...genereerWindCombinaties(model.loadCases, gevallen, klasse));
+    combinaties.push(...genereerWindCombinaties(model.loadCases, gevallen, klasse, bijlage));
     meldingen.push({
       niveau: "info",
       tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: γ uit NEN-EN 1990 ` +
@@ -1691,15 +1698,16 @@ export function genereerWindCombinaties(
   loadCases: readonly GevalInvoer[],
   windGevallen: readonly { sleutel: string; naam: string }[],
   gevolgklasse: Gevolgklasse = STANDAARD_GEVOLGKLASSE,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): GegenereerdeCombinatie[] {
   const combinaties: GegenereerdeCombinatie[] = [];
   {
     const eigen = loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
-    const f = PARTIELE_FACTOREN[gevolgklasse];
+    const f = partieleFactoren(gevolgklasse, bijlage);
     const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     /** Afronden op 1e-9: 1,5 · 0,4 is in drijvende komma 0,6000000000000001. */
     const r = (x: number) => Math.round(x * 1e9) / 1e9;
-    const bron = `γ: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
+    const bron = `γ: NEN-EN 1990 ${f.bron}; ${psiBron(bijlage)}`;
 
     for (const gv of windGevallen) {
       // Wind leidt in elke combinatie van zijn eigen geval. Begeleidend telt
@@ -1744,11 +1752,11 @@ export function genereerWindCombinaties(
           // gegenereerde windlast daar nooit in voorkomen.
           naam: `BGT frequent 6.15b — ${gv.naam} leidend`, type: "sls",
           formule: "G + ψ₁,W·W + ψ₂,Q·Q + ψ₂,S·S",
-          g: 1.0, wind: PSI_WIND.psi1, begeleidend: (psi) => psi.psi2,
+          g: 1.0, wind: psiKlimaat("wind", bijlage).psi1, begeleidend: (psi) => psi.psi2,
         },
       ];
       for (const s of sets) {
-        for (const o of begeleidendeOpstellingen(eigen, "W", s.begeleidend)) {
+        for (const o of begeleidendeOpstellingen(eigen, "W", s.begeleidend, bijlage)) {
           const zonder = o.zonder.map((d) => d.naam).join(", ");
           combinaties.push({
             naam: WIND_COMBI_PREFIX + s.naam + (zonder ? `, zonder ${zonder}` : ""),

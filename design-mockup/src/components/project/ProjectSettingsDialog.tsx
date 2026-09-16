@@ -13,7 +13,7 @@ import {
 import { useCheckStore } from "../../stores/checkStore";
 import { usedNorms } from "../report/checkReportUtils";
 import {
-  K_FI as K_FI_NB, PARTIELE_FACTOREN, type Gevolgklasse as NbGevolgklasse,
+  GEVOLGKLASSEN, kFi, partieleFactoren, type Gevolgklasse as NbGevolgklasse,
 } from "../fem/solver/normcombinaties";
 import "./ProjectSettingsDialog.css";
 import { aanduidingen, BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../../lib/normAanduidingen";
@@ -32,7 +32,6 @@ interface ProjectSettingsDialogProps {
  */
 export type Gevolgklasse = NbGevolgklasse;
 
-export const K_FI: Record<Gevolgklasse, number> = K_FI_NB;
 
 export const GEVOLGKLASSE_OMSCHRIJVING: Record<Gevolgklasse, string> = {
   CC1: "Geringe gevolgen — K_FI = 0,90",
@@ -474,7 +473,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                     value={uitgangspunten.gevolgklasse}
                     onChange={(e) => updateUitgangspunt("gevolgklasse", e.target.value as Gevolgklasse)}
                   >
-                    {(Object.keys(K_FI) as Gevolgklasse[]).map((cc) => (
+                    {GEVOLGKLASSEN.map((cc) => (
                       <option key={cc} value={cc}>
                         {cc} — {t(`projectSettingsDialog.consequenceClassDesc.${cc}`)}
                       </option>
@@ -527,7 +526,10 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   // vermenigvuldigt, terwijl geen enkele combinatie of toets
                   // er iets mee deed.
                   const cc = uitgangspunten.gevolgklasse;
-                  const f = PARTIELE_FACTOREN[cc];
+                  // De factoren van de GEKOZEN bijlage (normnaad), niet een
+                  // vaste tabel: de keuzelijst hierboven bepaalt de rij.
+                  const bijlage = uitgangspunten.nationaleBijlage;
+                  const f = partieleFactoren(cc, bijlage);
                   const n = (x: number) => String(x).replace(".", ",");
                   return (
                     <>
@@ -535,7 +537,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                       6.10a γ<sub>G</sub> = {n(f.gGsup610a)}, 6.10b γ<sub>G</sub> ={" "}
                       {n(f.gGsup610b)}, γ<sub>Q</sub> = {n(f.gQ)}{" "}
                       {t("projectSettingsDialog.consequenceExplainFavourable")} K<sub>FI</sub> ={" "}
-                      {K_FI[cc].toFixed(2).replace(".", ",")}
+                      {kFi(cc, bijlage).toFixed(2).replace(".", ",")}
                       {t("projectSettingsDialog.consequenceExplainTail")}
                     </>
                   );

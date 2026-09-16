@@ -23,9 +23,19 @@
 import { readFileSync } from "node:fs";
 
 const {
-  genereerStandaardCombinaties, PARTIELE_FACTOREN, PSI_GEBRUIK, PSI_SNEEUW, PSI_WIND, K_FI,
+  genereerStandaardCombinaties, PARTIELE_FACTOREN: PF_PER_BIJLAGE, PSI_GEBRUIK: PSI_PER_BIJLAGE,
+  PSI_SNEEUW: SNEEUW_PER_BIJLAGE, PSI_WIND: WIND_PER_BIJLAGE, K_FI: KFI_PER_BIJLAGE, PSI_BRON,
   MAX_VRIJE_GEVALLEN,
 } = await import("./src/components/fem/solver/normcombinaties.ts");
+const { BIJLAGEN_GEVULD } = await import("./src/lib/normAanduidingen.ts");
+// Sinds de normnaad staan de tabellen per nationale bijlage. De controles
+// hieronder gaan over de Nederlandse rij; [1b] legt de structuur per bijlage
+// naast de Rust-kant.
+const PARTIELE_FACTOREN = PF_PER_BIJLAGE.NL;
+const PSI_GEBRUIK = PSI_PER_BIJLAGE.NL;
+const PSI_SNEEUW = SNEEUW_PER_BIJLAGE.NL;
+const PSI_WIND = WIND_PER_BIJLAGE.NL;
+const K_FI = KFI_PER_BIJLAGE.NL;
 const {
   defaultCombinations, combineResults, computeEnvelope, combinatiesVanSoort,
 } = await import("./src/components/fem/solver/combinations.ts");
@@ -134,6 +144,11 @@ log("\n[1] De tabellen zijn die van NEN-EN 1990:2002/NB:2019 (pdftotext -raw)");
   }
   const lfRs = [...rs.matchAll(/LoadFactors \{\s*name: "([^"]+)", gamma_g_sup: ([\d.]+), gamma_g_inf: ([\d.]+), gamma_q: ([\d.]+),?\s*\}/g)]
     .map(([, n, g, gi, q]) => [n, +g, +gi, +q]);
+  // K_FI staat in dezelfde rij als tuple (CC1, CC2, CC3).
+  const kfiRs = rs.match(/k_fi: \(([\d.]+), ([\d.]+), ([\d.]+)\)/);
+  checkWaar("crate K_FI = frontend",
+    kfiRs !== null && +kfiRs[1] === K_FI.CC1 && +kfiRs[2] === K_FI.CC2 && +kfiRs[3] === K_FI.CC3,
+    kfiRs?.[0]);
   checkWaar("crate: EQU volgens NB.3 (1,1 / 0,9 / 1,5)",
     lfRs.some(([n, g, gi, q]) => n === "EQU" && g === 1.1 && gi === 0.9 && q === 1.5));
   // De volgorde in de NL-rij is CC1 (6.10a, 6.10b), CC2, CC3, daarna EQU.
@@ -144,6 +159,91 @@ log("\n[1] De tabellen zijn die van NEN-EN 1990:2002/NB:2019 (pdftotext -raw)");
     checkWaar(`crate ${cc} = frontend (6.10a ${ga}/${qa}, 6.10b ${gb}/${qb})`,
       ga === f.gGsup610a && qa === f.gQ && gb === f.gGsup610b && qb === f.gQ);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[1b] De normnaad: dezelfde bijlagen als de Rust-naad, geen stille terugval");
+{
+  // De Rust-naad heeft per bijlage een `pub const NDP_1990_<code>`. De
+  // frontend-tabellen horen PRECIES die bijlagen te dragen: een rij hier die
+  // daar ontbreekt is verzonnen, een rij daar die hier ontbreekt valt stil
+  // terug. Dezelfde lijst als `BIJLAGEN_GEVULD` in lib.rs.
+  const rs = readFileSync(new URL("../src-tauri/crates/nationale-bijlage/src/ndp_1990.rs", import.meta.url), "utf8");
+  const lib = readFileSync(new URL("../src-tauri/crates/nationale-bijlage/src/lib.rs", import.meta.url), "utf8");
+  const rustRijen = [...rs.matchAll(/pub const NDP_1990_([A-Z]+): Ndp1990/g)].map((m) => m[1]).sort();
+  const rustGevuld = JSON.parse(`[${lib.match(/pub const BIJLAGEN_GEVULD: &\[&str\] = &\[([^\]]*)\]/)[1]}]`).sort();
+  const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+  checkWaar("Rust: een NDP_1990-rij per gevulde bijlage", same(rustRijen, rustGevuld), `${rustRijen} / ${rustGevuld}`);
+  checkWaar("frontend: BIJLAGEN_GEVULD = die van de Rust-naad", same(BIJLAGEN_GEVULD, rustGevuld));
+  for (const [naam, tabel] of [
+    ["PARTIELE_FACTOREN", PF_PER_BIJLAGE], ["PSI_GEBRUIK", PSI_PER_BIJLAGE], ["PSI_SNEEUW", SNEEUW_PER_BIJLAGE],
+    ["PSI_WIND", WIND_PER_BIJLAGE], ["K_FI", KFI_PER_BIJLAGE], ["PSI_BRON", PSI_BRON],
+  ]) {
+    checkWaar(`${naam}: precies de gevulde bijlagen`, same(Object.keys(tabel), rustGevuld), Object.keys(tabel).join(","));
+  }
+
+  // Elke standaardcombinatie draagt haar bijlage; weglaten = NL (serde default).
+  const c = genereerStandaardCombinaties(START, "CC2");
+  checkWaar("zonder bijlage: kenmerk NL", c.every((x) => x.standaard.bijlage === "NL"));
+  const metNl = genereerStandaardCombinaties(START, "CC2", "NL");
+  checkWaar("met bijlage NL: bit-gelijk aan zonder",
+    JSON.stringify(metNl.map((x) => [x.name, x.formula, [...x.factors], x.standaard])) ===
+      JSON.stringify(c.map((x) => [x.name, x.formula, [...x.factors], x.standaard])));
+
+  // Een onbekende bijlage wordt GEWEIGERD met reden, niet stil als NL gerekend.
+  let fout = null;
+  try { genereerStandaardCombinaties(START, "CC2", "DE"); } catch (e) { fout = e.message; }
+  checkWaar("onbekende bijlage: weigering met reden", fout !== null && /nationale bijlage "DE" is niet gevuld/.test(fout), fout);
+  const { genereerWindCombinaties } = await import("./src/lib/wind/windGenerator.ts");
+  fout = null;
+  try { genereerWindCombinaties(START, [{ sleutel: "w", naam: "W" }], "CC2", "DE"); } catch (e) { fout = e.message; }
+  checkWaar("windgenerator, onbekende bijlage: weigering", fout !== null && /niet gevuld/.test(fout), fout);
+  const { psi2VoorEindstijfheid } = await import("./src/lib/houtEindstijfheid.ts");
+  fout = null;
+  try { psi2VoorEindstijfheid({ type: "live", categorie: "A" }, "DE"); } catch (e) { fout = e.message; }
+  checkWaar("eindstijfheid hout (ψ₂), onbekende bijlage: weigering", fout !== null && /niet gevuld/.test(fout), fout);
+  checkWaar("eindstijfheid hout: ψ₂ cat. A onder NL = 0,3 (NB.2)", psi2VoorEindstijfheid({ type: "live", categorie: "A" }, "NL") === 0.3);
+
+  // Het kenmerk in het projectbestand: zonder `bijlage` (vóór de naad) → NL;
+  // met een code die deze uitgave niet kent → onleesbaar, dus een eigen
+  // combinatie (de veilige kant: de app past haar niet aan).
+  const oud = combinationsFromFile([{ id: 1, name: "x", type: "uls", formula: "", factors: { 1: 1 },
+    standaard: { sleutel: "6.10a", soort: "6.10a", gevolgklasse: "CC2" } }]);
+  checkWaar("kenmerk zonder bijlage wordt NL", oud[0].standaard?.bijlage === "NL");
+  const vreemd = combinationsFromFile([{ id: 1, name: "x", type: "uls", formula: "", factors: { 1: 1 },
+    standaard: { sleutel: "6.10a", soort: "6.10a", gevolgklasse: "CC2", bijlage: "DE" } }]);
+  checkWaar("kenmerk met een onbekende bijlage wordt een eigen combinatie", vreemd[0].standaard === undefined);
+  const heen = combinationsFromFile(JSON.parse(JSON.stringify(combinationsToFile(defaultCombinations()))));
+  checkWaar("heen en terug: het kenmerk houdt zijn bijlage", heen.every((x) => x.standaard?.bijlage === "NL"));
+
+  // Een bestand van vóór de naad (kenmerk zonder bijlage) opent ZONDER
+  // vervanging: dezelfde rekeninhoud, alleen het kenmerk krijgt NL.
+  const zonderVeld = combinationsToFile(defaultCombinations()).map((x) => {
+    const { bijlage: _weg, ...rest } = x.standaard;
+    return { ...x, standaard: rest };
+  });
+  const geopend = openCombinatieStaat({
+    loadCases: START, combinations: combinationsFromFile(zonderVeld), gevolgklasse: "CC2",
+  });
+  checkWaar("oud bestand zonder bijlage in het kenmerk: geen vervanging", geopend.vervanging === null);
+  checkWaar("oud bestand: factoren ongewijzigd",
+    // Gesorteerd: de volgorde in de Map volgt de sleutels uit het JSON-bestand.
+    JSON.stringify(geopend.staat.combinations.map((x) => [x.id, x.name, factoren(x)])) ===
+      JSON.stringify(defaultCombinations().map((x) => [x.id, x.name, factoren(x)])));
+  checkWaar("oud bestand: staat draagt bijlage NL", geopend.staat.bijlage === "NL");
+
+  // De bijlagewissel volgt de route van de gevolgklasse: dezelfde bijlage is
+  // een no-op (dezelfde staat terug); `zetBijlage` gaat door
+  // synchroniseerStandaard. Een tweede bijlage bestaat niet, dus die wissel is
+  // hier niet uit te voeren — de weigering hierboven is het bewijs dat er geen
+  // stille terugval is.
+  const { zetBijlage, bijlageUitKenmerk } = await import("./src/lib/combinatieBeheer.ts");
+  const s0 = { ...staatVan(START), bijlage: "NL" };
+  checkWaar("zetBijlage met dezelfde bijlage: dezelfde staat", zetBijlage(s0, "NL") === s0);
+  checkWaar("bijlageUitKenmerk van de standaardset: NL", bijlageUitKenmerk(s0.combinations) === "NL");
+  fout = null;
+  try { zetBijlage(s0, "DE"); } catch (e) { fout = e.message; }
+  checkWaar("zetBijlage naar een onbekende bijlage: weigering", fout !== null && /niet gevuld/.test(fout), fout);
 }
 
 // ─────────────────────────────────────────────────────────────────────────

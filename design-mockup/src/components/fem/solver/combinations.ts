@@ -39,6 +39,7 @@ import {
   getSecondOrderState,
   solveCombinationSecondOrder,
 } from "./engine";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../../../lib/normAanduidingen";
 import {
   genereerStandaardCombinaties,
   STANDAARD_BELASTINGGEVALLEN,
@@ -262,8 +263,9 @@ export const SOORTEN_BUITEN_STAAL: readonly CombinatieSoort[] = ["6.15b", "6.16b
 export function defaultCombinations(
   loadCases: readonly GevalInvoer[] = STANDAARD_BELASTINGGEVALLEN,
   gevolgklasse: Gevolgklasse = STANDAARD_GEVOLGKLASSE,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): LoadCombination[] {
-  return genereerStandaardCombinaties(loadCases, gevolgklasse).map((c, i) => ({
+  return genereerStandaardCombinaties(loadCases, gevolgklasse, bijlage).map((c, i) => ({
     ...c,
     id: i + 1,
   }));

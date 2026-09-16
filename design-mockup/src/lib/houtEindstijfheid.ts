@@ -118,7 +118,8 @@ import {
   type LoadCombination,
 } from "../components/fem/solver/combinations";
 import { solveAllCases } from "../components/fem/solver/engine";
-import { PSI_GEBRUIK, PSI_SNEEUW, PSI_WIND, STANDAARD_CATEGORIE } from "../components/fem/solver/normcombinaties";
+import { psiGebruik, psiKlimaat, STANDAARD_CATEGORIE } from "../components/fem/solver/normcombinaties";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 import type { GevalMelding } from "./combinatieBeheer";
 import { bepaalOnbepaaldheidVanModel, type OnbepaaldheidUitkomst } from "./statischeOnbepaaldheid";
 import { materiaalVanStaaf } from "./variantInvoer";
@@ -441,16 +442,20 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
  * sneeuw en wind (dezelfde tabel). Een geval van soort "overig" heeft geen ψ₂
  * in de tabel; het krijgt 1, de grootste kruip, en valt zo mee in de
  * ongunstigste variant in plaats van stil weg te vallen.
+ *
+ * ψ₂ is een nationaal bepaalde parameter (NEN-EN 1990 A1.2.2); hij komt uit de
+ * rij van `bijlage` (normnaad). Weglaten = de enige gevulde bijlage.
  */
 export function psi2VoorEindstijfheid(
   lc: Pick<LoadCase, "type" | "categorie" | "gegenereerd">,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): number {
-  if (lc.gegenereerd?.bron === "wind") return PSI_WIND.psi2;
+  if (lc.gegenereerd?.bron === "wind") return psiKlimaat("wind", bijlage).psi2;
   switch (lc.type) {
     case "dead":  return 1;
-    case "live":  return PSI_GEBRUIK[lc.categorie ?? STANDAARD_CATEGORIE].psi2;
-    case "snow":  return PSI_SNEEUW.psi2;
-    case "wind":  return PSI_WIND.psi2;
+    case "live":  return psiGebruik(lc.categorie ?? STANDAARD_CATEGORIE, bijlage).psi2;
+    case "snow":  return psiKlimaat("sneeuw", bijlage).psi2;
+    case "wind":  return psiKlimaat("wind", bijlage).psi2;
     default:      return 1;
   }
 }
@@ -463,12 +468,13 @@ export function psi2VoorEindstijfheid(
 export function eindtoestandKandidaten(
   combo: LoadCombination,
   loadCases: readonly Pick<LoadCase, "id" | "type" | "categorie" | "gegenereerd">[],
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): number[] {
   const uit = new Set<number>();
   for (const [id, f] of combo.factors) {
     if (f === 0) continue;
     const lc = loadCases.find((c) => c.id === id);
-    const psi = lc ? psi2VoorEindstijfheid(lc) : 1;
+    const psi = lc ? psi2VoorEindstijfheid(lc, bijlage) : 1;
     if (psi > 0) uit.add(psi);
   }
   return [...uit].sort((a, b) => a - b);
@@ -486,13 +492,14 @@ export function metEindtoestandVarianten(
   combinaties: LoadCombination[],
   loadCases: readonly Pick<LoadCase, "id" | "type" | "categorie" | "gegenereerd">[],
   uitkomst: Pick<EindstijfheidUitkomst, "status">,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): LoadCombination[] {
   if (uitkomst.status !== "doorrekenen") return combinaties;
   const uit: LoadCombination[] = [];
   for (const c of combinaties) {
     uit.push(c);
     if (c.type !== "uls" || c.eindtoestand !== undefined) continue;
-    for (const psi2 of eindtoestandKandidaten(c, loadCases)) {
+    for (const psi2 of eindtoestandKandidaten(c, loadCases, bijlage)) {
       uit.push({
         ...c,
         id: c.id + EINDTOESTAND_COMBO_OFFSET * Math.round(psi2 * 100),

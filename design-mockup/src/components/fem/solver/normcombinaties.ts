@@ -92,6 +92,47 @@
  */
 import type { GebruiksCategorie, LoadCase } from "../femTypes";
 import type { LoadCombination } from "./combinations";
+import {
+  BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode,
+} from "../../../lib/normAanduidingen";
+
+// ── De normnaad ───────────────────────────────────────────────────────────
+//
+// WAAROM DE TABELLEN HIERONDER PER BIJLAGE STAAN
+// De partiële factoren van NB.4/NB.5, K_FI en de ψ-rijen van NB.2 zijn
+// nationaal bepaalde parameters (NEN-EN 1990 bijlage A1, A1.2.2 en A1.3.1:
+// de waarden "kunnen in de nationale bijlage worden gegeven"). Aan de
+// Rust-kant staan ze in de crate `nationale-bijlage` (`ndp_1990.rs`), één rij
+// per bijlage. Stonden ze hier als één vaste tabel, dan kreeg een project met
+// een tweede bijlage zijn standaardcombinaties stil met Nederlandse factoren,
+// terwijl de kernen de bijlage wél lezen.
+//
+// Daarom is elke tabel een `Record<NationaleBijlageCode, …>`: een tweede code
+// in `NationaleBijlageCode` geeft een compileerfout op elke tabel tot zijn rij
+// gevuld is. `test-belastingcombinaties.mjs` legt de NL-rij getal voor getal
+// naast `ndp_1990.rs`.
+
+/**
+ * De rij van `bijlage` uit een tabel per bijlage, of een fout met reden.
+ *
+ * Het type laat alleen gevulde codes toe, maar een projectbestand of een
+ * MCP-verzoek is geen type: een onbekende code hoort een weigering op te
+ * leveren, geen `undefined` die verderop als NaN in een factor belandt.
+ */
+export function rijVoorBijlage<T>(
+  tabel: Readonly<Record<NationaleBijlageCode, T>>,
+  bijlage: NationaleBijlageCode,
+  wat: string,
+): T {
+  const rij = (tabel as Record<string, T | undefined>)[bijlage];
+  if (rij === undefined) {
+    throw new Error(
+      `nationale bijlage "${bijlage}" is niet gevuld: deze uitgave kent ${wat} alleen voor ` +
+        `${BIJLAGEN_GEVULD.join(", ")}. Er wordt niet teruggevallen op een andere bijlage.`,
+    );
+  }
+  return rij;
+}
 
 // ── Gevolgklasse en partiële factoren ─────────────────────────────────────
 
@@ -108,7 +149,9 @@ export const STANDAARD_GEVOLGKLASSE: Gevolgklasse = "CC2";
  * K_FI = 0,9; voor gevolgklasse 3 geldt K_FI = 1,1." Alleen ter vermelding —
  * zie de kop van dit bestand.
  */
-export const K_FI: Record<Gevolgklasse, number> = { CC1: 0.9, CC2: 1.0, CC3: 1.1 };
+export const K_FI: Record<NationaleBijlageCode, Record<Gevolgklasse, number>> = {
+  NL: { CC1: 0.9, CC2: 1.0, CC3: 1.1 },
+};
 
 export interface PartieleFactoren {
   /** γ_G,sup in uitdrukking 6.10a. */
@@ -133,11 +176,29 @@ export interface PartieleFactoren {
  * Voetnoot a (vloeistofdrukken met een fysiek beperkte waarde) is hier niet
  * toegepast: de app kent geen vloeistofdruk als soort belasting.
  */
-export const PARTIELE_FACTOREN: Record<Gevolgklasse, PartieleFactoren> = {
-  CC1: { gGsup610a: 1.2, gGsup610b: 1.1, gGinf: 0.9, gQ: 1.35, bron: "NB tabel NB.5, CC1" },
-  CC2: { gGsup610a: 1.35, gGsup610b: 1.2, gGinf: 0.9, gQ: 1.5, bron: "NB tabel NB.4, CC2" },
-  CC3: { gGsup610a: 1.5, gGsup610b: 1.3, gGinf: 0.9, gQ: 1.65, bron: "NB tabel NB.5, CC3" },
+export const PARTIELE_FACTOREN: Record<NationaleBijlageCode, Record<Gevolgklasse, PartieleFactoren>> = {
+  NL: {
+    CC1: { gGsup610a: 1.2, gGsup610b: 1.1, gGinf: 0.9, gQ: 1.35, bron: "NB tabel NB.5, CC1" },
+    CC2: { gGsup610a: 1.35, gGsup610b: 1.2, gGinf: 0.9, gQ: 1.5, bron: "NB tabel NB.4, CC2" },
+    CC3: { gGsup610a: 1.5, gGsup610b: 1.3, gGinf: 0.9, gQ: 1.65, bron: "NB tabel NB.5, CC3" },
+  },
 };
+
+/** De partiële factoren van `gevolgklasse` onder `bijlage` — zie `rijVoorBijlage`. */
+export function partieleFactoren(
+  gevolgklasse: Gevolgklasse,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
+): PartieleFactoren {
+  return rijVoorBijlage(PARTIELE_FACTOREN, bijlage, "de partiële belastingsfactoren")[gevolgklasse];
+}
+
+/** K_FI van `gevolgklasse` onder `bijlage`, ter vermelding. */
+export function kFi(
+  gevolgklasse: Gevolgklasse,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
+): number {
+  return rijVoorBijlage(K_FI, bijlage, "K_FI")[gevolgklasse];
+}
 
 // ── ψ-factoren ────────────────────────────────────────────────────────────
 
@@ -163,30 +224,63 @@ export interface PsiWaarden {
  * Voetnoot a: 0,6 voor delen die bij een calamiteit zwaar door een
  * mensenmenigte kunnen worden belast (vluchtroutes, trappen), 0,4 overige.
  */
-export const PSI_GEBRUIK: Record<GebruiksCategorie, PsiWaarden & { omschrijving: string }> = {
-  A: { psi0: 0.4, psi1: 0.5, psi2: 0.3, omschrijving: "categorie A, woon- en verblijfsruimtes" },
-  B: { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "categorie B, kantoorruimtes" },
-  C: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, bijeenkomstruimtes (overige delen, voetnoot a: ψ₀ = 0,4)" },
-  "C-menigte": { psi0: 0.6, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, delen die bij een calamiteit zwaar door een mensenmenigte belast kunnen worden (voetnoot a: ψ₀ = 0,6)" },
-  D: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie D, winkelruimtes" },
-  E: { psi0: 1.0, psi1: 0.9, psi2: 0.8, omschrijving: "categorie E, opslagruimtes" },
-  F: { psi0: 0.7, psi1: 0.7, psi2: 0.6, omschrijving: "categorie F, verkeersruimte, voertuiggewicht ≤ 25 kN" },
-  G: { psi0: 0.7, psi1: 0.5, psi2: 0.3, omschrijving: "categorie G, verkeersruimte, 25 kN < voertuiggewicht ≤ 160 kN" },
-  H: { psi0: 0, psi1: 0, psi2: 0, omschrijving: "categorie H, daken" },
-  "industrie-kort": { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "industrieel gebruik, belasting niet langdurig aanwezig" },
-  "industrie-lang": { psi0: 1.0, psi1: 0.9, psi2: 0.8, omschrijving: "industrieel gebruik, belasting langdurig aanwezig" },
+export const PSI_GEBRUIK: Record<
+  NationaleBijlageCode,
+  Record<GebruiksCategorie, PsiWaarden & { omschrijving: string }>
+> = {
+  NL: {
+    A: { psi0: 0.4, psi1: 0.5, psi2: 0.3, omschrijving: "categorie A, woon- en verblijfsruimtes" },
+    B: { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "categorie B, kantoorruimtes" },
+    C: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, bijeenkomstruimtes (overige delen, voetnoot a: ψ₀ = 0,4)" },
+    "C-menigte": { psi0: 0.6, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, delen die bij een calamiteit zwaar door een mensenmenigte belast kunnen worden (voetnoot a: ψ₀ = 0,6)" },
+    D: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie D, winkelruimtes" },
+    E: { psi0: 1.0, psi1: 0.9, psi2: 0.8, omschrijving: "categorie E, opslagruimtes" },
+    F: { psi0: 0.7, psi1: 0.7, psi2: 0.6, omschrijving: "categorie F, verkeersruimte, voertuiggewicht ≤ 25 kN" },
+    G: { psi0: 0.7, psi1: 0.5, psi2: 0.3, omschrijving: "categorie G, verkeersruimte, 25 kN < voertuiggewicht ≤ 160 kN" },
+    H: { psi0: 0, psi1: 0, psi2: 0, omschrijving: "categorie H, daken" },
+    "industrie-kort": { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "industrieel gebruik, belasting niet langdurig aanwezig" },
+    "industrie-lang": { psi0: 1.0, psi1: 0.9, psi2: 0.8, omschrijving: "industrieel gebruik, belasting langdurig aanwezig" },
+  },
 };
 
 /** Tabel NB.2–A1.1, rij "Sneeuwbelasting": 0 / 0,2 / 0. */
-export const PSI_SNEEUW: PsiWaarden = { psi0: 0, psi1: 0.2, psi2: 0 };
+export const PSI_SNEEUW: Record<NationaleBijlageCode, PsiWaarden> = {
+  NL: { psi0: 0, psi1: 0.2, psi2: 0 },
+};
 
 /** Tabel NB.2–A1.1, rij "Windbelasting": 0 / 0,2 / 0. */
-export const PSI_WIND: PsiWaarden = { psi0: 0, psi1: 0.2, psi2: 0 };
+export const PSI_WIND: Record<NationaleBijlageCode, PsiWaarden> = {
+  NL: { psi0: 0, psi1: 0.2, psi2: 0 },
+};
 
 /** De categorie die geldt als een veranderlijk geval er geen noemt. */
 export const STANDAARD_CATEGORIE: GebruiksCategorie = "A";
 
-export const PSI_BRON = "ψ uit NB tabel NB.2–A1.1";
+/** De vindplaats van de ψ-waarden, zoals hij in de formule van een combinatie komt. */
+export const PSI_BRON: Record<NationaleBijlageCode, string> = {
+  NL: "ψ uit NB tabel NB.2–A1.1",
+};
+
+/** ψ voor een gebruikscategorie onder `bijlage` — zie `rijVoorBijlage`. */
+export function psiGebruik(
+  categorie: GebruiksCategorie,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
+): PsiWaarden & { omschrijving: string } {
+  return rijVoorBijlage(PSI_GEBRUIK, bijlage, "de ψ-factoren")[categorie];
+}
+
+/** ψ voor wind (`"wind"`) of sneeuw (`"sneeuw"`) onder `bijlage`. */
+export function psiKlimaat(
+  soort: "wind" | "sneeuw",
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
+): PsiWaarden {
+  return rijVoorBijlage(soort === "wind" ? PSI_WIND : PSI_SNEEUW, bijlage, "de ψ-factoren");
+}
+
+/** De vindplaats van de ψ-waarden onder `bijlage`. */
+export function psiBron(bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE): string {
+  return rijVoorBijlage(PSI_BRON, bijlage, "de ψ-factoren");
+}
 
 // ── De set ────────────────────────────────────────────────────────────────
 
@@ -204,6 +298,15 @@ export interface StandaardHerkomst {
   sleutel: string;
   soort: CombinatieSoort;
   gevolgklasse: Gevolgklasse;
+  /**
+   * De nationale bijlage waar de factoren uit komen (normnaad). Zelfde rol
+   * als de gevolgklasse: wisselt het project van bijlage, dan hoort deze
+   * combinatie niet meer bij de set, en het openen of `zetBijlage`
+   * (lib/combinatieBeheer) bouwt haar opnieuw op. Een projectbestand van vóór
+   * dit veld kon alleen met NL rekenen; het inlezen vult daar NL in
+   * (io/projectFile).
+   */
+  bijlage: NationaleBijlageCode;
 }
 
 export type StandaardCombinatie = Omit<LoadCombination, "id"> & {
@@ -281,7 +384,7 @@ function product(...f: number[]): number {
   return Math.round(f.reduce((a, b) => a * b, 1) * 1e9) / 1e9;
 }
 
-function verzamelActies(gevallen: readonly GevalInvoer[]): Actie[] {
+function verzamelActies(gevallen: readonly GevalInvoer[], bijlage: NationaleBijlageCode): Actie[] {
   const acties: Actie[] = [];
 
   const live = gevallen.filter((c) => c.type === "live");
@@ -296,15 +399,15 @@ function verzamelActies(gevallen: readonly GevalInvoer[]): Actie[] {
       sleutel: `Q:${cat}`,
       soort: "Q",
       delen: leden.map((c) => ({ id: c.id, naam: c.name })),
-      psi: PSI_GEBRUIK[cat],
+      psi: psiGebruik(cat, bijlage),
       label: leden.length === 1 ? leden[0].name : `Q cat. ${cat}`,
       symbool: categorieen.length === 1 ? "Q" : `Q(${cat})`,
     });
   }
 
   for (const [soort, type, psi] of [
-    ["S", "snow", PSI_SNEEUW],
-    ["W", "wind", PSI_WIND],
+    ["S", "snow", psiKlimaat("sneeuw", bijlage)],
+    ["W", "wind", psiKlimaat("wind", bijlage)],
   ] as const) {
     const leden = gevallen.filter((c) => c.type === type);
     for (const c of leden) {
@@ -424,6 +527,7 @@ function uitdrukking(
   bijdragen: Bijdrage[],
   bron: string,
   gevolgklasse: Gevolgklasse,
+  bijlage: NationaleBijlageCode,
   perGeval: boolean,
 ): StandaardCombinatie[] {
   return opstellingen(bijdragen, perGeval).map((o) => {
@@ -442,7 +546,7 @@ function uitdrukking(
       ? ""
       : `|zonder:${o.zonder.map((d) => d.id).sort((a, b) => a - b).join("+")}`;
     return bouw(naam + zonderNaam, type, termen, bron, {
-      sleutel: sleutel + zonderSleutel, soort, gevolgklasse,
+      sleutel: sleutel + zonderSleutel, soort, gevolgklasse, bijlage,
     });
   });
 }
@@ -477,18 +581,21 @@ function ontdubbel(set: readonly StandaardCombinatie[]): StandaardCombinatie[] {
 export function genereerStandaardCombinaties(
   loadCases: readonly GevalInvoer[],
   gevolgklasse: Gevolgklasse = STANDAARD_GEVOLGKLASSE,
+  // Weglaten = de enige gevulde bijlage, zoals `#[serde(default)]` aan de
+  // Rust-kant (zie `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`).
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): StandaardCombinatie[] {
-  const f = PARTIELE_FACTOREN[gevolgklasse];
+  const f = partieleFactoren(gevolgklasse, bijlage);
   const eigen = loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
   const G = eigen.filter((c) => c.type === "dead").map((c) => c.id);
-  const acties = verzamelActies(eigen);
+  const acties = verzamelActies(eigen, bijlage);
   if (G.length === 0 && acties.length === 0) return [];
   const perGeval = aantalGebruiksgevallen(eigen) <= MAX_VRIJE_GEVALLEN;
 
-  const ugtBron = `γ: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
-  const bgtBron = `NEN-EN 1990; ${PSI_BRON}`;
+  const ugtBron = `γ: NEN-EN 1990 ${f.bron}; ${psiBron(bijlage)}`;
+  const bgtBron = `NEN-EN 1990; ${psiBron(bijlage)}`;
   const herkomst = (sleutel: string, soort: CombinatieSoort): StandaardHerkomst => ({
-    sleutel, soort, gevolgklasse,
+    sleutel, soort, gevolgklasse, bijlage,
   });
   const g = (factor: number): Term => ({
     ids: G, factor, tekst: factor === 1 ? "G" : `${nlGetal(factor)}·G`,
@@ -525,14 +632,14 @@ export function genereerStandaardCombinaties(
   // UGT 6.10a — geen leidende last: alle veranderlijke lasten met ψ₀.
   ugt.push(...uitdrukking(
     "UGT 6.10a", "uls", "6.10a", "6.10a",
-    g(f.gGsup610a), begeleidend(null, ψ0, f.gQ), ugtBron, gevolgklasse, perGeval,
+    g(f.gGsup610a), begeleidend(null, ψ0, f.gQ), ugtBron, gevolgklasse, bijlage, perGeval,
   ));
 
   for (const a of acties) {
     ugt.push(...uitdrukking(
       `UGT 6.10b — ${a.label} leidend`, "uls", "6.10b", `6.10b|${a.sleutel}`,
       g(f.gGsup610b), [leidend(a, f.gQ), ...begeleidend(a, ψ0, f.gQ)],
-      ugtBron, gevolgklasse, perGeval,
+      ugtBron, gevolgklasse, bijlage, perGeval,
     ));
   }
   // Blijvende last gunstig (γ_G,inf): maatgevend waar de veranderlijke last
@@ -548,7 +655,7 @@ export function genereerStandaardCombinaties(
         `UGT 6.10b — ${a.label} leidend, blijvend gunstig`, "uls", "6.10b",
         `6.10b-gunstig|${a.sleutel}`,
         g(f.gGinf), [leidend(a, f.gQ), ...begeleidend(a, ψ0, f.gQ)],
-        ugtBron, gevolgklasse, perGeval,
+        ugtBron, gevolgklasse, bijlage, perGeval,
       ));
     }
   }
@@ -564,19 +671,19 @@ export function genereerStandaardCombinaties(
     for (const a of acties) {
       bgt.push(...uitdrukking(
         `BGT karakteristiek 6.14b — ${a.label} leidend`, "sls", "6.14b", `6.14b|${a.sleutel}`,
-        g(1), [leidend(a, 1), ...begeleidend(a, ψ0, 1)], bgtBron, gevolgklasse, perGeval,
+        g(1), [leidend(a, 1), ...begeleidend(a, ψ0, 1)], bgtBron, gevolgklasse, bijlage, perGeval,
       ));
     }
     for (const a of acties) {
       bgt.push(...uitdrukking(
         `BGT frequent 6.15b — ${a.label} leidend`, "sls", "6.15b", `6.15b|${a.sleutel}`,
-        g(1), [leidend(a, a.psi.psi1), ...begeleidend(a, ψ2, 1)], bgtBron, gevolgklasse, perGeval,
+        g(1), [leidend(a, a.psi.psi1), ...begeleidend(a, ψ2, 1)], bgtBron, gevolgklasse, bijlage, perGeval,
       ));
     }
   }
   bgt.push(...uitdrukking(
     "BGT quasi-blijvend 6.16b", "sls", "6.16b", "6.16b",
-    g(1), begeleidend(null, ψ2, 1), bgtBron, gevolgklasse, perGeval,
+    g(1), begeleidend(null, ψ2, 1), bgtBron, gevolgklasse, bijlage, perGeval,
   ));
 
   return ontdubbel([...ugt, ...bgt]);
@@ -607,9 +714,10 @@ export function begeleidendeOpstellingen(
   gevallen: readonly GevalInvoer[],
   leidendeSoort: "Q" | "S" | "W",
   factor: (psi: PsiWaarden) => number,
+  bijlage: NationaleBijlageCode = STANDAARD_BIJLAGE,
 ): BegeleidendeOpstelling[] {
   const eigen = gevallen.filter((c) => c.gegenereerd?.bron !== "wind");
-  const bijdragen: Bijdrage[] = verzamelActies(eigen)
+  const bijdragen: Bijdrage[] = verzamelActies(eigen, bijlage)
     .filter((a) => !(a.soort === leidendeSoort && a.soort !== "Q"))
     .map((a) => ({ actie: a, factor: product(factor(a.psi)), leidend: false, tekst: (s: string) => s }));
   const perGeval = aantalGebruiksgevallen(eigen) <= MAX_VRIJE_GEVALLEN;
