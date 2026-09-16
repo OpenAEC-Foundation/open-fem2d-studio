@@ -15,6 +15,10 @@
 //       met de reden van `bepaalVerloop` — niet met een tweede, eigen tekst.
 //   [6] Het projectbestand bewaart begin én eind over opslaan en openen, ook
 //       voor de eigen gelaste doorsnede die het splitsen achterlaat.
+//   [7] De grootheden van die gelaste tussendoorsnede tegen de hand, én tegen
+//       de doorsnedefunctie waarmee de solver het verloop rekent.
+//   [8] Na het splitsen is de stalen staaf nog steeds te TOETSEN: beide delen
+//       komen in de toetsinvoer en de tussendoorsnede reist als geometrie mee.
 //
 // ── WAAROM DE STAAF IN [3] KORT IS ──────────────────────────────────────────
 //
@@ -51,6 +55,15 @@ const { keurEindProfiel, doorsnedeNaam, isVerlopend, hoogteOpPositie } =
   await import("./src/lib/verloopKeuze.ts");
 const { eigenDoorsnedenStore } = await import("./src/lib/profieleditor/eigenDoorsnedenStore.ts");
 const { serializeProject, deserializeProject } = await import("./src/io/projectFile.ts");
+const { defaultCombinations, combineResults } =
+  await import("./src/components/fem/solver/combinations.ts");
+const { selecteerCombinaties } = await import("./src/lib/combinatieSelectie.ts");
+const { buildSteelCheckInputs, profileLookupKey } =
+  await import("./src/lib/steelCheckBuilder.ts");
+const { readFileSync } = await import("node:fs");
+const { dirname, join, resolve } = await import("node:path");
+const { fileURLToPath } = await import("node:url");
+
 
 let passed = 0, failed = 0;
 const log = (s) => process.stdout.write(s + "\n");
@@ -351,6 +364,65 @@ log("\n[7] De grootheden van de gelaste tussendoorsnede tegen de hand");
   rel("dezelfde I_y als doorsnedeOpPositie van het verloop", e.iy_mm4, d.I, 1e-12);
   ok("de bewaarde doorsnede draagt de vormaanduiding voor de toetsing",
     gelasteIDoorsnede(m).vorm === "GelasteIDubbelsymmetrisch");
+}
+
+// ───────────────────────────────────────────────────────────────────────
+log("\n[8] Na het splitsen is een stalen staaf nog steeds te TOETSEN");
+// ───────────────────────────────────────────────────────────────────────
+//
+// De tussendoorsnede staat in geen catalogus. Zou de toetsbouwer haar niet
+// kunnen doorgeven, dan zou splitsen een staaf opleveren die de rekenkern
+// weigert — het splitsen zou de toetsing dan stilletjes stukmaken. Deze proef
+// eist dat beide delen in `inputs` staan (niet in `skipped`) en dat de
+// doorsnede werkelijk MEEREIST, als geometrie van drie platen.
+{
+  const HIER = dirname(fileURLToPath(import.meta.url));
+  const REPO = resolve(HIER, "..");
+  const PROFIELEN = JSON.parse(readFileSync(
+    join(REPO, "src-tauri", "crates", "steel-profiles", "data", "profiles.json"), "utf8"));
+  const profileDb = new Map();
+  for (const pr of PROFIELEN) {
+    const k = profileLookupKey(pr.name);
+    if (!profileDb.has(k)) profileDb.set(k, pr);
+  }
+  // Ligger op twee steunpunten, IPE 300 → IPE 200, gesplitst op de helft.
+  const heel = basisModel({
+    nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: 6000, z: 0 }],
+    beams: [{ id: 1, from: 1, to: 2, material: "S235", profile: "IPE300", profileEnd: "IPE200" }],
+    supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+    loads: [{ id: 1, type: "lineLoad", caseId: 1, beamId: 1, q: -8 }],
+  });
+  const { model: gm } = gesplitst(heel, 0.5);
+  const { perCase } = solveAllCases(bouwMultiInput(gm));
+  const combinations =
+    selecteerCombinaties(defaultCombinations(gm.loadCases), gm.beams, gm.plates).actief;
+  const combinationResults = new Map(combinations.map((c) => [c.id, combineResults(c, perCase)]));
+  const uit = buildSteelCheckInputs({
+    nodes: gm.nodes, beams: gm.beams, supports: gm.supports, combinations, combinationResults,
+    profileDb, loadCases: gm.loadCases, gevallenMetLast: [...perCase.keys()],
+  });
+  ok("beide delen komen in de toetsinvoer, geen enkele overgeslagen",
+    uit.inputs.length === 2 && uit.skipped.length === 0,
+    `${uit.inputs.length} invoeren, ${uit.skipped.length} overgeslagen: ` +
+      uit.skipped.map((x) => x.reason).join("; ").slice(0, 120));
+  const [i1, i2] = uit.inputs;
+  ok("deel 1: beginprofiel IPE 300, eindprofiel de eigen doorsnede",
+    i1?.profile_name === "IPE300" && String(i1?.profile_end).startsWith("EIGEN:"),
+    `${i1?.profile_name} → ${i1?.profile_end}`);
+  ok("deel 1: de tussendoorsnede reist mee als drie platen",
+    i1?.custom_section_end?.lamellen?.length === 3);
+  ok("deel 2: begint met de eigen doorsnede en eindigt op IPE 200",
+    i2?.custom_section?.lamellen?.length === 3 && i2?.profile_end === "IPE200",
+    `${i2?.profile_name} → ${i2?.profile_end}`);
+  // De maten in die platen zijn die van IPE 300 → IPE 200 halverwege:
+  // h 250, b 125, t_w 6,35, t_f 9,6 (zie test-verlopend-profiel [2]).
+  const lam = i1?.custom_section_end?.lamellen ?? [];
+  const lijf = lam.find((l) => Math.abs(Math.abs(l.alpha_rad) - Math.PI / 2) < 1e-9);
+  const flens = lam.find((l) => Math.abs(l.alpha_rad) < 1e-9);
+  rel("de hoogte van de tussendoorsnede is 250 mm", (lijf?.b_mm ?? 0) + 2 * (flens?.t_mm ?? 0), 250, 1e-12);
+  rel("de breedte is 125 mm", flens?.b_mm ?? 0, 125, 1e-12);
+  rel("de lijfdikte is 6,35 mm", lijf?.t_mm ?? 0, 6.35, 1e-12);
+  rel("de flensdikte is 9,6 mm", flens?.t_mm ?? 0, 9.6, 1e-12);
 }
 
 log("");
