@@ -131,6 +131,22 @@ pub(crate) const C_DIVIDER: Color = Color::rgb(217, 119, 6); //  amber rule
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/steel/")]
 pub struct ReportInput {
+    /// De nationale bijlage van het project (normnaad). Zij bepaalt welke
+    /// UITGAVEN het rapport noemt: de normenregel op omslag en paginakop, het
+    /// infoblok en de normkolom per staaf komen uit haar rij in
+    /// `nationale_bijlage::Aanduidingen`.
+    ///
+    /// Tot september 2026 kende de PDF dit veld niet en stonden de aanduidingen
+    /// vast op de Nederlandse rij, terwijl het live rapport en de kernen de
+    /// bijlage van het project al lazen. Een bijlage die deze uitgave niet kent,
+    /// wordt bij het lezen GEWEIGERD met reden.
+    ///
+    /// `#[serde(default)]`: er is één gevulde rij, dus weglaten kan niets anders
+    /// betekenen (zie `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`);
+    /// in TypeScript daarom optioneel.
+    #[serde(default)]
+    #[ts(as = "Option<nationale_bijlage::NationaleBijlage>", optional)]
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     pub project_name: String,
     pub project_number: String,
     pub engineer: String,
@@ -282,14 +298,24 @@ pub struct ReportInput {
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
 
-/// De normaanduidingen van de gekozen nationale bijlage, uit de normnaad.
+/// De normaanduidingen van de NEDERLANDSE rij, uit de normnaad.
 ///
 /// Welke UITGAVE geldt hangt samen met welke bijlage geldt; ze horen dus in
 /// dezelfde rij. Tot september 2026 stonden deze zes constanten hier los, naast
 /// drie in de frontend en vier i18n-kopieën — en hout en beton waren al
 /// uiteengelopen.
+///
+/// LET OP: de publieke constanten hieronder zijn de NL-rij en bestaan voor de
+/// tests die ze naast de naad leggen. Het RAPPORT gebruikt ze niet: dat haalt
+/// zijn aanduidingen uit de rij van [`ReportInput::bijlage`] (zie
+/// [`aanduidingen`]).
 const AANDUIDINGEN: nationale_bijlage::Aanduidingen =
     nationale_bijlage::Aanduidingen::voor(nationale_bijlage::NationaleBijlage::NL);
+
+/// De normaanduidingen van de bijlage in deze invoer.
+fn aanduidingen(input: &ReportInput) -> nationale_bijlage::Aanduidingen {
+    nationale_bijlage::Aanduidingen::voor(input.bijlage)
+}
 
 /// Kort normlabel voor staaltoetsingen.
 pub const NORM_STEEL: &str = AANDUIDINGEN.norm_staal_kort;
@@ -303,8 +329,6 @@ pub const NORM_CONCRETE: &str = AANDUIDINGEN.norm_beton_kort;
 /// `normLabel` in de frontend.
 pub const GEEN_NORM: &str = "geen norm";
 
-/// Volledige normaanduiding (cover) voor staal.
-const NORM_STEEL_FULL: &str = AANDUIDINGEN.norm_staal_omslag;
 /// Volledige normaanduiding (cover) voor hout: de aanduiding waarmee de
 /// uitgave zichzelf op elk vel noemt, plus de taal.
 ///
@@ -317,9 +341,6 @@ const NORM_STEEL_FULL: &str = AANDUIDINGEN.norm_staal_omslag;
 /// (`nen_en_1995_1_1::clt_toets::NORM_HOUT_AANDUIDING`, dev-dependency): dat is
 /// de enige manier waarop die twee plaatsen aan elkaar vastzitten.
 pub const NORM_TIMBER_FULL: &str = AANDUIDINGEN.norm_hout_omslag;
-/// Volledige normaanduiding (cover) voor beton — dezelfde uitgave als waaruit
-/// de `nen-en-1992-1-1`-crate haar waarden leest (zie de crate-doc daar).
-const NORM_CONCRETE_FULL: &str = AANDUIDINGEN.norm_beton_omslag;
 /// Wat er in het infoblok op het omslag staat voor de vrije spanningstoets:
 /// geen normaanduiding maar de vermelding dát er geen norm achter zit, zodat
 /// het omslag ook zonder Eurocode-toets iets waars zegt. Kort gehouden, want
@@ -333,7 +354,7 @@ const NORM_VRIJ_FULL: &str = "geen norm — tegen een opgegeven toelaatbare span
 /// hetzelfde pad volgen.
 pub struct ReportMember<'a> {
     pub beam_id: u32,
-    /// Kort normlabel: [`NORM_STEEL`], [`NORM_TIMBER`] of [`NORM_CONCRETE`] —
+    /// Kort normlabel van de bijlage in de invoer (staal, hout of beton) —
     /// of `None` wanneer er géén norm achter de toets zit (de vrije
     /// spanningstoets). Het rapport mag geen norm noemen die niet is
     /// toegepast, en dat onderscheid moet dus in de gegevens staan en niet in
@@ -374,11 +395,12 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
             + input.concrete_check_results.len()
             + input.stress_check_results.len(),
     );
+    let a = aanduidingen(input);
 
     for r in &input.steel_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: Some(NORM_STEEL),
+            norm: Some(a.norm_staal_kort),
             section_label: &r.profile_name,
             grade_label: &r.steel_grade,
             uc_max: r.uc_max,
@@ -392,7 +414,7 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     for r in &input.timber_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: Some(NORM_TIMBER),
+            norm: Some(a.norm_hout_kort),
             section_label: &r.section_name,
             grade_label: &r.strength_class,
             uc_max: r.uc_max,
@@ -408,7 +430,7 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     for r in &input.clt_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: Some(NORM_TIMBER),
+            norm: Some(a.norm_hout_kort),
             section_label: &r.section_name,
             grade_label: &r.strength_class,
             uc_max: r.uc_max,
@@ -423,7 +445,7 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
     for r in &input.concrete_check_results {
         members.push(ReportMember {
             beam_id: r.beam_id,
-            norm: Some(NORM_CONCRETE),
+            norm: Some(a.norm_beton_kort),
             section_label: &r.section_name,
             grade_label: &r.concrete_class,
             uc_max: r.uc_max,
@@ -495,15 +517,16 @@ impl ToegepasteKaders {
 /// weg — zie [`generate_report_pdf`].
 pub fn norms_line(input: &ReportInput) -> String {
     let k = ToegepasteKaders::van(input);
+    let a = aanduidingen(input);
     let mut delen: Vec<&str> = Vec::with_capacity(4);
     if k.staal {
-        delen.push(NORM_STEEL);
+        delen.push(a.norm_staal_kort);
     }
     if k.hout {
-        delen.push(NORM_TIMBER);
+        delen.push(a.norm_hout_kort);
     }
     if k.beton {
-        delen.push(NORM_CONCRETE);
+        delen.push(a.norm_beton_kort);
     }
     if k.vrij {
         delen.push(GEEN_NORM);
@@ -518,15 +541,16 @@ pub fn norms_line(input: &ReportInput) -> String {
 /// plaats van een geleende norm.
 fn full_norm_designations(input: &ReportInput) -> Vec<&'static str> {
     let k = ToegepasteKaders::van(input);
+    let a = aanduidingen(input);
     let mut norms: Vec<&'static str> = Vec::with_capacity(4);
     if k.staal {
-        norms.push(NORM_STEEL_FULL);
+        norms.push(a.norm_staal_omslag);
     }
     if k.hout {
-        norms.push(NORM_TIMBER_FULL);
+        norms.push(a.norm_hout_omslag);
     }
     if k.beton {
-        norms.push(NORM_CONCRETE_FULL);
+        norms.push(a.norm_beton_omslag);
     }
     if k.vrij {
         norms.push(NORM_VRIJ_FULL);

@@ -635,7 +635,7 @@ async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
 
     assert_eq!(schema["additionalProperties"], false);
     for veld in [
-        "section", "concrete_class", "reinforcement_grade",
+        "bijlage", "section", "concrete_class", "reinforcement_grade",
         "cage", "n_ed_kn", "moment_sign", "n_strips", "steel_branch",
         "design_situation", "interaction_points",
     ] {
@@ -646,7 +646,7 @@ async fn schema_van_concrete_mn_kappa_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        10,
+        11,
         "het schema kent een veld dat MnKappaRequest weigert"
     );
 
@@ -898,6 +898,20 @@ async fn tikfout_in_een_houtveld_wordt_geweigerd_in_plaats_van_stil_genegeerd() 
         assert!(melding.contains(veld), "CLT {wat}: de melding moet `{veld}` noemen: {melding}");
     }
 
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}
+
+/// Het rapportschema noemt de nationale bijlage (normnaad, issue #17): de PDF
+/// haalt de normaanduidingen uit haar rij, dus een client moet het veld kunnen
+/// vinden — met dezelfde enum als elk ander gereedschap.
+#[tokio::test]
+async fn rapportschema_noemt_de_nationale_bijlage() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+    let rapport = tooldefinitie(&mut stdin, &mut reader, 41, "generate_steel_report_pdf").await;
+    let veld = &rapport["inputSchema"]["properties"]["bijlage"];
+    assert_eq!(veld["type"], "string", "bijlage ontbreekt in het schema van generate_steel_report_pdf");
+    assert_eq!(veld["enum"], serde_json::json!(nationale_bijlage::BIJLAGEN_GEVULD));
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }

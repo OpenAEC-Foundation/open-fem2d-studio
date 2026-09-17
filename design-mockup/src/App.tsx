@@ -214,14 +214,21 @@ function DetachedApp({ view, title }: { view: string; title: string }) {
  * niet kent. Dan is er GEEN keuze te maken: `bijlageUitBestand` gooit, en dat
  * hoort ook — stil op Nederland uitkomen zou een rapport opleveren met getallen
  * die niet bij de genoemde bijlage horen. Hier wordt de melding in de console
- * gezet en het veld weggelaten, zodat de kern zelf weigert met dezelfde reden.
+ * gezet en de code ONGEWIJZIGD doorgegeven, zodat de kern zelf weigert met
+ * dezelfde reden.
+ *
+ * Tot september 2026 werd het veld in dat geval weggelaten. Dat was precies de
+ * stille terugval die de naad moest voorkomen: een weggelaten veld leest de
+ * kern met `#[serde(default)]` als de enige gevulde bijlage, dus een project
+ * met een onbekende bijlage rekende gewoon met Nederlandse factoren.
  */
 function bijlageVanProject(waarde: string | null): NationaleBijlageCode | undefined {
   try {
     return bijlageUitBestand(waarde) ?? undefined;
   } catch (e) {
     console.error("[Toetsing] nationale bijlage uit de projectgegevens:", e);
-    return undefined;
+    // Bewust geen geldige code: de kern hoort deze waarde te weigeren.
+    return waarde as NationaleBijlageCode;
   }
 }
 
@@ -668,6 +675,10 @@ function App() {
           bestandsklasse === "CC1" || bestandsklasse === "CC2" || bestandsklasse === "CC3"
             ? bestandsklasse
             : undefined,
+        // De bijlage van het BESTAND, om dezelfde reden als de klasse: de
+        // standaardcombinaties die bij het openen ontstaan, horen bij γ en ψ
+        // van dit project (normnaad).
+        nationaleBijlage: (uitgangspunten as { nationaleBijlage?: unknown } | undefined)?.nationaleBijlage,
         idTellers: parsed.idTellers,
         combinatiesVervangenBijOpenen: parsed.combinatiesVervangenBijOpenen,
       });
@@ -1388,6 +1399,8 @@ function App() {
           segmentLengteMm: fem.betonSegmentLengteMm,
           grenstoestand,
           belastingduur: duur.duur,
+          // De bijlage van het project gaat de kromme van 5.8.6(3) in (normnaad).
+          bijlage: bijlageVanProject(fem.nationaleBijlage),
         });
         if (uit.zonderLasten) continue;
         for (const id of uit.zonderKruipcoefficient) zonderKruip.add(id);
@@ -2562,6 +2575,7 @@ function App() {
         onSluitAfwijking={fem.sluitCombinatieAfwijking}
         onWindOpnieuw={() => { setLoadCasesOpen(false); setWindGeneratorOpen(true); }}
         gevolgklasse={fem.gevolgklasse}
+        bijlage={fem.combinatieBijlage}
         addLoadCase={fem.addLoadCase}
         updateLoadCase={fem.updateLoadCase}
         removeLoadCase={fem.removeLoadCase}

@@ -51,7 +51,7 @@ side?: CoverSide,
 exposure_class: ExposureClass, 
 /**
  * De constructieklasse. Blijft het veld weg, dan
- * [`DEFAULT_STRUCTURAL_CLASS`] — de NB-waarde voor 50 jaar.
+ * [`standaard_constructieklasse`] van de bijlage — de NB-waarde voor 50 jaar.
  */
 structural_class: StructuralClass | null, 
 /**

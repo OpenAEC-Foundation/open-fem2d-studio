@@ -49,6 +49,7 @@ import type { VerloopRapport } from "../../../lib/types/steel/VerloopRapport";
 import type { VerloopMaten } from "../../../lib/types/steel/VerloopMaten";
 import type { Toetsdoorsnede } from "../../../lib/types/steel/Toetsdoorsnede";
 import Deelstappen, { Waarden } from "../Deelstappen";
+import { useRapportProjectInfo } from "../useProjectInfo";
 import {
   CHECK_REPORT_CSS,
   belastingduurTekst,
@@ -301,14 +302,26 @@ export function DerivationBlock({
           de norm hem afwerkt. */}
       <Deelstappen
         stappen={stappen}
-        kop={
-          ketenHerkomst(check) === "nb"
-            ? t(
-                "report.ketenKop",
-                "Afleiding volgens de nationale bijlage, stap voor stap:",
-              )
-            : t("report.ketenKopAlgemeen", "Afleiding, stap voor stap:")
-        }
+        kop={(() => {
+          // De kop noemt de bron van de keten, en alleen de bijlage als de
+          // afleiding er werkelijk uit komt — zie `ketenHerkomst`.
+          switch (ketenHerkomst(check)) {
+            case "nb":
+              return t("report.ketenKop", "Afleiding volgens de nationale bijlage, stap voor stap:");
+            case "nb-benadering":
+              return t(
+                "report.ketenKopNbBenadering",
+                "Afleiding volgens de nationale bijlage, met een M_cr-benadering voor U-profielen buiten de norm om, stap voor stap:",
+              );
+            case "elastisch":
+              return t(
+                "report.ketenKopElastisch",
+                "Afleiding met de algemene elastische formule voor M_cr (niet volgens bijlage NB.NB), stap voor stap:",
+              );
+            default:
+              return t("report.ketenKopAlgemeen", "Afleiding, stap voor stap:");
+          }
+        })()}
       />
 
       {/* Symbolisch → ingevuld → uitkomst, met het vergelijkingsnummer rechts. */}
@@ -439,7 +452,8 @@ export default function CheckDetailSection() {
   const verborgenToetsStaven = useReportStore((s) => s.verborgenToetsStaven);
 
   const checkedTime = fmtCheckedAt(lastRunAt);
-  const basis = basisText(t, results);
+  // De toetsbasis noemt de uitgaven van de bijlage van HET PROJECT (normnaad).
+  const basis = basisText(t, results, useRapportProjectInfo().uitgangspunten?.nationaleBijlage);
 
   // Alleen de aangevinkte staven worden hier uitgeschreven; de rest telt
   // gewoon mee in het toetsingsoverzicht (zie de sectiedocumentatie).

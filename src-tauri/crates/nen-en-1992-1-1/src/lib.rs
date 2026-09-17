@@ -90,28 +90,17 @@
 //! `UnityCheck` en `CheckStatus` wonen nu in `nen-en-1993-1-1-section`; ze
 //! zijn materiaal-neutraal en horen in een gedeelde `check-core` crate.
 
-/// De nationaal bepaalde parameters bij NEN-EN 1992-1-1, uit de normnaad.
-///
-/// Eén plek voor de hele crate: γ_C, γ_S, α_cc, γ_cE, de factor in ε_ud, tabel
-/// 4.4N met de Δc-toeslagen, de constructieklasse bij 50 jaar, de coëfficiënt
-/// van λ_lim en α₆ voor druk. Elk van die waarden stond hier tot september 2026
-/// als losse `const` of `match`-arm; nu staan ze bij elkaar in de crate
-/// `nationale-bijlage`, met het NB-artikel erbij, en leest deze crate ze daar.
-pub(crate) const NDP: nationale_bijlage::Ndp1992 =
-    nationale_bijlage::Ndp1992::voor(BIJLAGE_VAN_DE_KERN);
-
-/// De nationale bijlage waarmee deze crate is gebouwd.
-///
-/// De NDP-rij hierboven wordt op COMPILEERTIJD opgehaald: de betonmodules
-/// dragen de bijlage (nog) niet als argument door hun rekengang, want die
-/// loopt via `DesignMaterial::new` en dat raakt tientallen aanroepen. De
-/// aanroepers (`concrete_check::check_concrete_beam`, de kolomtoets en de
-/// dekkingstoets) vergelijken de bijlage uit hun INVOER met deze constante en
-/// WEIGEREN de toets als ze verschillen. Zo kan een tweede bijlage hier nooit
-/// met Nederlandse getallen doorrekenen; hij krijgt een melding tot de
-/// rekengang hem werkelijk draagt.
-pub const BIJLAGE_VAN_DE_KERN: nationale_bijlage::NationaleBijlage =
-    nationale_bijlage::NationaleBijlage::NL;
+// DE NATIONAAL BEPAALDE PARAMETERS (normnaad).
+//
+// γ_C, γ_S, α_cc, γ_cE, de factor in ε_ud, tabel 4.4N met de Δc-toeslagen, de
+// constructieklasse bij 50 jaar, de coëfficiënt van λ_lim en α₆ voor druk staan
+// in de crate `nationale-bijlage`, één rij per bijlage. Tot september 2026 las
+// deze crate de NL-rij op COMPILEERTIJD en weigerden de aanroepers een andere
+// bijlage aan de grens. Nu gaat de bijlage als ARGUMENT door de rekengang:
+// `DesignMaterial::new(bijlage, …)` draagt haar, de dekkingstoets leest haar
+// uit `ConcreteCoverRequest::bijlage`, λ_lim uit `KolomInvoer::bijlage`, α₆ uit
+// zijn eigen argument. Er is in deze crate geen vaste bijlage meer; wie een
+// NDP wil, moet zeggen van welke bijlage.
 
 pub mod beff;
 pub mod beff_deelstappen;
@@ -162,7 +151,7 @@ pub use kruip::{
     creep_coefficient_request, kruip_deelstappen, kruipcoefficient_bijlage_b, CementClass,
     CreepCoefficientRequest, CreepCoefficientResponse, KruipUitkomst,
 };
-pub use factors::{DesignSituation, ALPHA_CC, E_S, GAMMA_CE};
+pub use factors::{DesignSituation, E_S};
 // De inwendige hefboomsarm van 6.2.3(1): de dwarskrachttoets en de
 // dekkingslijn bepalen hem allebei hiermee, en de vertaallaag van de
 // betontoetsing heeft de grondslag nodig om hem door te geven.

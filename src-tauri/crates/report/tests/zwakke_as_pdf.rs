@@ -87,6 +87,7 @@ fn de_pdf_noemt_de_kniklengte_uit_het_vlak_met_haar_herkomst() {
     assert!(k.notes.iter().any(|n| n.contains("L_cr,z = 4000 mm (staaflengte (terugval))")));
 
     let pdf = generate_report_pdf(ReportInput {
+        bijlage: Default::default(),
         project_name: "Zwakke as".into(),
         project_number: "ZA-001".into(),
         engineer: "Test Engineer".into(),

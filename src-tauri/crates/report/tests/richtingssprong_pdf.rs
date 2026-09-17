@@ -125,6 +125,7 @@ fn de_pdf_toont_de_richtingssprong_bij_staal_en_beton() {
     assert!(notes.iter().any(|n| n == BETON), "de kern hoort de kanttekening bij 6.1 te zetten");
 
     let pdf = generate_report_pdf(ReportInput {
+        bijlage: Default::default(),
         project_name: "Richtingssprong".into(),
         project_number: "RS-001".into(),
         engineer: "Test Engineer".into(),

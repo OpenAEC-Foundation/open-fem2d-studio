@@ -788,6 +788,7 @@ pub fn kolomtoetsen(
     };
 
     let invoer = KolomInvoer {
+        bijlage: mat.bijlage,
         l_mm: lengte_mm,
         kniklengte,
         l0_opgegeven_mm,
@@ -1250,7 +1251,11 @@ pub fn column_check(
     if !(req.length_m > 0.0) {
         return Err("de staaflengte moet groter dan nul zijn".to_string());
     }
-    let mat = DesignMaterial::new(beton, staal, req.design_situation, req.steel_branch);
+    // De bijlage uit het verzoek gaat met het materiaal de rekengang in: γ_C,
+    // γ_S, α_cc en ε_ud (DesignMaterial) en de coëfficiënt van λ_lim
+    // (KolomInvoer::bijlage, uit `mat.bijlage`). Een onbekende bijlage komt
+    // hier niet: het lezen van `ConcreteColumnCheckRequest` weigert haar.
+    let mat = DesignMaterial::new(req.bijlage, beton, staal, req.design_situation, req.steel_branch);
 
     let uit = kolomtoetsen(
         &section,
@@ -1571,6 +1576,7 @@ fn tweede_as_toetsen(
 
     // ── Eerste doorgang: l₀,z en λ_z, meer niet ──────────────────────────
     let basis = KolomInvoer {
+        bijlage: mat.bijlage,
         l_mm: lengte_mm,
         kniklengte: kniklengte_z.clone(),
         l0_opgegeven_mm: l0_opgegeven_z,
@@ -1915,6 +1921,7 @@ fn tweede_as_toetsen(
         );
     };
     let mat_nl = DesignMaterial::nonlinear(
+        mat.bijlage,
         beton,
         staal,
         situation,

@@ -107,6 +107,7 @@ Wind vrijstaand dak c_f opwaarts, van links: §7.3 tabel 7.6 (α = 10,0°, φ = 
 
 fn invoer(wind: Option<String>) -> ReportInput {
     ReportInput {
+        bijlage: Default::default(),
         project_name: "Carport".into(),
         project_number: "W-16".into(),
         engineer: "Proef".into(),

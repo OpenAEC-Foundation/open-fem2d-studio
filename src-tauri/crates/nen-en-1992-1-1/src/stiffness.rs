@@ -911,6 +911,7 @@ mod tests {
 
     fn mat(basis: NonlinearBasis, phi_ef: f64) -> DesignMaterial {
         DesignMaterial::nonlinear(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,
@@ -1273,6 +1274,7 @@ mod tests {
         let lagen = korf_asym().layers(s.h_mm);
         let o = MnKappaOptions::default();
         let pr = DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,
@@ -1553,6 +1555,7 @@ mod tests {
         let s = doorsnede();
         let lagen = korf_sym().layers(s.h_mm);
         let m = DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,

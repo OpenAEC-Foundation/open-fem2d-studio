@@ -82,6 +82,7 @@ import { beamLengthMm, isSteelProfile } from "./steelCheckBuilder";
 import { referentieVanStaaf } from "./referentierichting";
 import { kruipcoefficientVanStaaf } from "./kruipcoefficient";
 import { getLinearSolver, type LinearSolverId } from "../core/math/LinearSolver";
+import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 
 // ── Vaste waarden ──────────────────────────────────────────────────────────
 
@@ -478,6 +479,12 @@ export interface FysischOpties {
   belastingduur?: LoadDuration;
   /** Vangnet op het aantal segmenten per staaf; standaard 2000. */
   maxSegmenten?: number;
+  /**
+   * De nationale bijlage van het project (normnaad): γ_C, γ_S, α_cc en γ_cE van
+   * de (3.14)-kromme komen uit haar rij in de kern. Standaard de enige gevulde
+   * bijlage, zoals `#[serde(default)]` aan de Rust-kant.
+   */
+  bijlage?: NationaleBijlageCode;
   /** Aanroep van de rekenkern; standaard `roepKern` uit checkStore. */
   roep?: RoepKern;
   /**
@@ -505,6 +512,7 @@ function vulAan(o: FysischOpties | undefined): Ingevuld {
     minEiRatio: o?.minEiRatio ?? 0.01,
     belastingduur: o?.belastingduur ?? "ShortTerm",
     maxSegmenten: o?.maxSegmenten ?? MAX_SEGMENTEN,
+    bijlage: o?.bijlage ?? STANDAARD_BIJLAGE,
     roep: o?.roep ?? standaardRoep,
     losOp: o?.losOp ?? solveCombinationSecondOrder,
   };
@@ -562,6 +570,7 @@ function bouwVerzoek(
   vorigeEi: number[],
 ): SegmentStiffnessRequest {
   return {
+    bijlage: opties.bijlage,
     beam_id: staaf.beamId,
     section: staaf.doorsnede,
     concrete_class: staaf.betonklasse,

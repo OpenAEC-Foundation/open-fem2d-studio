@@ -223,6 +223,7 @@ fn input_alle(
     concrete: Vec<ConcreteBeamCheckResult>,
 ) -> ReportInput {
     ReportInput {
+        bijlage: Default::default(),
         steel_check_results: steel,
         timber_check_results: timber,
         concrete_check_results: concrete,
@@ -235,6 +236,7 @@ fn input_alle(
 /// plaats binnenkomt.
 fn leeg_rapport() -> ReportInput {
     ReportInput {
+        bijlage: Default::default(),
         project_name: "Gemengd raamwerk".into(),
         project_number: "MX-001".into(),
         engineer: "Test Engineer".into(),
@@ -365,10 +367,12 @@ fn norms_line_toont_alleen_aanwezige_normen() {
 #[test]
 fn geen_staal_in_het_model_geen_staalnorm_in_het_rapport() {
     let clt_alleen = ReportInput {
+        bijlage: Default::default(),
         clt_check_results: vec![clt_beam(1, 0.4)],
         ..leeg_rapport()
     };
     let vrij_alleen = ReportInput {
+        bijlage: Default::default(),
         stress_check_results: vec![vrij_beam(1, 0.3)],
         ..leeg_rapport()
     };
@@ -396,6 +400,7 @@ fn geen_staal_in_het_model_geen_staalnorm_in_het_rapport() {
 #[test]
 fn report_members_neemt_kruislaaghout_en_vrije_spanning_mee() {
     let inp = ReportInput {
+        bijlage: Default::default(),
         steel_check_results: vec![steel_beam(1, 0.42)],
         clt_check_results: vec![clt_beam(2, 0.55)],
         stress_check_results: vec![vrij_beam(3, 0.31)],
@@ -428,6 +433,7 @@ fn report_members_neemt_kruislaaghout_en_vrije_spanning_mee() {
 #[test]
 fn hout_en_kruislaaghout_leveren_samen_een_normvermelding() {
     let inp = ReportInput {
+        bijlage: Default::default(),
         timber_check_results: vec![timber_beam(1, 0.5)],
         clt_check_results: vec![clt_beam(2, 0.5)],
         ..leeg_rapport()
@@ -440,6 +446,7 @@ fn hout_en_kruislaaghout_leveren_samen_een_normvermelding() {
 #[test]
 fn clt_rapport_rendert_geldige_pdf() {
     let inp = ReportInput {
+        bijlage: Default::default(),
         clt_check_results: vec![clt_beam(1, 0.4), clt_beam(2, 0.6)],
         ..leeg_rapport()
     };
@@ -476,10 +483,12 @@ fn clt_rapport_rendert_geldige_pdf() {
 #[test]
 fn de_staalnorm_staat_niet_op_het_papier_van_een_model_zonder_staal() {
     let clt_pdf = generate_report_pdf(ReportInput {
+        bijlage: Default::default(),
         clt_check_results: vec![clt_beam(1, 0.4)],
         ..leeg_rapport()
     });
     let vrij_pdf = generate_report_pdf(ReportInput {
+        bijlage: Default::default(),
         stress_check_results: vec![vrij_beam(1, 0.3)],
         ..leeg_rapport()
     });
@@ -637,6 +646,7 @@ fn de_normenregel_op_het_omslag_past_op_het_papier() {
     let max = omslag_tekstbreedte();
 
     let alle_vier = ReportInput {
+        bijlage: Default::default(),
         steel_check_results: vec![steel_beam(1, 0.5)],
         timber_check_results: vec![timber_beam(2, 0.5)],
         concrete_check_results: vec![concrete_beam(3, 0.5)],
@@ -754,4 +764,36 @@ fn de_houtnorm_heet_op_het_omslag_hetzelfde_als_in_de_notitie() {
         notitie.contains(op_het_omslag),
         "de notitie bij de rolschuiving noemt een andere uitgave dan het omslag: {notitie}",
     );
+}
+
+/// De normnaad in de PDF: de aanduidingen komen uit de rij van
+/// `ReportInput::bijlage`, niet uit een vaste bijlage. Met één gevulde rij is
+/// dat alleen aan te tonen door de uitkomst naast de rij van de invoer te
+/// leggen, en door te laten zien dat een onbekende bijlage bij het lezen wordt
+/// geweigerd en een weggelaten veld de enige gevulde rij is.
+#[test]
+fn de_normaanduidingen_volgen_de_bijlage_van_de_invoer() {
+    let inp = input_alle(
+        vec![steel_beam(1, 0.5)],
+        vec![timber_beam(2, 0.5)],
+        vec![],
+    );
+    let a = nationale_bijlage::Aanduidingen::voor(inp.bijlage);
+    assert_eq!(
+        norms_line(&inp),
+        format!("{} / {}", a.norm_staal_kort, a.norm_hout_kort)
+    );
+    let members = report_members(&inp);
+    assert_eq!(members[0].norm, Some(a.norm_staal_kort));
+    assert_eq!(members[1].norm, Some(a.norm_hout_kort));
+
+    // Langs JSON — de weg die de frontend en de MCP-server nemen.
+    let mut json = serde_json::to_value(&inp).unwrap();
+    assert_eq!(json["bijlage"], "NL");
+    json["bijlage"] = serde_json::json!("DE");
+    let fout = serde_json::from_value::<ReportInput>(json.clone()).unwrap_err().to_string();
+    assert!(fout.contains("nationale bijlage \"DE\" is niet gevuld"), "{fout}");
+    json.as_object_mut().unwrap().remove("bijlage");
+    let zonder: ReportInput = serde_json::from_value(json).unwrap();
+    assert_eq!(zonder.bijlage, nationale_bijlage::NationaleBijlage::NL);
 }

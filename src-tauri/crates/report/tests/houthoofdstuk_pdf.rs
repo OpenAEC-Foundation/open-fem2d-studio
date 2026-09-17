@@ -243,6 +243,7 @@ fn staalstaaf() -> BeamCheckResult {
 
 fn invoer(clt: Vec<CltBeamCheckResult>) -> ReportInput {
     ReportInput {
+        bijlage: Default::default(),
         project_name: "Houten vloerveld".into(),
         project_number: "HT-001".into(),
         engineer: "Test Engineer".into(),

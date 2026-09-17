@@ -42,6 +42,7 @@ fn korf_sym() -> ReinforcementCage {
 
 fn verzoek(length_m: f64, cage: ReinforcementCage) -> SegmentStiffnessRequest {
     SegmentStiffnessRequest {
+        bijlage: nationale_bijlage::NationaleBijlage::NL,
         beam_id: 1,
         section: ConcreteSectionInput::rectangle(300.0, 500.0),
         concrete_class: "C30/37".to_string(),

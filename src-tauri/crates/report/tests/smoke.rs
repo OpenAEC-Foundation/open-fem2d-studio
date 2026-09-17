@@ -81,6 +81,7 @@ fn dummy_beam(beam_id: u32, profile: &str, uc: f64) -> BeamCheckResult {
 #[test]
 fn produces_valid_pdf_header() {
     let input = ReportInput {
+        bijlage: Default::default(),
         project_name: "Smoke Test".into(),
         project_number: "ST-001".into(),
         engineer: "Test Engineer".into(),

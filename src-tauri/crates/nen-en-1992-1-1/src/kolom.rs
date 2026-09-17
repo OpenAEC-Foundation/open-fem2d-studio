@@ -104,7 +104,7 @@
 //!   "De methode gebaseerd op de nominale kromming (5.8.8) mag alleen voor
 //!   geschoorde, op zichzelf staande elementen zijn toegepast."
 //! * **§5.8.6(3) — γ_cE = 1,2**, doorgehaald als aanbeveling en teruggezet als
-//!   eis met dezelfde waarde. Staat al in [`crate::factors::GAMMA_CE`].
+//!   eis met dezelfde waarde. Staat al in [`crate::factors::gamma_ce`].
 //!
 //! # Wat hier NIET in zit, en wat het zou vragen
 //!
@@ -785,7 +785,13 @@ pub fn grondslag_c(
 /// en zou elke kolom "slank genoeg" heten. Een element zonder normaaldruk is
 /// echter geen knikgeval en hoort deze toets helemaal niet te krijgen; daarom
 /// weigert deze functie n ≤ 0 in plaats van er een getal van te maken.
-pub fn lambda_lim_5_13n(a: f64, b: f64, c: f64, n: f64) -> Result<f64, String> {
+pub fn lambda_lim_5_13n(
+    bijlage: nationale_bijlage::NationaleBijlage,
+    a: f64,
+    b: f64,
+    c: f64,
+    n: f64,
+) -> Result<f64, String> {
     if !(n > 0.0) {
         return Err(format!(
             "λ_lim = 20·A·B·C/√n vereist een DRUKkracht: n = N_Ed/(A_c·f_cd) is {} en dus niet \
@@ -794,9 +800,9 @@ pub fn lambda_lim_5_13n(a: f64, b: f64, c: f64, n: f64) -> Result<f64, String> {
             nl(n, 4)
         ));
     }
-    // De coëfficiënt 20 is een nationaal bepaalde parameter en komt uit de
-    // normnaad, niet uit een los getal in deze regel.
-    Ok(crate::NDP.lambda_lim_coefficient * a * b * c / n.sqrt())
+    // De coëfficiënt 20 is een nationaal bepaalde parameter en komt uit de rij
+    // van `bijlage` in de normnaad, niet uit een los getal in deze regel.
+    Ok(nationale_bijlage::Ndp1992::voor(bijlage).lambda_lim_coefficient * a * b * c / n.sqrt())
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -977,6 +983,9 @@ pub enum Kniklengtebepaling {
 /// levert een groene kolom op die in werkelijkheid twee keer zo slank is.
 #[derive(Clone, Debug)]
 pub struct KolomInvoer {
+    /// De nationale bijlage waaruit de coëfficiënt van λ_lim (5.13N) komt
+    /// (normnaad). De aanroeper geeft de bijlage van zijn verzoek door.
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     /// Vrije lengte l tussen de eindaansluitingen, mm (§5.8.3.2(3)).
     pub l_mm: f64,
     /// Hoe l₀ wordt bepaald.
@@ -1199,7 +1208,7 @@ pub fn kolomslankheid(inv: &KolomInvoer) -> Result<Kolomslankheid, String> {
         inv.eindmomenten_knm,
     )?;
     let c = c_grondslag.c();
-    let lambda_lim = lambda_lim_5_13n(a, b, c, n)?;
+    let lambda_lim = lambda_lim_5_13n(inv.bijlage, a, b, c, n)?;
 
     kanttekeningen.push(
         "λ_lim komt uit de Nederlandse bijlage bij §5.8.3.1(1): daar is de OPMERKING met (5.13N) \
@@ -3871,8 +3880,9 @@ mod tests {
     /// oneindig terug te geven.
     #[test]
     fn lambda_lim_weigert_zonder_normaaldruk() {
-        assert!(lambda_lim_5_13n(0.7, 1.1, 0.7, 0.0).is_err());
-        assert!(lambda_lim_5_13n(0.7, 1.1, 0.7, -0.2).is_err());
+        let nl = nationale_bijlage::NationaleBijlage::NL;
+        assert!(lambda_lim_5_13n(nl, 0.7, 1.1, 0.7, 0.0).is_err());
+        assert!(lambda_lim_5_13n(nl, 0.7, 1.1, 0.7, -0.2).is_err());
     }
 
     /// A_s,max: de NB-tak voor een kolom zonder overlappingslassen is het

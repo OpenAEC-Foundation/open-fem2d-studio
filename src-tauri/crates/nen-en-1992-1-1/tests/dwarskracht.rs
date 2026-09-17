@@ -41,6 +41,7 @@ fn snap(n_kn: f64, v_kn: f64, m_knm: f64) -> ForceStateSnapshot {
 
 fn materiaal(beton: &str) -> DesignMaterial {
     DesignMaterial::new(
+        nationale_bijlage::NationaleBijlage::NL,
         concrete_class_by_name(beton).unwrap(),
         reinforcement_grade_by_name("B500B").unwrap(),
         DesignSituation::PersistentTransient,

@@ -66,7 +66,7 @@ import {
 } from "../lib/combinatieBeheer";
 import {
   GEVOLGKLASSEN,
-  PARTIELE_FACTOREN,
+  partieleFactoren,
   STANDAARD_GEVOLGKLASSE,
   type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
@@ -102,7 +102,7 @@ import type { SteelProfile } from "../lib/types/steel/SteelProfile";
 import { version as PAKKET_VERSIE } from "../../package.json";
 import { beeldKernfoutAf } from "./fouten";
 import { controleerVelden, keurCheckConfig, valideerModel } from "./valideerModel";
-import { bijlageUitBestand, type NationaleBijlageCode } from "../lib/normAanduidingen";
+import { bijlageUitBestand, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../lib/normAanduidingen";
 import {
   SIDECAR_OPS,
   SIDECAR_PROTOCOL,
@@ -269,11 +269,13 @@ interface GelezenModel {
   /** Gevolgklasse uit de projectgegevens van het bestand, of `null`. */
   gevolgklasseUitBestand: Gevolgklasse | null;
   /**
-   * Nationale bijlage uit de projectgegevens van het bestand, of `null`
-   * (normnaad). Zij gaat als `bijlage` mee naar elke rekenkern. Een bijlage
-   * die deze uitgave niet kent, levert hier een fout op — niet stil "NL".
+   * Nationale bijlage uit de projectgegevens van het bestand, ZOALS GELEZEN
+   * (normnaad), of `undefined`. Nog niet gekeurd: een `bijlage` in het verzoek
+   * gaat voor (issue #17), en dan hoort een onbekende code in het bestand de
+   * aanroep niet te laten stranden. `leesBijlageVoorRekening` keurt de bijlage
+   * die werkelijk geldt, en weigert een onbekende code met reden.
    */
-  bijlageUitBestand: NationaleBijlageCode | null;
+  bijlageRauwUitBestand: unknown;
   /**
    * De id-tellers uit het projectbestand, of `undefined`. Alleen voor de
    * tellers zelf: of een combinatie verouderd is, herkent `openCombinatieStaat`
@@ -471,13 +473,10 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
           ?.uitgangspunten?.gevolgklasse,
       ),
       // De nationale bijlage stond al in het projectbestand maar werd door
-      // niemand gelezen (normnaad). Een code die deze uitgave niet kent, gooit
-      // hier — dat is de bedoeling: een model met een vreemde bijlage hoort
-      // niet met Nederlandse partiële factoren te worden doorgerekend.
-      bijlageUitBestand: leesBijlage(
-        (bestand.projectInfo as { uitgangspunten?: { nationaleBijlage?: unknown } } | undefined)
-          ?.uitgangspunten?.nationaleBijlage,
-      ),
+      // niemand gelezen (normnaad). Hier alleen gelezen; gekeurd wordt zij in
+      // `leesBijlageVoorRekening`, na de voorrang van het verzoek.
+      bijlageRauwUitBestand: (bestand.projectInfo as { uitgangspunten?: { nationaleBijlage?: unknown } } | undefined)
+        ?.uitgangspunten?.nationaleBijlage,
       idTellersUitBestand: bestand.idTellers,
     };
   }
@@ -535,7 +534,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     analysetypeUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
-    bijlageUitBestand: null,
+    bijlageRauwUitBestand: undefined,
     idTellersUitBestand: undefined,
     scheefstandMeldingen: scheef.meldingen,
     scheefstandKeuze: scheef.keuze,
@@ -556,6 +555,34 @@ function leesBijlage(waarde: unknown): NationaleBijlageCode | null {
   } catch (e) {
     throw new InvoerFout((e as Error).message);
   }
+}
+
+/**
+ * De nationale bijlage waarmee deze aanroep rekent (normnaad). Eén plek, zodat
+ * de standaardcombinaties (γ en ψ) en elke toetsinvoer dezelfde bijlage
+ * krijgen:
+ *  1. `bijlage` uit het VERZOEK (issue #17: `check_fem_model` met een losse
+ *     bijlage) — wie hem uitdrukkelijk meegeeft, bedoelt deze, ook boven het
+ *     projectbestand;
+ *  2. die uit de projectgegevens van het bestand;
+ *  3. de enige gevulde bijlage (bestand van vóór de naad, of een los model).
+ * Een code die deze uitgave niet kent, in het verzoek of in het geldende
+ * bestand, wordt een INVOERFOUT met reden — nooit stil NL.
+ */
+function leesBijlageVoorRekening(
+  payload: Record<string, unknown>,
+  gelezen: GelezenModel,
+): NationaleBijlageCode {
+  if (payload.bijlage !== undefined) {
+    const uitVerzoek = leesBijlage(payload.bijlage);
+    if (uitVerzoek === null) {
+      throw new InvoerFout(
+        "Veld `bijlage` is leeg. Laat het weg om de bijlage uit het projectbestand te gebruiken.",
+      );
+    }
+    return uitVerzoek;
+  }
+  return leesBijlage(gelezen.bijlageRauwUitBestand) ?? STANDAARD_BIJLAGE;
 }
 
 /**
@@ -590,6 +617,7 @@ function leesGevolgklasse(
 function gevolgklasseWaarschuwing(
   k: { klasse: Gevolgklasse; bron: KlasseBron },
   metStandaard: boolean,
+  bijlage: NationaleBijlageCode,
 ): string | null {
   if (!metStandaard) return null;
   if (k.bron === "terugval") {
@@ -603,7 +631,7 @@ function gevolgklasseWaarschuwing(
     return (
       "Geen gevolgklasse in de projectgegevens of als `gevolgklasse`: de klasse " +
       `${k.klasse} komt uit het kenmerk van de standaardcombinaties in het projectbestand, ` +
-      `met de factoren van NEN-EN 1990 ${PARTIELE_FACTOREN[k.klasse].bron}.`
+      `met de factoren van NEN-EN 1990 ${partieleFactoren(k.klasse, bijlage).bron}.`
     );
   }
   return null;
@@ -636,6 +664,7 @@ function leesCombinaties(
   payload: Record<string, unknown>,
   gelezen: GelezenModel,
   gevolgklasse: Gevolgklasse,
+  bijlage: NationaleBijlageCode,
 ): { lijst: LoadCombination[]; bron: "verzoek" | "bestand" | "standaard"; openMeldingen: string[] } {
   if (payload.combinations !== undefined) {
     const rauw = eisArray(payload.combinations, "combinations");
@@ -650,6 +679,7 @@ function leesCombinaties(
       loadCases: gelezen.model.loadCases,
       combinations: gelezen.combinatiesUitBestand,
       gevolgklasse,
+      bijlage,
       idTellers: gelezen.idTellersUitBestand,
     });
     return {
@@ -660,7 +690,7 @@ function leesCombinaties(
     };
   }
   return {
-    lijst: defaultCombinations(gelezen.model.loadCases, gevolgklasse),
+    lijst: defaultCombinations(gelezen.model.loadCases, gevolgklasse, bijlage),
     bron: "standaard",
     openMeldingen: [],
   };
@@ -855,7 +885,8 @@ function rekenDoor(payload: Record<string, unknown>) {
   const gevolgklasse = klasseGelezen.klasse;
   // Een projectbestand gaat door dezelfde functie als het openen in de app:
   // wees-factoren eruit, verouderde combinaties vervangen (zie leesCombinaties).
-  const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse);
+  const bijlage = leesBijlageVoorRekening(payload, gelezen);
+  const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse, bijlage);
   const combinatieBron = gelezenCombinaties.bron;
   const alleCombinaties = gelezenCombinaties.lijst;
   // Dezelfde selectie als de app (lib/combinatieSelectie): bij een zuivere
@@ -871,7 +902,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     alleCombinaties,
     gelezen.beams,
     gelezen.model.plates,
-    { loadCases: gelezen.model.loadCases, gevolgklasse, nodes: gelezen.model.nodes },
+    { loadCases: gelezen.model.loadCases, gevolgklasse, bijlage, nodes: gelezen.model.nodes },
   );
   // Met een scheefstand elke combinatie in twee varianten, één per richting —
   // dezelfde ontvouwing als de app (basisaudit nr 28).
@@ -924,7 +955,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     analysetype,
   });
   const combinaties = metEindtoestandVarianten(
-    combinatiesZonderEindtoestand, gelezen.model.loadCases, eindstijfheid,
+    combinatiesZonderEindtoestand, gelezen.model.loadCases, eindstijfheid, bijlage,
   );
 
   const detail = payload.detail ?? "samenvatting";
@@ -1022,7 +1053,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     // lijst valt w_add terug op de volledige zakking, mét notitie.
     loadCases: gelezen.model.loadCases,
     // De nationale bijlage gaat als `bijlage` mee naar de rekenkern.
-    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    nationaleBijlage: bijlage,
     stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled },
   });
 
@@ -1042,7 +1073,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     supportedGrades: houtklassen ?? undefined,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost,
-    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    nationaleBijlage: bijlage,
   };
   const hout = buildTimberCheckInputs({
     ...houtData,
@@ -1057,7 +1088,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     plates: gelezen.model.plates ?? [],
     combinations: combinaties,
     combinationResults,
-    nationaleBijlage: gelezen.bijlageUitBestand ?? undefined,
+    nationaleBijlage: bijlage,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost,
   });
@@ -1098,6 +1129,7 @@ function rekenDoor(payload: Record<string, unknown>) {
   const klasseMelding = gevolgklasseWaarschuwing(
     klasseGelezen,
     combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard),
+    bijlage,
   );
   if (klasseMelding) waarschuwingen.push(klasseMelding);
   // Een belastinggeval met last dat in geen enkele doorgerekende UGT-combinatie
@@ -1117,6 +1149,7 @@ function rekenDoor(payload: Record<string, unknown>) {
     combinations: combinaties,
     alleCombinaties,
     gevolgklasse,
+    bijlage,
     loads: gelezen.model.loads,
     selfWeightEnabled: gelezen.model.selfWeightEnabled,
     metHout,
@@ -1301,12 +1334,13 @@ function opValidate(payload: Record<string, unknown>) {
   // Met de combinaties die een solve zou gebruiken, zodat de droogloop óók
   // meldt welk belastinggeval in geen enkele UGT-combinatie meetelt.
   const { klasse } = leesGevolgklasse(payload, gelezen);
-  const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse);
+  const bijlage = leesBijlageVoorRekening(payload, gelezen);
+  const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse, bijlage);
   const actief = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
-    loadCases: gelezen.model.loadCases, gevolgklasse: klasse, nodes: gelezen.model.nodes,
+    loadCases: gelezen.model.loadCases, gevolgklasse: klasse, bijlage, nodes: gelezen.model.nodes,
   }).actief;
   const uitkomst = valideerModel(gelezen.rauw, {
-    combinaties: actief, alleCombinaties: lijst, gevolgklasse: klasse,
+    combinaties: actief, alleCombinaties: lijst, gevolgklasse: klasse, bijlage,
   });
   return {
     ok: uitkomst.ok,
@@ -1347,11 +1381,13 @@ function opLoadProject(payload: Record<string, unknown>) {
   });
   const m = gelezen.model;
   const klasse = leesGevolgklasse({}, gelezen);
-  const { lijst, bron, openMeldingen } = leesCombinaties({}, gelezen, klasse.klasse);
+  const bijlage = leesBijlageVoorRekening({}, gelezen);
+  const { lijst, bron, openMeldingen } = leesCombinaties({}, gelezen, klasse.klasse, bijlage);
   const warnings: string[] = [];
   const klasseMelding = gevolgklasseWaarschuwing(
     klasse,
     bron === "standaard" || lijst.some((c) => c.standaard),
+    bijlage,
   );
   if (klasseMelding) warnings.push(klasseMelding);
   warnings.push(...openMeldingen);
@@ -1361,6 +1397,7 @@ function opLoadProject(payload: Record<string, unknown>) {
     combinations: lijst,
     alleCombinaties: lijst,
     gevolgklasse: klasse.klasse,
+    bijlage,
     loads: m.loads,
     selfWeightEnabled: m.selfWeightEnabled,
     metHout: gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null),

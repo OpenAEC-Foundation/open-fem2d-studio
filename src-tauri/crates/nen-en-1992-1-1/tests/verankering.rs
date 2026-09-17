@@ -35,7 +35,7 @@ use nen_en_1992_1_1::{concrete_class_by_name, reinforcement_grade_by_name, Desig
 /// γ_S = 1,15 (tabel 2.1N, blijvend en tijdelijk) → f_yd = 500/1,15 = 434,7826.
 fn f_yd_b500() -> f64 {
     let staal = reinforcement_grade_by_name("B500B").unwrap();
-    let gamma_s = gamma_s(DesignSituation::PersistentTransient);
+    let gamma_s = gamma_s(nationale_bijlage::NationaleBijlage::NL, DesignSituation::PersistentTransient);
     assert_relative_eq!(gamma_s, 1.15, max_relative = 1e-12);
     f_yd(staal.f_yk, gamma_s)
 }
@@ -413,6 +413,7 @@ fn tabel_nb_8_3_geeft_drukoverlappingen_alfa_6_gelijk_1() {
     let l_b_rqd = 2000.0 / 3.45;
 
     let trek = overlappingslengte(
+        nationale_bijlage::NationaleBijlage::NL,
         l_b_rqd,
         16.0,
         Verankeringssoort::Trek,
@@ -431,6 +432,7 @@ fn tabel_nb_8_3_geeft_drukoverlappingen_alfa_6_gelijk_1() {
     assert_relative_eq!(trek.l_0_mm, 819.8339492, max_relative = 1e-8);
 
     let druk = overlappingslengte(
+        nationale_bijlage::NationaleBijlage::NL,
         l_b_rqd,
         16.0,
         Verankeringssoort::Druk,
@@ -669,7 +671,7 @@ fn tabel_8_2_punt_voor_punt() {
     assert_relative_eq!(alpha_5(Verankeringssoort::Trek, 10.0), 0.7, max_relative = 1e-12);
     // α₆ trek: (33/25)^0,5 = 1,14891 — de NB-tabel geeft 1,15.
     assert_relative_eq!(
-        alpha_6(33.0, Verankeringssoort::Trek),
+        alpha_6(nationale_bijlage::NationaleBijlage::NL, 33.0, Verankeringssoort::Trek),
         1.1489125,
         max_relative = 1e-7
     );

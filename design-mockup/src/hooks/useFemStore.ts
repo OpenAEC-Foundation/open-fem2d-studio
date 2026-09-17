@@ -40,9 +40,10 @@ import {
   herstelCombinaties, meldingenBelastinggevallen, openCombinatieStaat, synchroniseerStandaard,
   vervangDoorStandaard, vervangVerouderdeCombinaties, verwijderBelastinggeval, verwijderCombinatie,
   voegBelastinggevalToe, voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie,
-  zetGevolgklasse,
+  zetBijlage, zetGevolgklasse, bijlageUitKenmerk,
   type CombinatieAfwijking, type CombinatieStaat, type CombinatieVervanging, type GevalMelding,
 } from "../lib/combinatieBeheer";
+import { BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../lib/normAanduidingen";
 import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
 import {
   bepaalEindstijfheidHout,
@@ -1454,6 +1455,13 @@ export interface FemStore {
    */
   gevolgklasse: Gevolgklasse;
   /**
+   * De nationale bijlage waarmee de standaardcombinaties WERKELIJK rekenen
+   * (normnaad): γ en ψ komen uit haar rij. Volgt `nationaleBijlage` uit de
+   * projectgegevens zodra die een gevulde bijlage noemt; een onbekende code
+   * laat haar staan (de kernen weigeren die dan zelf).
+   */
+  combinatieBijlage: NationaleBijlageCode;
+  /**
    * Belastinggevallen die niet (volledig) in de doorgerekende combinaties
    * meetellen, en eigen gewicht zonder blijvend geval. Afgeleid, nooit
    * opgeslagen; projectboom, combinatievenster en rapport tonen deze lijst.
@@ -1819,6 +1827,13 @@ export interface FemStore {
      */
     gevolgklasse?: Gevolgklasse;
     /**
+     * De nationale bijlage uit de projectgegevens van het bestand, zoals gelezen
+     * (normnaad). Een gevulde bijlage bepaalt γ en ψ van de standaardcombinaties
+     * die bij het openen ontstaan; ontbreekt hij, dan het kenmerk, anders de
+     * huidige bijlage van de store.
+     */
+    nationaleBijlage?: unknown;
+    /**
      * Id-tellers uit het bestand. Ontbreekt (bestand van vóór september 2026)
      * → afgeleid uit de hoogste id's. Of een combinatie verouderd is, hangt er
      * NIET van af: dat herkent `isOudeStandaardcombinatie` aan naam en factoren.
@@ -1863,6 +1878,7 @@ export function useFemStore(opties?: {
   const [combinations, setCombinations] = useState<LoadCombination[]>(
     () => defaultCombinations(DEFAULT_LOAD_CASES, STANDAARD_GEVOLGKLASSE));
   const [gevolgklasse, setGevolgklasseState] = useState<Gevolgklasse>(STANDAARD_GEVOLGKLASSE);
+  const [combinatieBijlage, setCombinatieBijlageState] = useState<NationaleBijlageCode>(STANDAARD_BIJLAGE);
   const [idTellers, setIdTellers] = useState(() => ({
     belastinggeval: volgendVrijId(DEFAULT_LOAD_CASES, 1),
     combinatie: volgendVrijId(defaultCombinations(DEFAULT_LOAD_CASES, STANDAARD_GEVOLGKLASSE), 1),
@@ -1886,11 +1902,11 @@ export function useFemStore(opties?: {
   // het vorige zien. De ref wordt in de mutator meteen bijgewerkt en bij elke
   // render gelijkgezet aan de state.
   const combiRef = useRef<CombinatieStaat>({
-    loadCases, combinations, gevolgklasse,
+    loadCases, combinations, gevolgklasse, bijlage: combinatieBijlage,
     volgendGevalId: idTellers.belastinggeval, volgendCombinatieId: idTellers.combinatie,
   });
   combiRef.current = {
-    loadCases, combinations, gevolgklasse,
+    loadCases, combinations, gevolgklasse, bijlage: combinatieBijlage,
     volgendGevalId: idTellers.belastinggeval, volgendCombinatieId: idTellers.combinatie,
   };
   const pasCombiStaatToe = useCallback((volgend: CombinatieStaat) => {
@@ -1900,6 +1916,7 @@ export function useFemStore(opties?: {
     if (volgend.loadCases !== huidig.loadCases) setLoadCases(volgend.loadCases);
     if (volgend.combinations !== huidig.combinations) setCombinations(volgend.combinations);
     if (volgend.gevolgklasse !== huidig.gevolgklasse) setGevolgklasseState(volgend.gevolgklasse);
+    if (volgend.bijlage !== huidig.bijlage) setCombinatieBijlageState(volgend.bijlage);
     if (
       volgend.volgendGevalId !== huidig.volgendGevalId ||
       volgend.volgendCombinatieId !== huidig.volgendCombinatieId
@@ -1909,6 +1926,11 @@ export function useFemStore(opties?: {
   }, []);
   const setGevolgklasse = useCallback((klasse: Gevolgklasse) => {
     pasCombiStaatToe(zetGevolgklasse(combiRef.current, klasse));
+  }, [pasCombiStaatToe]);
+  // Andere nationale bijlage: de standaardcombinaties krijgen γ en ψ van die
+  // rij (normnaad), langs dezelfde route als een andere gevolgklasse.
+  const setCombinatieBijlage = useCallback((bijlage: NationaleBijlageCode) => {
+    pasCombiStaatToe(zetBijlage(combiRef.current, bijlage));
   }, [pasCombiStaatToe]);
   const [activeCombinationId, setActiveCombinationId] = useState<number | null>(null);
   const [envelopeView, setEnvelopeView] = useState<boolean>(false);
@@ -1970,15 +1992,17 @@ export function useFemStore(opties?: {
   }, [nodes, beams, supports, plates, analysetype]);
   const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
     useMemo(() => {
-      const selectie = selecteerCombinaties(combinations, beams, plates, { loadCases, gevolgklasse, nodes });
+      const selectie = selecteerCombinaties(combinations, beams, plates, {
+        loadCases, gevolgklasse, bijlage: combinatieBijlage, nodes,
+      });
       return {
         actief: metEindtoestandVarianten(
           metScheefstandRichtingen(selectie.actief, scheefstandEnabled, scheefstandRichting),
-          loadCases, eindstijfheid,
+          loadCases, eindstijfheid, combinatieBijlage,
         ),
         overgeslagen: selectie.overgeslagen,
       };
-    }, [combinations, beams, plates, nodes, loadCases, gevolgklasse, scheefstandEnabled, scheefstandRichting, eindstijfheid]);
+    }, [combinations, beams, plates, nodes, loadCases, gevolgklasse, combinatieBijlage, scheefstandEnabled, scheefstandRichting, eindstijfheid]);
   /**
    * De VOLLEDIGE lijst in dezelfde ontvouwing als `actieveCombinaties` — voor
    * het rapport, dat ook opsomt wat niet is doorgerekend en de resultaten op
@@ -1987,9 +2011,9 @@ export function useFemStore(opties?: {
   const combinatiesVoorRapport = useMemo(
     () => metEindtoestandVarianten(
       metScheefstandRichtingen(combinations, scheefstandEnabled, scheefstandRichting),
-      loadCases, eindstijfheid,
+      loadCases, eindstijfheid, combinatieBijlage,
     ),
-    [combinations, scheefstandEnabled, scheefstandRichting, loadCases, eindstijfheid],
+    [combinations, scheefstandEnabled, scheefstandRichting, loadCases, eindstijfheid, combinatieBijlage],
   );
   // Normberekening van φ — beginstand "vast" (= het oude gedrag), zie de
   // toelichting bij `scheefstandBron` hierboven. h en m op null = afleiden.
@@ -2016,6 +2040,14 @@ export function useFemStore(opties?: {
   // De nationale bijlage komt uit de projectgegevens en wordt hier alleen
   // doorgegeven: hij is geen staat van de store, maar wel een rekeninstelling.
   const projectBijlage = opties?.nationaleBijlage ?? null;
+  // Noemt het project een gevulde bijlage, dan volgen de standaardcombinaties
+  // haar. Een onbekende code laat de combinaties staan: er zijn geen γ en ψ
+  // voor, en de kernen weigeren de bijlage met reden.
+  useEffect(() => {
+    if (projectBijlage !== null && (BIJLAGEN_GEVULD as readonly string[]).includes(projectBijlage)) {
+      setCombinatieBijlage(projectBijlage as NationaleBijlageCode);
+    }
+  }, [projectBijlage, setCombinatieBijlage]);
   const rekenInstellingenVersie = useMemo(
     () => bepaalRekenInstellingenVersie({
       loadCases, combinations, selfWeightEnabled, analysetype, betonSegmentLengteMm,
@@ -2063,7 +2095,7 @@ export function useFemStore(opties?: {
   const belastingMeldingen = useMemo(
     () => meldingenBelastinggevallen({
       loadCases, combinations: actieveCombinaties, alleCombinaties: combinations, gevolgklasse,
-      loads, selfWeightEnabled,
+      bijlage: combinatieBijlage, loads, selfWeightEnabled,
       // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod).
       metHout: beams.some((b) => matchSupportedTimberGrade(b.material) !== null),
     }).concat(
@@ -2071,7 +2103,7 @@ export function useFemStore(opties?: {
       // een gemengd onbepaald model is doorgerekend en wat niet.
       eindstijfheid.meldingen,
     ),
-    [loadCases, actieveCombinaties, combinations, gevolgklasse, loads, selfWeightEnabled, beams, eindstijfheid],
+    [loadCases, actieveCombinaties, combinations, gevolgklasse, combinatieBijlage, loads, selfWeightEnabled, beams, eindstijfheid],
   );
 
   const [selection, setSelection] = useState<Selection>(null);
@@ -2631,7 +2663,7 @@ export function useFemStore(opties?: {
         volgendGevalId: volgendVrijId(gevallen, staat.volgendGevalId),
         volgendCombinatieId: volgendId,
       },
-      { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse },
+      { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage },
     ));
     setActiveCombinationId(null);
   }, [pushHistory, pasCombiStaatToe]);
@@ -2765,7 +2797,7 @@ export function useFemStore(opties?: {
     nodes, beams, supports, plates, loads,
     loadCases, activeLoadCaseId,
     combinations, actieveCombinaties, overgeslagenCombinaties, combinatiesVoorRapport,
-    gevolgklasse, setGevolgklasse, belastingMeldingen, eindstijfheid, combinatieAfwijking, idTellers,
+    gevolgklasse, setGevolgklasse, combinatieBijlage, belastingMeldingen, eindstijfheid, combinatieAfwijking, idTellers,
     combinatieVervanging,
     combinatieVervangingTekst: combinatieVervanging?.samenvatting ?? vervangingUitBestand,
     activeCombinationId, envelopeView,
@@ -2878,6 +2910,8 @@ export function useFemStore(opties?: {
       scheefstandHoogteM?: number | null;
       scheefstandAantalElementen?: number | null;
       gevolgklasse?: Gevolgklasse;
+      /** De nationale bijlage uit de projectgegevens van het bestand, zoals gelezen. */
+      nationaleBijlage?: unknown;
       idTellers?: { belastinggeval?: number; combinatie?: number };
       combinatiesVervangenBijOpenen?: string;
     }) => {
@@ -2907,10 +2941,20 @@ export function useFemStore(opties?: {
         combinations: p.combinations,
         terugval: combiRef.current.gevolgklasse,
       });
+      // De bijlage (normnaad): een gevulde bijlage uit het bestand, anders die
+      // uit het kenmerk van de standaardcombinaties, anders die van het project
+      // dat open stond — dezelfde volgorde als de klasse. Een ONBEKENDE code uit
+      // het bestand geeft geen rij om combinaties mee op te stellen; dan blijft
+      // de huidige staan en weigeren de kernen die code zelf met reden.
+      const bestandsBijlage = (BIJLAGEN_GEVULD as readonly unknown[]).includes(p.nationaleBijlage)
+        ? (p.nationaleBijlage as NationaleBijlageCode)
+        : null;
+      const bijlage = bestandsBijlage ?? bijlageUitKenmerk(p.combinations) ?? combiRef.current.bijlage;
       const { staat: geopend, afwijking, vervanging } = openCombinatieStaat({
         loadCases: p.loadCases,
         combinations: p.combinations,
         gevolgklasse: klasse,
+        bijlage,
         idTellers: p.idTellers,
       });
       pasCombiStaatToe(geopend);

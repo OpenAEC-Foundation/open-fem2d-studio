@@ -22,6 +22,7 @@
 
 use crate::data::{ConcreteClass, ReinforcementGrade};
 use crate::factors::{self, DesignSituation};
+use nationale_bijlage::NationaleBijlage;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -231,8 +232,10 @@ impl ConcreteNonlinearCurve {
     ///
     /// `situation` bepaalt γ_C voor f_cd (tabel 2.1N) en telt alleen mee bij
     /// [`NonlinearBasis::DesignValues`]; γ_cE = 1,2 is niet van de
-    /// ontwerpsituatie afhankelijk (NB bij 5.8.6(3)).
+    /// ontwerpsituatie afhankelijk (NB bij 5.8.6(3)). γ_C, α_cc en γ_cE komen
+    /// uit de rij van `bijlage` (normnaad).
     pub fn new(
+        bijlage: NationaleBijlage,
         concrete: &ConcreteClass,
         basis: NonlinearBasis,
         situation: DesignSituation,
@@ -240,8 +243,12 @@ impl ConcreteNonlinearCurve {
     ) -> Self {
         let (f_c, e_c, tension) = match basis {
             NonlinearBasis::DesignValues => (
-                factors::f_cd(concrete.f_ck, factors::ALPHA_CC, factors::gamma_c(situation)),
-                factors::e_cd(concrete.e_cm),
+                factors::f_cd(
+                    concrete.f_ck,
+                    factors::alpha_cc(bijlage),
+                    factors::gamma_c(bijlage, situation),
+                ),
+                factors::e_cd(bijlage, concrete.e_cm),
                 // 5.8.6(5): betontrek mag in de UGT worden verwaarloosd.
                 ConcreteTension::None,
             ),
@@ -419,6 +426,11 @@ impl SteelDesignCurve {
 /// doorsnedeberekening.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DesignMaterial {
+    /// De nationale bijlage waaruit γ_C, γ_S, α_cc en ε_ud van dit materiaal
+    /// komen (normnaad). Reist mee met het materiaal, zodat elke module die
+    /// een `DesignMaterial` krijgt ook weet onder welke bijlage het rekent —
+    /// in plaats van een vaste bijlage in deze crate.
+    pub bijlage: NationaleBijlage,
     pub concrete_name: &'static str,
     pub steel_name: &'static str,
     pub f_ck: f64,
@@ -447,22 +459,28 @@ pub struct DesignMaterial {
 }
 
 impl DesignMaterial {
+    /// Alle rekenwaarden van beton en staal onder `bijlage`: γ_C en γ_S uit
+    /// tabel 2.1N, α_cc uit 3.1.6(1)P en ε_ud uit 3.2.7(2), zoals de rij van
+    /// die bijlage ze geeft (normnaad).
     pub fn new(
+        bijlage: NationaleBijlage,
         concrete: &ConcreteClass,
         steel: &ReinforcementGrade,
         situation: DesignSituation,
         branch: SteelBranch,
     ) -> Self {
-        let gamma_c = factors::gamma_c(situation);
-        let gamma_s = factors::gamma_s(situation);
-        let f_cd = factors::f_cd(concrete.f_ck, factors::ALPHA_CC, gamma_c);
+        let gamma_c = factors::gamma_c(bijlage, situation);
+        let gamma_s = factors::gamma_s(bijlage, situation);
+        let alpha_cc = factors::alpha_cc(bijlage);
+        let f_cd = factors::f_cd(concrete.f_ck, alpha_cc, gamma_c);
         let f_yd = factors::f_yd(steel.f_yk, gamma_s);
         DesignMaterial {
+            bijlage,
             concrete_name: concrete.name,
             steel_name: steel.name,
             f_ck: concrete.f_ck,
             gamma_c,
-            alpha_cc: factors::ALPHA_CC,
+            alpha_cc,
             concrete: ConcreteDesignCurve {
                 f_cd,
                 eps_c2: concrete.eps_c2,
@@ -482,7 +500,7 @@ impl DesignMaterial {
                 eps_yd: f_yd / factors::E_S,
                 f_ud_inclined: steel.k * steel.f_yk / gamma_s,
                 eps_uk: steel.eps_uk,
-                eps_ud: factors::eps_ud(steel.eps_uk),
+                eps_ud: factors::eps_ud(bijlage, steel.eps_uk),
                 branch,
             },
             nonlinear: None,
@@ -504,6 +522,7 @@ impl DesignMaterial {
     /// elastisch (σ_s = E_s·ε_s), dus de keuze f_yd/f_yk is daar zonder
     /// gevolg. Zie het verslag: dit is bewust niet ingevuld.
     pub fn nonlinear(
+        bijlage: NationaleBijlage,
         concrete: &ConcreteClass,
         steel: &ReinforcementGrade,
         situation: DesignSituation,
@@ -511,8 +530,8 @@ impl DesignMaterial {
         basis: NonlinearBasis,
         phi_ef: f64,
     ) -> Self {
-        let mut m = Self::new(concrete, steel, situation, branch);
-        m.nonlinear = Some(ConcreteNonlinearCurve::new(concrete, basis, situation, phi_ef));
+        let mut m = Self::new(bijlage, concrete, steel, situation, branch);
+        m.nonlinear = Some(ConcreteNonlinearCurve::new(bijlage, concrete, basis, situation, phi_ef));
         m
     }
 
@@ -558,6 +577,7 @@ mod tests {
 
     fn c30_b500b(branch: SteelBranch) -> DesignMaterial {
         DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,
@@ -604,7 +624,7 @@ mod tests {
     #[test]
     fn vgl_3_14_piek_en_begintangens() {
         for basis in [NonlinearBasis::DesignValues, NonlinearBasis::MeanValues] {
-            let c = ConcreteNonlinearCurve::new(c30(), basis, DesignSituation::PersistentTransient, 0.0);
+            let c = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), basis, DesignSituation::PersistentTransient, 0.0);
             assert_relative_eq!(c.sigma(c.eps_c1), c.f_c, max_relative = 1e-12);
             // Begintangens uit een differentiequotiënt, niet uit e_c0().
             let d = c.sigma(1e-9) / 1e-9;
@@ -624,7 +644,7 @@ mod tests {
         let sit = DesignSituation::PersistentTransient;
         // UGT: f_cd = 1,0·30/1,5 = 20; E_cd = 33 000/1,2 = 27 500;
         //      k = 1,05·27 500·0,0022/20 = 3,17625.
-        let ugt = ConcreteNonlinearCurve::new(c30(), NonlinearBasis::DesignValues, sit, 0.0);
+        let ugt = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), NonlinearBasis::DesignValues, sit, 0.0);
         assert_relative_eq!(ugt.f_c, 20.0);
         assert_relative_eq!(ugt.e_c, 27_500.0);
         assert_relative_eq!(ugt.k, 1.05 * 27_500.0 * 0.0022 / 20.0, max_relative = 1e-12);
@@ -635,7 +655,7 @@ mod tests {
         assert_relative_eq!(ugt.f_ctm, 2.9); // tabel 3.1, wel bekend
 
         // BGT: f_cm = 38; E_cm = 33 000; k = 1,05·33 000·0,0022/38 = 2,00605…
-        let bgt = ConcreteNonlinearCurve::new(c30(), NonlinearBasis::MeanValues, sit, 0.0);
+        let bgt = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), NonlinearBasis::MeanValues, sit, 0.0);
         assert_relative_eq!(bgt.f_c, 38.0);
         assert_relative_eq!(bgt.e_c, 33_000.0);
         assert_relative_eq!(bgt.k, 1.05 * 33_000.0 * 0.0022 / 38.0, max_relative = 1e-12);
@@ -644,6 +664,7 @@ mod tests {
         // De UGT-kromme is over de hele drukzijde slapper dan de BGT-kromme,
         // maar veel stijver dan het parabool-rechthoekdiagram van 3.1.7.
         let pr = DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             c30(),
             reinforcement_grade_by_name("B500B").unwrap(),
             sit,
@@ -660,8 +681,8 @@ mod tests {
     #[test]
     fn kruip_rekt_de_rekas_op_5_8_6_4() {
         let sit = DesignSituation::PersistentTransient;
-        let zonder = ConcreteNonlinearCurve::new(c30(), NonlinearBasis::DesignValues, sit, 0.0);
-        let met = ConcreteNonlinearCurve::new(c30(), NonlinearBasis::DesignValues, sit, 2.0);
+        let zonder = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), NonlinearBasis::DesignValues, sit, 0.0);
+        let met = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), NonlinearBasis::DesignValues, sit, 2.0);
         assert_relative_eq!(met.phi_ef, 2.0);
         assert_relative_eq!(met.eps_c1, 3.0 * zonder.eps_c1, max_relative = 1e-12);
         assert_relative_eq!(met.eps_cu1, 3.0 * zonder.eps_cu1, max_relative = 1e-12);
@@ -678,7 +699,7 @@ mod tests {
     #[test]
     fn geldigheidsgrens_en_trektak() {
         let sit = DesignSituation::PersistentTransient;
-        let bgt = ConcreteNonlinearCurve::new(c30(), NonlinearBasis::MeanValues, sit, 0.0);
+        let bgt = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), NonlinearBasis::MeanValues, sit, 0.0);
         // Boven ε_cu1 wordt de waarde bij ε_cu1 vastgehouden (numerieke
         // afspraak; de overschrijding is elders een vlag).
         assert_relative_eq!(bgt.sigma(2.0 * bgt.eps_cu1), bgt.sigma(bgt.eps_cu1));
@@ -701,7 +722,7 @@ mod tests {
         assert_relative_eq!(i.sigma(-3.0 * eps_ct), -3.0 * 2.9, max_relative = 1e-9);
         assert_relative_eq!(i.eps_ct(), 0.0); // geen afkap, dus geen scheurrek
         // De UGT kent geen trektak (5.8.6(5)).
-        let ugt = ConcreteNonlinearCurve::new(c30(), NonlinearBasis::DesignValues, sit, 0.0);
+        let ugt = ConcreteNonlinearCurve::new(NationaleBijlage::NL, c30(), NonlinearBasis::DesignValues, sit, 0.0);
         assert_relative_eq!(ugt.eps_ct(), 0.0);
         assert_relative_eq!(ugt.sigma(-0.0001), 0.0);
     }
@@ -716,6 +737,7 @@ mod tests {
             assert_relative_eq!(m.sigma_c(e), m.concrete.sigma(e));
         }
         let nl = DesignMaterial::nonlinear(
+            nationale_bijlage::NationaleBijlage::NL,
             c30(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,

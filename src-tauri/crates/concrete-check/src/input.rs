@@ -288,7 +288,10 @@ impl ConcreteBeamCheckInput {
                     CoverSide::Sides => dikste,
                 };
                 Some(ConcreteCoverRequest {
-                    bijlage: Default::default(),
+                    // De bijlage van de staaf, niet een standaard: tabel 4.4N, de
+                    // Δc-toeslagen en de constructieklasse bij 50 jaar horen bij
+                    // de bijlage waarmee de staaf getoetst wordt (normnaad).
+                    bijlage: self.bijlage,
                     beam_id: self.beam_id,
                     side: Some(side),
                     exposure_class: klasse,
@@ -307,6 +310,19 @@ impl ConcreteBeamCheckInput {
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
 pub struct MnKappaRequest {
+    /// De nationale bijlage waarmee gerekend wordt (normnaad).
+    ///
+    /// Zij bepaalt γ_C, γ_S, α_cc en ε_ud van het materiaal (via
+    /// `DesignMaterial::new`). Een bijlage die deze uitgave niet kent, wordt bij
+    /// het lezen van het verzoek GEWEIGERD met reden; er wordt nooit stil op de
+    /// Nederlandse waarden teruggevallen.
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij `ConcreteBeamCheckInput`:
+    /// er is één gevulde rij, dus weglaten kan niets anders betekenen. De test
+    /// `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg` in
+    /// `nationale-bijlage` valt om zodra dat niet meer waar is.
+    #[serde(default)]
+    pub bijlage: nationale_bijlage::NationaleBijlage,
     /// De doorsnede: rechthoek, T of L, met de maten die bij die vorm horen.
     pub section: ConcreteSectionInput,
     pub concrete_class: String,

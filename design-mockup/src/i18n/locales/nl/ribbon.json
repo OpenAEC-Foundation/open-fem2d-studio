@@ -656,6 +656,8 @@
     "spanningWelBovenOnder": "W_el (boven / onder)",
     "spanningZMaatgevend": "z (maatgevend)",
     "ketenKopAlgemeen": "Afleiding, stap voor stap:",
+    "ketenKopNbBenadering": "Afleiding volgens de nationale bijlage, met een M_cr-benadering voor U-profielen buiten de norm om, stap voor stap:",
+    "ketenKopElastisch": "Afleiding met de algemene elastische formule voor M_cr (niet volgens bijlage NB.NB), stap voor stap:",
     "cltIyKop": "Opbouw van I_y en de effectieve buigstijfheid (bijlage B, starre verbinding: γ = 1)",
     "cltSomIefNet": "Σ over de lengtelagen = I_ef,net",
     "cltSomMeetkundig": "Σ over de lengtelagen (meetkundig)",

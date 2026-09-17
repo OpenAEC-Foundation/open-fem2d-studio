@@ -729,6 +729,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "bijlage": crate::schema_bijlage(),
                     "section": schema_doorsnede(),
                     "concrete_class": { "type": "string", "description": "Betonsterkteklasse, bijvoorbeeld \"C30/37\"." },
                     "reinforcement_grade": { "type": "string", "description": "Wapeningsstaal, bijvoorbeeld \"B500B\"." },
@@ -753,6 +754,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "type": "object",
                 "additionalProperties": false,
                 "properties": {
+                    "bijlage": crate::schema_bijlage(),
                     "beam_id": { "type": "integer", "minimum": 0,
                         "description": "Staafnummer; komt onveranderd terug in het antwoord." },
                     "section": schema_doorsnede(),
@@ -1032,6 +1034,7 @@ mod tests {
             .as_object()
             .expect("properties");
         let verwacht = [
+            "bijlage",
             "beam_id",
             "section",
             "concrete_class",

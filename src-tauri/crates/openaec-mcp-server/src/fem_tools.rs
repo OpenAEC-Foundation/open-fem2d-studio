@@ -164,6 +164,16 @@ struct SolveArgumenten {
     timeout_s: Option<u64>,
 }
 
+/// Het schema van `bijlage` bij `check_fem_model`: dezelfde enum als elke
+/// toetstool, met de uitleg over de voorrang boven het projectbestand.
+fn schema_bijlage_verzoek() -> Value {
+    let mut s = crate::schema_bijlage();
+    s["description"] = json!(
+        "Nationale bijlage waarmee getoetst wordt; zij bepaalt de partiële factoren en psi-waarden van de standaardcombinaties en de nationaal bepaalde parameters van elke toets. HEEFT VOORRANG boven de bijlage in de projectgegevens van `project_path`. Alleen de bijlagen in deze lijst hebben rekenwaarden; een andere waarde wordt GEWEIGERD met reden, er wordt nooit stil op een andere bijlage teruggevallen. Weglaten = de bijlage uit het projectbestand, anders de enige gevulde bijlage."
+    );
+    s
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CheckArgumenten {
@@ -183,6 +193,14 @@ struct CheckArgumenten {
     check_config: Option<Value>,
     #[serde(default)]
     beam_ids: Option<Vec<i64>>,
+    /// De nationale bijlage waarmee getoetst wordt (normnaad, issue #17).
+    /// Heeft VOORRANG boven `projectInfo.uitgangspunten.nationaleBijlage` in
+    /// het projectbestand: wie hem uitdrukkelijk meegeeft, bedoelt deze. Een
+    /// bijlage die deze uitgave niet kent, wordt al bij het lezen van de
+    /// argumenten GEWEIGERD met dezelfde reden als in elke andere toetsinvoer
+    /// — het type is `NationaleBijlage`, niet een vrije tekst.
+    #[serde(default)]
+    bijlage: Option<nationale_bijlage::NationaleBijlage>,
 }
 
 fn lees_argumenten<T: for<'de> Deserialize<'de>>(
@@ -400,6 +418,12 @@ async fn check_fem_model(naam: &str, args: Value) -> Result<Value, RpcError> {
     }
     if let Some(ids) = a.beam_ids {
         payload.insert("beam_ids".to_owned(), json!(ids));
+    }
+    // De bijlage uit het verzoek gaat naar de bundel, die haar vóór die uit het
+    // projectbestand laat gaan — voor de standaardcombinaties (γ en ψ) én voor
+    // elke toetsinvoer die hij bouwt.
+    if let Some(b) = a.bijlage {
+        payload.insert("bijlage".to_owned(), json!(b.code()));
     }
     payload.insert("nonlinear".to_owned(), json!(a.nonlinear.unwrap_or(false)));
 
@@ -1306,6 +1330,7 @@ pub fn tool_definitions() -> Vec<Value> {
                     "project_path": schema_project_path(),
                     "combinations": schema_combinations(),
                     "gevolgklasse": schema_gevolgklasse(),
+                    "bijlage": schema_bijlage_verzoek(),
                     "nonlinear": { "type": "boolean", "default": false,
                         "description": "Tweede orde (P-Delta). Uit een projectbestand telt de keuze uit dat bestand." },
                     "timeout_s": { "type": "integer", "minimum": 1, "maximum": 600, "default": 60,

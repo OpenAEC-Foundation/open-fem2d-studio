@@ -5,10 +5,27 @@ import type { BetonStijfheidSpoor } from "../concrete/BetonStijfheidSpoor";
 import type { CltBeamCheckResult } from "../timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "../concrete/ConcreteBeamCheckResult";
 import type { DekkingslijnAntwoord } from "../concrete/DekkingslijnAntwoord";
+import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { SpanningBeamCheckResult } from "../spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "../timber/TimberBeamCheckResult";
 
-export type ReportInput = { project_name: string, project_number: string, engineer: string, company: string, date: string, steel_check_results: Array<BeamCheckResult>, 
+export type ReportInput = { 
+/**
+ * De nationale bijlage van het project (normnaad). Zij bepaalt welke
+ * UITGAVEN het rapport noemt: de normenregel op omslag en paginakop, het
+ * infoblok en de normkolom per staaf komen uit haar rij in
+ * `nationale_bijlage::Aanduidingen`.
+ *
+ * Tot september 2026 kende de PDF dit veld niet en stonden de aanduidingen
+ * vast op de Nederlandse rij, terwijl het live rapport en de kernen de
+ * bijlage van het project al lazen. Een bijlage die deze uitgave niet kent,
+ * wordt bij het lezen GEWEIGERD met reden.
+ *
+ * `#[serde(default)]`: er is één gevulde rij, dus weglaten kan niets anders
+ * betekenen (zie `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`);
+ * in TypeScript daarom optioneel.
+ */
+bijlage?: NationaleBijlage, project_name: string, project_number: string, engineer: string, company: string, date: string, steel_check_results: Array<BeamCheckResult>, 
 /**
  * Houttoetsingen (EN 1995-1-1). `#[serde(default)]` zodat bestaande
  * aanroepen zonder dit veld geldig blijven; in TypeScript daarom

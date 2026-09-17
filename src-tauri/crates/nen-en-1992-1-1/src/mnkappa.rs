@@ -675,6 +675,7 @@ mod tests {
             ..ReinforcementCage::default()
         };
         let m = DesignMaterial::new(
+            nationale_bijlage::NationaleBijlage::NL,
             concrete_class_by_name("C30/37").unwrap(),
             reinforcement_grade_by_name("B500B").unwrap(),
             DesignSituation::PersistentTransient,

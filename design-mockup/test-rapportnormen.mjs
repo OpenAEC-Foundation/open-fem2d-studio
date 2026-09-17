@@ -425,6 +425,30 @@ log("\n[12] Elk toetsresultaat krijgt de norm van zijn eigen rekenkern");
     /1993/.test(gemengd) && !/1995/.test(gemengd), gemengd);
   checkWaar("en hout noemt zijn norm gewoon",
     /1995/.test(basisText(terugval, [houtToets])));
+  // De toetsbasis noemt de bijlage van HET PROJECT (issue #17): NL en niet
+  // ingesteld geven dezelfde tekst; een bijlage die deze uitgave niet kent,
+  // geeft de reden in plaats van de Nederlandse uitgaven.
+  checkGelijk("toetsbasis met bijlage NL = zonder bijlage",
+    basisText(terugval, [staalToets], "NL"), basisText(terugval, [staalToets]));
+  const vertaalMetWaarden = (sleutel, opties) =>
+    sleutel === "report.bijlageOnbekend" ? `ONBEKEND ${opties.code}: ${opties.fout}` : opties;
+  const onbekend = basisText(vertaalMetWaarden, [staalToets], "DE");
+  checkWaar("toetsbasis met een onbekende bijlage noemt de reden, geen NEN-uitgave",
+    typeof onbekend === "string" && /ONBEKEND DE/.test(onbekend) && !/NEN-EN/.test(onbekend), onbekend);
+
+  // En de PDF-invoer draagt de bijlage van het project.
+  const { bouwRapportInvoer } = await import("./src/lib/rapportPdfInvoer.ts");
+  const project = { name: "p", projectNumber: "", engineer: "", company: "", date: "2026-09-17" };
+  checkGelijk("PDF-invoer: bijlage NL uit het project gaat mee",
+    bouwRapportInvoer({ project: { ...project, nationaleBijlage: "NL" }, checkResults: [] }).bijlage, "NL");
+  checkWaar("PDF-invoer: niet ingesteld = veld weggelaten (serde default)",
+    !("bijlage" in bouwRapportInvoer({ project, checkResults: [] })));
+  {
+    let fout = null;
+    try { bouwRapportInvoer({ project: { ...project, nationaleBijlage: "DE" }, checkResults: [] }); }
+    catch (e) { fout = e.message; }
+    checkWaar("PDF-invoer: een onbekende bijlage wordt geweigerd", fout !== null && /niet gevuld/.test(fout), fout);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -464,9 +488,18 @@ log("\n[13] Scherm, CSV en PDF noemen dezelfde norm, of géén");
 
   // En de volledige aanduidingen: de TS-kant leest ze uit dezelfde rij, dus
   // de twee mogen niet uiteenlopen.
+  // Sinds issue #17 komen ze uit de rij van de bijlage VAN HET PROJECT
+  // (`normAanduidingenVoor`); de NL-rij hoort gelijk te zijn aan de naad.
+  const { normAanduidingenVoor } = await import("./src/components/report/checkReportUtils.ts");
   const {
-    STEEL_NORM_FULL, TIMBER_NORM_FULL, CONCRETE_NORM_FULL,
-  } = await import("./src/components/report/checkReportUtils.ts");
+    staalVol: STEEL_NORM_FULL, houtVol: TIMBER_NORM_FULL, betonVol: CONCRETE_NORM_FULL,
+  } = normAanduidingenVoor("NL");
+  checkGelijk("niet ingesteld = de enige gevulde rij", normAanduidingenVoor(undefined), normAanduidingenVoor("NL"));
+  {
+    let fout = null;
+    try { normAanduidingenVoor("DE"); } catch (e) { fout = e.message; }
+    checkWaar("een onbekende bijlage wordt geweigerd, niet stil NL", fout !== null && /niet gevuld/.test(fout), fout);
+  }
   checkGelijk("volledige aanduiding staal = naad", STEEL_NORM_FULL, naadVeld("norm_staal_vol"));
   checkGelijk("volledige aanduiding hout = naad", TIMBER_NORM_FULL, naadVeld("norm_hout_vol"));
   checkGelijk("volledige aanduiding beton = naad", CONCRETE_NORM_FULL, naadVeld("norm_beton_vol"));
@@ -512,6 +545,45 @@ log("\n[13] Scherm, CSV en PDF noemen dezelfde norm, of géén");
   checkGelijk("kolom Norm van de stalen staaf", kolomNorm(regels[2]), NORM_STEEL);
   checkGelijk("kolom Norm van de vrije spanningstoets",
     kolomNorm(regels[3]), GEEN_NORM);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Issue #17: "Afleiding volgens de nationale bijlage" stond boven ELKE
+// stabiliteitstoets, ook waar de afleiding niet uit de bijlage komt.
+log("\n[14] De kop boven een keten noemt de bijlage alleen waar de afleiding eruit komt");
+{
+  const { ketenHerkomst } = await import("./src/components/report/checkReportUtils.ts");
+  const stab = (id) => ({ id, title: "", article: "", intermediate_values: [], deelstappen: [] });
+  const weerstand = (id) => ({ id, title: "", article: "", deelstappen: [] });
+  checkGelijk("kip volgens NB.NB", ketenHerkomst(stab("6.3.2_ltb")), "nb");
+  checkGelijk("kip U-profiel: NB.NB met een benadering buiten de norm", ketenHerkomst(stab("6.3.2_ltb_channel")), "nb-benadering");
+  checkGelijk("kip monosymmetrisch: algemene elastische formule, niet NB.NB",
+    ketenHerkomst(stab("6.3.2_ltb_monosymmetrisch")), "elastisch");
+  checkGelijk("houtstabiliteit: geen bijlage in de kop", ketenHerkomst(stab("6.3.3_kip")), "algemeen");
+  checkGelijk("knik staal: geen bijlage in de kop", ketenHerkomst(stab("6.3.1_buckling_y")), "algemeen");
+  checkGelijk("beton (weerstand): geen bijlage in de kop", ketenHerkomst(weerstand("6.1_mnkappa")), "algemeen");
+
+  // De ids komen uit de kipkern; loopt een naam daar uiteen, dan valt een
+  // NB-keten stil terug op "algemeen" (of andersom). En de artikelregels
+  // zeggen zelf waar M_cr vandaan komt.
+  const ltb = readFileSync(join(hier, "../src-tauri/crates/nen-en-1993-1-1-ltb/src/lib.rs"), "utf8");
+  const artikel = (id) => {
+    const m = ltb.match(new RegExp(`id: "${id}"\\.to_string\\(\\),\\s*title: "[^"]*"\\.to_string\\(\\),\\s*article: "([^"]*)"`));
+    return m === null ? null : m[1].replace(/\\\s+/g, " ");
+  };
+  checkWaar("6.3.2_ltb staat in de kipkern en noemt NB.NB", /NB\.NB/.test(artikel("6.3.2_ltb") ?? ""), artikel("6.3.2_ltb"));
+  checkWaar("6.3.2_ltb_channel noemt NB.NB én een M_cr buiten de norm",
+    /NB\.NB/.test(artikel("6.3.2_ltb_channel") ?? "") && /buiten de norm/.test(artikel("6.3.2_ltb_channel") ?? ""),
+    artikel("6.3.2_ltb_channel"));
+  checkWaar("6.3.2_ltb_monosymmetrisch zegt: niet volgens bijlage NB.NB",
+    /niet volgens bijlage NB\.NB/.test(ltb), "artikelregel van de monosymmetrische route");
+
+  // Elke kop bestaat in alle vier de talen.
+  for (const taal of ["nl", "en", "de", "fr"]) {
+    const r = JSON.parse(readFileSync(join(hier, `src/i18n/locales/${taal}/ribbon.json`), "utf8")).report;
+    checkWaar(`${taal}: de vier ketenkoppen bestaan`,
+      ["ketenKop", "ketenKopNbBenadering", "ketenKopElastisch", "ketenKopAlgemeen"].every((k) => typeof r?.[k] === "string"));
+  }
 }
 
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);

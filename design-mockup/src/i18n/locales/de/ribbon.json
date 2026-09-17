@@ -656,6 +656,8 @@
     "spanningWelBovenOnder": "W_el (oben / unten)",
     "spanningZMaatgevend": "z (maßgebend)",
     "ketenKopAlgemeen": "Herleitung, Schritt für Schritt:",
+    "ketenKopNbBenadering": "Herleitung nach dem nationalen Anhang, mit einer M_cr-Näherung für U-Profile außerhalb der Norm, Schritt für Schritt:",
+    "ketenKopElastisch": "Herleitung mit der allgemeinen elastischen Formel für M_cr (nicht nach Anhang NB.NB), Schritt für Schritt:",
     "cltIyKop": "Aufbau von I_y und der wirksamen Biegesteifigkeit (Anhang B, starre Verbindung: γ = 1)",
     "cltSomIefNet": "Σ über die Längslagen = I_ef,net",
     "cltSomMeetkundig": "Σ über die Längslagen (geometrisch)",

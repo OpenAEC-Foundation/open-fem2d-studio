@@ -103,6 +103,7 @@ const TOL: f64 = 1e-9;
 
 fn mat() -> DesignMaterial {
     DesignMaterial::new(
+        nationale_bijlage::NationaleBijlage::NL,
         concrete_class_by_name("C30/37").expect("C30/37"),
         reinforcement_grade_by_name("B500B").expect("B500B"),
         DesignSituation::PersistentTransient,
