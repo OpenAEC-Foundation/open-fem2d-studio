@@ -31,7 +31,8 @@ import LoadCasesDialog from "./components/fem/LoadCasesDialog";
 import WindGeneratorDialog from "./lib/wind/WindGeneratorDialog";
 import { vrijstaandDakUitgangspunten } from "./lib/wind/windGenerator";
 import { useWindGenerator } from "./stores/windStore";
-import { pasRapportSnapshotToe, rapportSnapshot } from "./stores/reportStore";
+import { pasRapportSnapshotToe, rapportSnapshot, useReportStore } from "./stores/reportStore";
+import { snoeiCheckFocus } from "./lib/verdwenenStaven";
 import { setSetting as zetInstelling } from "./store";
 import Sheet from "./components/openaec/Sheet";
 import { getDetachedParams, useWindowManager } from "./hooks/useWindowManager";
@@ -1090,6 +1091,19 @@ function App() {
   // staaf. Elke klik maakt een nieuw object zodat een herhaalde klik op
   // dezelfde badge opnieuw scrollt (identiteit als trigger).
   const [checkFocus, setCheckFocus] = useState<{ beamId: number } | null>(null);
+  // Verdwijnt een staaf uit het model, dan verdwijnt alles wat aan zijn NUMMER
+  // hangt: de focus van het toetsingspaneel en de keuze "niet in de
+  // afleidingssectie" van het rapport. Staafnummers worden hergebruikt
+  // (`Math.max + 1`); zonder dit erfde een nieuwe staaf met hetzelfde nummer
+  // stil de verborgen afleiding en de opengeklapte kaart van zijn voorganger
+  // (issue #18, zie lib/verdwenenStaven.ts). De toetsuitslag zelf wordt al bij
+  // elke modelwijziging gewist, en een ronde die daarna nog binnenkomt gooit
+  // zijn antwoord weg (`toetsGeneratie` in stores/checkStore.ts).
+  useEffect(() => {
+    const bestaandeStaven = new Set(fem.beams.map((b) => b.id));
+    useReportStore.getState().snoeiToetsStaven(bestaandeStaven);
+    setCheckFocus((f) => snoeiCheckFocus(f, bestaandeStaven));
+  }, [fem.beams]);
   /**
    * UC-badge op het canvas aangeklikt: toon de toetsing van díé staaf naast
    * het model. `activeView` op "check" levert de split-weergave (canvas links,

@@ -584,6 +584,10 @@ const ALLEEN_BRON = new Map([
     "rekent φ uit volgens EN 1993-1-1 (5.5), EN 1992-1-1 (5.1) en EN 1995-1-1 (5.1) en leidt h en m uit het model af (`lib/scheefstandNorm`). Dat is een PROJECTINSTELLING van de frontend: de gebruiker kiest de norm, en de sidecar krijgt het resultaat gewoon als getal (`scheefstandNoemer`) binnen. De module zit daarom niet in de barrel — de motorkant van dezelfde zaak (H = φ·V) staat in `test-scheefstand`, en die draait wél tegen de bundel",
   ],
   [
+    "staafnummer-hergebruik",
+    "bewaakt dat niets wat aan een staafnummer hangt meeverhuist naar een nieuwe staaf met hetzelfde nummer: de rapportkeuze `verborgenToetsStaven` (`stores/reportStore`), de focus van het toetsingspaneel (een bronteksttoets op het effect in App.tsx) en de toetsstore `stores/checkStore` (zustand) met een nagebootste, vertraagde rekenkern. Geen van die modules staat in de barrel, en React-effecten bestaan in de sidecar niet",
+  ],
+  [
     "verouderd",
     "bewaakt dat resultaten en toetsuitslagen vervallen na een wijziging van de rekeninstellingen en na een mislukte toetsronde: `lib/rekenInstellingen`, de toetsstore `stores/checkStore` (zustand) en een bronteksttoets op de afhankelijkheden van de invalidatie-effecten in App.tsx en `hooks/useFemStore`. Geen van die modules staat in de barrel, en React-effecten bestaan in de sidecar niet; het slotblok start de toetsbrug als apart proces",
   ],
