@@ -930,10 +930,21 @@ export const CHECK_REPORT_CSS = `
 .rpt-verloop-tabel th:first-child,
 .rpt-verloop-tabel td:first-child { text-align: left; }
 .rpt-verloop-tabel tr.rpt-verloop-maatgevend td { background: #fef3c7; font-weight: 600; }
-.rpt-verloop-reden {
-  font-size: calc(var(--rpt-basis) * 0.8);
-  color: #444;
+/* De toelichtingskolom van "Doorsnede voor de stabiliteitstoetsen" (#30).
+   De regel moet MINSTENS zo specifiek zijn als \`.rpt-verloop-tabel td\`
+   hierboven (klasse + element): met alleen \`.rpt-verloop-reden\` won de
+   nowrap van die regel, liep de zin op één regel door tot voorbij de
+   paginarand en verdween de rechts uitgelijnde kop "Reden" mee van het vel.
+   Nu breekt de zin af binnen de breedte die de andere kolommen overlaten;
+   \`overflow-wrap: anywhere\` vangt een lang woord zonder breekpunt op. */
+.rpt-verloop-tabel th.rpt-verloop-reden,
+.rpt-verloop-tabel td.rpt-verloop-reden {
   text-align: left;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.rpt-verloop-tabel td.rpt-verloop-reden {
+  font-size: calc(var(--rpt-basis) * 0.8);
+  color: #444;
 }
 `;

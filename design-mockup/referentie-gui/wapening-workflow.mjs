@@ -23,13 +23,24 @@
 //   niet leeg-wit, en de stappen verschillen van elkaar.
 // * Na `gui_quit` is het vindbestand weg: de app ruimde zichzelf op.
 //
+// NIET OVERSCHRIJVEN (issue #27)
+// * Draait er al een app met bediening, dan blijft die ongemoeid: deze
+//   rondgang geeft zijn eigen app een eigen vindbestand
+//   (OPENAEC_GUI_CONTROL_FILE) en een eigen WebView2-gegevensmap
+//   (WEBVIEW2_USER_DATA_FOLDER), zoals rapport-pdf.mjs.
+// * De screenshots komen eerst in een tijdelijke map. Pas als ALLES slaagde,
+//   worden ze naar docs/verificatie/gui gekopieerd; een mislukte rondgang laat
+//   de gecommitte afbeeldingen dus heel.
+//
 // Draaien:  node referentie-gui/wapening-workflow.mjs   (vanuit design-mockup/)
 // Vereist:  een gebouwde app (OPENAEC_APP of target/release) en
 //           cargo build --release -p openaec-mcp-server
-// Uitvoer:  docs/verificatie/gui/NN-*.png  +  een regel per stap hier.
+// Uitvoer:  een regel per stap hier; bij volledig slagen
+//           docs/verificatie/gui/NN-*.png.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
@@ -39,9 +50,11 @@ const REPO = resolve(HIER, "..", "..");
 const APP = process.env.OPENAEC_APP
   ?? join(REPO, "src-tauri", "target", "release", "open-fem2d-studio.exe");
 const MCP = join(REPO, "src-tauri", "target", "release", "openaec-mcp-server.exe");
-const UIT = join(REPO, "docs", "verificatie", "gui");
-const VINDBESTAND = process.env.OPENAEC_GUI_CONTROL_FILE
-  ?? join(process.env.LOCALAPPDATA ?? "", "org.openaec.fem2d-studio", "gui-control.json");
+const DOCS = join(REPO, "docs", "verificatie", "gui");
+const WERK = join(tmpdir(), `openfem2d-wapening-workflow-${process.pid}`);
+const UIT = join(WERK, "screenshots");
+const VINDBESTAND = join(WERK, "gui-control.json");
+const STANDAARD_VIND = join(process.env.LOCALAPPDATA ?? "", "org.openaec.fem2d-studio", "gui-control.json");
 
 let passed = 0, failed = 0;
 const log = (s) => process.stdout.write(s + "\n");
@@ -63,10 +76,26 @@ for (const [wat, pad] of [["app", APP], ["MCP-server", MCP]]) {
 }
 mkdirSync(UIT, { recursive: true });
 
+// Een app die al met bediening draait, wordt gemeld en niet aangeraakt.
+try {
+  const j = JSON.parse(readFileSync(STANDAARD_VIND, "utf8"));
+  let leeft = false;
+  try { process.kill(j.pid, 0); leeft = true; } catch { leeft = false; }
+  log(leeft
+    ? `  MELDING: er draait al een app met bediening (pid ${j.pid}, poort ${j.poort}). ` +
+      `Zijn vindbestand (${STANDAARD_VIND}) wordt niet aangeraakt; deze rondgang gebruikt een eigen.`
+    : `  MELDING: ${STANDAARD_VIND} wijst naar pid ${j.pid}, dat niet meer leeft; niet aangeraakt.`);
+} catch {
+  // geen vindbestand: niets te melden
+}
+
 // ── De MCP-server over stdio ────────────────────────────────────────────────
 class Mcp {
   constructor() {
-    this.kind = spawn(MCP, [], { stdio: ["pipe", "pipe", "pipe"] });
+    this.kind = spawn(MCP, [], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, OPENAEC_GUI_CONTROL_FILE: VINDBESTAND },
+    });
     this.buffer = "";
     this.wachtenden = new Map();
     this.id = 0;
@@ -172,7 +201,12 @@ log(`  app: ${APP}`);
 log("═══════════════════════════════════════════════════════════════════════");
 
 const app = spawn(APP, [], {
-  env: { ...process.env, OPENAEC_GUI_CONTROL: "1" },
+  env: {
+    ...process.env,
+    OPENAEC_GUI_CONTROL: "1",
+    OPENAEC_GUI_CONTROL_FILE: VINDBESTAND,
+    WEBVIEW2_USER_DATA_FOLDER: join(WERK, "webview2"),
+  },
   stdio: "ignore", detached: false,
 });
 let vind = null;
@@ -183,7 +217,7 @@ for (let i = 0; i < 120 && !vind; i++) {
     if (j.pid === app.pid) vind = j;
   } catch {}
 }
-eis("de app schrijft gui-control.json met haar eigen pid", vind !== null,
+eis("de app schrijft haar eigen vindbestand met haar eigen pid", vind !== null,
   vind ? `poort ${vind.poort}, versie ${vind.versie}` : `niet gevonden op ${VINDBESTAND}`);
 if (!vind) { app.kill(); process.exit(1); }
 
@@ -230,14 +264,25 @@ try {
 
   // ── 3. Korf zetten ────────────────────────────────────────────────────────
   log("\n③ Wapeningskorf invoeren");
+  // Een ANDERE korf dan die van het startmodel (4Ø20 onder, dekking 20), zodat
+  // de rondgang echt een wijziging doorrekent, maar wel een die de belasting
+  // van het startmodel draagt. Tot #27 stond hier 3Ø16 onder: met de huidige
+  // combinaties is M_Ed in UGT 6.10b 148,5 kNm, en daarvoor is 3Ø16 (603 mm²)
+  // in eerste orde al te zwak (UC 1,07). De fysisch niet-lineaire lus weigerde
+  // dan terecht ("M boven de momentweerstand") en stap ⑤ t/m ⑨ toetsten niets
+  // meer. 3Ø20 (942 mm²) bij 30 mm dekking, grof met z ≈ 0,9·d:
+  // M_Rd ≈ 942 · 435 · 0,9 · 552 mm ≈ 204 kNm > 148,5 kNm.
   const korf = {
     cover_mm: 30, stirrup_diameter_mm: 8,
-    bottom: { count: 3, diameter_mm: 16 }, top: { count: 2, diameter_mm: 12 },
+    bottom: { count: 3, diameter_mm: 20 }, top: { count: 2, diameter_mm: 12 },
     stirrup_spacing_mm: 200, stirrup_legs: 2,
   };
+  eis("de rondgang wijzigt de korf van het startmodel", beton.heeftKorf === true,
+    beton.heeftKorf ? "startmodel had al een korf" : "het startmodel hoort een korf te hebben");
   const metKorf = await mcp.tool("gui_set_cage", { beam_id: ID, cage: korf });
   const k = metKorf?.checkConfig?.betonKorf;
-  eis("de korf staat op de staaf (checkConfig.betonKorf)", k?.bottom?.count === 3 && k?.top?.diameter_mm === 12,
+  eis("de korf staat op de staaf (checkConfig.betonKorf)",
+    k?.bottom?.count === 3 && k?.bottom?.diameter_mm === 20 && k?.top?.diameter_mm === 12 && k?.cover_mm === 30,
     JSON.stringify(k));
   await shot(3, "korf-ingevoerd");
 
@@ -251,6 +296,9 @@ try {
   const rek = await mcp.tool("gui_solve");
   eis("er zijn combinatieresultaten", (rek?.combinaties?.length ?? 0) > 0,
     (rek?.combinaties ?? []).map((c) => `${c.naam}: M ${c.M_max_kNm.toFixed(1)} kNm`).join(" · "));
+  // Het doel van stap ④: de fysisch niet-lineaire ronde moet met de nieuwe
+  // korf werkelijk gedraaid hebben, niet stil overgeslagen zijn.
+  eis("de fysisch niet-lineaire ronde is gedraaid", rek?.fysischeRonde === "gedraaid", rek?.fysischeRonde);
   await shot(4, "berekend");
 
   // ── 6. Toetsen ────────────────────────────────────────────────────────────
@@ -364,6 +412,22 @@ eis("de app ruimde gui-control.json op", weg);
 if (!app.killed && app.exitCode === null) { await slaap(1000); try { app.kill(); } catch {} }
 mcp.stop();
 
+// Alleen een volledig geslaagde rondgang werkt de gecommitte afbeeldingen bij.
+let bestemming = UIT;
+if (failed === 0) {
+  mkdirSync(DOCS, { recursive: true });
+  for (const f of readdirSync(UIT).filter((n) => n.endsWith(".png"))) copyFileSync(join(UIT, f), join(DOCS, f));
+  bestemming = DOCS;
+  // De WebView2-processen van de app laten hun gegevensmap pas even na het
+  // afsluiten los; daarom ruim herhalen, en lukt het niet, dan het pad melden.
+  for (let i = 0; i < 60 && existsSync(WERK); i++) {
+    try { rmSync(WERK, { recursive: true, force: true }); } catch { await slaap(500); }
+  }
+  if (existsSync(WERK)) log(`\n  MELDING: de werkmap ${WERK} kon niet worden opgeruimd.`);
+} else {
+  log(`\n  De screenshots van deze mislukte rondgang staan in ${UIT}; ${DOCS} is niet aangeraakt.`);
+}
+
 log("\n═══════════════════════════════════════════════════════════════════════");
-log(`wapening-workflow: ${passed} geslaagd, ${failed} gefaald.  Screenshots: ${UIT}`);
+log(`wapening-workflow: ${passed} geslaagd, ${failed} gefaald.  Screenshots: ${bestemming}`);
 process.exit(failed === 0 ? 0 : 1);

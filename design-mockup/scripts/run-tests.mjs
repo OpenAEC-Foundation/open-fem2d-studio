@@ -454,6 +454,14 @@ const ALLEEN_BRON = new Map([
     "toetst het klaar-signaal en de weigerregels van de PDF-export via het bedieningskanaal: de leesbare toestand van de inhoudsopgave (`components/report/toc`), de gereedheid van de paginering (`components/report/rapportGereedheid`), de kop van één export (`components/report/useProjectInfo`) en de oordelen van `bediening/rapportVoorwaarden`, plus een bronteksttoets op App.tsx en bediening.ts. Rapport- en bedieningslogica van de frontend — de solver komt er niet aan te pas en geen van die modules hoort in de barrel",
   ],
   [
+    "bediening-wachten",
+    "issue #28: toetst dat geen opdracht van het bedieningskanaal (`bediening/bediening.ts`) op een React-render wacht die niet komt als de opdracht niets verandert. Bedieningslogica van de frontend met nagebootste acties plus een bronteksttoets; de solver komt er niet aan te pas en de module hoort niet in de barrel",
+  ],
+  [
+    "rapport-verloop-reden",
+    "issue #30: rendert het verloopblok van het live rapport (`components/report/sections/CheckDetailSection`) met react-dom/server en toetst de cascade van CHECK_REPORT_CSS plus de layout in een headless Chromium-browser. Presentatielogica van de frontend; de solver komt er niet aan te pas en de module hoort niet in de barrel",
+  ],
+  [
     "sectierelevantie",
     "beoordeelt welke RAPPORTSECTIES een model kan vullen — presentatielogica van de frontend die niets met de solver of de sidecar te maken heeft en dus niet in de barrel hoort; de test leest bovendien de sectieregistry als bronbestand",
   ],
