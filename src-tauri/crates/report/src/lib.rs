@@ -101,6 +101,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use concrete_check::dekkingslijn::DekkingslijnAntwoord;
+use concrete_check::result::NietUitgevoerdeToets;
 use concrete_check::ConcreteBeamCheckResult;
 use nen_en_1993_1_1_section::{CheckStatus, Deelstap, NamedValue};
 use spanning_check::SpanningBeamCheckResult;
@@ -480,6 +481,90 @@ pub fn report_members(input: &ReportInput) -> Vec<ReportMember<'_>> {
 
     members.sort_by_key(|m| m.beam_id);
     members
+}
+
+/// Eén regel van het overzicht "Niet uitgevoerd" onder de samenvattingstabel:
+/// een staaf met de toetsen die de kern niet kon afrekenen.
+///
+/// WAAROM (issue #18). Een betonstaaf waarvan een draagkrachttoets niet kon,
+/// krijgt terecht de status N/A in plaats van Ok. Maar de samenvattingstabel
+/// zei niet WELKE toets ontbrak; dat stond pas pagina's verder, in de notes van
+/// die toets. Een lezer die alleen de samenvatting leest — en dat is de lezer
+/// die het rapport overneemt — zag een N/A zonder aanleiding, of bij een
+/// ontbrekende detailleringseis (die de status niet raakt) helemaal niets.
+pub struct NietUitgevoerdRegel<'a> {
+    pub beam_id: u32,
+    /// Doorsnede en klasse, zoals in de samenvattingstabel.
+    pub section_label: &'a str,
+    pub grade_label: &'a str,
+    /// De toetsen zelf, in de volgorde van de kern. Nooit leeg.
+    pub toetsen: &'a [NietUitgevoerdeToets],
+}
+
+/// Alle staven met minstens één niet-uitgevoerde toets, gesorteerd op staaf-id.
+///
+/// Alleen de betonkern levert dit veld (`ConcreteBeamCheckResult::niet_uitgevoerd`);
+/// de andere kernen weigeren een toets die niet kan in plaats van hem over te
+/// slaan. Leeg = het overzicht blijft weg, zodat een rapport zonder
+/// overgeslagen toets er precies zo uitziet als voorheen.
+pub fn niet_uitgevoerd_overzicht(input: &ReportInput) -> Vec<NietUitgevoerdRegel<'_>> {
+    let mut regels: Vec<NietUitgevoerdRegel<'_>> = input
+        .concrete_check_results
+        .iter()
+        .filter(|r| !r.niet_uitgevoerd.is_empty())
+        .map(|r| NietUitgevoerdRegel {
+            beam_id: r.beam_id,
+            section_label: &r.section_name,
+            grade_label: &r.concrete_class,
+            toetsen: &r.niet_uitgevoerd,
+        })
+        .collect();
+    regels.sort_by_key(|r| r.beam_id);
+    regels
+}
+
+/// De tekst van één regel: "Staaf 6 (300 x 500, C30/37): Dwarskracht;
+/// Verankering (detailleringseis)". Publiek zodat de test de regel woordelijk
+/// kan terugzoeken zonder de opmaak na te bouwen.
+pub fn niet_uitgevoerd_tekst(r: &NietUitgevoerdRegel<'_>) -> String {
+    let toetsen: Vec<String> = r
+        .toetsen
+        .iter()
+        .map(|t| {
+            if t.detaillering {
+                format!("{} (detailleringseis)", t.titel)
+            } else {
+                t.titel.clone()
+            }
+        })
+        .collect();
+    format!(
+        "Staaf {} ({}, {}): {}",
+        r.beam_id,
+        r.section_label,
+        r.grade_label,
+        toetsen.join("; ")
+    )
+}
+
+/// Het overzicht onder de samenvattingstabel. Niets als er niets overgeslagen is.
+fn extend_with_niet_uitgevoerd(flow: &mut Vec<Box<dyn Flowable>>, input: &ReportInput) {
+    let regels = niet_uitgevoerd_overzicht(input);
+    if regels.is_empty() {
+        return;
+    }
+    flow.push(Box::new(Paragraph::new("Niet uitgevoerd", style_h3()).kop()));
+    flow.push(Box::new(Paragraph::new(
+        "Deze toetsen konden niet worden afgerekend; de reden staat bij de \
+         toetsing van de staaf. Ontbreekt een toets die de draagkracht bepaalt, \
+         dan is de status van de staaf N/A en niet Ok. Een detailleringseis \
+         bepaalt de status niet.",
+        style_note(),
+    )));
+    for r in &regels {
+        flow.push(Box::new(Paragraph::new(niet_uitgevoerd_tekst(r), style_body())));
+    }
+    flow.push(Box::new(Spacer::from_mm(4.0)));
 }
 
 /// Welke toetsingskaders zitten er daadwerkelijk in deze invoer?
@@ -870,6 +955,7 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
 
         flow.push(Box::new(build_summary_table(&members)));
         flow.push(Box::new(Spacer::from_mm(6.0)));
+        extend_with_niet_uitgevoerd(&mut flow, &input);
     }
 
     for (idx, m) in members.iter().enumerate() {
