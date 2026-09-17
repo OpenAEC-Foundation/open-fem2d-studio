@@ -12137,32 +12137,103 @@ var STEEL_SECTION_DIMS = {
   }
 };
 
+// src/lib/normAanduidingen.ts
+var BIJLAGEN_GEVULD = ["NL"];
+var STANDAARD_BIJLAGE = "NL";
+var NL = {
+  land: "Nederland",
+  bijlageNaam: "Nederlandse nationale bijlage",
+  keuzelabel: "Nederland (NB)",
+  staalKort: "EN 1993-1-1",
+  houtKort: "EN 1995-1-1",
+  betonKort: "EN 1992-1-1",
+  staalVol: "NEN-EN 1993-1-1+C2+A1/NB:2016",
+  houtVol: "NEN-EN 1995-1-1:2005+A2:2014+NB:2013",
+  betonVol: "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020"
+};
+var RIJEN = { NL };
+function aanduidingen(code) {
+  const rij = RIJEN[code];
+  if (!rij) {
+    throw new Error(
+      `nationale bijlage "${code}" is niet gevuld: deze uitgave kent alleen ${BIJLAGEN_GEVULD.join(", ")}. Er wordt niet teruggevallen op een andere bijlage, want dan zou het rapport getallen dragen die niet bij de genoemde bijlage horen.`
+    );
+  }
+  return rij;
+}
+function bijlageUitBestand(waarde) {
+  if (waarde === void 0 || waarde === null || waarde === "") return null;
+  const code = String(waarde);
+  if (BIJLAGEN_GEVULD.includes(code)) {
+    return code;
+  }
+  throw new Error(
+    `nationale bijlage "${code}" is niet gevuld: deze uitgave kent alleen ${BIJLAGEN_GEVULD.join(", ")}.`
+  );
+}
+
 // src/components/fem/solver/normcombinaties.ts
+function rijVoorBijlage(tabel, bijlage, wat) {
+  const rij = tabel[bijlage];
+  if (rij === void 0) {
+    throw new Error(
+      `nationale bijlage "${bijlage}" is niet gevuld: deze uitgave kent ${wat} alleen voor ${BIJLAGEN_GEVULD.join(", ")}. Er wordt niet teruggevallen op een andere bijlage.`
+    );
+  }
+  return rij;
+}
 var GEVOLGKLASSEN = ["CC1", "CC2", "CC3"];
 var STANDAARD_GEVOLGKLASSE = "CC2";
-var K_FI = { CC1: 0.9, CC2: 1, CC3: 1.1 };
+var K_FI = {
+  NL: { CC1: 0.9, CC2: 1, CC3: 1.1 }
+};
 var PARTIELE_FACTOREN = {
-  CC1: { gGsup610a: 1.2, gGsup610b: 1.1, gGinf: 0.9, gQ: 1.35, bron: "NB tabel NB.5, CC1" },
-  CC2: { gGsup610a: 1.35, gGsup610b: 1.2, gGinf: 0.9, gQ: 1.5, bron: "NB tabel NB.4, CC2" },
-  CC3: { gGsup610a: 1.5, gGsup610b: 1.3, gGinf: 0.9, gQ: 1.65, bron: "NB tabel NB.5, CC3" }
+  NL: {
+    CC1: { gGsup610a: 1.2, gGsup610b: 1.1, gGinf: 0.9, gQ: 1.35, bron: "NB tabel NB.5, CC1" },
+    CC2: { gGsup610a: 1.35, gGsup610b: 1.2, gGinf: 0.9, gQ: 1.5, bron: "NB tabel NB.4, CC2" },
+    CC3: { gGsup610a: 1.5, gGsup610b: 1.3, gGinf: 0.9, gQ: 1.65, bron: "NB tabel NB.5, CC3" }
+  }
 };
+function partieleFactoren(gevolgklasse, bijlage = STANDAARD_BIJLAGE) {
+  return rijVoorBijlage(PARTIELE_FACTOREN, bijlage, "de parti\xEBle belastingsfactoren")[gevolgklasse];
+}
+function kFi(gevolgklasse, bijlage = STANDAARD_BIJLAGE) {
+  return rijVoorBijlage(K_FI, bijlage, "K_FI")[gevolgklasse];
+}
 var PSI_GEBRUIK = {
-  A: { psi0: 0.4, psi1: 0.5, psi2: 0.3, omschrijving: "categorie A, woon- en verblijfsruimtes" },
-  B: { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "categorie B, kantoorruimtes" },
-  C: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, bijeenkomstruimtes (overige delen, voetnoot a: \u03C8\u2080 = 0,4)" },
-  "C-menigte": { psi0: 0.6, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, delen die bij een calamiteit zwaar door een mensenmenigte belast kunnen worden (voetnoot a: \u03C8\u2080 = 0,6)" },
-  D: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie D, winkelruimtes" },
-  E: { psi0: 1, psi1: 0.9, psi2: 0.8, omschrijving: "categorie E, opslagruimtes" },
-  F: { psi0: 0.7, psi1: 0.7, psi2: 0.6, omschrijving: "categorie F, verkeersruimte, voertuiggewicht \u2264 25 kN" },
-  G: { psi0: 0.7, psi1: 0.5, psi2: 0.3, omschrijving: "categorie G, verkeersruimte, 25 kN < voertuiggewicht \u2264 160 kN" },
-  H: { psi0: 0, psi1: 0, psi2: 0, omschrijving: "categorie H, daken" },
-  "industrie-kort": { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "industrieel gebruik, belasting niet langdurig aanwezig" },
-  "industrie-lang": { psi0: 1, psi1: 0.9, psi2: 0.8, omschrijving: "industrieel gebruik, belasting langdurig aanwezig" }
+  NL: {
+    A: { psi0: 0.4, psi1: 0.5, psi2: 0.3, omschrijving: "categorie A, woon- en verblijfsruimtes" },
+    B: { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "categorie B, kantoorruimtes" },
+    C: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, bijeenkomstruimtes (overige delen, voetnoot a: \u03C8\u2080 = 0,4)" },
+    "C-menigte": { psi0: 0.6, psi1: 0.7, psi2: 0.6, omschrijving: "categorie C, delen die bij een calamiteit zwaar door een mensenmenigte belast kunnen worden (voetnoot a: \u03C8\u2080 = 0,6)" },
+    D: { psi0: 0.4, psi1: 0.7, psi2: 0.6, omschrijving: "categorie D, winkelruimtes" },
+    E: { psi0: 1, psi1: 0.9, psi2: 0.8, omschrijving: "categorie E, opslagruimtes" },
+    F: { psi0: 0.7, psi1: 0.7, psi2: 0.6, omschrijving: "categorie F, verkeersruimte, voertuiggewicht \u2264 25 kN" },
+    G: { psi0: 0.7, psi1: 0.5, psi2: 0.3, omschrijving: "categorie G, verkeersruimte, 25 kN < voertuiggewicht \u2264 160 kN" },
+    H: { psi0: 0, psi1: 0, psi2: 0, omschrijving: "categorie H, daken" },
+    "industrie-kort": { psi0: 0.5, psi1: 0.5, psi2: 0.3, omschrijving: "industrieel gebruik, belasting niet langdurig aanwezig" },
+    "industrie-lang": { psi0: 1, psi1: 0.9, psi2: 0.8, omschrijving: "industrieel gebruik, belasting langdurig aanwezig" }
+  }
 };
-var PSI_SNEEUW = { psi0: 0, psi1: 0.2, psi2: 0 };
-var PSI_WIND = { psi0: 0, psi1: 0.2, psi2: 0 };
+var PSI_SNEEUW = {
+  NL: { psi0: 0, psi1: 0.2, psi2: 0 }
+};
+var PSI_WIND = {
+  NL: { psi0: 0, psi1: 0.2, psi2: 0 }
+};
 var STANDAARD_CATEGORIE = "A";
-var PSI_BRON = "\u03C8 uit NB tabel NB.2\u2013A1.1";
+var PSI_BRON = {
+  NL: "\u03C8 uit NB tabel NB.2\u2013A1.1"
+};
+function psiGebruik(categorie, bijlage = STANDAARD_BIJLAGE) {
+  return rijVoorBijlage(PSI_GEBRUIK, bijlage, "de \u03C8-factoren")[categorie];
+}
+function psiKlimaat(soort, bijlage = STANDAARD_BIJLAGE) {
+  return rijVoorBijlage(soort === "wind" ? PSI_WIND : PSI_SNEEUW, bijlage, "de \u03C8-factoren");
+}
+function psiBron(bijlage = STANDAARD_BIJLAGE) {
+  return rijVoorBijlage(PSI_BRON, bijlage, "de \u03C8-factoren");
+}
 function basisSleutel(sleutel) {
   const i = sleutel.indexOf("|zonder:");
   return i < 0 ? sleutel : sleutel.slice(0, i);
@@ -12183,7 +12254,7 @@ function nlGetal(x) {
 function product(...f) {
   return Math.round(f.reduce((a, b) => a * b, 1) * 1e9) / 1e9;
 }
-function verzamelActies(gevallen) {
+function verzamelActies(gevallen, bijlage) {
   const acties = [];
   const live = gevallen.filter((c) => c.type === "live");
   const categorieen = [];
@@ -12197,14 +12268,14 @@ function verzamelActies(gevallen) {
       sleutel: `Q:${cat}`,
       soort: "Q",
       delen: leden.map((c) => ({ id: c.id, naam: c.name })),
-      psi: PSI_GEBRUIK[cat],
+      psi: psiGebruik(cat, bijlage),
       label: leden.length === 1 ? leden[0].name : `Q cat. ${cat}`,
       symbool: categorieen.length === 1 ? "Q" : `Q(${cat})`
     });
   }
   for (const [soort, type, psi] of [
-    ["S", "snow", PSI_SNEEUW],
-    ["W", "wind", PSI_WIND]
+    ["S", "snow", psiKlimaat("sneeuw", bijlage)],
+    ["W", "wind", psiKlimaat("wind", bijlage)]
   ]) {
     const leden = gevallen.filter((c) => c.type === type);
     for (const c of leden) {
@@ -12259,7 +12330,7 @@ function opstellingen(bijdragen, perGeval) {
 function symboolVan(actie, aanwezig) {
   return aanwezig.length === actie.delen.length ? actie.symbool : `${actie.symbool}[${aanwezig.map((d) => d.naam).join(" + ")}]`;
 }
-function uitdrukking(naam, type, soort, sleutel, g, bijdragen, bron, gevolgklasse, perGeval) {
+function uitdrukking(naam, type, soort, sleutel, g, bijdragen, bron, gevolgklasse, bijlage, perGeval) {
   return opstellingen(bijdragen, perGeval).map((o) => {
     const termen = [
       g,
@@ -12274,7 +12345,8 @@ function uitdrukking(naam, type, soort, sleutel, g, bijdragen, bron, gevolgklass
     return bouw(naam + zonderNaam, type, termen, bron, {
       sleutel: sleutel + zonderSleutel,
       soort,
-      gevolgklasse
+      gevolgklasse,
+      bijlage
     });
   });
 }
@@ -12289,19 +12361,20 @@ function ontdubbel(set) {
     return true;
   });
 }
-function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLGKLASSE) {
-  const f = PARTIELE_FACTOREN[gevolgklasse];
+function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLGKLASSE, bijlage = STANDAARD_BIJLAGE) {
+  const f = partieleFactoren(gevolgklasse, bijlage);
   const eigen = loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
   const G2 = eigen.filter((c) => c.type === "dead").map((c) => c.id);
-  const acties = verzamelActies(eigen);
+  const acties = verzamelActies(eigen, bijlage);
   if (G2.length === 0 && acties.length === 0) return [];
   const perGeval = aantalGebruiksgevallen(eigen) <= MAX_VRIJE_GEVALLEN;
-  const ugtBron = `\u03B3: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
-  const bgtBron = `NEN-EN 1990; ${PSI_BRON}`;
+  const ugtBron = `\u03B3: NEN-EN 1990 ${f.bron}; ${psiBron(bijlage)}`;
+  const bgtBron = `NEN-EN 1990; ${psiBron(bijlage)}`;
   const herkomst = (sleutel, soort) => ({
     sleutel,
     soort,
-    gevolgklasse
+    gevolgklasse,
+    bijlage
   });
   const g = (factor) => ({
     ids: G2,
@@ -12333,6 +12406,7 @@ function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLG
     begeleidend(null, \u03C80, f.gQ),
     ugtBron,
     gevolgklasse,
+    bijlage,
     perGeval
   ));
   for (const a of acties) {
@@ -12345,6 +12419,7 @@ function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLG
       [leidend(a, f.gQ), ...begeleidend(a, \u03C80, f.gQ)],
       ugtBron,
       gevolgklasse,
+      bijlage,
       perGeval
     ));
   }
@@ -12359,6 +12434,7 @@ function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLG
         [leidend(a, f.gQ), ...begeleidend(a, \u03C80, f.gQ)],
         ugtBron,
         gevolgklasse,
+        bijlage,
         perGeval
       ));
     }
@@ -12389,6 +12465,7 @@ function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLG
         [leidend(a, 1), ...begeleidend(a, \u03C80, 1)],
         bgtBron,
         gevolgklasse,
+        bijlage,
         perGeval
       ));
     }
@@ -12402,6 +12479,7 @@ function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLG
         [leidend(a, a.psi.psi1), ...begeleidend(a, \u03C82, 1)],
         bgtBron,
         gevolgklasse,
+        bijlage,
         perGeval
       ));
     }
@@ -12415,13 +12493,14 @@ function genereerStandaardCombinaties(loadCases, gevolgklasse = STANDAARD_GEVOLG
     begeleidend(null, \u03C82, 1),
     bgtBron,
     gevolgklasse,
+    bijlage,
     perGeval
   ));
   return ontdubbel([...ugt, ...bgt]);
 }
-function begeleidendeOpstellingen(gevallen, leidendeSoort, factor) {
+function begeleidendeOpstellingen(gevallen, leidendeSoort, factor, bijlage = STANDAARD_BIJLAGE) {
   const eigen = gevallen.filter((c) => c.gegenereerd?.bron !== "wind");
-  const bijdragen = verzamelActies(eigen).filter((a) => !(a.soort === leidendeSoort && a.soort !== "Q")).map((a) => ({ actie: a, factor: product(factor(a.psi)), leidend: false, tekst: (s) => s }));
+  const bijdragen = verzamelActies(eigen, bijlage).filter((a) => !(a.soort === leidendeSoort && a.soort !== "Q")).map((a) => ({ actie: a, factor: product(factor(a.psi)), leidend: false, tekst: (s) => s }));
   const perGeval = aantalGebruiksgevallen(eigen) <= MAX_VRIJE_GEVALLEN;
   return opstellingen(bijdragen, perGeval).map((o) => ({
     factoren: bijdragen.flatMap((b, i) => b.factor === 0 ? [] : o.aanwezig[i].map((d) => [d.id, b.factor])),
@@ -12468,8 +12547,8 @@ function metScheefstandRichtingen(combinations, aan, primair = 1) {
   return uit;
 }
 var SOORTEN_BUITEN_STAAL = ["6.15b", "6.16b"];
-function defaultCombinations(loadCases = STANDAARD_BELASTINGGEVALLEN, gevolgklasse = STANDAARD_GEVOLGKLASSE) {
-  return genereerStandaardCombinaties(loadCases, gevolgklasse).map((c, i) => ({
+function defaultCombinations(loadCases = STANDAARD_BELASTINGGEVALLEN, gevolgklasse = STANDAARD_GEVOLGKLASSE, bijlage = STANDAARD_BIJLAGE) {
+  return genereerStandaardCombinaties(loadCases, gevolgklasse, bijlage).map((c, i) => ({
     ...c,
     id: i + 1
   }));
@@ -13851,41 +13930,6 @@ function alphaCrStaafNotitie(stabiliteit, nEdMinKn, kniklengteYOpgegeven) {
   if (teLaag.length === 0) return null;
   const laagste = teLaag.reduce((a, b) => (b.alphaCr ?? Infinity) < (a.alphaCr ?? Infinity) ? b : a);
   return `EERSTE ORDE MET \u03B1_cr = ${nl4(laagste.alphaCr ?? NaN)} (combinatie "${laagste.naam}") < ${ALPHA_CR_GRENS_EERSTE_ORDE}: deze staaf staat onder druk en de kniklengte in het vlak valt terug op de systeemlengte. NEN-EN 1993-1-1 5.2.2(7)b staat die terugval alleen toe bij krachten uit een tweede-orde-berekening met imperfecties, en 5.2.1(3) staat eerste orde bij \u03B1_cr < 10 niet toe. De knikweerstand om de y-as hieronder is daarom NIET normconform bepaald: kies tweede orde (P-\u0394) met scheefstand, of geef L_cr,y uit de zijdelingse knikvorm op (5.2.2(8)).`;
-}
-
-// src/lib/normAanduidingen.ts
-var BIJLAGEN_GEVULD = ["NL"];
-var STANDAARD_BIJLAGE = "NL";
-var NL = {
-  land: "Nederland",
-  bijlageNaam: "Nederlandse nationale bijlage",
-  keuzelabel: "Nederland (NB)",
-  staalKort: "EN 1993-1-1",
-  houtKort: "EN 1995-1-1",
-  betonKort: "EN 1992-1-1",
-  staalVol: "NEN-EN 1993-1-1+C2+A1/NB:2016",
-  houtVol: "NEN-EN 1995-1-1:2005+A2:2014+NB:2013",
-  betonVol: "NEN-EN 1992-1-1:2005+A1:2015+NB:2016+A1:2020"
-};
-var RIJEN = { NL };
-function aanduidingen(code) {
-  const rij = RIJEN[code];
-  if (!rij) {
-    throw new Error(
-      `nationale bijlage "${code}" is niet gevuld: deze uitgave kent alleen ${BIJLAGEN_GEVULD.join(", ")}. Er wordt niet teruggevallen op een andere bijlage, want dan zou het rapport getallen dragen die niet bij de genoemde bijlage horen.`
-    );
-  }
-  return rij;
-}
-function bijlageUitBestand(waarde) {
-  if (waarde === void 0 || waarde === null || waarde === "") return null;
-  const code = String(waarde);
-  if (BIJLAGEN_GEVULD.includes(code)) {
-    return code;
-  }
-  throw new Error(
-    `nationale bijlage "${code}" is niet gevuld: deze uitgave kent alleen ${BIJLAGEN_GEVULD.join(", ")}.`
-  );
 }
 
 // src/lib/steelCheckBuilder.ts
@@ -17770,7 +17814,8 @@ function selecteerCombinaties(combinations, beams, plates = [], opties = {}) {
   const gevallen = opties.loadCases ?? STANDAARD_BELASTINGGEVALLEN;
   const standaardSet = genereerStandaardCombinaties(
     gevallen,
-    opties.gevolgklasse ?? STANDAARD_GEVOLGKLASSE
+    opties.gevolgklasse ?? STANDAARD_GEVOLGKLASSE,
+    opties.bijlage
   );
   const blijvendeSleutels = new Set(
     blijvendeBgtCombinaties(
@@ -19054,7 +19099,8 @@ function combinatiesMetMeldingen(model, inst, gevallen, meldingen) {
   if (inst.combinatiesGenereren) {
     const eigen = model.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
     const klasse = model.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
-    const f = PARTIELE_FACTOREN[klasse];
+    const bijlage = model.bijlage ?? STANDAARD_BIJLAGE;
+    const f = partieleFactoren(klasse, bijlage);
     const overig = eigen.filter((c) => c.type === "other");
     if (overig.length > 0) {
       meldingen.push({
@@ -19062,7 +19108,7 @@ function combinatiesMetMeldingen(model, inst, gevallen, meldingen) {
         tekst: `De belastinggevallen ${overig.map((c) => `\u201C${c.name}\u201D`).join(", ")} hebben type \u201Coverig\u201D. De generator kent daar geen \u03C8\u2080 bij en laat ze uit de gegenereerde combinaties. Geef ze een type, of neem ze handmatig op.`
       });
     }
-    combinaties.push(...genereerWindCombinaties(model.loadCases, gevallen, klasse));
+    combinaties.push(...genereerWindCombinaties(model.loadCases, gevallen, klasse, bijlage));
     meldingen.push({
       niveau: "info",
       tekst: `De gegenereerde combinaties gebruiken gevolgklasse ${klasse}: \u03B3 uit NEN-EN 1990 ${f.bron}, \u03C8 uit tabel NB.2\u2013A1.1. De betrouwbaarheidsfactor K_FI zit daarmee in de parti\xEBle factoren zelf en wordt nergens nog eens toegepast.`
@@ -19082,14 +19128,14 @@ function stuwdrukMelding(stuwdruk) {
     tekst: "De stuwdruk is berekend met de ruwheidslengtes uit EN 1991-1-4 tabel 4.1. De Nederlandse nationale bijlage geeft de extreme stuwdruk ook rechtstreeks in tabelvorm per windgebied, terreinsoort en hoogte; die waarde kan afwijken. Houdt u die tabel aan, kies dan \u201Cstuwdruk handmatig\u201D en voer de waarde uit de nationale bijlage in."
   };
 }
-function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAARD_GEVOLGKLASSE) {
+function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAARD_GEVOLGKLASSE, bijlage = STANDAARD_BIJLAGE) {
   const combinaties = [];
   {
     const eigen = loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
-    const f = PARTIELE_FACTOREN[gevolgklasse];
+    const f = partieleFactoren(gevolgklasse, bijlage);
     const G2 = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     const r = (x) => Math.round(x * 1e9) / 1e9;
-    const bron = `\u03B3: NEN-EN 1990 ${f.bron}; ${PSI_BRON}`;
+    const bron = `\u03B3: NEN-EN 1990 ${f.bron}; ${psiBron(bijlage)}`;
     for (const gv of windGevallen) {
       const sets = [
         {
@@ -19130,12 +19176,12 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
           type: "sls",
           formule: "G + \u03C8\u2081,W\xB7W + \u03C8\u2082,Q\xB7Q + \u03C8\u2082,S\xB7S",
           g: 1,
-          wind: PSI_WIND.psi1,
+          wind: psiKlimaat("wind", bijlage).psi1,
           begeleidend: (psi) => psi.psi2
         }
       ];
       for (const s of sets) {
-        for (const o of begeleidendeOpstellingen(eigen, "W", s.begeleidend)) {
+        for (const o of begeleidendeOpstellingen(eigen, "W", s.begeleidend, bijlage)) {
           const zonder = o.zonder.map((d) => d.naam).join(", ");
           combinaties.push({
             naam: WIND_COMBI_PREFIX + s.naam + (zonder ? `, zonder ${zonder}` : ""),
@@ -19210,7 +19256,7 @@ function gelijkeInhoud(a, b) {
   return a.name === b.name && a.type === b.type && a.formula === b.formula && gelijkeFactoren(a.factors, b.factors);
 }
 function gelijkeCombinatie(a, b) {
-  return gelijkeInhoud(a, b) && a.standaard?.sleutel === b.standaard?.sleutel && a.standaard?.soort === b.standaard?.soort && a.standaard?.gevolgklasse === b.standaard?.gevolgklasse;
+  return gelijkeInhoud(a, b) && a.standaard?.sleutel === b.standaard?.sleutel && a.standaard?.soort === b.standaard?.soort && a.standaard?.gevolgklasse === b.standaard?.gevolgklasse && a.standaard?.bijlage === b.standaard?.bijlage;
 }
 function gelijkeLijst(a, b) {
   return a.length === b.length && a.every((c, i) => c.id === b[i].id && gelijkeCombinatie(c, b[i]));
@@ -19281,6 +19327,12 @@ function klasseUitKenmerk(combinations) {
   );
   return klassen.size === 1 ? [...klassen][0] : null;
 }
+function bijlageUitKenmerk(combinations) {
+  const bijlagen = new Set(
+    (combinations ?? []).flatMap((c) => c.standaard ? [c.standaard.bijlage] : [])
+  );
+  return bijlagen.size === 1 ? [...bijlagen][0] : null;
+}
 function gevolgklasseBijOpenen(p) {
   if (p.bestand) return { klasse: p.bestand, bron: "bestand" };
   if (p.verzoek) return { klasse: p.verzoek, bron: "verzoek" };
@@ -19288,14 +19340,15 @@ function gevolgklasseBijOpenen(p) {
   if (kenmerk) return { klasse: kenmerk, bron: "kenmerk" };
   return { klasse: p.terugval, bron: "terugval" };
 }
-function windCombinatiesVoor(loadCases, gevolgklasse) {
+function windCombinatiesVoor(loadCases, gevolgklasse, bijlage = STANDAARD_BIJLAGE) {
   const wind = loadCases.filter((c) => c.gegenereerd?.bron === "wind");
   if (wind.length === 0) return null;
   const idVan = new Map(wind.map((c) => [c.gegenereerd.sleutel, c.id]));
   return genereerWindCombinaties(
     loadCases,
     wind.map((c) => ({ sleutel: c.gegenereerd.sleutel, naam: c.name })),
-    gevolgklasse
+    gevolgklasse,
+    bijlage
   ).map((g) => ({
     name: g.naam,
     type: g.type,
@@ -19306,7 +19359,7 @@ function windCombinatiesVoor(loadCases, gevolgklasse) {
 function synchroniseerWindCombinaties(staat) {
   const huidig = staat.combinations.filter(isWindgeneratorCombinatie);
   if (huidig.length === 0) return staat;
-  const verwacht = windCombinatiesVoor(staat.loadCases, staat.gevolgklasse);
+  const verwacht = windCombinatiesVoor(staat.loadCases, staat.gevolgklasse, staat.bijlage);
   if (verwacht === null) return staat;
   if (huidig.length === verwacht.length && huidig.every((c, i) => gelijkeInhoud(c, verwacht[i]))) {
     return staat;
@@ -19330,7 +19383,7 @@ function synchroniseerWindCombinaties(staat) {
   };
 }
 function tekstVervanging(v) {
-  const bron = PARTIELE_FACTOREN[v.gevolgklasse].bron;
+  const bron = partieleFactoren(v.gevolgklasse, v.bijlage).bron;
   const delen = [];
   if (v.oudeStandaard.length > 0) {
     delen.push(
@@ -19339,7 +19392,7 @@ function tekstVervanging(v) {
   }
   if (v.bijgewerkt.length > 0) {
     delen.push(
-      `${v.bijgewerkt.length} standaardcombinatie(s) uit het bestand hoorden bij een andere gevolgklasse of andere belastinggevallen en zijn bijgewerkt: ${namenLijst(v.bijgewerkt)}.`
+      `${v.bijgewerkt.length} standaardcombinatie(s) uit het bestand hoorden bij een andere gevolgklasse, een andere nationale bijlage of andere belastinggevallen en zijn bijgewerkt: ${namenLijst(v.bijgewerkt)}.`
     );
   }
   if (v.wind.length > 0) {
@@ -19373,7 +19426,7 @@ function vervangVerouderdeCombinaties(staat) {
       const s = c.standaard.sleutel;
       if (!idPerSleutel.has(s)) idPerSleutel.set(s, c.id);
     }
-    const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse).map((c) => ({ ...c, id: idPerSleutel.get(c.standaard.sleutel) ?? volgendId++ }));
+    const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse, staat.bijlage).map((c) => ({ ...c, id: idPerSleutel.get(c.standaard.sleutel) ?? volgendId++ }));
     const rest = staat.combinations.filter((c) => !weg.has(c) && c.standaard === void 0);
     volgend = synchroniseerWindCombinaties({
       ...staat,
@@ -19381,7 +19434,11 @@ function vervangVerouderdeCombinaties(staat) {
       volgendCombinatieId: volgendId
     });
   } else if (metKenmerk.length > 0) {
-    volgend = synchroniseerStandaard(staat, { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse });
+    volgend = synchroniseerStandaard(staat, {
+      loadCases: staat.loadCases,
+      gevolgklasse: staat.gevolgklasse,
+      bijlage: staat.bijlage
+    });
   } else {
     volgend = synchroniseerWindCombinaties(staat);
   }
@@ -19401,6 +19458,7 @@ function vervangVerouderdeCombinaties(staat) {
   }
   const kern = {
     gevolgklasse: staat.gevolgklasse,
+    bijlage: staat.bijlage,
     oudeStandaard: lijst(oud),
     bijgewerkt: lijst(bijgewerkt),
     wind: windAnders ? lijst(windVoor) : [],
@@ -19424,13 +19482,15 @@ function herstelCombinaties(staat, voor) {
 }
 function openCombinatieStaat(p) {
   const gevalTeller = volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1);
+  const bijlage = p.bijlage ?? STANDAARD_BIJLAGE;
   if (!p.combinations) {
-    const combinations = defaultCombinations(p.loadCases, p.gevolgklasse);
+    const combinations = defaultCombinations(p.loadCases, p.gevolgklasse, bijlage);
     return {
       staat: {
         loadCases: p.loadCases,
         combinations,
         gevolgklasse: p.gevolgklasse,
+        bijlage,
         volgendGevalId: gevalTeller,
         volgendCombinatieId: volgendVrijId(combinations, p.idTellers?.combinatie ?? 1)
       },
@@ -19444,6 +19504,7 @@ function openCombinatieStaat(p) {
     loadCases: p.loadCases,
     combinations: combinaties,
     gevolgklasse: p.gevolgklasse,
+    bijlage,
     volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
     volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1)
   });
@@ -19458,8 +19519,10 @@ function openCombinatieStaat(p) {
   };
 }
 function synchroniseerStandaard(staat, vorig) {
-  const vorigeSleutels = perSleutel(genereerStandaardCombinaties(vorig.loadCases, vorig.gevolgklasse));
-  const nieuweSet = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse);
+  const vorigeSleutels = perSleutel(
+    genereerStandaardCombinaties(vorig.loadCases, vorig.gevolgklasse, vorig.bijlage)
+  );
+  const nieuweSet = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse, staat.bijlage);
   const nieuwPerSleutel = perSleutel(nieuweSet);
   const geldigeIds = new Set(staat.loadCases.map((c) => c.id));
   let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
@@ -19505,7 +19568,7 @@ function synchroniseerStandaard(staat, vorig) {
 }
 function voegBelastinggevalToe(staat, naam, type = "other") {
   const id = volgendVrijId(staat.loadCases, staat.volgendGevalId);
-  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse };
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
   const volgend = {
     ...staat,
     loadCases: [...staat.loadCases, { id, name: naam, type }],
@@ -19515,7 +19578,7 @@ function voegBelastinggevalToe(staat, naam, type = "other") {
 }
 function wijzigBelastinggeval(staat, id, patch) {
   if (!staat.loadCases.some((c) => c.id === id)) return staat;
-  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse };
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
   const volgend = {
     ...staat,
     loadCases: staat.loadCases.map((c) => c.id === id ? { ...c, ...patch, id } : c)
@@ -19525,7 +19588,7 @@ function wijzigBelastinggeval(staat, id, patch) {
 function verwijderBelastinggeval(staat, id) {
   if (!staat.loadCases.some((c) => c.id === id)) return staat;
   if (staat.loadCases.length <= 1) return staat;
-  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse };
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
   const volgend = {
     ...staat,
     loadCases: staat.loadCases.filter((c) => c.id !== id),
@@ -19536,13 +19599,18 @@ function verwijderBelastinggeval(staat, id) {
 }
 function zetGevolgklasse(staat, gevolgklasse) {
   if (gevolgklasse === staat.gevolgklasse) return staat;
-  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse };
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
   return synchroniseerStandaard({ ...staat, gevolgklasse }, vorig);
+}
+function zetBijlage(staat, bijlage) {
+  if (bijlage === staat.bijlage) return staat;
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
+  return synchroniseerStandaard({ ...staat, bijlage }, vorig);
 }
 function vervangDoorStandaard(staat) {
   const geldigeIds = new Set(staat.loadCases.map((c) => c.id));
   let volgendId = volgendVrijId(staat.combinations, staat.volgendCombinatieId);
-  const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse).map((c) => ({ ...c, id: volgendId++ }));
+  const standaard = genereerStandaardCombinaties(staat.loadCases, staat.gevolgklasse, staat.bijlage).map((c) => ({ ...c, id: volgendId++ }));
   const wind = staat.combinations.filter(isWindgeneratorCombinatie).map((c) => zonderOnbekendeGevallen(c, geldigeIds));
   return synchroniseerWindCombinaties({
     ...staat,
@@ -19587,7 +19655,7 @@ var TYPE_TEKST = {
 };
 function isAfgeleidVanStandaard(c) {
   if (isWindgeneratorCombinatie(c)) return false;
-  return c.standaard !== void 0 || c.formula.includes(PSI_BRON);
+  return c.standaard !== void 0 || Object.values(PSI_BRON).some((b) => c.formula.includes(b));
 }
 function ontbrekendeStandaardcombinaties(p) {
   const gevuld = p.gevuld ?? (() => true);
@@ -19596,7 +19664,7 @@ function ontbrekendeStandaardcombinaties(p) {
   const aanwezig = new Set(
     p.combinations.map((c) => `${c.type}|${soortDeel(c.type, soortVanCombinatie(c))}|${inhoud(c.factors)}`)
   );
-  return genereerStandaardCombinaties(p.loadCases, p.gevolgklasse).filter((n) => {
+  return genereerStandaardCombinaties(p.loadCases, p.gevolgklasse, p.bijlage).filter((n) => {
     const eigen = inhoud(n.factors);
     if (eigen === "") return false;
     return !aanwezig.has(`${n.type}|${soortDeel(n.type, n.standaard.soort)}|${eigen}`);
@@ -19634,7 +19702,9 @@ function tekstVerschil(v, naamVan) {
   const regels = v.combinaties.slice(0, MAX).map((c) => `"${c.naam}" ${c.factoren.map(([id, f]) => `${nl8(f)} voor geval ${id}`).join(" en ")}`).join("; ") + (v.combinaties.length > MAX ? `; en nog ${v.combinaties.length - MAX}` : "");
   return `De veranderlijke belastinggevallen ${v.caseIds.map(naamVan).join(", ")} (gebruikscategorie ${v.categorie}) hebben in ${v.combinaties.length} combinatie(s) verschillende factoren: ${regels}. Gevallen van dezelfde gebruikscategorie zijn delen van \xE9\xE9n veranderlijke belasting \u2014 zo stelt de app de standaardcombinaties op \u2014 en in \xE9\xE9n combinatie is die belasting de overheersende (\u03B3_Q) of een samengaande (\u03B3_Q\xB7\u03C8\u2080), NEN-EN 1990 6.4.3.2(2); elk aanwezig deel draagt dan dezelfde factor. Een combinatie waarin het ene deel overheerst en het andere samengaat, telt de belasting te laag, en de combinatie waarin alle delen samen overheersen ontbreekt dan mogelijk. Dit ontstaat als een geval van type of categorie verandert terwijl de combinaties eigen combinaties zijn (hernoemd of aangepast): die volgen de gevallen niet. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of pas de factoren van deze combinaties aan.`;
 }
-var GAMMA_Q_MIN = Math.min(...GEVOLGKLASSEN.map((k) => PARTIELE_FACTOREN[k].gQ));
+var GAMMA_Q_MIN = Math.min(
+  ...Object.values(PARTIELE_FACTOREN).flatMap((rij) => GEVOLGKLASSEN.map((k) => rij[k].gQ))
+);
 function veranderlijkeBelastingenZonderLeiding(p) {
   const gevuld = p.gevuld ?? (() => true);
   const acties = [];
@@ -19670,8 +19740,8 @@ function veranderlijkeBelastingenZonderLeiding(p) {
   }
   return uit;
 }
-function tekstZonderLeiding(a) {
-  const \u03B3 = (k) => nl8(PARTIELE_FACTOREN[k].gQ);
+function tekstZonderLeiding(a, bijlage) {
+  const \u03B3 = (k) => nl8(partieleFactoren(k, bijlage).gQ);
   return `Veranderlijke belasting ${a.label} (belastinggeval ${a.caseIds.join(", ")}) is in geen enkele UGT-combinatie de overheersende veranderlijke belasting: ze komt alleen voor met een factor van ten hoogste ${nl8(a.hoogste)}. Elke combinatie omvat een overheersende veranderlijke belasting (NEN-EN 1990 6.4.3.1(2)) en de rekenwaarden volgen uit elk kritiek belastingsgeval (6.4.3.1(1)P); in uitdrukking 6.10b (NB A1.3.1(1)) krijgt de overheersende belasting \u03B3_Q zonder \u03C8\u2080: ${\u03B3("CC1")} in CC1 (NB tabel NB.5), ${\u03B3("CC2")} in CC2 (NB.4), ${\u03B3("CC3")} in CC3 (NB.5). Zonder zo'n combinatie kan de omhullende te laag zijn. Kies "Vervang door standaardcombinaties", of voeg een combinatie toe waarin deze belasting overheerst.`;
 }
 function gelijkeRekeninhoudSet(a, b) {
@@ -19687,7 +19757,7 @@ function gelijkeRekeninhoudSet(a, b) {
 function verouderdeWindCombinaties(p) {
   const huidig = p.combinations.filter(isWindgeneratorCombinatie);
   if (huidig.length === 0) return null;
-  const verwacht = windCombinatiesVoor(p.loadCases, p.gevolgklasse);
+  const verwacht = windCombinatiesVoor(p.loadCases, p.gevolgklasse, p.bijlage);
   if (verwacht !== null && gelijkeRekeninhoudSet(huidig, verwacht)) return null;
   return { aantal: huidig.length, verwacht: verwacht?.length ?? null };
 }
@@ -19696,11 +19766,13 @@ function tekstWindVerouderd(v, klasse) {
 }
 var UGT_FACTOREN_BLIJVEND = [
   .../* @__PURE__ */ new Set([
-    ...GEVOLGKLASSEN.flatMap((k) => [
-      PARTIELE_FACTOREN[k].gGsup610a,
-      PARTIELE_FACTOREN[k].gGsup610b,
-      PARTIELE_FACTOREN[k].gGinf
-    ]),
+    // Over alle gevulde bijlagen: dit is een lijst van factoren die een
+    // blijvende belasting ERGENS kan hebben, geen factor waarmee gerekend wordt.
+    ...Object.values(PARTIELE_FACTOREN).flatMap((rij) => GEVOLGKLASSEN.flatMap((k) => [
+      rij[k].gGsup610a,
+      rij[k].gGsup610b,
+      rij[k].gGinf
+    ])),
     1
   ])
 ];
@@ -19772,6 +19844,7 @@ function meldingenBelastinggevallen(p) {
   const alle = p.alleCombinaties ?? p.combinations;
   const eenStandaard = alle.find((c) => c.standaard);
   const klasse = p.gevolgklasse ?? eenStandaard?.standaard?.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
+  const bijlage = p.bijlage ?? eenStandaard?.standaard?.bijlage ?? STANDAARD_BIJLAGE;
   const gevalIds = new Set(p.loadCases.map((c) => c.id));
   const oud = alle.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
   if (oud.length > 0 || alle.some(isAfgeleidVanStandaard)) {
@@ -19779,6 +19852,7 @@ function meldingenBelastinggevallen(p) {
       combinations: alle,
       loadCases: p.loadCases,
       gevolgklasse: klasse,
+      bijlage,
       gevuld
     });
     if (ontbrekend.length > 0) {
@@ -19798,7 +19872,7 @@ function meldingenBelastinggevallen(p) {
     combinations: p.combinations,
     gevuld
   })) {
-    meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a) });
+    meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a, bijlage) });
   }
   if (p.metHout) {
     const zonder = ontbrekendeBlijvendeCombinatie({
@@ -19824,7 +19898,12 @@ function meldingenBelastinggevallen(p) {
     });
   }
   if (p.gevolgklasse !== void 0) {
-    const wind = verouderdeWindCombinaties({ loadCases: p.loadCases, combinations: alle, gevolgklasse: p.gevolgklasse });
+    const wind = verouderdeWindCombinaties({
+      loadCases: p.loadCases,
+      combinations: alle,
+      gevolgklasse: p.gevolgklasse,
+      bijlage
+    });
     if (wind) {
       meldingen.push({
         niveau: "fout",
@@ -20528,38 +20607,38 @@ function bepaalEindstijfheidHout(model) {
     ]
   };
 }
-function psi2VoorEindstijfheid(lc) {
-  if (lc.gegenereerd?.bron === "wind") return PSI_WIND.psi2;
+function psi2VoorEindstijfheid(lc, bijlage = STANDAARD_BIJLAGE) {
+  if (lc.gegenereerd?.bron === "wind") return psiKlimaat("wind", bijlage).psi2;
   switch (lc.type) {
     case "dead":
       return 1;
     case "live":
-      return PSI_GEBRUIK[lc.categorie ?? STANDAARD_CATEGORIE].psi2;
+      return psiGebruik(lc.categorie ?? STANDAARD_CATEGORIE, bijlage).psi2;
     case "snow":
-      return PSI_SNEEUW.psi2;
+      return psiKlimaat("sneeuw", bijlage).psi2;
     case "wind":
-      return PSI_WIND.psi2;
+      return psiKlimaat("wind", bijlage).psi2;
     default:
       return 1;
   }
 }
-function eindtoestandKandidaten(combo, loadCases) {
+function eindtoestandKandidaten(combo, loadCases, bijlage = STANDAARD_BIJLAGE) {
   const uit = /* @__PURE__ */ new Set();
   for (const [id, f] of combo.factors) {
     if (f === 0) continue;
     const lc = loadCases.find((c) => c.id === id);
-    const psi = lc ? psi2VoorEindstijfheid(lc) : 1;
+    const psi = lc ? psi2VoorEindstijfheid(lc, bijlage) : 1;
     if (psi > 0) uit.add(psi);
   }
   return [...uit].sort((a, b) => a - b);
 }
-function metEindtoestandVarianten(combinaties, loadCases, uitkomst) {
+function metEindtoestandVarianten(combinaties, loadCases, uitkomst, bijlage = STANDAARD_BIJLAGE) {
   if (uitkomst.status !== "doorrekenen") return combinaties;
   const uit = [];
   for (const c of combinaties) {
     uit.push(c);
     if (c.type !== "uls" || c.eindtoestand !== void 0) continue;
-    for (const psi2 of eindtoestandKandidaten(c, loadCases)) {
+    for (const psi2 of eindtoestandKandidaten(c, loadCases, bijlage)) {
       uit.push({
         ...c,
         id: c.id + EINDTOESTAND_COMBO_OFFSET * Math.round(psi2 * 100),
@@ -20936,10 +21015,14 @@ function kenmerkUitBestand(raw) {
   if (typeof k.sleutel !== "string") return void 0;
   if (!SOORTEN.includes(k.soort)) return void 0;
   if (!GEVOLGKLASSEN.includes(k.gevolgklasse)) return void 0;
+  if (k.bijlage !== void 0 && !BIJLAGEN_GEVULD.includes(k.bijlage)) {
+    return void 0;
+  }
   return {
     sleutel: k.sleutel,
     soort: k.soort,
-    gevolgklasse: k.gevolgklasse
+    gevolgklasse: k.gevolgklasse,
+    bijlage: k.bijlage ?? STANDAARD_BIJLAGE
   };
 }
 var ProjectBestandFout = class extends Error {
@@ -22599,6 +22682,7 @@ function valideerModel(rauw, opties = {}) {
     combinations: opties.combinaties ?? [],
     alleCombinaties: opties.alleCombinaties,
     gevolgklasse: opties.gevolgklasse,
+    bijlage: opties.bijlage,
     loads,
     selfWeightEnabled: m.selfWeightEnabled === true,
     // Hout vraagt een UGT-combinatie met alleen blijvende belasting (k_mod,
@@ -22919,12 +23003,9 @@ function leesModel(payload) {
         bestand.projectInfo?.uitgangspunten?.gevolgklasse
       ),
       // De nationale bijlage stond al in het projectbestand maar werd door
-      // niemand gelezen (normnaad). Een code die deze uitgave niet kent, gooit
-      // hier — dat is de bedoeling: een model met een vreemde bijlage hoort
-      // niet met Nederlandse partiële factoren te worden doorgerekend.
-      bijlageUitBestand: leesBijlage(
-        bestand.projectInfo?.uitgangspunten?.nationaleBijlage
-      ),
+      // niemand gelezen (normnaad). Hier alleen gelezen; gekeurd wordt zij in
+      // `leesBijlageVoorRekening`, na de voorrang van het verzoek.
+      bijlageRauwUitBestand: bestand.projectInfo?.uitgangspunten?.nationaleBijlage,
       idTellersUitBestand: bestand.idTellers
     };
   }
@@ -22969,7 +23050,7 @@ function leesModel(payload) {
     analysetypeUitBestand: null,
     formatVersion: null,
     gevolgklasseUitBestand: null,
-    bijlageUitBestand: null,
+    bijlageRauwUitBestand: void 0,
     idTellersUitBestand: void 0,
     scheefstandMeldingen: scheef.meldingen,
     scheefstandKeuze: scheef.keuze
@@ -22981,6 +23062,18 @@ function leesBijlage(waarde) {
   } catch (e) {
     throw new InvoerFout(e.message);
   }
+}
+function leesBijlageVoorRekening(payload, gelezen) {
+  if (payload.bijlage !== void 0) {
+    const uitVerzoek = leesBijlage(payload.bijlage);
+    if (uitVerzoek === null) {
+      throw new InvoerFout(
+        "Veld `bijlage` is leeg. Laat het weg om de bijlage uit het projectbestand te gebruiken."
+      );
+    }
+    return uitVerzoek;
+  }
+  return leesBijlage(gelezen.bijlageRauwUitBestand) ?? STANDAARD_BIJLAGE;
 }
 function leesGevolgklasse(payload, gelezen) {
   if (payload.gevolgklasse !== void 0 && alsGevolgklasse(payload.gevolgklasse) === null) {
@@ -22994,17 +23087,17 @@ function leesGevolgklasse(payload, gelezen) {
   });
   return { klasse, aangenomen: bron === "terugval", bron };
 }
-function gevolgklasseWaarschuwing(k, metStandaard) {
+function gevolgklasseWaarschuwing(k, metStandaard, bijlage) {
   if (!metStandaard) return null;
   if (k.bron === "terugval") {
     return "Geen gevolgklasse opgegeven (niet in de projectgegevens en niet als `gevolgklasse`): de standaardcombinaties zijn opgesteld voor CC2, met de factoren van NEN-EN 1990 NB tabel NB.4.";
   }
   if (k.bron === "kenmerk") {
-    return `Geen gevolgklasse in de projectgegevens of als \`gevolgklasse\`: de klasse ${k.klasse} komt uit het kenmerk van de standaardcombinaties in het projectbestand, met de factoren van NEN-EN 1990 ${PARTIELE_FACTOREN[k.klasse].bron}.`;
+    return `Geen gevolgklasse in de projectgegevens of als \`gevolgklasse\`: de klasse ${k.klasse} komt uit het kenmerk van de standaardcombinaties in het projectbestand, met de factoren van NEN-EN 1990 ${partieleFactoren(k.klasse, bijlage).bron}.`;
   }
   return null;
 }
-function leesCombinaties(payload, gelezen, gevolgklasse) {
+function leesCombinaties(payload, gelezen, gevolgklasse, bijlage) {
   if (payload.combinations !== void 0) {
     const rauw = eisArray(payload.combinations, "combinations");
     const uit = combinationsFromFile(
@@ -23018,6 +23111,7 @@ function leesCombinaties(payload, gelezen, gevolgklasse) {
       loadCases: gelezen.model.loadCases,
       combinations: gelezen.combinatiesUitBestand,
       gevolgklasse,
+      bijlage,
       idTellers: gelezen.idTellersUitBestand
     });
     return {
@@ -23027,7 +23121,7 @@ function leesCombinaties(payload, gelezen, gevolgklasse) {
     };
   }
   return {
-    lijst: defaultCombinations(gelezen.model.loadCases, gevolgklasse),
+    lijst: defaultCombinations(gelezen.model.loadCases, gevolgklasse, bijlage),
     bron: "standaard",
     openMeldingen: []
   };
@@ -23172,14 +23266,15 @@ function rekenDoor(payload) {
   }
   const klasseGelezen = leesGevolgklasse(payload, gelezen);
   const gevolgklasse = klasseGelezen.klasse;
-  const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse);
+  const bijlage = leesBijlageVoorRekening(payload, gelezen);
+  const gelezenCombinaties = leesCombinaties(payload, gelezen, gevolgklasse, bijlage);
   const combinatieBron = gelezenCombinaties.bron;
   const alleCombinaties = gelezenCombinaties.lijst;
   const selectie = selecteerCombinaties(
     alleCombinaties,
     gelezen.beams,
     gelezen.model.plates,
-    { loadCases: gelezen.model.loadCases, gevolgklasse, nodes: gelezen.model.nodes }
+    { loadCases: gelezen.model.loadCases, gevolgklasse, bijlage, nodes: gelezen.model.nodes }
   );
   const combinatiesZonderEindtoestand = metScheefstandRichtingen(
     selectie.actief,
@@ -23204,7 +23299,8 @@ function rekenDoor(payload) {
   const combinaties = metEindtoestandVarianten(
     combinatiesZonderEindtoestand,
     gelezen.model.loadCases,
-    eindstijfheid
+    eindstijfheid,
+    bijlage
   );
   const detail = payload.detail ?? "samenvatting";
   if (detail !== "samenvatting" && detail !== "stations") {
@@ -23273,7 +23369,7 @@ function rekenDoor(payload) {
     // lijst valt w_add terug op de volledige zakking, mét notitie.
     loadCases: gelezen.model.loadCases,
     // De nationale bijlage gaat als `bijlage` mee naar de rekenkern.
-    nationaleBijlage: gelezen.bijlageUitBestand ?? void 0,
+    nationaleBijlage: bijlage,
     stabiliteit: { analysetype, alphaCr: stabiliteit, scheefstandAan: gelezen.model.scheefstandEnabled }
   });
   const houtklassen = leesHoutklassen(payload);
@@ -23285,7 +23381,7 @@ function rekenDoor(payload) {
     supportedGrades: houtklassen ?? void 0,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost,
-    nationaleBijlage: gelezen.bijlageUitBestand ?? void 0
+    nationaleBijlage: bijlage
   };
   const hout = buildTimberCheckInputs({
     ...houtData,
@@ -23297,7 +23393,7 @@ function rekenDoor(payload) {
     plates: gelezen.model.plates ?? [],
     combinations: combinaties,
     combinationResults,
-    nationaleBijlage: gelezen.bijlageUitBestand ?? void 0,
+    nationaleBijlage: bijlage,
     loadCases: gelezen.model.loadCases,
     gevallenMetLast: opgelost
   });
@@ -23324,7 +23420,8 @@ function rekenDoor(payload) {
   }
   const klasseMelding = gevolgklasseWaarschuwing(
     klasseGelezen,
-    combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard)
+    combinatieBron === "standaard" || alleCombinaties.some((c) => c.standaard),
+    bijlage
   );
   if (klasseMelding) waarschuwingen.push(klasseMelding);
   waarschuwingen.push(...gelezenCombinaties.openMeldingen);
@@ -23336,6 +23433,7 @@ function rekenDoor(payload) {
     combinations: combinaties,
     alleCombinaties,
     gevolgklasse,
+    bijlage,
     loads: gelezen.model.loads,
     selfWeightEnabled: gelezen.model.selfWeightEnabled,
     metHout
@@ -23475,16 +23573,19 @@ function opCheck(payload) {
 function opValidate(payload) {
   const gelezen = leesModel(payload);
   const { klasse } = leesGevolgklasse(payload, gelezen);
-  const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse);
+  const bijlage = leesBijlageVoorRekening(payload, gelezen);
+  const { lijst, openMeldingen } = leesCombinaties(payload, gelezen, klasse, bijlage);
   const actief2 = selecteerCombinaties(lijst, gelezen.beams, gelezen.model.plates, {
     loadCases: gelezen.model.loadCases,
     gevolgklasse: klasse,
+    bijlage,
     nodes: gelezen.model.nodes
   }).actief;
   const uitkomst = valideerModel(gelezen.rauw, {
     combinaties: actief2,
     alleCombinaties: lijst,
-    gevolgklasse: klasse
+    gevolgklasse: klasse,
+    bijlage
   });
   return {
     ok: uitkomst.ok,
@@ -23506,11 +23607,13 @@ function opLoadProject(payload) {
   });
   const m = gelezen.model;
   const klasse = leesGevolgklasse({}, gelezen);
-  const { lijst, bron, openMeldingen } = leesCombinaties({}, gelezen, klasse.klasse);
+  const bijlage = leesBijlageVoorRekening({}, gelezen);
+  const { lijst, bron, openMeldingen } = leesCombinaties({}, gelezen, klasse.klasse, bijlage);
   const warnings = [];
   const klasseMelding = gevolgklasseWaarschuwing(
     klasse,
-    bron === "standaard" || lijst.some((c) => c.standaard)
+    bron === "standaard" || lijst.some((c) => c.standaard),
+    bijlage
   );
   if (klasseMelding) warnings.push(klasseMelding);
   warnings.push(...openMeldingen);
@@ -23520,6 +23623,7 @@ function opLoadProject(payload) {
     combinations: lijst,
     alleCombinaties: lijst,
     gevolgklasse: klasse.klasse,
+    bijlage,
     loads: m.loads,
     selfWeightEnabled: m.selfWeightEnabled,
     metHout: gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null)
@@ -23785,6 +23889,7 @@ export {
   berekenPlaatMeshSignatuur,
   berekenStuwdruk,
   bijlageUitBestand,
+  bijlageUitKenmerk,
   blijvendeFactorAfwijkingen,
   bouwMultiInput,
   buildForcesEnvelope,
@@ -23854,6 +23959,7 @@ export {
   isWindgeneratorCombinatie,
   isZuivereStaalconstructie,
   kCrUitConfig,
+  kFi,
   keurCheckConfig,
   keurPlaatMateriaal,
   keurPlatMesh,
@@ -23882,6 +23988,7 @@ export {
   overkappingCoefficienten,
   parseRechthoek,
   parseTimberRectMm,
+  partieleFactoren,
   plaatHeeftMateriaal,
   plaatMateriaalLabel,
   plaatMateriaalSoort,
@@ -23892,6 +23999,9 @@ export {
   plaatRekentAlsRaster,
   profileLookupKey,
   psi2VoorEindstijfheid,
+  psiBron,
+  psiGebruik,
+  psiKlimaat,
   puntInPolygoon,
   quasiPermanentDeflection,
   randlastNaarSolverInput,
@@ -23904,6 +24014,7 @@ export {
   resultaatInReferentierichting,
   richtingssprongNabij,
   richtingssprongNotities,
+  rijVoorBijlage,
   rolVanStaaf,
   sanitizeRestraintFractions,
   scheefstandRichtingLabel,
@@ -23954,6 +24065,7 @@ export {
   withPlateDefaults,
   zeegNotities,
   zeegVoorToets,
+  zetBijlage,
   zetCombinatieResultaat,
   zetEindtoestandGevallen,
   zetGevolgklasse,
