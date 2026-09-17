@@ -195,3 +195,23 @@ fn weigeringen_zonder_aanname() {
     assert!(r.geweigerd.as_deref().unwrap().contains("C99"), "{r:?}");
     assert_eq!(r.status, CheckStatus::NotApplicable);
 }
+
+// ── 8. Kruislaaghout als plaat: geen normgrondslag, geweigerd met reden ──
+// Issue #25 (4). Ook met een volledige, geldige houtinvoer (klimaatklasse,
+// belastingduur, spanningen) komt er geen UC: de reden noemt het ontbreken
+// van de normgrondslag, de productnorm/ETA die nodig is en het ontbrekende
+// invoerveld voor die bron.
+#[test]
+fn kruislaaghout_als_plaat_geweigerd_met_reden() {
+    let mut p = plaat("CLT C24 40/20/40", 0.0, vec![(1, MID, vec![el(1, 1.0, 0.0, 0.0)])]);
+    p.soort = PlaatMateriaalSoort::Kruislaaghout;
+    let r = check_plate(&p);
+    let reden = r.geweigerd.as_deref().expect("kruislaaghout wordt geweigerd");
+    assert_eq!(reden, plaat_check::REDEN_KRUISLAAGHOUT);
+    for woord in ["NEN-EN 1995-1-1", "normgrondslag", "productnorm", "ETA", "invoerveld", "niet getoetst"] {
+        assert!(reden.contains(woord), "{woord:?} ontbreekt in: {reden}");
+    }
+    assert_eq!(r.status, CheckStatus::NotApplicable);
+    assert_eq!(r.uc_max, 0.0);
+    assert!(r.checks.is_empty() && r.elementen.is_empty() && r.combinaties.is_empty());
+}
