@@ -1015,11 +1015,20 @@ export class Mesh implements IMesh {
     const allSubNodeIds = (data.subNodes || []).map(sn => sn.id);
     const allEdgeIds = (data.edges || []).map(e => e.id);
 
-    // nextNodeId alleen bepalen over reguliere knopen (id < 1000): plaatknopen
-    // (id >= 1000) hebben hun eigen teller (nextPlateNodeId) en zouden de
-    // reguliere teller anders vervuilen — nieuwe knopen kregen dan id's >= 1000
-    // die botsen met nextPlateNodeId.
-    const regularNodeIds = data.nodes.filter(n => n.id < 1000).map(n => n.id);
+    // Knooptellers herstellen zoals addNode en addPlateNode ze uitdelen. Het
+    // soort knoop volgt NIET uit het id: sinds addPlateNode boven het hoogste
+    // reguliere id begint, kan een reguliere knoop id >= 1000 hebben (een
+    // model met 1000 of meer knopen). Een plaatknoop is een knoop uit de
+    // nodeIds van een plaatregio met id >= 1000 — addPlateNode deelt nooit
+    // minder uit; een plaat die een bestaande (lage) knoop hergebruikt, maakt
+    // die daarmee niet tot plaatknoop. Tot issue #34 telde fromJSON alles
+    // vanaf 1000 als plaatknoop: nextNodeId viel dan in een groot model terug
+    // naar 1000 en deelde na het openen andere nummers uit dan ervoor.
+    const plaatKnoopIds = new Set<number>();
+    for (const p of data.plateRegions || []) {
+      for (const id of p.nodeIds) if (id >= 1000) plaatKnoopIds.add(id);
+    }
+    const regularNodeIds = data.nodes.filter(n => !plaatKnoopIds.has(n.id)).map(n => n.id);
     mesh.nextNodeId = Math.max(...regularNodeIds, 0) + 1;
     mesh.nextElementId = Math.max(...allElementIds, 0) + 1;
     mesh.nextMaterialId = Math.max(...data.materials.map(m => m.id), 10) + 1;
@@ -1033,11 +1042,10 @@ export class Mesh implements IMesh {
     const allVertexIds = (data.plateVertices || []).map(v => v.id);
     mesh.nextVertexId = Math.max(...allVertexIds, 0) + 1;
 
-    // Restore nextPlateNodeId from plate node IDs (IDs >= 1000)
-    const plateNodeIds = data.nodes.filter(n => n.id >= 1000).map(n => n.id);
-    mesh.nextPlateNodeId = plateNodeIds.length > 0
-      ? Math.max(...plateNodeIds) + 1
-      : 1000;
+    // Plaatteller: boven de hoogste plaatknoop, en nooit onder 1000 of onder
+    // de reguliere teller — dezelfde ondergrens die addPlateNode zelf neemt.
+    const plateNodeIds = data.nodes.filter(n => plaatKnoopIds.has(n.id)).map(n => n.id);
+    mesh.nextPlateNodeId = Math.max(1000, mesh.nextNodeId, ...plateNodeIds.map(id => id + 1));
 
     return mesh;
   }

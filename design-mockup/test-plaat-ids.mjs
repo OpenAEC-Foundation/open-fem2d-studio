@@ -1,6 +1,9 @@
 // Bescherming van de knoop-id-conventie in Mesh.fromJSON (Mesh.ts):
-//   - reguliere knopen: id < 1000 (teller nextNodeId)
-//   - plaatknopen:      id >= 1000 (teller nextPlateNodeId, via addPlateNode)
+//   - reguliere knopen: teller nextNodeId (via addNode)
+//   - plaatknopen:      teller nextPlateNodeId (via addPlateNode), begint op
+//                       1000 of boven het hoogste reguliere id
+//   Na het openen hoort een model dezelfde nummers uit te delen als vóór het
+//   opslaan (secties [7] en [8], issue #34).
 //
 // Bug vóór de fix: fromJSON zette nextNodeId op het maximum over ÁLLE knopen,
 // inclusief plaatknopen. Na het laden van een model met plaatknopen kregen
@@ -200,6 +203,77 @@ log("\n[6] Dubbel knoopnummer wordt geweigerd");
   try { solveAllCases(inp); } catch (e) { melding = e.message; }
   checkTrue("engine weigert", melding !== "", melding);
   checkTrue("melding noemt het knoopnummer en 'tweemaal'", /Knoop 2/.test(melding) && /tweemaal/.test(melding));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// [7] Opslaan en openen van een model met meer dan 1000 reguliere knopen
+//     plus een plaat (issue #34)
+//
+// fromJSON herstelde de tellers met de oude grens id < 1000: knopen 1000..1100
+// telden daardoor als plaatknopen en nextNodeId viel terug naar 1000. Na het
+// openen deelde addNode dan een ander nummer uit dan vóór het opslaan, en een
+// vrijgekomen nummer (hier knoop 1000) kwam terug.
+// Verwacht: het geopende model deelt dezelfde nummers uit als het model vóór
+// het opslaan, en geen enkel nieuw nummer botst.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[7] > 1000 reguliere knopen + plaat: opslaan, openen, knoop en plaatknoop toevoegen");
+{
+  const voor = new Mesh();
+  for (let i = 0; i < 1100; i++) voor.addNode(i, 0);
+  voor.addPlateRegion(generatePlateRegionMesh(voor, {
+    x: 2000, y: 0, width: 2, height: 1,
+    divisionsX: 2, divisionsY: 2,
+    materialId: 1, thickness: 0.02, elementType: "quad",
+  }));
+  voor.removeNode(1000); // een vrijgekomen nummer boven de oude grens
+
+  const json = JSON.parse(JSON.stringify(voor.toJSON()));
+  const bestaand = new Set(json.nodes.map((n) => n.id));
+  const plaatIds = json.plateRegions[0].nodeIds;
+  checkTrue("plaatknopen boven de reguliere reeks", Math.min(...plaatIds) === 1101,
+    `ids ${Math.min(...plaatIds)}..${Math.max(...plaatIds)}`);
+  const na = Mesh.fromJSON(json);
+
+  const kVoor = voor.addNode(5, 5), kNa = na.addNode(5, 5);
+  checkEq("addNode na openen = addNode vóór opslaan", kNa.id, kVoor.id);
+  checkTrue("nieuwe knoop botst niet", !bestaand.has(kNa.id), `id = ${kNa.id}`);
+  const pVoor = voor.addPlateNode(6, 6), pNa = na.addPlateNode(6, 6);
+  checkEq("addPlateNode na openen = addPlateNode vóór opslaan", pNa.id, pVoor.id);
+  checkTrue("nieuwe plaatknoop botst niet", !bestaand.has(pNa.id) && pNa.id !== kNa.id, `id = ${pNa.id}`);
+  checkEq("geen knoop overschreven", na.nodes.size, json.nodes.length + 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// [8] Een klein oud bestand (reguliere knopen 1..6 en plaatknopen 1000..1003,
+//     letterlijk zoals toJSON het vóór issue #34 schreef) deelt na het
+//     openen dezelfde nummers uit als met de oude herstelregel.
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[8] Klein oud bestand: dezelfde nummers als voorheen");
+{
+  const knoop = (id, x, y) => ({ id, x, y, constraints: { x: false, y: false, rotation: false }, loads: { fx: 0, fy: 0, moment: 0 } });
+  const bestand = {
+    nodes: [
+      knoop(1, 0, 0), knoop(2, 1, 0), knoop(3, 2, 0), knoop(4, 3, 0), knoop(6, 5, 0),
+      knoop(1000, 10, 0), knoop(1001, 11, 0), knoop(1002, 11, 1), knoop(1003, 10, 1),
+    ],
+    elements: [{ id: 1, nodeIds: [1000, 1001, 1002, 1003], materialId: 1, thickness: 0.02 }],
+    beamElements: [],
+    materials: [],
+    plateRegions: [{
+      id: 1, x: 10, y: 0, width: 1, height: 1, divisionsX: 1, divisionsY: 1,
+      materialId: 1, thickness: 0.02, elementType: "quad",
+      nodeIds: [1000, 1001, 1002, 1003], cornerNodeIds: [1000, 1001, 1002, 1003], elementIds: [1],
+      edges: {
+        bottom: { nodeIds: [1000, 1001] }, top: { nodeIds: [1003, 1002] },
+        left: { nodeIds: [1000, 1003] }, right: { nodeIds: [1001, 1002] },
+      },
+    }],
+  };
+  const na = Mesh.fromJSON(bestand);
+  checkEq("addNode geeft 7", na.addNode(1, 1).id, 7);
+  checkEq("addNode daarna 8", na.addNode(2, 2).id, 8);
+  checkEq("addPlateNode geeft 1004", na.addPlateNode(3, 3).id, 1004);
+  checkEq("addPlateNode daarna 1005", na.addPlateNode(4, 4).id, 1005);
 }
 
 log(`\n${passed} geslaagd, ${failed} gefaald`);
