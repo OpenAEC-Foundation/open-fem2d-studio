@@ -485,6 +485,7 @@
     "eisRelaxatie": "Under-relaxation ω / lower bound EI",
     "eisGeklemd": "{{n}} segment(s) clamped at that lower bound; a clamped value is a numerical lower bound and not a calculation result.",
     "eisKruip": "Creep",
+    "eisKruip519": "ULS: φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed per member (5.8.4(2) (5.19)), first-order moments at the section with the largest |M₀Ed| (5.8.4(3)); the derivation is given with the member.",
     "eisBeta": "Load duration β (7.19)",
     "eisZonderKruipKop": "CALCULATED WITHOUT CREEP — member(s) {{ids}}: no creep coefficient φ(∞,t₀) was given (cl. 3.1.4), so φ_ef = 0.",
     "eisZonderKruipUitleg": "Cl. 5.8.6(4) allows creep to be taken into account by multiplying all strain values of the stress-strain diagram by (1 + φ_ef); for the initial slope this amounts to the effective modulus of elasticity E_c,eff = E_cm/(1 + φ) of (7.20). Without that reduction the bending stiffness is too high: the calculated deflection is TOO SMALL, and in a statically indeterminate structure the overly stiff concrete members also attract too much moment. Both are on the unsafe side. Specify φ(∞,t₀), or have it calculated according to annex B from the relative humidity, the age t₀ at loading and the cement class (h₀ follows from the cross-section).",

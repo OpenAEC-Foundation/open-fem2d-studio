@@ -396,7 +396,27 @@ function CombinatieBlok({ c, segmentLengteMm }: { c: StijfheidCombinatie; segmen
           <tr>
             <th>{t("report.eisKruip", "Kruip")}</th>
             <td>
-              φ<sub>ef</sub> = {eerste ? nl(eerste.phi_ef, 2) : "—"}
+              {/* φ_ef kan sinds issue #24 per staaf verschillen: in de UGT
+                  bepaalt de kern hem per staaf uit (5.19) met de werkelijke
+                  verhouding M₀Eqp/M₀Ed. Dan staat hij hier per staaf, en de
+                  afleiding bij de staaf zelf (meldingen van de kern). */}
+              φ<sub>ef</sub> ={" "}
+              {!eerste
+                ? "—"
+                : c.staven.some((r) => r.phi_ef !== eerste.phi_ef)
+                  ? c.staven
+                      .map((r) => `${nl(r.phi_ef, 2)} (${t("report.colBeam", "Staaf").toLowerCase()} ${r.beam_id})`)
+                      .join("; ")
+                  : nl(eerste.phi_ef, 2)}
+              {c.staven.some((r) => r.kruip_5_19) && (
+                <>
+                  {" — "}
+                  {t("report.eisKruip519", {
+                    defaultValue:
+                      "UGT: φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed per staaf (5.8.4(2) (5.19)), eerste-orde-momenten op de doorsnede met het grootste |M₀Ed| (5.8.4(3)); de afleiding staat bij de staaf.",
+                  })}
+                </>
+              )}
               {eerste && (
                 <span className={eerste.creep_neglected ? "rpt-eis-nok" : "rpt-eis-kruip"}>
                   {" "}
