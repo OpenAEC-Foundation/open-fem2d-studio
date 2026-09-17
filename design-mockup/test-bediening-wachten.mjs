@@ -166,7 +166,7 @@ async function binnenGrens(naam, args, acties) {
 
 // ── [2] bron ────────────────────────────────────────────────────────────────
 log("\n[2] bronteksten");
-const bron = readFileSync(join(HIER, "src", "bediening", "bediening.ts"), "utf8");
+const bron = readFileSync(join(HIER, "src", "bediening", "bediening.ts"), "utf8").replace(/\r\n/g, "\n");
 const lichaam = /export async function voerUit\([\s\S]*?\n\}\n/.exec(bron)?.[0] ?? "";
 check("voerUit is in de bron gevonden", lichaam.length > 1000, `lengte ${lichaam.length}`);
 check("geen enkele actie in voerUit wacht kaal op de volgende render",
