@@ -2446,6 +2446,14 @@ export interface SecondOrderCombo {
 interface SecondOrderState {
   input: MultiInput;
   cache: Map<string, SolverResult>;
+  /**
+   * De EERSTE-ORDE-oplossing per combinatie, zelfde sleutel als `cache`.
+   * `null` = de combinatie activeert geen last. Gevuld door
+   * `eersteOrdeCombinatieResultaat`: de (5.19)-rekengang van de fysisch
+   * niet-lineaire lus (issue #24) en de kolomtoets (issue #35) delen zo één
+   * oplossing per combinatie in plaats van haar twee keer te rekenen.
+   */
+  eersteOrdeCache: Map<string, SolverResult | null>;
 }
 
 const SECOND_ORDER_KEY = "__femSecondOrder";
@@ -2653,6 +2661,32 @@ export function solveCombinationFirstOrder(
 }
 
 /**
+ * De EERSTE-ORDE-oplossing van één combinatie van een tweede-orde-rekengang,
+ * gememoiseerd aan de `perCase`-Map van die rekengang.
+ *
+ * Waarvoor: EN 1992-1-1 §5.8.3.1(1) (r_m = M₀₁/M₀₂) en 5.8.4(2) (5.19) vragen
+ * eerste-orde-momenten, ook als de constructie tweede orde of fysisch
+ * niet-lineair is doorgerekend (issues #24 en #35). Het model is de invoer van
+ * de rekengang zelf (`getSecondOrderInput`), dus met de elastische staaf-EI.
+ *
+ * `undefined` = aan deze Map hangt geen tweede-orde-status: de rekengang was
+ * eerste orde en `combineResults` levert al eerste-orde-resultaten. `null` =
+ * de combinatie activeert geen last.
+ */
+export function eersteOrdeCombinatieResultaat(
+  perCase: Map<number, SolverResult>,
+  combo: SecondOrderCombo,
+): SolverResult | null | undefined {
+  const so = getSecondOrderState(perCase);
+  if (!so) return undefined;
+  const sleutel = tweedeOrdeSleutel(combo);
+  if (so.eersteOrdeCache.has(sleutel)) return so.eersteOrdeCache.get(sleutel)!;
+  const uit = solveCombinationFirstOrder(so.input, combo);
+  so.eersteOrdeCache.set(sleutel, uit);
+  return uit;
+}
+
+/**
  * Multi-geval-solve met 2e-orde (P-Δ) ingeschakeld.
  *
  * BEWUSTE KEUZE: de per-GEVAL-resultaten blijven 1e-orde — een los
@@ -2664,7 +2698,7 @@ export function solveCombinationFirstOrder(
  */
 export function solveAllCasesNonlinear(input: MultiInput): MultiLcResult {
   const { perCase } = solveAllCases(input);
-  const state: SecondOrderState = { input, cache: new Map() };
+  const state: SecondOrderState = { input, cache: new Map(), eersteOrdeCache: new Map() };
   (perCase as any)[SECOND_ORDER_KEY] = state;
   return { perCase };
 }

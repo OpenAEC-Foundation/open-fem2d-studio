@@ -308,6 +308,8 @@ export const useVariantStore = create<VariantState>((set, get) => ({
             beams: [variantBeam],
             combinations: data.combinations,
             combinationResults: data.combinationResults,
+            // Dezelfde eerste-orde-momenten voor §5.8 als de toetsing ernaast.
+            eersteOrdeResultaten: data.eersteOrdeResultaten,
             // Met de φ(∞,t₀) van het project, zoals de toetsing ernaast.
             korven: korvenUitStaven(
               [variantBeam],

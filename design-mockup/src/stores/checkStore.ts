@@ -199,6 +199,13 @@ export interface CheckRunData {
    * (`bepaalKruipPerStaaf`); `null`/`undefined` = niet berekenen.
    */
   kruipInvoer?: KruipInvoerProject | null;
+  /**
+   * De eerste-orde-oplossing per combinatie na een tweede-orde- of fysisch
+   * niet-lineaire rekengang (`lib/eersteOrdeResultaten.ts`), voor r_m en φ_ef
+   * van de betonkolomtoets (§5.8.3.1(1), (5.19); issue #35). `undefined` = de
+   * rekengang was eerste orde of er is geen kolom.
+   */
+  eersteOrdeResultaten?: Map<number, SolverResult>;
 }
 
 interface CheckState {

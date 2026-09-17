@@ -500,6 +500,10 @@ const ALLEEN_BRON = new Map([
     "de §5.8-invoer van een betonnen kolom: de gevallen van figuur 5.7 uit components/beton/kolomgegevens, de doorvoer via korvenUitStaven (een zustand-store) en betonCheckBuilder — inclusief de φ(∞,t₀) van het project uit lib/kruipcoefficient, vergeleken met lib/betonStijfheid en met App.tsx en checkStore als bronbestand gelezen — en een blok dat de toetsbrug als apart proces aanroept. Twee van die drie modules staan buiten de barrel — het korfmodel en de store — en de Rust-kern hoort er sowieso niet in, dus tegen de sidecarbundel zou de test juist de laag overslaan die hij moet bewaken",
   ],
   [
+    "kolom-eerste-orde",
+    "r_m, λ_lim en φ_ef van de betonkolomtoets uit de eerste-orde-momenten na een tweede-orde-berekening (issue #35): de eerste-orde-cache in de engine en lib/eersteOrdeResultaten, de doorvoer via korvenUitStaven (een zustand-store), betonCheckBuilder en de (5.19)-stap uit lib/betonStijfheid (buiten de barrel), App.tsx, checkStore en variantStore als bronbestand, en een blok dat de toetsbrug als apart proces aanroept en tegen de handberekening legt. De store en de stijfheidslus staan buiten de barrel en de Rust-kern hoort niet in de sidecarbundel",
+  ],
+  [
     "kruip-bijlage-b",
     "φ(∞,t₀) volgens bijlage B van projectinvoer tot kolomtoets en BGT-stijfheid: de voorrangsregel en de kernaanroep uit lib/kruipcoefficient, de doorvoer via korvenUitStaven (een zustand-store) en lib/betonStijfheid (buiten de barrel), projectFile, rekenInstellingen en App.tsx als bronbestand, en een blok dat de toetsbrug als apart proces aanroept en tegen de handberekening legt. De Rust-kern hoort niet in de sidecarbundel, en de store en de stijfheidslus staan buiten de barrel",
   ],

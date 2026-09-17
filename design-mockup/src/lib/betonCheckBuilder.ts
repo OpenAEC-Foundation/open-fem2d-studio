@@ -474,6 +474,18 @@ export interface BetonBuildData {
    * waarmee gerekend is.
    */
   bEffPerStaaf?: Map<number, number>;
+  /**
+   * De EERSTE-ORDE-oplossing per combinatie, alleen na een tweede-orde- of
+   * fysisch niet-lineaire rekengang (`lib/eersteOrdeResultaten.ts`).
+   *
+   * §5.8.3.1(1) (r_m = M₀₁/M₀₂) en (5.19) vragen eerste-orde-momenten (issue
+   * #35). Bij een staaf met een §5.8-blok gaan daarom de eerste-orde-UGT als
+   * `first_order_envelope` en de quasi-blijvende combinatie uit DEZE oplossing
+   * mee; `forces_envelope` — N_Ed en alle doorsnedetoetsen — blijft uit
+   * `combinationResults`. Ontbreekt = de rekengang was eerste orde, en dan is
+   * de invoer bit voor bit die van vóór dit veld.
+   */
+  eersteOrdeResultaten?: Map<number, SolverResult>;
 }
 
 export interface BetonBuildResult {
@@ -550,8 +562,11 @@ export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResul
   // onbekend blijft, met de reden.
   const quasiLijst = combinatiesVanSoort(slsCombos, "6.16b");
   /** De combinaties uit `lijst` met een echt krachtsverloop voor deze staaf. */
-  const metResultaat = (lijst: LoadCombination[], beamId: number) =>
-    lijst.filter((c) => data.combinationResults.get(c.id)?.elements.has(beamId) ?? false);
+  const metResultaat = (
+    lijst: LoadCombination[],
+    beamId: number,
+    bron: Map<number, SolverResult> = data.combinationResults,
+  ) => lijst.filter((c) => bron.get(c.id)?.elements.has(beamId) ?? false);
 
   for (const beam of data.beams) {
     const materialName = beam.material?.trim() ?? "";
@@ -609,6 +624,13 @@ export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResul
       continue;
     }
 
+    // DE EERSTE ORDE VOOR §5.8 (issue #35). Alleen bij een kolomblok en alleen
+    // na een tweede-orde-rekengang; anders is `combinationResults` zelf al
+    // eerste orde en blijft alles zoals het was.
+    const eersteOrde = cfg.kolom ? data.eersteOrdeResultaten : undefined;
+    const quasiBron = eersteOrde ?? data.combinationResults;
+    const eersteOrdeUgt = eersteOrde ? metResultaat(ulsCombos, beam.id, eersteOrde) : [];
+
     inputs.push({
       // De nationale bijlage van het project reist mee naar de kern; daar
       // bepaalt zij de nationaal bepaalde parameters van deze toetsing.
@@ -656,10 +678,23 @@ export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResul
       // Idem voor de QUASI-BLIJVENDE combinatie (6.16), die alleen M₀Eqp in
       // (5.19) voedt. Dezelfde regel: liever leeg dan een verzonnen nulpunt,
       // want dat zou een φ_ef van nul opleveren die er geloofwaardig uitziet.
+      // M₀Eqp is een eerste-orde-moment: na een tweede-orde-rekengang komt zij
+      // uit de eerste-orde-oplossing (`quasiBron`).
       sls_quasi_permanent_envelope:
-        metResultaat(quasiLijst, beam.id).length > 0
-          ? buildForcesEnvelope(beam.id, metResultaat(quasiLijst, beam.id), data.combinationResults)
+        metResultaat(quasiLijst, beam.id, quasiBron).length > 0
+          ? buildForcesEnvelope(beam.id, metResultaat(quasiLijst, beam.id, quasiBron), quasiBron)
           : [],
+      // M₀Ed, M₀₁ en M₀₂ uit de eerste orde. LEEG ALS ER NIETS IS, niet het
+      // nulpunt van `buildForcesEnvelope`: dan weigert de kern §5.8 met reden
+      // in plaats van r_m uit een verzonnen nul te halen.
+      ...(eersteOrde
+        ? {
+            first_order_envelope:
+              eersteOrdeUgt.length > 0
+                ? buildForcesEnvelope(beam.id, eersteOrdeUgt, eersteOrde)
+                : [],
+          }
+        : {}),
       ...(cfg.milieuklasse ? { exposure_class: cfg.milieuklasse } : {}),
       ...(cfg.korrelafmetingMm && cfg.korrelafmetingMm > 0
         ? { aggregate_size_mm: cfg.korrelafmetingMm }
