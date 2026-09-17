@@ -11,7 +11,7 @@ use nen_en_1995_1_1::stability::{
     ColumnStabilityInput,
 };
 use nen_en_1995_1_1::{
-    bending, beta_c, compression, deflection, design_strength, gamma_m, k_def, k_h, k_m, k_mod,
+    bending, beta_c, compression, deflection, design_strength, k_def, k_h, k_m, k_mod,
     k_sys, shear, strength_class_by_name, LoadDurationClass, StrengthClass, TimberSection,
 };
 use steel_check::{CheckKind, CustomSection, NamedCheck};
