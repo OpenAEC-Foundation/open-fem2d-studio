@@ -17662,6 +17662,41 @@ function solveCombinationSecondOrder(input, combo) {
     throw e;
   }
 }
+function solveCombinationFirstOrder(input, combo) {
+  const invoer = input.scheefstand && combo.scheefstandRichting !== void 0 && combo.scheefstandRichting !== input.scheefstand.richting ? { ...input, scheefstand: { ...input.scheefstand, richting: combo.scheefstandRichting } } : input;
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(
+    invoer,
+    (caseId) => combo.factors.get(caseId ?? -1) ?? 0
+  );
+  if (!meshHeeftLasten(mesh)) return null;
+  const heeftPlaten = plateInfo.length > 0;
+  let engineResult;
+  try {
+    engineResult = solveNonlinear(mesh, {
+      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
+      geometricNonlinear: false,
+      randKoppelingen,
+      onLog: logMet(combo.name)
+    });
+  } catch (e) {
+    throw metKnoopnummer(e, nodeIdMap, plateInfo);
+  }
+  const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : void 0;
+  return eisEindigeUitkomst(
+    convertResult(
+      mesh,
+      engineResult,
+      nodeIdMap,
+      beamIdMap,
+      invoer.supports,
+      heeftPlaten ? plateInfo : void 0,
+      nodeIndex,
+      beamSegments,
+      segmentUitvoer
+    ),
+    ` in combinatie "${combo.name}" (eerste orde)`
+  );
+}
 function solveAllCasesNonlinear(input) {
   const { perCase } = solveAllCases(input);
   const state = { input, cache: /* @__PURE__ */ new Map() };
@@ -24219,6 +24254,7 @@ export {
   solve,
   solveAllCases,
   solveAllCasesNonlinear,
+  solveCombinationFirstOrder,
   solveCombinationSecondOrder,
   soortVanCombinatie,
   spanningInMateriaalassen,
