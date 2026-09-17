@@ -42,16 +42,20 @@ export function lassenVan(o: { lassen?: Las[] }): Las[] {
   return o.lassen ?? [];
 }
 
-export const LASSOORT_LABEL: Record<Lassoort, string> = {
-  HoeklasEnkel: "hoeklas, enkelzijdig",
-  HoeklasDubbel: "hoeklas, dubbelzijdig",
-  StompVolledig: "stomp, volledig doorgelast",
+/**
+ * i18n-sleutels (naamruimte check) van de lassoort, voluit en kort. Sleutels en
+ * geen tekst: deze bibliotheek laadt geen i18n, de component vertaalt.
+ */
+export const LASSOORT_SLEUTEL: Record<Lassoort, string> = {
+  HoeklasEnkel: "check:profileEditor.welds.kind.HoeklasEnkel",
+  HoeklasDubbel: "check:profileEditor.welds.kind.HoeklasDubbel",
+  StompVolledig: "check:profileEditor.welds.kind.StompVolledig",
 };
 
-export const LASSOORT_KORT: Record<Lassoort, string> = {
-  HoeklasEnkel: "enkel",
-  HoeklasDubbel: "dubbel",
-  StompVolledig: "stomp",
+export const LASSOORT_KORT_SLEUTEL: Record<Lassoort, string> = {
+  HoeklasEnkel: "check:profileEditor.welds.kindShort.HoeklasEnkel",
+  HoeklasDubbel: "check:profileEditor.welds.kindShort.HoeklasDubbel",
+  StompVolledig: "check:profileEditor.welds.kindShort.StompVolledig",
 };
 
 /** Aantal meewerkende keeldoorsneden — spiegel van `Lassoort` in de kern. */

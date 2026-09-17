@@ -383,8 +383,21 @@ export const BEAM_LOAD_ROLES: { id: BeamLoadRole; label: string; kort: string }[
   { id: "binnen",      label: "Binnenstaaf (geen windvlak)", kort: "Binnen" },
 ];
 
+/**
+ * Nederlandse naam per staaftype. Blijft Nederlands: de IFC-export schrijft hem
+ * als eigenschap weg, en een bestand mag niet van de taalkeuze van de gebruiker
+ * afhangen. Voor de interface is er `BEAM_LOAD_ROLE_SLEUTEL`.
+ */
 export const BEAM_LOAD_ROLE_LABEL: Record<BeamLoadRole, string> =
   Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, r.label])) as Record<BeamLoadRole, string>;
+
+/**
+ * i18n-sleutel (met naamruimte) per staaftype, voor dropdowns en tabellen.
+ * Dit bestand hoort bij het rekenmodel en importeert geen i18n: het geeft de
+ * sleutel, de component vertaalt met `t(sleutel)`.
+ */
+export const BEAM_LOAD_ROLE_SLEUTEL: Record<BeamLoadRole, string> =
+  Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, `common:beamLoadRole.${r.id}`])) as Record<BeamLoadRole, string>;
 
 export interface Beam {
   id: number;
@@ -1313,6 +1326,43 @@ export function plaatRandLabel(adres: PlaatRandAdres): string {
   return "rand onbekend";
 }
 
+/** Een i18n-sleutel met de waarden voor zijn plaatshouders. */
+export interface I18nTekst {
+  sleutel: string;
+  waarden?: Record<string, string | number>;
+}
+
+/**
+ * Dezelfde indeling als `plaatRandLabel`, maar als i18n-sleutel voor de
+ * interface. `plaatRandLabel` blijft Nederlands omdat de modelmeldingen van
+ * engine en MCP hem gebruiken (die zijn per ontwerp Nederlands); dit bestand
+ * importeert geen i18n, dus de component vertaalt: `t(r.sleutel, r.waarden)`.
+ */
+export function plaatRandSleutel(adres: PlaatRandAdres): I18nTekst {
+  if (adres.openingId !== undefined) {
+    return adres.edgeIndex !== undefined
+      ? { sleutel: "common:canvas.edge.numberedOfOpening", waarden: { rand: adres.edgeIndex + 1, opening: adres.openingId } }
+      : { sleutel: "common:canvas.edge.openingUnknownEdge", waarden: { opening: adres.openingId } };
+  }
+  if (adres.edgeIndex !== undefined) return { sleutel: "common:canvas.edge.numbered", waarden: { rand: adres.edgeIndex + 1 } };
+  if (adres.edge !== undefined && (PLAAT_RAND_NAMEN as readonly string[]).includes(adres.edge)) {
+    return { sleutel: `common:canvas.edge.${adres.edge}` };
+  }
+  return { sleutel: "common:canvas.edge.unknown" };
+}
+
+/**
+ * De vertaalde randnaam. De vertaalfunctie komt van de aanroeper (de `t` van
+ * de component of `i18next.t`), zodat dit bestand geen i18n hoeft te laden.
+ */
+export function plaatRandTekst(
+  adres: PlaatRandAdres,
+  t: (sleutel: string, waarden?: Record<string, string | number>) => string,
+): string {
+  const r = plaatRandSleutel(adres);
+  return t(r.sleutel, r.waarden);
+}
+
 /**
  * Bovengrens (mm, exclusief) van "bijna op de plaatrand" voor een staafeinde.
  *
@@ -1426,17 +1476,18 @@ export interface Support {
 export type LoadType = "pointForce" | "pointMoment" | "lineLoad" | "thermal" | "edgeLoad";
 
 /**
- * NL-meervoud per lastsoort, voor zinnen als "alle lijnlasten in dit
- * belastinggeval". Bewust apart van het enkelvoudige label in het
- * eigenschappenpaneel: dáár staat de eenheid erbij ("Lijnlast (q)"), hier
- * moet de tekst in een menuregel en een melding passen.
+ * i18n-sleutel van het meervoud per lastsoort, voor zinnen als "alle
+ * lijnlasten in dit belastinggeval". Bewust apart van het enkelvoudige label in
+ * het eigenschappenpaneel: dáár staat de eenheid erbij ("Lijnlast (q)"), hier
+ * moet de tekst in een menuregel en een melding passen. Een sleutel en geen
+ * tekst: dit bestand importeert geen i18n, de component vertaalt.
  */
 export const LOAD_SOORT_MEERVOUD: Record<LoadType, string> = {
-  lineLoad:    "lijnlasten",
-  pointForce:  "puntlasten",
-  pointMoment: "momenten",
-  thermal:     "temperatuurlasten",
-  edgeLoad:    "randlasten",
+  lineLoad:    "common:loadKindPlural.lineLoad",
+  pointForce:  "common:loadKindPlural.pointForce",
+  pointMoment: "common:loadKindPlural.pointMoment",
+  thermal:     "common:loadKindPlural.thermal",
+  edgeLoad:    "common:loadKindPlural.edgeLoad",
 };
 
 export interface Load {

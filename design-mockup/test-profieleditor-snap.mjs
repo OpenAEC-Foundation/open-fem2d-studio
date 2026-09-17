@@ -27,11 +27,13 @@
 //     bij benadering) — ook voor een lamel onder een schuine hoek
 // Uitvoeren: npx tsx test-profieleditor-snap.mjs
 
-const { snapPunten, dichtstbijzijndeSnap, VANG_NAAM } = await import(
+const { snapPunten, dichtstbijzijndeSnap, VANG_SLEUTEL } = await import(
   "./src/lib/profieleditor/snappunten.ts"
 );
 const { lamelHoekpunten } = await import("./src/lib/profieleditor/geometrie.ts");
 const { verplaats } = await import("./src/lib/profieleditor/transformeren.ts");
+// De snapnamen zijn i18n-sleutels (issue #21); de test leest ze in het Nederlands.
+const { default: i18next } = await import("./scripts/i18n-voor-tests.mjs");
 
 let passed = 0, failed = 0;
 const log = (s) => process.stdout.write(s + "\n");
@@ -351,10 +353,11 @@ log("\n── profiel met gaten ────────────────
 log("\n── namen in beeld ──────────────────────────────────────────────────");
 {
   for (const soort of ["hoek", "midden", "hart", "zwaartepunt", "raster", "vrij"]) {
-    check(`VANG_NAAM kent '${soort}'`,
-      typeof VANG_NAAM[soort] === "string" && VANG_NAAM[soort].length > 0);
+    const tekst = i18next.t(VANG_SLEUTEL[soort]);
+    check(`VANG_SLEUTEL kent '${soort}' en heeft een vertaling`,
+      typeof VANG_SLEUTEL[soort] === "string" && tekst.length > 0 && tekst !== VANG_SLEUTEL[soort]);
   }
-  check("hoek heet 'hoekpunt' in beeld", VANG_NAAM.hoek === "hoekpunt");
+  check("hoek heet 'hoekpunt' in beeld", i18next.t(VANG_SLEUTEL.hoek) === "hoekpunt");
 }
 
 log(`\n${failed === 0 ? "ALLE TESTS GESLAAGD" : "TESTS GEFAALD"} — ${passed} ok, ${failed} fout\n`);

@@ -25,7 +25,7 @@ import { fmtGroep, fmtMaat, fmtMacht, leesGetal } from "../../lib/profieleditor/
 import { controleerGat, snelleSchatting } from "../../lib/profieleditor/geometrie";
 import { nieuwId } from "../../lib/profieleditor/id";
 import { ontwerpIsLeeg, ontwerpNaarMotor } from "../../lib/profieleditor/motorInvoer";
-import { VORM_LABEL, gaatAlsLamellen, maakEigenDoorsnede, stelVormVoor } from "../../lib/profieleditor/opslaan";
+import { VORM_SLEUTEL, gaatAlsLamellen, maakEigenDoorsnede, stelVormVoor } from "../../lib/profieleditor/opslaan";
 import {
   aantalBouwstenen,
   hartVan,
@@ -41,7 +41,7 @@ import {
   type GatBewerking,
   type Punt2,
 } from "../../lib/profieleditor/transformeren";
-import { VANG_NAAM, type VangSoort } from "../../lib/profieleditor/snappunten";
+import { VANG_SLEUTEL, type VangSoort } from "../../lib/profieleditor/snappunten";
 import type { DoorsnedeOntwerp, EigenDoorsnede } from "../../lib/profieleditor/types";
 import { useMotorBerekening } from "../../lib/profieleditor/useMotorBerekening";
 import { useTranslation } from "react-i18next";
@@ -558,7 +558,7 @@ export default function ProfielEditor({
       const slot = modus.asSlot ? `  [${t("profileEditor.main.axisLock", { as: modus.asSlot })}]` : "";
       // Waar de aanwijzer nu op vastklikt; bij een getypte maat telt de muis
       // niet mee en heeft die aanduiding dus niets te zeggen.
-      const op = modus.getypt === null ? `  ⊹ ${VANG_NAAM[modus.vang]}` : "";
+      const op = modus.getypt === null ? `  ⊹ ${t(VANG_SLEUTEL[modus.vang])}` : "";
       const punt = modus.muis
         ? `(${fmtMaat(modus.muis.y, 3)}, ${fmtMaat(modus.muis.z, 3)})`
         : t("profileEditor.main.pointAt");
@@ -724,7 +724,7 @@ export default function ProfielEditor({
                     ? t("profileEditor.main.savedWithHoles", { profiel: profielLabel(d.ontwerp.basis.naam), count: d.ontwerp.gaten.length })
                     : t("profileEditor.main.savedAssembly", { lamellen: d.ontwerp.lamellen.length, delen: d.ontwerp.catalogusdelen.length })}
                   {" · "}
-                  {gaatAlsLamellen(d.ontwerp) ? t("profileEditor.main.checkFromGeometry") : VORM_LABEL[d.vorm].split(" — ")[0]}
+                  {gaatAlsLamellen(d.ontwerp) ? t("profileEditor.main.checkFromGeometry") : t(VORM_SLEUTEL[d.vorm]).split(" — ")[0]}
                 </div>
                 <div className="pe-knoppen">
                   {onKies && (
@@ -844,8 +844,8 @@ export default function ProfielEditor({
               disabled={alsLamellen}
               onChange={(e) => setVormKeuze(e.target.value as CustomDoorsnedevorm | "auto")}
             >
-              <option value="auto">{t("profileEditor.main.shapeAuto", { vorm: VORM_LABEL[vormVoorstel] })}</option>
-              {VORMEN.map((v) => <option key={v} value={v}>{VORM_LABEL[v]}</option>)}
+              <option value="auto">{t("profileEditor.main.shapeAuto", { vorm: t(VORM_SLEUTEL[vormVoorstel]) })}</option>
+              {VORMEN.map((v) => <option key={v} value={v}>{t(VORM_SLEUTEL[v])}</option>)}
             </select>
           </label>
           <div className="pe-voet-rechts">

@@ -491,7 +491,9 @@
       "left": "linkerrand",
       "right": "rechterrand",
       "numbered": "rand {{rand}}",
-      "numberedOfOpening": "rand {{rand}} van opening {{opening}}"
+      "numberedOfOpening": "rand {{rand}} van opening {{opening}}",
+      "openingUnknownEdge": "opening {{opening}} (rand onbekend)",
+      "unknown": "rand onbekend"
     },
     "dim": {
       "editXAxis": "Maat X-stramien bewerken",
@@ -713,5 +715,21 @@
   },
   "resultsOverlay": {
     "deflectionScale": "Vervormingsschaal: {{schaal}}×"
+  },
+  "beamLoadRole": {
+    "gevelLinks": "Linkergevel",
+    "gevelRechts": "Rechtergevel",
+    "dakPlat": "Plat dak (≤ 5°)",
+    "dakHellend": "Hellend dak (> 5°)",
+    "overstek": "Overstek / luifel",
+    "vloer": "Vloer",
+    "binnen": "Binnenstaaf (geen windvlak)"
+  },
+  "loadKindPlural": {
+    "lineLoad": "lijnlasten",
+    "pointForce": "puntlasten",
+    "pointMoment": "momenten",
+    "thermal": "temperatuurlasten",
+    "edgeLoad": "randlasten"
   }
 }

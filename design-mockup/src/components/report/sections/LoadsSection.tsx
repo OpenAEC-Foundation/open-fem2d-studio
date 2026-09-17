@@ -8,7 +8,7 @@
  */
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
-import { plaatRandLabel, bepaalPlaatlastRand } from "../../fem/femTypes";
+import { plaatRandTekst, bepaalPlaatlastRand } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
@@ -84,7 +84,7 @@ export default function LoadsSection() {
   const randTekst = (l: Load): string =>
     l.edge !== undefined && l.edgeIndex === undefined && l.openingId === undefined
       ? EDGE_LABELS[l.edge]
-      : plaatRandLabel(l);
+      : plaatRandTekst(l, t);
 
   const targetText = (l: Load): string => {
     if (l.plateId !== undefined && (l.type === "edgeLoad" || l.type === "pointForce")) {

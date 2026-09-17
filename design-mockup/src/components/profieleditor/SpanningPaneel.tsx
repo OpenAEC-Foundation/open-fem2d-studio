@@ -21,7 +21,7 @@ import SpanningDoorsnedeTekening from "../spanning/SpanningDoorsnedeTekening";
 import { fmtGroep, fmtMaat, fmtMacht } from "../../lib/profieleditor/format";
 import { doorsnedeVanOntwerp } from "../../lib/profieleditor/lagenmodel";
 import {
-  LASSOORT_KORT,
+  LASSOORT_KORT_SLEUTEL,
   lassenVan,
   schuifstroomVanLas,
 } from "../../lib/profieleditor/lassen";
@@ -425,7 +425,7 @@ export default function SpanningPaneel({
                     >
                       <th scope="row">
                         {t("profileEditor.stress.weldN", { n: n.nummer })}
-                        <span className="pe-item-sub"> a = {fmtMaat(n.las.a_mm, 1)} · {LASSOORT_KORT[n.las.soort]}</span>
+                        <span className="pe-item-sub"> a = {fmtMaat(n.las.a_mm, 1)} · {t(LASSOORT_KORT_SLEUTEL[n.las.soort])}</span>
                       </th>
                       <td>
                         {reden ? (

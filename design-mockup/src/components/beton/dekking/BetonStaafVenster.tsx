@@ -363,7 +363,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     };
     if (laanOnder) return { ...laanOnder, tweede };
     return {
-      titel: t("concrete.memberWindow.crackWidth"),
+      titel: "check:concrete.memberWindow.crackWidth",
       eenheid: "mm",
       benodigdLabel: "w_k",
       aanwezigLabel: "w_max",
@@ -371,7 +371,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       richting: "omlaag",
       kleur: kleurVan("scheurwijdte"),
     };
-  }, [laanOnder, lagen.scheurwijdte, scheur, t]);
+  }, [laanOnder, lagen.scheurwijdte, scheur]);
 
   const lanenOnder = [laanOnderMetScheur, laanV].filter((l): l is Laan => l !== null);
   const lanenBoven = [laanBoven].filter((l): l is Laan => l !== null);
@@ -631,10 +631,10 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                 type="button"
                 className={`fem-results-toggle dek-laagknop${aan ? " active" : ""}`}
                 onClick={() => setLagen((v) => ({ ...v, [laag.id]: !v[laag.id] }))}
-                title={laag.hint}
+                title={t(laag.hint)}
               >
                 <span className="fem-results-toggle-swatch" style={{ background: laag.swatch }} />
-                <span className="fem-results-toggle-label">{laag.label}</span>
+                <span className="fem-results-toggle-label">{t(laag.label)}</span>
                 <span className={`fem-switch${aan ? " on" : ""}`} aria-hidden="true">
                   <span className="fem-switch-dot" />
                 </span>

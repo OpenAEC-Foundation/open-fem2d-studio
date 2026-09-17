@@ -456,9 +456,9 @@
     "contextMenu": {
       "editProperties": "Modifier les propriétés",
       "loadsSelected_one": "{{count}} charge sélectionnée",
-      "loadsSelected_other": "{{count}} {{soort}} sélectionnées",
+      "loadsSelected_other": "{{count}} charges sélectionnées ({{soort}})",
       "loadsSelectedBody": "Ctrl+C les copie ; changez de cas de charge et collez avec Ctrl+V.",
-      "selectAllOfType": "Sélectionner toutes les {{soort}} ({{n}})",
+      "selectAllOfType": "Tout sélectionner : {{soort}} ({{n}})",
       "duplicate": "Dupliquer",
       "delete": "Supprimer"
     },
@@ -491,7 +491,9 @@
       "left": "bord gauche",
       "right": "bord droit",
       "numbered": "bord {{rand}}",
-      "numberedOfOpening": "bord {{rand}} de l'ouverture {{opening}}"
+      "numberedOfOpening": "bord {{rand}} de l'ouverture {{opening}}",
+      "openingUnknownEdge": "ouverture {{opening}} (bord inconnu)",
+      "unknown": "bord inconnu"
     },
     "dim": {
       "editXAxis": "Modifier la cote de la file X",
@@ -546,21 +548,21 @@
     "selfWeight": "Poids propre",
     "analysis": "Analyse",
     "analysisType": {
-      "eersteOrde": "1er ordre",
-      "tweedeOrdeGeometrisch": "2nd ordre (P-Δ)",
-      "tweedeOrdeFysisch": "2nd ordre + matériau"
+      "eersteOrde": "Premier ordre",
+      "tweedeOrdeGeometrisch": "Second ordre (P-Δ)",
+      "tweedeOrdeFysisch": "Second ordre, non linéaire matériel"
     },
     "analysisDescription": {
       "eersteOrde": "Premier ordre, linéaire : chaque combinaison est la somme pondérée des cas de charge.",
       "tweedeOrdeGeometrisch": "Second ordre, géométriquement non linéaire (P-Δ) : chaque combinaison est résolue séparément avec les charges pondérées et la raideur géométrique.",
-      "tweedeOrdeFysisch": "Second ordre, non linéaire géométriquement et matériellement : comme P-Δ, mais les barres en béton reçoivent par segment l'EI sécante du moteur de calcul (NEN-EN 1992-1-1 5.8.6). Sans barres en béton avec cage d'armatures, le résultat est identique au 2nd ordre (P-Δ)."
+      "tweedeOrdeFysisch": "Second ordre, non linéaire géométriquement et matériellement : comme P-Δ, mais les barres en béton reçoivent par segment l'EI sécante du moteur de calcul (NEN-EN 1992-1-1 5.8.6). Sans barres en béton avec cage d'armatures, le résultat est identique au second ordre (P-Δ)."
     },
     "segmentTitle": "Longueur de segment souhaitée en mm. Chaque barre en béton est découpée en segments de même longueur, chacun avec sa propre EI sécante (5.8.6(6)). Plus court = plus précis et plus lent ; l'application ne grossit pas le découpage d'elle-même.",
     "segment": "segment",
     "creepTitle": "Valeur finale du coefficient de fluage φ(∞,t₀) selon l'art. 3.1.4, pour chaque barre en béton sans valeur propre dans les données du §5.8. Le moteur l'applique selon 5.8.6(4) — toutes les valeurs de calcul multipliées par (1 + φ_ef) — ce qui, pour la pente initiale, revient à E_c,eff = E_cm/(1 + φ) de (7.20). VIDE = non renseigné : le calcul se fait alors SANS fluage, la flèche est sous-estimée et cela va dans le sens de l'insécurité. Cochez la case voisine pour faire calculer φ(∞,t₀) selon l'annexe B ; une valeur renseignée ici a la priorité.",
     "creepFeedsBoth": "Cette valeur alimente deux calculs : la rigidité ELS dans l'analyse non linéaire matérielle (5.8.6(4)) et la vérification des colonnes pour tout type d'analyse (A dans λ_lim selon 5.8.3.1(1), φ_ef selon (5.19)). Une barre avec son propre φ(∞,t₀) dans les données §5.8 est prioritaire.",
     "emptyPlaceholder": "vide",
-    "noConcreteBarsTitle": "Le calcul non linéaire matériel s'applique aux barres en béton avec cage d'armatures : matériau une classe de résistance (p. ex. C30/37), profilé un rectangle (p. ex. 300x500) et une cage dans les propriétés de la barre. Sans de telles barres, le résultat est identique au 2nd ordre (P-Δ).",
+    "noConcreteBarsTitle": "Le calcul non linéaire matériel s'applique aux barres en béton avec cage d'armatures : matériau une classe de résistance (p. ex. C30/37), profilé un rectangle (p. ex. 300x500) et une cage dans les propriétés de la barre. Sans de telles barres, le résultat est identique au second ordre (P-Δ).",
     "noConcreteBars": "aucune barre en béton avec cage",
     "modelLarge": "modèle volumineux — voir longueur de segment",
     "swayTitle": "Prendre en compte le défaut d'aplomb (imperfection initiale) : chaque charge verticale reçoit une charge horizontale associée H = φ·V. Vous choisissez à côté d'où vient φ — le dénominateur fixe (la valeur de base, et le réglage de tout projet existant) ou la formule normative de l'EN 1993-1-1 (5.5), l'EN 1992-1-1 (5.1) ou l'EN 1995-1-1 (5.1).",
@@ -713,5 +715,21 @@
   },
   "resultsOverlay": {
     "deflectionScale": "Échelle de déformée : {{schaal}}×"
+  },
+  "beamLoadRole": {
+    "gevelLinks": "Façade gauche",
+    "gevelRechts": "Façade droite",
+    "dakPlat": "Toiture plate (≤ 5°)",
+    "dakHellend": "Toiture inclinée (> 5°)",
+    "overstek": "Porte-à-faux / auvent",
+    "vloer": "Plancher",
+    "binnen": "Barre intérieure (sans surface au vent)"
+  },
+  "loadKindPlural": {
+    "lineLoad": "charges linéiques",
+    "pointForce": "charges ponctuelles",
+    "pointMoment": "moments ponctuels",
+    "thermal": "charges thermiques",
+    "edgeLoad": "charges de bord"
   }
 }

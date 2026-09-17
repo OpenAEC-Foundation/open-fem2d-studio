@@ -11,6 +11,7 @@
  */
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import {
   HERKOMST_KIPSTEUNEN,
   HERKOMST_OPGEGEVEN,
@@ -23,8 +24,8 @@ import type {
   BeamLoadRole,
 } from "./femTypes";
 import {
-  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL,
-  plaatRandLabel, bepaalPlaatlastRand, effectiefPlaatMeshType, plaatRekentAlsRaster,
+  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_SLEUTEL,
+  plaatRandTekst, bepaalPlaatlastRand, effectiefPlaatMeshType, plaatRekentAlsRaster,
   PLAAT_MESH_TYPEN, PLATE_DEFAULTS,
 } from "./femTypes";
 // Het materiaal van een plaat: één bepaling voor paneel, solver, MCP-poort en
@@ -261,11 +262,11 @@ function MultiProperties({ selection, beams, updateBeams }: {
             <Row label={t("props.multi.loads")}><code>{aantalLasten}</code></Row>
           )}
           <div className="fem-prop-hint">
-            <kbd>G</kbd> {t("props.multi.keyMove")} · <kbd>R</kbd> {t("props.multi.keyRotate")} · <kbd>Delete</kbd> {t("props.multi.keyDelete")}
+            <kbd>G</kbd> {t("props.multi.keyMove")} · <kbd>R</kbd> {t("props.multi.keyRotate")} · <kbd>{t("props.multi.deleteKey")}</kbd> {t("props.multi.keyDelete")}
           </div>
           {aantalLasten > 0 && (
             <div className="fem-prop-hint">
-              <kbd>Ctrl</kbd>+<kbd>C</kbd> {t("props.multi.copyHintBefore")} <kbd>Ctrl</kbd>+<kbd>V</kbd>{t("props.multi.copyHintAfter")}
+              <kbd>{t("props.multi.ctrlKey")}</kbd>+<kbd>C</kbd> {t("props.multi.copyHintBefore")} <kbd>{t("props.multi.ctrlKey")}</kbd>+<kbd>V</kbd>{t("props.multi.copyHintAfter")}
             </div>
           )}
         </Section>
@@ -1022,9 +1023,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               })}
               title={t("props.beam.loadRoleTitle")}
             >
-              <option value="">{t("props.beam.loadRoleAuto", { rol: BEAM_LOAD_ROLE_LABEL[afgeleideRol] })}</option>
+              <option value="">{t("props.beam.loadRoleAuto", { rol: t(BEAM_LOAD_ROLE_SLEUTEL[afgeleideRol]) })}</option>
               {BEAM_LOAD_ROLES.map((r) => (
-                <option key={r.id} value={r.id}>{r.label}</option>
+                <option key={r.id} value={r.id}>{t(BEAM_LOAD_ROLE_SLEUTEL[r.id])}</option>
               ))}
             </select>
           </Row>
@@ -1154,9 +1155,9 @@ const LOAD_TYPE_LABEL: Record<Load["type"], string> = {
  * De rand van een plaatlast zoals ingevoerd: "rand i+1" bij een rand-index,
  * de naam bij een benoemde rand, en bij een openingsrand de opening erbij.
  * Hier stond `EDGE_LABEL[load.edge ?? "top"]`, waardoor een randlast op een
- * polygoonrand als "bovenrand" verscheen.
+ * polygoonrand als "bovenrand" verscheen. Vertaald via `plaatRandTekst`.
  */
-const randLabel = (load: Load): string => plaatRandLabel(load);
+const randLabel = (load: Load): string => plaatRandTekst(load, i18next.t);
 
 function LoadProperties({
   load, beams, nodes, plates, updateLoad,
@@ -1697,7 +1698,7 @@ function LoadProperties({
 
         <Section title={t("props.load.actions")} defaultOpen={false}>
           <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-            {t("props.load.pressBefore")} <kbd>Delete</kbd> {t("props.load.pressAfter")}
+            {t("props.load.pressBefore")} <kbd>{t("props.multi.deleteKey")}</kbd> {t("props.load.pressAfter")}
           </div>
         </Section>
       </div>

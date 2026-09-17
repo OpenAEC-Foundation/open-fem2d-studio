@@ -37,14 +37,17 @@ export interface Vangst {
   soort: VangSoort;
 }
 
-/** Korte naam voor in beeld. */
-export const VANG_NAAM: Record<VangSoort, string> = {
-  hoek: "hoekpunt",
-  midden: "midden",
-  hart: "hart",
-  zwaartepunt: "zwaartepunt",
-  raster: "raster",
-  vrij: "vrij",
+/**
+ * i18n-sleutel (naamruimte check) van de korte naam voor in beeld. Een sleutel
+ * en geen tekst: deze bibliotheek laadt geen i18n, de component vertaalt.
+ */
+export const VANG_SLEUTEL: Record<VangSoort, string> = {
+  hoek: "check:profileEditor.snap.hoek",
+  midden: "check:profileEditor.snap.midden",
+  hart: "check:profileEditor.snap.hart",
+  zwaartepunt: "check:profileEditor.snap.zwaartepunt",
+  raster: "check:profileEditor.snap.raster",
+  vrij: "check:profileEditor.snap.vrij",
 };
 
 /**

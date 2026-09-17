@@ -491,7 +491,9 @@
       "left": "left edge",
       "right": "right edge",
       "numbered": "edge {{rand}}",
-      "numberedOfOpening": "edge {{rand}} of opening {{opening}}"
+      "numberedOfOpening": "edge {{rand}} of opening {{opening}}",
+      "openingUnknownEdge": "opening {{opening}} (edge unknown)",
+      "unknown": "unknown edge"
     },
     "dim": {
       "editXAxis": "Edit X grid line dimension",
@@ -548,7 +550,7 @@
     "analysisType": {
       "eersteOrde": "1st order",
       "tweedeOrdeGeometrisch": "2nd order (P-Δ)",
-      "tweedeOrdeFysisch": "2nd order + material"
+      "tweedeOrdeFysisch": "2nd order + non-linear material"
     },
     "analysisDescription": {
       "eersteOrde": "First order, linear: each combination is the weighted sum of the load cases.",
@@ -713,5 +715,21 @@
   },
   "resultsOverlay": {
     "deflectionScale": "Deflection scale: {{schaal}}×"
+  },
+  "beamLoadRole": {
+    "gevelLinks": "Left facade",
+    "gevelRechts": "Right facade",
+    "dakPlat": "Flat roof (≤ 5°)",
+    "dakHellend": "Pitched roof (> 5°)",
+    "overstek": "Overhang / canopy",
+    "vloer": "Floor",
+    "binnen": "Internal member (no wind surface)"
+  },
+  "loadKindPlural": {
+    "lineLoad": "line loads",
+    "pointForce": "point loads",
+    "pointMoment": "moments",
+    "thermal": "temperature loads",
+    "edgeLoad": "edge loads"
   }
 }

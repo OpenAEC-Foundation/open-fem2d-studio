@@ -548,6 +548,10 @@ const ALLEEN_BRON = new Map([
     "leest alleen de JSON-taalbestanden en config.ts van schijf en importeert geen enkele bronmodule; de bundelstand heeft er dus niets in te toetsen, en de runner weigert terecht een test zonder ./src-import",
   ],
   [
+    "i18n-rekenlabels",
+    "legt vast dat de labels uit .ts-bestanden (femTypes, dekkingLagen, lib/profieleditor) i18n-sleutels zijn die in nl/en/de/fr bestaan en in en/de/fr geen Nederlands zijn; dekkingLagen, de profieleditor-bibliotheek en de locales zitten niet in de barrel, en de test rendert via i18next, dat in de sidecarbundel niet bestaat",
+  ],
+  [
     "i18n-vaste-tekst",
     "scant de .tsx-bronbestanden met de TypeScript-parser op vaste Nederlandse teksten in JSX; hij importeert geen enkele bronmodule en rekent niets, dus de bundelstand heeft er niets in te toetsen (en de runner weigert terecht een test zonder ./src-import)",
   ],

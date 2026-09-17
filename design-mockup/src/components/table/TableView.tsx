@@ -17,7 +17,7 @@
 import { useState, useRef, useEffect, type ReactNode, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_LABEL, plaatRandLabel,
+  withPlateDefaults, bepaalStandaardRol, BEAM_LOAD_ROLES, BEAM_LOAD_ROLE_SLEUTEL, plaatRandTekst,
   PLATE_DEFAULTS,
   type Node, type Beam, type Plate, type Support, type Load, type LoadCase,
   type Selection, type SupportType, type BeamLoadRole,
@@ -307,7 +307,7 @@ export default function TableView(props: TableViewProps) {
           exportCells: [
             String(b.id), String(b.from), String(b.to), fmtNum(beamLength(b), 0),
             material, profile,
-            BEAM_LOAD_ROLE_LABEL[b.loadRole ?? bepaalStandaardRol(b, nodes)]
+            t(BEAM_LOAD_ROLE_SLEUTEL[b.loadRole ?? bepaalStandaardRol(b, nodes)])
               + (b.loadRole ? "" : ` (${t("table.autoTag")})`),
             b.releases?.startRy ? "x" : "", b.releases?.endRy ? "x" : "",
           ],
@@ -353,8 +353,8 @@ export default function TableView(props: TableViewProps) {
                 <SelectCell
                   value={b.loadRole ?? ""}
                   options={[
-                    { value: "", label: t("table.autoRole", { rol: BEAM_LOAD_ROLE_LABEL[bepaalStandaardRol(b, nodes)] }) },
-                    ...BEAM_LOAD_ROLES.map((r) => ({ value: r.id, label: r.label })),
+                    { value: "", label: t("table.autoRole", { rol: t(BEAM_LOAD_ROLE_SLEUTEL[bepaalStandaardRol(b, nodes)]) }) },
+                    ...BEAM_LOAD_ROLES.map((r) => ({ value: r.id, label: t(BEAM_LOAD_ROLE_SLEUTEL[r.id]) })),
                   ]}
                   onCommit={(v) => updateBeam(b.id, {
                     loadRole: v === "" ? undefined : (v as BeamLoadRole),
@@ -628,7 +628,7 @@ export default function TableView(props: TableViewProps) {
                   // Puntlast op een plaatrand: geen knoop te kiezen — de
                   // plek is plaat + rand + positie (eigenschappenpaneel).
                   <span className="ftable-muted">
-                    {t("table.onPlateEdge", { plaat: l.plateId, rand: plaatRandLabel(l) })}
+                    {t("table.onPlateEdge", { plaat: l.plateId, rand: plaatRandTekst(l, t) })}
                   </span>
                 ) : l.beamId !== undefined ? (
                   <span className="ftable-muted">{t("table.onBeam", { staaf: l.beamId })}</span>

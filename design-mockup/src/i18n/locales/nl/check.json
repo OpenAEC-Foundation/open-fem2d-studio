@@ -533,7 +533,17 @@
       "weldN": "Las {{n}}",
       "deleteTitle": "Deze las verwijderen",
       "typeTitle": "Dubbelzijdig: aan weerszijden van de plaat een hoeklas — twee keeldoorsneden. Enkelzijdig: één. Stomp volledig doorgelast: NEN-EN 1993-1-8 4.7.1 geeft de las de weerstand van het zwakste verbonden onderdeel, dus geen aparte lastoets.",
-      "throatTitle": "Keeldikte van één las. NEN-EN 1993-1-8 4.5.2(2): niet kleiner dan 3 mm."
+      "throatTitle": "Keeldikte van één las. NEN-EN 1993-1-8 4.5.2(2): niet kleiner dan 3 mm.",
+      "kind": {
+        "HoeklasEnkel": "hoeklas, enkelzijdig",
+        "HoeklasDubbel": "hoeklas, dubbelzijdig",
+        "StompVolledig": "stomp, volledig doorgelast"
+      },
+      "kindShort": {
+        "HoeklasEnkel": "enkel",
+        "HoeklasDubbel": "dubbel",
+        "StompVolledig": "stomp"
+      }
     },
     "toolbar": {
       "ariaLabel": "Verplaatsen, roteren en spiegelen",
@@ -556,6 +566,21 @@
       "applyRotateTitle": "Draai over φ: {{om}}",
       "applyRotateInvalid": "Vul eerst een hoek in die niet nul is",
       "applyRotate": "Draai over φ"
+    },
+    "shapeKind": {
+      "Onbekend": "Onbekend — de toetsing weigert classificatie",
+      "GelasteIDubbelsymmetrisch": "Gelast I, dubbelsymmetrisch (kip toegestaan)",
+      "GelasteIMonosymmetrisch": "Gelast I, monosymmetrisch (geen kip)",
+      "Koker": "Koker (geen kip)",
+      "RondeBuis": "Ronde buis (geen kip)"
+    },
+    "snap": {
+      "hoek": "hoekpunt",
+      "midden": "midden",
+      "hart": "hart",
+      "zwaartepunt": "zwaartepunt",
+      "raster": "raster",
+      "vrij": "vrij"
     }
   },
   "block": {
@@ -904,6 +929,24 @@
         "uncracked": "ongescheurd",
         "referenceLegend": "E_c·I_c (vergelijkingswaarde)"
       }
+    },
+    "layers": {
+      "moment": {
+        "label": "Momentendekking",
+        "hint": "§9.2.1.3, figuur 9.2 — de benodigde trekkracht F_s (ná de verschuiving over a_l) naast de weerstandbiedende F_Rs van de staven die er werkelijk liggen, per zijde"
+      },
+      "dwarskracht": {
+        "label": "Dwarskrachtdekking",
+        "hint": "§6.2 — |V_Ed| naast V_Rd per snede, met de route die V_Rd leverde; V_Rd,c en V_Rd,s worden nergens opgeteld"
+      },
+      "scheurwijdte": {
+        "label": "Scheurwijdte",
+        "hint": "§7.3.4 — w_k per snede onder de frequente BGT-combinatie, naast w_max van tabel 7.1N; wordt per snede bij de rekenkern opgevraagd en staat daarom standaard uit"
+      },
+      "uc": {
+        "label": "Unity checks",
+        "hint": "De maatgevende unity check per snede over de andere drie lagen, als kleurbalk — groen ≤ 0,9, amber tot 1,0, rood daarboven"
+      }
     }
   },
   "profileThumbnail": {
@@ -951,7 +994,9 @@
       "copyHintAfter": ".",
       "beamCount": "{{aantal}}× staaf",
       "chooseProfile": "Profiel kiezen voor {{aantal}} staven…",
-      "chooseProfileTitle": "Wijs één profiel én materiaal toe aan alle geselecteerde staven"
+      "chooseProfileTitle": "Wijs één profiel én materiaal toe aan alle geselecteerde staven",
+      "ctrlKey": "Ctrl",
+      "deleteKey": "Delete"
     },
     "node": {
       "title": "Knoop {{id}}",
