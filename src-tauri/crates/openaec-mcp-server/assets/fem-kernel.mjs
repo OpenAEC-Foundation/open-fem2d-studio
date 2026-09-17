@@ -1271,7 +1271,11 @@ var Mesh = class _Mesh {
     const allPlateIds = (data.plateRegions || []).map((p) => p.id);
     const allSubNodeIds = (data.subNodes || []).map((sn) => sn.id);
     const allEdgeIds = (data.edges || []).map((e) => e.id);
-    const regularNodeIds = data.nodes.filter((n) => n.id < 1e3).map((n) => n.id);
+    const plaatKnoopIds = /* @__PURE__ */ new Set();
+    for (const p of data.plateRegions || []) {
+      for (const id of p.nodeIds) if (id >= 1e3) plaatKnoopIds.add(id);
+    }
+    const regularNodeIds = data.nodes.filter((n) => !plaatKnoopIds.has(n.id)).map((n) => n.id);
     mesh.nextNodeId = Math.max(...regularNodeIds, 0) + 1;
     mesh.nextElementId = Math.max(...allElementIds, 0) + 1;
     mesh.nextMaterialId = Math.max(...data.materials.map((m) => m.id), 10) + 1;
@@ -1282,8 +1286,8 @@ var Mesh = class _Mesh {
     mesh.nextLayerId = Math.max(...allLayerIds, 0) + 1;
     const allVertexIds = (data.plateVertices || []).map((v) => v.id);
     mesh.nextVertexId = Math.max(...allVertexIds, 0) + 1;
-    const plateNodeIds = data.nodes.filter((n) => n.id >= 1e3).map((n) => n.id);
-    mesh.nextPlateNodeId = plateNodeIds.length > 0 ? Math.max(...plateNodeIds) + 1 : 1e3;
+    const plateNodeIds = data.nodes.filter((n) => plaatKnoopIds.has(n.id)).map((n) => n.id);
+    mesh.nextPlateNodeId = Math.max(1e3, mesh.nextNodeId, ...plateNodeIds.map((id) => id + 1));
     return mesh;
   }
 };
@@ -12152,6 +12156,24 @@ var STEEL_SECTION_DIMS = {
   }
 };
 
+// src/components/fem/solver/grootsteVerplaatsing.ts
+function grootsteVerplaatsing(displacements, elements) {
+  let max = 0;
+  for (const d of displacements) {
+    const u = Math.hypot(d.ux, d.uz);
+    if (u > max) max = u;
+  }
+  for (const ef of elements) {
+    const n = ef.stations_mm?.length ?? 0;
+    if (n < 2 || ef.deflection?.length !== n || ef.axialDisp?.length !== n) continue;
+    for (let k = 0; k < n; k++) {
+      const u = Math.hypot(ef.axialDisp[k], ef.deflection[k]);
+      if (u > max) max = u;
+    }
+  }
+  return max;
+}
+
 // src/lib/normAanduidingen.ts
 var BIJLAGEN_GEVULD = ["NL"];
 var STANDAARD_BIJLAGE = "NL";
@@ -12636,7 +12658,6 @@ function combineResults(combo, perCase) {
     r.reactions.forEach((_, id) => reactionIds.add(id));
   }
   const displacements = /* @__PURE__ */ new Map();
-  let maxDisp = 0;
   for (const nid of nodeIds) {
     let ux = 0, uz = 0, ry = 0;
     for (const [caseId, factor] of combo.factors) {
@@ -12649,8 +12670,6 @@ function combineResults(combo, perCase) {
       ry += factor * d.ry;
     }
     displacements.set(nid, { ux, uz, ry });
-    const mag = Math.max(Math.abs(ux), Math.abs(uz));
-    if (mag > maxDisp) maxDisp = mag;
   }
   const reactions = /* @__PURE__ */ new Map();
   for (const rid of reactionIds) {
@@ -12807,6 +12826,7 @@ function combineResults(combo, perCase) {
     }
     if (plateElements.length === 0) plateElements = void 0;
   }
+  const maxDisp = grootsteVerplaatsing(displacements.values(), elements.values());
   return { displacements, reactions, elements, maxDisplacement: maxDisp, plateElements };
 }
 function staafExtremen(ef) {
@@ -17239,7 +17259,6 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
     indexById = /* @__PURE__ */ new Map();
     meshNodes.forEach((n, i) => indexById.set(n.id, i));
   }
-  let maxDisp = 0;
   for (const [uiId, meshId] of nodeIdMap) {
     const idx = indexById.get(meshId);
     if (idx === void 0) continue;
@@ -17249,7 +17268,6 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
     const ry = engineResult.displacements[base + 2] ?? 0;
     const ux = ux_m * 1e3, uz = uz_m * 1e3;
     displacements.set(uiId, { ux, uz, ry });
-    maxDisp = Math.max(maxDisp, Math.abs(ux), Math.abs(uz));
     const support = supports.find((s) => s.nodeId === uiId);
     if (support) {
       let fx = engineResult.reactions[base + 0] ?? 0;
@@ -17374,6 +17392,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
       ...segmentVeld ? { segmenten: segmentVeld } : {}
     });
   }
+  let maxDisp = grootsteVerplaatsing(displacements.values(), elements.values());
   let plateResults;
   if (plateInfo && plateInfo.length > 0) {
     plateResults = [];
@@ -17384,7 +17403,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
         const base = idx * 3;
         const ux = (engineResult.displacements[base + 0] ?? 0) * 1e3;
         const uz = (engineResult.displacements[base + 1] ?? 0) * 1e3;
-        maxDisp = Math.max(maxDisp, Math.abs(ux), Math.abs(uz));
+        maxDisp = Math.max(maxDisp, Math.hypot(ux, uz));
       }
       const mkRange = () => ({ min: Infinity, max: -Infinity });
       const ranges = {
