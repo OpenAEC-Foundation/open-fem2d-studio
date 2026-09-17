@@ -89,7 +89,15 @@ log("\n3. Inhoud per vertaling");
 // ligt daarom op de lengte, niet op een lijst van uitzonderingen.
 const GELIJK_TOEGESTAAN_TOT = 25;
 // Eigennamen en slogans die in elke taal letterlijk zo horen te staan.
-const GELIJK_MAG = new Set(["backstage.aboutPanel.tagline", "backstage.aboutPanel.stichting"]);
+// Daarnaast drie sleutels die alleen plaatshouders en een formule dragen
+// (issue #33): het tablabel van een windgeval "{{richting}} (c_pi = {{cpi}})"
+// en de formuleregels α_m en φ₀·α_h·α_m van de scheefstandafleiding. De
+// woorden zitten in de geneste sleutels; de formule is in elke taal dezelfde.
+const GELIJK_MAG = new Set([
+  "backstage.aboutPanel.tagline", "backstage.aboutPanel.stichting",
+  "common.wind.case.buildingTab", "common.loadCases.swayDerivation.alphaM",
+  "common.loadCases.swayDerivation.product",
+]);
 // Woorden die in een Duitse of Franse tekst alleen kunnen betekenen dat de
 // Nederlandse tekst is blijven staan. Plaatshouders ({{staaf}}) worden eerst
 // weggehaald: die heten in elke taal hetzelfde, want de code vult ze.

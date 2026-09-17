@@ -46,7 +46,8 @@ import {
 } from "../../lib/modelNaarSolverInput";
 // Doorsnedenaam en begin-/eindmaten van een verlopende staaf: dezelfde
 // keuring als de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
-import { doorsnedeNaam, verloopMaten } from "../../lib/verloopKeuze";
+import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
+import { vertaal } from "../../lib/vertaalbareTekst";
 import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
 // Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
 // Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
@@ -3260,7 +3261,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     // (verlopend)"), dezelfde schrijfwijze als het eigenschappenpaneel en het
     // rapport. Alleen het beginprofiel tonen zou de staaf op de tekening
     // prismatisch laten lijken.
-    const naam = doorsnedeNaam(b);
+    const naam = doorsnedeNaamVertaald(b, tCommon);
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
     const len = Math.hypot(dx, dy);
     // Ruwe schatting van de labelbreedte bij 9 px letterhoogte.
@@ -3327,7 +3328,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     ].join(" ");
     return (
       <polygon points={pts} className="fem-member-verloop" pointerEvents="none">
-        <title>{doorsnedeNaam(b)}</title>
+        <title>{doorsnedeNaamVertaald(b, tCommon)}</title>
       </polygon>
     );
   };
@@ -4721,7 +4722,7 @@ export default function FemCanvas(props: FemCanvasProps) {
               <div className="fem-controle-lijst">
                 {bevindingen.map((b, i) => (
                   <div key={`bev${i}`} className={`fem-controle-regel ${b.ernst}`}>
-                    <span className="fem-controle-tekst">{b.tekst}</span>
+                    <span className="fem-controle-tekst">{b.tekstVertaalbaar ? vertaal(tCommon, b.tekstVertaalbaar) : b.tekst}</span>
                     {b.herstel && (
                       <button
                         className="fem-controle-fix"

@@ -35,7 +35,8 @@ import type { ReinforcementCage } from "../../../lib/types/concrete/Reinforcemen
 import type { ReinforcementZones } from "../../../lib/types/concrete/ReinforcementZones";
 import type { StirrupZone } from "../../../lib/types/concrete/StirrupZone";
 import { ZONE_TOLERANTIE_MM, zoneGrenzenMm } from "../../../lib/betonZoneSneden";
-import { controleerKorf, maat, type Wapeningskorf } from "../wapeningskorf";
+import { controleerKorfMelding, maat, type Wapeningskorf } from "../wapeningskorf";
+import { vt, type VertaalbareTekst } from "../../../lib/vertaalbareTekst";
 
 /**
  * De twee WAPENINGSzijden, in de volgorde waarin de kern ze afloopt.
@@ -269,35 +270,62 @@ export function controleerZones(
   lengteMm: number,
   restKorf: Omit<Wapeningskorf, "korf" | "doorsnede">,
 ): string | null {
+  return controleerZonesMelding(zones, basis, doorsnede, lengteMm, restKorf)?.tekst ?? null;
+}
+
+/**
+ * `controleerZones` in vertaalbare vorm (issue #33): de zone-editor toont de
+ * melding in de gekozen taal; `tekst` is de Nederlandse melding.
+ */
+export function controleerZonesMelding(
+  zones: ReinforcementZones | undefined,
+  basis: ReinforcementCage,
+  doorsnede: ConcreteSectionInput,
+  lengteMm: number,
+  restKorf: Omit<Wapeningskorf, "korf" | "doorsnede">,
+): VertaalbareTekst | null {
   // Regel 1 — beide lijsten leeg is in orde; dat is het gedrag van vóór de
   // zones en er valt niets te controleren.
   if (zonesZijnLeeg(zones) || !zones) return null;
-  if (!(lengteMm > 0)) return "De staaflengte is nul; zonder lengte is er geen zone-indeling.";
+  if (!(lengteMm > 0)) {
+    return vt("check:concrete.zoneCheck.zeroLength", "De staaflengte is nul; zonder lengte is er geen zone-indeling.");
+  }
 
   // Regel 2 — elke zone heeft een positieve lengte en ligt binnen [0, L].
   const bereik = (
-    aanduiding: string,
+    aanduiding: VertaalbareTekst,
     x0: number,
     x1: number,
-  ): string | null => {
+  ): VertaalbareTekst | null => {
+    const a = aanduiding.tekst;
     if (!Number.isFinite(x0) || !Number.isFinite(x1)) {
-      return `${aanduiding}: de begin- of eindmaat is geen getal.`;
+      return vt("check:concrete.zoneCheck.notANumber", `${a}: de begin- of eindmaat is geen getal.`, { aanduiding });
     }
     if (!(x1 > x0)) {
-      return `${aanduiding}: het einde (${maat(x1)} mm) ligt niet voorbij het begin (${maat(x0)} mm).`;
+      return vt("check:concrete.zoneCheck.endBeforeStart",
+        `${a}: het einde (${maat(x1)} mm) ligt niet voorbij het begin (${maat(x0)} mm).`,
+        { aanduiding, eind: maat(x1), begin: maat(x0) });
     }
     if (x0 < -ZONE_TOLERANTIE_MM || x1 > lengteMm + ZONE_TOLERANTIE_MM) {
-      return `${aanduiding}: ${maat(x0)}…${maat(x1)} mm valt buiten de staaf van 0 tot ${maat(lengteMm)} mm.`;
+      return vt("check:concrete.zoneCheck.outsideMember",
+        `${a}: ${maat(x0)}…${maat(x1)} mm valt buiten de staaf van 0 tot ${maat(lengteMm)} mm.`,
+        { aanduiding, begin: maat(x0), eind: maat(x1), lengte: maat(lengteMm) });
     }
     return null;
   };
 
   for (const z of zones.longitudinal) {
-    const fout = bereik(`De ${ZIJDE_NAAM[z.side]}wapening ${rijTekst(z.row)}`, z.x_start_mm, z.x_end_mm);
+    const rij = rijTekst(z.row);
+    const aanduiding = vt(`check:concrete.zoneCheck.subject.longitudinal.${z.side}`,
+      `De ${ZIJDE_NAAM[z.side]}wapening ${rij.tekst}`, { rij });
+    const fout = bereik(aanduiding, z.x_start_mm, z.x_end_mm);
     if (fout) return fout;
   }
   for (const z of zones.stirrups) {
-    const fout = bereik(`De beugelzone Ø${maat(z.diameter_mm)}-${maat(z.spacing_mm)}`, z.x_start_mm, z.x_end_mm);
+    const aanduiding = vt("check:concrete.zoneCheck.subject.stirrupZone",
+      `De beugelzone Ø${maat(z.diameter_mm)}-${maat(z.spacing_mm)}`,
+      { diameter: maat(z.diameter_mm), afstand: maat(z.spacing_mm) });
+    const fout = bereik(aanduiding, z.x_start_mm, z.x_end_mm);
     if (fout) return fout;
   }
 
@@ -306,7 +334,9 @@ export function controleerZones(
   // stuk staaf apart benoemt, zegt daarmee wat er ligt.
   for (const z of zones.stirrups) {
     if (!(z.spacing_mm > 0) || !(z.diameter_mm > 0) || !(z.legs >= 1)) {
-      return `De beugelzone ${maat(z.x_start_mm)}…${maat(z.x_end_mm)} mm is onvolledig: s, Ø en het aantal benen moeten alle drie zijn ingevuld.`;
+      return vt("check:concrete.zoneCheck.stirrupZoneIncomplete",
+        `De beugelzone ${maat(z.x_start_mm)}…${maat(z.x_end_mm)} mm is onvolledig: s, Ø en het aantal benen moeten alle drie zijn ingevuld.`,
+        { begin: maat(z.x_start_mm), eind: maat(z.x_end_mm) });
     }
   }
 
@@ -316,11 +346,13 @@ export function controleerZones(
   for (const zijde of WAPENINGSZIJDEN) {
     const reeks = zones.longitudinal.filter((z) => z.side === zijde);
     if (reeks.length === 0) continue;
-    const fout = controleerAaneensluiting(`de ${ZIJDE_NAAM[zijde]}wapening`, reeks, lengteMm);
+    const fout = controleerAaneensluiting(
+      vt(`check:concrete.zoneCheck.series.longitudinal.${zijde}`, `de ${ZIJDE_NAAM[zijde]}wapening`), reeks, lengteMm);
     if (fout) return fout;
   }
   if (zones.stirrups.length > 0) {
-    const fout = controleerAaneensluiting("de beugelzones", zones.stirrups, lengteMm);
+    const fout = controleerAaneensluiting(
+      vt("check:concrete.zoneCheck.series.stirrups", "de beugelzones"), zones.stirrups, lengteMm);
     if (fout) return fout;
   }
 
@@ -331,20 +363,24 @@ export function controleerZones(
   const grenzen = zoneGrenzenMm(zones);
   for (let i = 0; i + 1 < grenzen.length; i++) {
     const x = 0.5 * (grenzen[i] + grenzen[i + 1]);
-    const fout = controleerKorf({
+    const fout = controleerKorfMelding({
       ...restKorf,
       doorsnede,
       korf: korfOpX(basis, zones, x),
     });
-    if (fout) return `Op x = ${maat(x)} mm past de wapening niet: ${fout}`;
+    if (fout) {
+      return vt("check:concrete.zoneCheck.cageDoesNotFitAt",
+        `Op x = ${maat(x)} mm past de wapening niet: ${fout.tekst}`, { x: maat(x), fout });
+    }
   }
   return null;
 }
 
-/** "3Ø16" of "geen staven" — voor de meldingen van de zonecontrole. */
-function rijTekst(rij: RebarRow): string {
-  if (rij.count <= 0 || rij.diameter_mm <= 0) return "zonder staven";
-  return `${rij.count}Ø${maat(rij.diameter_mm)}`;
+/** "3Ø16" of "zonder staven" — voor de meldingen van de zonecontrole. */
+function rijTekst(rij: RebarRow): VertaalbareTekst {
+  if (rij.count <= 0 || rij.diameter_mm <= 0) return vt("check:concrete.zoneCheck.noBars", "zonder staven");
+  const tekst = `${rij.count}Ø${maat(rij.diameter_mm)}`;
+  return vt("check:concrete.zoneCheck.bars", tekst, { rij: tekst });
 }
 
 /**
@@ -352,25 +388,34 @@ function rijTekst(rij: RebarRow): string {
  * beslaan samen precies [0, L].
  */
 function controleerAaneensluiting(
-  aanduiding: string,
+  reeksNaam: VertaalbareTekst,
   reeks: readonly { x_start_mm: number; x_end_mm: number }[],
   lengteMm: number,
-): string | null {
-  const op = [...reeks].sort((a, b) => a.x_start_mm - b.x_start_mm);
+): VertaalbareTekst | null {
+  const a = reeksNaam.tekst;
+  const op = [...reeks].sort((p, q) => p.x_start_mm - q.x_start_mm);
   if (Math.abs(op[0].x_start_mm) > ZONE_TOLERANTIE_MM) {
-    return `Bij ${aanduiding} begint de eerste zone op ${maat(op[0].x_start_mm)} mm; zij moet op 0 mm beginnen.`;
+    return vt("check:concrete.zoneCheck.firstZoneNotAtZero",
+      `Bij ${a} begint de eerste zone op ${maat(op[0].x_start_mm)} mm; zij moet op 0 mm beginnen.`,
+      { reeks: reeksNaam, begin: maat(op[0].x_start_mm) });
   }
   for (let i = 1; i < op.length; i++) {
     const gat = op[i].x_start_mm - op[i - 1].x_end_mm;
     if (Math.abs(gat) <= ZONE_TOLERANTIE_MM) continue;
     if (gat > 0) {
-      return `Bij ${aanduiding} zit een gat van ${maat(gat)} mm tussen ${maat(op[i - 1].x_end_mm)} en ${maat(op[i].x_start_mm)} mm. Een stuk zonder wapening is een zone met nul staven, geen gat.`;
+      return vt("check:concrete.zoneCheck.gap",
+        `Bij ${a} zit een gat van ${maat(gat)} mm tussen ${maat(op[i - 1].x_end_mm)} en ${maat(op[i].x_start_mm)} mm. Een stuk zonder wapening is een zone met nul staven, geen gat.`,
+        { reeks: reeksNaam, gat: maat(gat), van: maat(op[i - 1].x_end_mm), tot: maat(op[i].x_start_mm) });
     }
-    return `Bij ${aanduiding} overlappen twee zones tussen ${maat(op[i].x_start_mm)} en ${maat(op[i - 1].x_end_mm)} mm.`;
+    return vt("check:concrete.zoneCheck.overlap",
+      `Bij ${a} overlappen twee zones tussen ${maat(op[i].x_start_mm)} en ${maat(op[i - 1].x_end_mm)} mm.`,
+      { reeks: reeksNaam, van: maat(op[i].x_start_mm), tot: maat(op[i - 1].x_end_mm) });
   }
   const eind = op[op.length - 1].x_end_mm;
   if (Math.abs(eind - lengteMm) > ZONE_TOLERANTIE_MM) {
-    return `Bij ${aanduiding} eindigt de laatste zone op ${maat(eind)} mm; zij moet tot ${maat(lengteMm)} mm doorlopen.`;
+    return vt("check:concrete.zoneCheck.lastZoneShort",
+      `Bij ${a} eindigt de laatste zone op ${maat(eind)} mm; zij moet tot ${maat(lengteMm)} mm doorlopen.`,
+      { reeks: reeksNaam, eind: maat(eind), lengte: maat(lengteMm) });
   }
   return null;
 }

@@ -32,7 +32,11 @@ export type Windgebied = "I" | "II" | "III";
 export interface WindgebiedData {
   /** Basiswindsnelheid v_b,0 in m/s. */
   vb0: number;
-  /** Korte omschrijving voor de UI (welke regio's). */
+  /**
+   * Korte omschrijving (welke regio's), Nederlands. De interface toont
+   * `common:wind.regionOption.<gebied>` en `common:wind.regionSource`
+   * (issue #33); test-i18n-meldteksten houdt de Nederlandse vertaling gelijk.
+   */
   omschrijving: string;
   bron: string;
 }

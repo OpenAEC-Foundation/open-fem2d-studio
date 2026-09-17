@@ -234,7 +234,14 @@
     "assignThisSection": "Assign this cross-section to the member",
     "openEditor": "Open section editor…",
     "editorHint": "The editor opens in its own window. Whatever you save or choose there is assigned to the member with the steel grade above.",
-    "backToMaterial": "← Material"
+    "backToMaterial": "← Material",
+    "seriesLabel": {
+      "old": "{{reeks}} (old)",
+      "hollowHotFinished": "Hollow section, hot-finished (SHS/RHS, EN 10210)",
+      "circularHotFinished": "Circular hollow section, hot-finished (CHS, EN 10210)",
+      "angleEqual": "L equal-leg",
+      "angleUnequal": "L unequal-leg"
+    }
   },
   "connection": {
     "dof": {
@@ -581,6 +588,50 @@
       "zwaartepunt": "centroid",
       "raster": "grid",
       "vrij": "free"
+    },
+    "presets": {
+      "weldedI": {
+        "label": "Welded I",
+        "description": "Flanges 200×15, web 400×10 (h = 430)"
+      },
+      "box": {
+        "label": "Box",
+        "description": "Four plates, 200×200, walls 10 — closed cell (Bredt)"
+      },
+      "tee": {
+        "label": "T-section",
+        "description": "Flange 200×20 on a web 180×10"
+      },
+      "angle": {
+        "label": "Angle L",
+        "description": "Angle section 100×100×10, sharp corner"
+      },
+      "sfb": {
+        "label": "SFB beam",
+        "description": "Integrated floor beam: HEB 200 with bottom plate 400×15 — the floor rests on the plate edges"
+      },
+      "doubleUnp": {
+        "label": "2× UNP 200",
+        "description": "Two UNP 200 back to back — catalogue parts, mirrored about the z-axis"
+      }
+    },
+    "transform": {
+      "plateName": "Plate {{n}}",
+      "partName": "Part {{n}} ({{profiel}})",
+      "holePlace": {
+        "lijf": "in the web",
+        "flensBoven": "in the top flange",
+        "flensOnder": "in the bottom flange",
+        "wand": "in the tube wall",
+        "vlak": "in the plane"
+      },
+      "holeName": "Hole {{n}} ({{plaats}})",
+      "holeWebMovesVertically": "A hole in the web only moves up and down.",
+      "holeFlangeMovesSideways": "A hole in a flange only moves sideways.",
+      "holeTubeWallByAngle": "A hole in the tube wall is moved with the angle, not with Δy and Δz.",
+      "roundSlotNoRotation": "A round hole in the cross-section plane does not change when rotated.",
+      "holeThroughPlateNoRotation": "A hole through a plate is perpendicular to that plate and cannot be rotated.",
+      "holeWebNoMirror": "A hole in the web lies on the centreline and does not change when mirrored."
     }
   },
   "block": {
@@ -947,6 +998,64 @@
         "label": "Unity checks",
         "hint": "The governing unity check per section over the other three layers, as a colour bar — green ≤ 0.9, amber up to 1.0, red above"
       }
+    },
+    "cageCheck": {
+      "sectionPositive": "Cross-section dimensions must be positive.",
+      "webWidthPositive": "The web width b_w must be positive.",
+      "flangeThicknessPositive": "The flange thickness h_f must be positive.",
+      "webNarrowerThanFlange": "The web width b_w must be smaller than the flange width b_f.",
+      "flangeLeavesNoWeb": "The flange thickness h_f leaves no web within the height h.",
+      "coverNegative": "Cover and stirrup diameter must not be negative.",
+      "side": {
+        "Top": "top face",
+        "Bottom": "bottom face",
+        "Sides": "sides"
+      },
+      "sideCoverInvalid": "The cover on the {{zijde}} is {{waarde}} mm; that is not a dimension. Leave the field empty if this side follows the cover of the element.",
+      "noMainBars": "The cage contains no main reinforcement.",
+      "onlySideBars": "The cage only has side bars and no top or bottom reinforcement.",
+      "sideBarsNoDiameter": "{{aantal}} side bars per side are specified without a diameter; choose a bar diameter or set the number to 0.",
+      "bottomReinforcement": "Bottom reinforcement",
+      "topReinforcement": "Top reinforcement",
+      "rowWidthAtHeight": " (the section is {{breedte}} mm wide at z = {{z}} mm)",
+      "rowTooWide": "{{naam}} {{rij}} does not fit in the width: {{staal}} mm of steel in {{binnenmaat}} mm clear width{{waar}}.",
+      "topBottomOverlap": "Top and bottom reinforcement overlap in height.",
+      "sideBarsWidth": "The side bars {{rij}} per side do not fit next to each other: their centres are {{afstand}} mm apart while Ø{{diameter}} mm is needed.",
+      "sideBarsHeight": "The side bars {{rij}} per side do not fit in the height: they end up {{steek}} mm apart, less than their own Ø{{diameter}} mm.",
+      "stirrupSpacingPositive": "The stirrup spacing s must be greater than zero; leave the field empty if it is not specified.",
+      "legSpacingPositive": "The transverse spacing of the stirrup legs must be greater than zero; leave the field empty if it is not specified.",
+      "fywkPositive": "The yield strength f_ywk of the stirrups must be greater than zero; leave the field empty if it is not specified.",
+      "legsMin1": "The number of stirrup legs must be at least 1; leave the field empty if there are no stirrups.",
+      "stirrupDataWithoutStirrup": "Stirrup data are specified while there is no stirrup; choose a stirrup diameter or leave the stirrup data empty.",
+      "legSpacingTooLarge": "The transverse spacing of the stirrup legs is {{afstand}} mm, but at most {{ruimte}} mm fits between the outer leg axes."
+    },
+    "zoneCheck": {
+      "zeroLength": "The member length is zero; without a length there is no zone layout.",
+      "notANumber": "{{aanduiding}}: the start or end dimension is not a number.",
+      "endBeforeStart": "{{aanduiding}}: the end ({{eind}} mm) does not lie beyond the start ({{begin}} mm).",
+      "outsideMember": "{{aanduiding}}: {{begin}}…{{eind}} mm lies outside the member from 0 to {{lengte}} mm.",
+      "subject": {
+        "longitudinal": {
+          "Bottom": "The bottom reinforcement {{rij}}",
+          "Top": "The top reinforcement {{rij}}"
+        },
+        "stirrupZone": "The stirrup zone Ø{{diameter}}-{{afstand}}"
+      },
+      "stirrupZoneIncomplete": "The stirrup zone {{begin}}…{{eind}} mm is incomplete: s, Ø and the number of legs must all three be filled in.",
+      "series": {
+        "longitudinal": {
+          "Bottom": "the bottom reinforcement",
+          "Top": "the top reinforcement"
+        },
+        "stirrups": "the stirrup zones"
+      },
+      "cageDoesNotFitAt": "At x = {{x}} mm the reinforcement does not fit: {{fout}}",
+      "noBars": "without bars",
+      "bars": "{{rij}}",
+      "firstZoneNotAtZero": "For {{reeks}} the first zone starts at {{begin}} mm; it must start at 0 mm.",
+      "gap": "For {{reeks}} there is a gap of {{gat}} mm between {{van}} and {{tot}} mm. A length without reinforcement is a zone with zero bars, not a gap.",
+      "overlap": "For {{reeks}} two zones overlap between {{van}} and {{tot}} mm.",
+      "lastZoneShort": "For {{reeks}} the last zone ends at {{eind}} mm; it must continue to {{lengte}} mm."
     }
   },
   "profileThumbnail": {
@@ -1123,8 +1232,8 @@
       "thermal": "Temperature",
       "alphaSteel": "1.2·10⁻⁵ /K (steel)",
       "actions": "Actions",
-      "pressBefore": "Press",
-      "pressAfter": "to delete this load."
+      "pressBefore": "Press ",
+      "pressAfter": " to delete this load."
     },
     "plate": {
       "title": "Plate {{id}}",

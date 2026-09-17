@@ -188,7 +188,53 @@
     "btnClear": "Gegenereerde windlasten wissen",
     "btnGenerate": "Genereren",
     "beamType": "Staaftype",
-    "beamTypeAuto": "Automatisch — {{role}}"
+    "beamTypeAuto": "Automatisch — {{role}}",
+    "schema": {
+      "sectionAria": "Doorsnede van het spant, h = {{h}} m, d = {{d}} m",
+      "wallHeight": "gevel {{h}} m",
+      "beamTitle": "Staaf {{id}} — {{rol}}",
+      "windPerpendicular": "Wind haaks op het spant (het vlak in)",
+      "allDirections": "Alle windrichtingen (NEN-EN 1991-1-4 §7.3(3))",
+      "blockageAria": "Blokkering onder het dak: φ = {{phi}}",
+      "blockageEmpty": "φ = 0 — leeg",
+      "planAria": "Plattegrond, gebouwlengte {{b}} m, spanwijdte {{d}} m",
+      "innerFrameAt": "Tussenspant op {{afstand}} m van de kopgevel",
+      "planDims": "b = {{b}} m · h.o.h. {{hoh}} m"
+    },
+    "regionOption": {
+      "I": "Gebied I — kuststrook en Waddengebied (v_b,0 = 29,5 m/s)",
+      "II": "Gebied II — noordwestelijk binnenland (v_b,0 = 27,0 m/s)",
+      "III": "Gebied III — zuidoostelijk binnenland (v_b,0 = 24,5 m/s)"
+    },
+    "terrainOption": {
+      "0": "0 — zee, aan open zee blootgesteld kustgebied (leeshulp: “kustgebied”)",
+      "I": "I — meren, vlak gebied zonder obstakels",
+      "II": "II — lage begroeiing, losstaande obstakels (leeshulp: “onbebouwd”)",
+      "III": "III — dorpen, voorstedelijk gebied, bos (leeshulp: “bebouwd”)",
+      "IV": "IV — stedelijk gebied, gemiddelde gebouwhoogte > 15 m"
+    },
+    "case": {
+      "dir": {
+        "links": "van links",
+        "rechts": "van rechts",
+        "haaks": "haaks op het spant"
+      },
+      "down": "neerwaarts",
+      "up": "opwaarts",
+      "buildingTab": "{{richting}} (c_pi = {{cpi}})",
+      "cpnet": "c_p,net {{zin}}",
+      "cfDirection": "c_f {{zin}}, {{richting}}",
+      "cfBoth": "c_f {{zin}}, beide dakvlakken",
+      "cfLeft": "c_f {{zin}}, alleen linkerdakvlak",
+      "cfRight": "c_f {{zin}}, alleen rechterdakvlak",
+      "friction": "wrijving",
+      "columns": "kolommen",
+      "frictionColumns": "wrijving + kolommen",
+      "horizontal": "{{delen}}, {{richting}}",
+      "buildingName": "Wind {{deel}}",
+      "canopyName": "Wind vrijstaand dak {{deel}}"
+    },
+    "regionSource": "NEN-EN 1991-1-4/NB tabel NB.1"
   },
   "app": {
     "view": {
@@ -445,7 +491,33 @@
       "merge": "Voeg samen",
       "repaired": "Model hersteld",
       "repairAllTitle": "Voer alle herstelbare bevindingen uit — één stap in de historie",
-      "repairAll": "Herstel alles ({{n}})"
+      "repairAll": "Herstel alles ({{n}})",
+      "plateEdge": {
+        "openingOnPerimeterRoute": "de last staat op de rand van een opening (`openingId`), maar hij wordt hier gelezen door een route die alleen de omtrek van de plaat kent. Meld dit: het adres wordt bewust geweigerd in plaats van stil op de omtrek gelegd.",
+        "nameAndIndex": "de last noemt zowel een benoemde rand (`edge`) als een rand-index (`edgeIndex`). Geef er één: met twee adressen is niet te zeggen welke rand bedoeld is en vanaf welke hoek de posities tellen.",
+        "noEdge": "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar hoek i+1) of, bij een asgelijnde rechthoek, `edge`.",
+        "plateTooFewCorners": "de plaat heeft {{n}} hoeken; een rand bestaat pas vanaf drie.",
+        "indexMissing": "rand-index {{i}} bestaat niet: de plaat heeft {{n}} randen (edgeIndex 0 t/m {{max}}).",
+        "diagonal": "rand {{rand}} (edgeIndex {{i}}, hoek {{van}} → hoek {{naar}}) loopt niet langs de omtrek: de hoeken van deze rechthoek staan niet in omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met een benoemde rand (`edge`) of teken de plaat opnieuw in omtrekvolgorde.",
+        "unknownName": "\"{{edge}}\" is geen benoemde rand. Toegestaan: {{lijst}}.",
+        "nameOnPolygon": "een benoemde rand (\"{{naam}}\") bestaat alleen bij een asgelijnde rechthoek; deze plaat heeft {{n}} hoeken die geen asgelijnde rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een rand-index (`edgeIndex`: rand i loopt van hoek i naar hoek i+1).",
+        "openingAndName": "de last noemt zowel een opening (`openingId`) als een benoemde rand (`edge`). Een opening heeft geen benoemde randen; kies de rand met `edgeIndex` (rand j loopt van openingshoek j naar hoek j+1).",
+        "openingIdNotInteger": "`openingId` {{opening}} is geen geheel getal; geef het id van een opening van deze plaat.",
+        "plateHasNoOpenings": "de last staat op opening {{opening}}, maar deze plaat heeft geen openingen.",
+        "openingMissing": "opening {{opening}} bestaat niet op deze plaat. Aanwezig: {{lijst}}.",
+        "openingDuplicate": "opening {{opening}} komt {{aantal}} keer voor op deze plaat; het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.",
+        "openingTooFewCorners": "opening {{opening}} heeft {{n}} hoeken; een rand bestaat pas vanaf drie.",
+        "openingNoEdge": "de last noemt opening {{opening}} maar geen rand daarvan. Geef `edgeIndex` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m {{max}}).",
+        "openingIndexMissing": "rand-index {{i}} bestaat niet op opening {{opening}}: die opening heeft {{n}} randen (edgeIndex 0 t/m {{max}}).",
+        "openingEdgeZero": "rand {{rand}} van opening {{opening}} heeft lengte {{lengte}} mm en kan geen last dragen."
+      },
+      "plateLoad": {
+        "edgeLoad": "Randlast",
+        "pointLoad": "Puntlast",
+        "plateMissing": "{{soort}} {{last}} staat op plaat {{plaat}}, maar die plaat bestaat niet.",
+        "edgeInvalid": "{{soort}} {{last}} op plaat {{plaat}}: {{reden}}",
+        "pointNoPosition": "Puntlast {{last}} op plaat {{plaat}} heeft geen positie langs de rand. Geef de afstand vanaf de beginhoek op."
+      }
     },
     "grab": {
       "move": "Verplaatsen: ΔX = {{dx}} mm, ΔZ = {{dz}} mm",
@@ -626,7 +698,62 @@
     "creepDays": "d",
     "creepCement": "cement",
     "creepAnnexBFailedTitle": "Kruipcoëfficiënt volgens bijlage B niet bepaald",
-    "creepAnnexBFailedBody": "Staaf {{staaf}}: {{reden}} Deze staaf rekent zonder kruipcoëfficiënt."
+    "creepAnnexBFailedBody": "Staaf {{staaf}}: {{reden}} Deze staaf rekent zonder kruipcoëfficiënt.",
+    "swayDerivation": {
+      "footLowestSupport": "laagste oplegging, z = {{z}} mm",
+      "footLowestNode": "geen opleggingen in het model, dus de laagste knoop, z = {{z}} mm",
+      "heightDerivation": "h = {{h}} m — van de voet ({{voet}}) tot de bovenkant van de constructie (z = {{top}} mm). EN 1993-1-1 figuur 5.2 meet h vanaf het opleggingsniveau; EN 1992-1-1 §5.2(6) noemt het voor de schorende constructie de hoogte van het gebouw.",
+      "membersFallback": "m = 1 (terugval) — dit model bevat geen enkele staaf die steiler staat dan {{graden}}° met de horizontaal, dus er is geen kolomlijn te tellen. m = 1 geeft α_m = 1,00: de grootste waarde die de formule kan aannemen, en dus de veilige terugval.",
+      "columnLine": "({{n}}) x = {{x}} mm, staaf {{staven}}",
+      "membersDerived_one": "m = {{count}} — {{count}} kolomlijn: {{lijst}}. Een staaf telt als verticaal vanaf {{graden}}° met de horizontaal; staven die een knoop delen vormen samen één kolom, zodat een kolom door meerdere verdiepingen éénmaal telt.",
+      "membersDerived_other": "m = {{count}} — {{count}} kolomlijnen: {{lijst}}. Een staaf telt als verticaal vanaf {{graden}}° met de horizontaal; staven die een knoop delen vormen samen één kolom, zodat een kolom door meerdere verdiepingen éénmaal telt.",
+      "membersNote50Percent": "LET OP bij m: EN 1993-1-1 5.3.2(3)a telt alleen kolommen mee die minstens 50 % van de gemiddelde verticale kolomkracht dragen. Die krachten volgen uit de berekening en de berekening heeft φ nodig, dus dat criterium is hier niet toegepast — álle kolomlijnen tellen mee. Een licht belaste stijl hoort er met de hand uit: kleinere m geeft grotere α_m en dus grotere φ, de veilige kant.",
+      "wallsNotCounted": "Wandschijven tellen niet mee in m: een schijf schoort meestal in plaats van geschoord te worden, en meetellen zou m verhogen en φ verlagen. Draagt een wand hier wél verticaal mee, verhoog m dan met de hand.",
+      "base": {
+        "en1993": "φ₀ is de basiswaarde: φ₀ = 1/200.",
+        "en1992": "θ₀ is de basiswaarde. De Nederlandse nationale bijlage haalt de aanbevolen EN-waarde 1/200 door en schrijft 1/300 voor.",
+        "en1995": "φ = 0,005 rad voor h ≤ 5 m; deze norm kent geen losse basiswaarde."
+      },
+      "article": {
+        "en1992Base": "EN 1992-1-1 §5.2(5) + NB",
+        "given": "opgegeven waarde"
+      },
+      "en1995": {
+        "h": "de hoogte van de constructie of de lengte van het element, in m.",
+        "phiAbove5": "h > 5 m, dus φ = 0,005·√(5/h) = 0,005·√(5/{{h}}).",
+        "phiUpTo5": "h ≤ 5 m, dus φ = 0,005 rad. Deze norm kent geen α_m en geen ondergrens op de hoogtereductie."
+      },
+      "h": {
+        "en1992": "l is de hoogte van het gebouw; §5.2(6), geval 'effect op de schorende constructie'.",
+        "en1993": "h is de hoogte van de constructie, in meter (figuur 5.2)."
+      },
+      "alphaH": {
+        "upper": "α_h = 2/√h = 2/√{{h}} en wordt begrensd door de bovengrens 1,0.",
+        "lower": "α_h = 2/√h = 2/√{{h}} en wordt begrensd door de ondergrens 2/3.",
+        "within": "α_h = 2/√h = 2/√{{h}}, binnen 2/3 ≤ α_h ≤ 1,0."
+      },
+      "m": {
+        "en1992": "m is het aantal verticale elementen dat bijdraagt aan de horizontale kracht op de schorende constructie.",
+        "en1993": "m is het aantal kolommen in een rij (alleen die met N_Ed ≥ 50 % van het gemiddelde)."
+      },
+      "alphaM": "α_m = √(0,5·(1 + 1/m)) = √(0,5·(1 + 1/{{m}})).",
+      "product": "{{symbool}}₀ · α_h · α_m = {{a}} · {{b}} · {{c}}.",
+      "fixedExplain": "Vaste noemer uit de projectinstellingen; de reductiefactoren α_h en α_m van de norm zijn NIET toegepast. Dit is de basiswaarde en daarmee de veilige bovengrens.",
+      "warn": {
+        "notDerivable": "h en/of m zijn niet uit het model af te leiden (geen verticale staaf, of geen hoogte). Controleer ze en geef ze zo nodig zelf op.",
+        "noHeight": "De constructie heeft geen hoogte, dus α_h valt op zijn bovengrens 1,0. Een scheefstand op een vlak model is een keuze van de gebruiker en geen normvoorschrift.",
+        "noNormApplies": "Geen van de drie normen is op dit model van toepassing (alle staven hebben een vrij of onbekend materiaal). De vaste noemer blijft gelden: φ = 1/{{noemer}}.",
+        "normWithoutMaterial": "{{norm}} is gekozen, maar dit model bevat geen materiaal dat onder die norm valt (wel: {{wel}}).",
+        "governing": "Ongunstigste van {{lijst}}. Gekozen: {{gekozen}}."
+      },
+      "heading": {
+        "fixed": "Scheefstand: vaste noemer uit de projectinstellingen.",
+        "norm": "Scheefstand volgens {{norm}}."
+      },
+      "heightManual": "h is handmatig opgegeven: {{h}} m.",
+      "membersManual": "m is handmatig opgegeven: {{m}}.",
+      "directionBoth": "Richting: beide. Elke belastingcombinatie is doorgerekend met de scheefstand in +x én in −x, als twee varianten met de richting in de naam; de omhullende en de toetsing nemen per staaf de ongunstigste van de twee (EN 1993-1-1 5.3.2(2): de imperfectie in de meest ongunstige richting; 5.3.2(8): in alle relevante richtingen, één per keer)."
+    }
   },
   "tree": {
     "runToSeeResults": "Voer \"Berekenen\" uit om resultaten te zien.",
@@ -711,7 +838,13 @@
     "envelopeLeafTitle": "Toon enveloppe (alle combinaties)",
     "envelopeLeaf": "Enveloppe",
     "governingTitle": "Maatgevend voor minstens 1 element",
-    "noBars": "Geen staven in het model"
+    "noBars": "Geen staven in het model",
+    "timberFinalStiffness": {
+      "notCalculated": "Eindstijfheid hout niet doorgerekend",
+      "calculatedUls": "Eindstijfheid hout doorgerekend (UGT)",
+      "calculatedSls": "Eindstijfheid hout doorgerekend (BGT)"
+    },
+    "combinationNotUsed": "niet gebruikt"
   },
   "resultsOverlay": {
     "deflectionScale": "Vervormingsschaal: {{schaal}}×"
@@ -731,5 +864,10 @@
     "pointMoment": "momenten",
     "thermal": "temperatuurlasten",
     "edgeLoad": "randlasten"
+  },
+  "profileName": {
+    "weldedI": "{{voorvoegsel}}Gelast I {{maten}}",
+    "tapered": "{{begin}} → {{eind}} (verlopend)",
+    "invalidTaper": "{{begin}} → {{eind}} (ongeldig verloop)"
   }
 }

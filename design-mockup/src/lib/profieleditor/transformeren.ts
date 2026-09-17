@@ -22,6 +22,7 @@
  */
 import { profielLabel } from "./catalogus";
 import type { DoorsnedeOntwerp, Gat } from "./types";
+import { vt, type VertaalbareTekst } from "../vertaalbareTekst";
 
 export type Samenstelling = Extract<DoorsnedeOntwerp, { soort: "samenstelling" }>;
 export type GatOntwerp = Extract<DoorsnedeOntwerp, { soort: "gat" }>;
@@ -74,10 +75,18 @@ export function hartVan(o: Samenstelling, id: string): Punt2 | null {
 
 /** Naam waaronder een bouwsteen in het paneel staat, of null als hij er niet is. */
 export function naamVanBouwsteen(o: Samenstelling, id: string): string | null {
+  return naamVanBouwsteenTekst(o, id)?.tekst ?? null;
+}
+
+/** `naamVanBouwsteen` vertaalbaar, voor de gereedschapsbalk (issue #33). */
+export function naamVanBouwsteenTekst(o: Samenstelling, id: string): VertaalbareTekst | null {
   const i = o.lamellen.findIndex((x) => x.id === id);
-  if (i >= 0) return `Lamel ${i + 1}`;
+  if (i >= 0) return vt("check:profileEditor.transform.plateName", `Lamel ${i + 1}`, { n: i + 1 });
   const j = o.catalogusdelen.findIndex((x) => x.id === id);
-  if (j >= 0) return `Deel ${j + 1} (${profielLabel(o.catalogusdelen[j].profiel.naam)})`;
+  if (j >= 0) {
+    const profiel = profielLabel(o.catalogusdelen[j].profiel.naam);
+    return vt("check:profileEditor.transform.partName", `Deel ${j + 1} (${profiel})`, { n: j + 1, profiel });
+  }
   return null;
 }
 
@@ -159,28 +168,51 @@ export function roteer(
 /** Uitkomst van een gatbewerking: de nieuwe gaten en wat er niet kon. */
 export interface GatBewerking {
   gaten: Gat[];
-  /** Kort en concreet, of null als alles is uitgevoerd. */
+  /** Kort en concreet, of null als alles is uitgevoerd (Nederlands). */
   melding: string | null;
+  /** Dezelfde melding per reden, vertaalbaar; leeg als alles is uitgevoerd. */
+  meldingTeksten: VertaalbareTekst[];
 }
 
-/** Namen voor in een melding. */
-const PLAATS_NAAM: Record<Gat["plaats"], string> = {
-  lijf: "in het lijf",
-  flensBoven: "in de bovenflens",
-  flensOnder: "in de onderflens",
-  wand: "in de buiswand",
-  vlak: "in het vlak",
+/** Namen voor in een melding; Nederlands met de sleutel ernaast (issue #33). */
+const PLAATS_NAAM: Record<Gat["plaats"], VertaalbareTekst> = {
+  lijf: vt("check:profileEditor.transform.holePlace.lijf", "in het lijf"),
+  flensBoven: vt("check:profileEditor.transform.holePlace.flensBoven", "in de bovenflens"),
+  flensOnder: vt("check:profileEditor.transform.holePlace.flensOnder", "in de onderflens"),
+  wand: vt("check:profileEditor.transform.holePlace.wand", "in de buiswand"),
+  vlak: vt("check:profileEditor.transform.holePlace.vlak", "in het vlak"),
 };
 
 /** Naam waaronder een gat in het paneel staat. */
 export function naamVanGat(o: GatOntwerp, id: string): string | null {
-  const i = o.gaten.findIndex((g) => g.id === id);
-  return i >= 0 ? `Gat ${i + 1} (${PLAATS_NAAM[o.gaten[i].plaats]})` : null;
+  return naamVanGatTekst(o, id)?.tekst ?? null;
 }
 
-function meldingVan(redenen: string[]): string | null {
-  if (redenen.length === 0) return null;
-  return [...new Set(redenen)].join(" ");
+/** `naamVanGat` vertaalbaar, voor de gereedschapsbalk (issue #33). */
+export function naamVanGatTekst(o: GatOntwerp, id: string): VertaalbareTekst | null {
+  const i = o.gaten.findIndex((g) => g.id === id);
+  if (i < 0) return null;
+  const plaats = PLAATS_NAAM[o.gaten[i].plaats];
+  return vt("check:profileEditor.transform.holeName", `Gat ${i + 1} (${plaats.tekst})`, { n: i + 1, plaats });
+}
+
+/** De redenen waarom een gatbewerking niet (helemaal) kon, vertaalbaar. */
+const REDEN = {
+  lijfSchuift: vt("check:profileEditor.transform.holeWebMovesVertically", "Een gat in het lijf schuift alleen omhoog en omlaag."),
+  flensSchuift: vt("check:profileEditor.transform.holeFlangeMovesSideways", "Een gat in een flens schuift alleen zijwaarts."),
+  wandSchuift: vt("check:profileEditor.transform.holeTubeWallByAngle", "Een gat in de buiswand verplaats je met de hoek, niet met Δy en Δz."),
+  rondDraait: vt("check:profileEditor.transform.roundSlotNoRotation", "Een rond langsgat verandert niet door draaien."),
+  plaatDraait: vt("check:profileEditor.transform.holeThroughPlateNoRotation", "Een gat door een plaat staat loodrecht op die plaat en is niet te draaien."),
+  lijfSpiegelt: vt("check:profileEditor.transform.holeWebNoMirror", "Een gat in het lijf ligt op de hartlijn en verandert niet door spiegelen."),
+} as const;
+
+function bewerking(gaten: Gat[], redenen: VertaalbareTekst[]): GatBewerking {
+  const uniek = [...new Set(redenen)];
+  return {
+    gaten,
+    melding: uniek.length === 0 ? null : uniek.map((r) => r.tekst).join(" "),
+    meldingTeksten: uniek,
+  };
 }
 
 /**
@@ -193,25 +225,25 @@ export function verplaatsGaten(
   dy: number,
   dz: number,
 ): GatBewerking {
-  const redenen: string[] = [];
+  const redenen: VertaalbareTekst[] = [];
   const gaten = o.gaten.map((g) => {
     if (!hoort(doelId, g.id)) return g;
     switch (g.plaats) {
       case "lijf":
-        if (dy !== 0) redenen.push("Een gat in het lijf schuift alleen omhoog en omlaag.");
+        if (dy !== 0) redenen.push(REDEN.lijfSchuift);
         return dz === 0 ? g : { ...g, z: net(g.z + dz) };
       case "flensBoven":
       case "flensOnder":
-        if (dz !== 0) redenen.push("Een gat in een flens schuift alleen zijwaarts.");
+        if (dz !== 0) redenen.push(REDEN.flensSchuift);
         return dy === 0 ? g : { ...g, y: net(g.y + dy) };
       case "wand":
-        redenen.push("Een gat in de buiswand verplaats je met de hoek, niet met Δy en Δz.");
+        redenen.push(REDEN.wandSchuift);
         return g;
       case "vlak":
         return { ...g, y: net(g.y + dy), z: net(g.z + dz) };
     }
   });
-  return { gaten, melding: meldingVan(redenen) };
+  return bewerking(gaten, redenen);
 }
 
 /**
@@ -223,13 +255,13 @@ export function verplaatsGaten(
  * wordt gezegd in plaats van dat de knop niets lijkt te doen.
  */
 export function roteerGaten(o: GatOntwerp, doelId: string | null, graden: number): GatBewerking {
-  const redenen: string[] = [];
+  const redenen: VertaalbareTekst[] = [];
   const gaten = o.gaten.map((g) => {
     if (!hoort(doelId, g.id)) return g;
     switch (g.plaats) {
       case "vlak":
         if (g.vorm === "rond") {
-          redenen.push("Een rond langsgat verandert niet door draaien.");
+          redenen.push(REDEN.rondDraait);
           return g;
         }
         return { ...g, hoekGraden: normaliseerHoek(g.hoekGraden + graden) };
@@ -239,11 +271,11 @@ export function roteerGaten(o: GatOntwerp, doelId: string | null, graden: number
       case "lijf":
       case "flensBoven":
       case "flensOnder":
-        redenen.push("Een gat door een plaat staat loodrecht op die plaat en is niet te draaien.");
+        redenen.push(REDEN.plaatDraait);
         return g;
     }
   });
-  return { gaten, melding: meldingVan(redenen) };
+  return bewerking(gaten, redenen);
 }
 
 /**
@@ -254,13 +286,13 @@ export function roteerGaten(o: GatOntwerp, doelId: string | null, graden: number
  * dus staan; een gat in de buiswand spiegelt in zijn hoek (φ → 180° − φ).
  */
 export function spiegelGaten(o: GatOntwerp, doelId: string | null): GatBewerking {
-  const redenen: string[] = [];
+  const redenen: VertaalbareTekst[] = [];
   const spiegelY = (y: number) => net(o.basis.b - y);
   const gaten = o.gaten.map((g) => {
     if (!hoort(doelId, g.id)) return g;
     switch (g.plaats) {
       case "lijf":
-        redenen.push("Een gat in het lijf ligt op de hartlijn en verandert niet door spiegelen.");
+        redenen.push(REDEN.lijfSpiegelt);
         return g;
       case "flensBoven":
       case "flensOnder":
@@ -275,7 +307,7 @@ export function spiegelGaten(o: GatOntwerp, doelId: string | null): GatBewerking
         };
     }
   });
-  return { gaten, melding: meldingVan(redenen) };
+  return bewerking(gaten, redenen);
 }
 
 /** Spiegelt om de verticale lijn door `om` (y → −y om dat punt). */

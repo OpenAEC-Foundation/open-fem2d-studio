@@ -5,7 +5,8 @@
  */
 import i18next from "i18next";
 import { useTranslation } from "react-i18next";
-import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
+import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksLabel, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
+import { vertaalWaarde } from "../../lib/vertaalbareTekst";
 import {
   controleerGat,
   plaatsSleutel,
@@ -82,7 +83,7 @@ export default function GatPaneel({ ontwerp, onWijzig, geselecteerd, onSelecteer
             if (eerste) kiesProfiel(eerste);
           }}
         >
-          {REEKSEN.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          {REEKSEN.map((r) => <option key={r.id} value={r.id}>{vertaalWaarde(t, reeksLabel(r))}</option>)}
         </select>
         <select value={basis.naam} title={t("profileEditor.holes.sizeTitle")} onChange={(e) => kiesProfiel(e.target.value)}>
           {profielenVanReeks(reeks).map((n) => <option key={n} value={n}>{profielLabel(n)}</option>)}

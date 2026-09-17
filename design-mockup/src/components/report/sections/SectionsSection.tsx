@@ -28,7 +28,7 @@ import { zoekEigenDoorsnede } from "../../../lib/profieleditor/eigenDoorsnedenSt
 import EigenDoorsnedeTekening from "../../profieleditor/EigenDoorsnedeTekening";
 // Één bron voor de doorsnedenaam en de keuring van een verloop — dezelfde die
 // de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
-import { doorsnedeNaam, keurEindProfiel } from "../../../lib/verloopKeuze";
+import { doorsnedeNaamVertaald, keurEindProfiel } from "../../../lib/verloopKeuze";
 
 interface ProfileUse {
   profile: string;
@@ -334,7 +334,7 @@ export default function SectionsSection() {
                   doorsnede, want `bepaalVerloop` keurt op die velden. */}
               <h3 className="rpt-h3">
                 {profileEnd
-                  ? doorsnedeNaam({ material, profile, profileEnd })
+                  ? doorsnedeNaamVertaald({ material, profile, profileEnd }, t)
                   : eigen ? eigen.naam : profile}
               </h3>
               {verloopNoot}

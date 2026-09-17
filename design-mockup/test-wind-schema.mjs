@@ -7,6 +7,9 @@
 
 const React = await import("react");
 const { renderToStaticMarkup } = await import("react-dom/server");
+// De titels en maten van de tekening lopen via i18n (issue #33); de test leest
+// ze in het Nederlands, zoals hij ze altijd las.
+await import("./scripts/i18n-voor-tests.mjs");
 const { DoorsnedeSchema, PlattegrondSchema, KLEUR_DRUK, KLEUR_ZUIGING, ROL_KLEUR } =
   await import("./src/lib/wind/WindSchema.tsx");
 const { genereerWindbelasting, STANDAARD_WIND_INSTELLINGEN } =

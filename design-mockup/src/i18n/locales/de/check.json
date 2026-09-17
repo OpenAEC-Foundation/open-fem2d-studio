@@ -234,7 +234,14 @@
     "assignThisSection": "Diesen Querschnitt dem Stab zuweisen",
     "openEditor": "Profileditor öffnen…",
     "editorHint": "Der Editor öffnet sich in einem eigenen Fenster. Was Sie dort speichern oder wählen, landet mit der obigen Stahlsorte am Stab.",
-    "backToMaterial": "← Werkstoff"
+    "backToMaterial": "← Werkstoff",
+    "seriesLabel": {
+      "old": "{{reeks}} (alt)",
+      "hollowHotFinished": "Hohlprofil, warmgefertigt (SHS/RHS, EN 10210)",
+      "circularHotFinished": "Rundrohr, warmgefertigt (CHS, EN 10210)",
+      "angleEqual": "L gleichschenklig",
+      "angleUnequal": "L ungleichschenklig"
+    }
   },
   "connection": {
     "dof": {
@@ -581,6 +588,50 @@
       "zwaartepunt": "Schwerpunkt",
       "raster": "Raster",
       "vrij": "frei"
+    },
+    "presets": {
+      "weldedI": {
+        "label": "Geschweißtes I",
+        "description": "Gurte 200×15, Steg 400×10 (h = 430)"
+      },
+      "box": {
+        "label": "Kasten",
+        "description": "Vier Bleche, 200×200, Wanddicke 10 — geschlossene Zelle (Bredt)"
+      },
+      "tee": {
+        "label": "T-Profil",
+        "description": "Gurt 200×20 auf einem Steg 180×10"
+      },
+      "angle": {
+        "label": "Winkel L",
+        "description": "Winkelprofil 100×100×10, scharfkantig"
+      },
+      "sfb": {
+        "label": "SFB-Träger",
+        "description": "Deckengleicher Träger: HEB 200 mit Untergurtblech 400×15 — die Decke liegt auf den Blechrändern auf"
+      },
+      "doubleUnp": {
+        "label": "2× UNP 200",
+        "description": "Zwei UNP 200 Rücken an Rücken — Katalogprofile, an der z-Achse gespiegelt"
+      }
+    },
+    "transform": {
+      "plateName": "Blech {{n}}",
+      "partName": "Teil {{n}} ({{profiel}})",
+      "holePlace": {
+        "lijf": "im Steg",
+        "flensBoven": "im Obergurt",
+        "flensOnder": "im Untergurt",
+        "wand": "in der Rohrwand",
+        "vlak": "in der Ebene"
+      },
+      "holeName": "Loch {{n}} ({{plaats}})",
+      "holeWebMovesVertically": "Ein Loch im Steg lässt sich nur nach oben und unten verschieben.",
+      "holeFlangeMovesSideways": "Ein Loch im Gurt lässt sich nur seitlich verschieben.",
+      "holeTubeWallByAngle": "Ein Loch in der Rohrwand verschieben Sie über den Winkel, nicht über Δy und Δz.",
+      "roundSlotNoRotation": "Ein rundes Loch in der Querschnittsebene ändert sich durch Drehen nicht.",
+      "holeThroughPlateNoRotation": "Ein Loch durch ein Blech steht senkrecht auf diesem Blech und lässt sich nicht drehen.",
+      "holeWebNoMirror": "Ein Loch im Steg liegt auf der Mittellinie und ändert sich durch Spiegeln nicht."
     }
   },
   "block": {
@@ -947,6 +998,64 @@
         "label": "Ausnutzungsgrade",
         "hint": "Der maßgebende Ausnutzungsgrad je Schnitt über die anderen drei Ebenen, als Farbbalken — grün ≤ 0,9, orange bis 1,0, rot darüber"
       }
+    },
+    "cageCheck": {
+      "sectionPositive": "Die Querschnittsabmessungen müssen positiv sein.",
+      "webWidthPositive": "Die Stegbreite b_w muss positiv sein.",
+      "flangeThicknessPositive": "Die Flanschdicke h_f muss positiv sein.",
+      "webNarrowerThanFlange": "Die Stegbreite b_w muss kleiner sein als die Flanschbreite b_f.",
+      "flangeLeavesNoWeb": "Die Flanschdicke h_f lässt innerhalb der Höhe h keinen Steg übrig.",
+      "coverNegative": "Betondeckung und Bügeldurchmesser dürfen nicht negativ sein.",
+      "side": {
+        "Top": "Oberseite",
+        "Bottom": "Unterseite",
+        "Sides": "Seitenflächen"
+      },
+      "sideCoverInvalid": "Die Betondeckung ({{zijde}}) beträgt {{waarde}} mm; das ist kein Maß. Lassen Sie das Feld leer, wenn diese Seite der Betondeckung des Bauteils folgt.",
+      "noMainBars": "Der Korb enthält keine Hauptbewehrung.",
+      "onlySideBars": "Der Korb hat nur Seitenstäbe und keine obere oder untere Bewehrung.",
+      "sideBarsNoDiameter": "Es sind {{aantal}} Seitenstäbe je Seitenfläche ohne Durchmesser angegeben; wählen Sie einen Stabdurchmesser oder setzen Sie die Anzahl auf 0.",
+      "bottomReinforcement": "Untere Bewehrung",
+      "topReinforcement": "Obere Bewehrung",
+      "rowWidthAtHeight": " (der Querschnitt ist bei z = {{z}} mm {{breedte}} mm breit)",
+      "rowTooWide": "{{naam}} {{rij}} passt nicht in die Breite: {{staal}} mm Stahl in {{binnenmaat}} mm lichter Breite{{waar}}.",
+      "topBottomOverlap": "Obere und untere Bewehrung überlappen sich in der Höhe.",
+      "sideBarsWidth": "Die Seitenstäbe {{rij}} je Seitenfläche passen nicht nebeneinander: Ihre Achsen liegen {{afstand}} mm auseinander, nötig ist Ø{{diameter}} mm.",
+      "sideBarsHeight": "Die Seitenstäbe {{rij}} je Seitenfläche passen nicht in die Höhe: Sie liegen {{steek}} mm auseinander, weniger als ihr eigener Ø{{diameter}} mm.",
+      "stirrupSpacingPositive": "Der Bügelabstand s muss größer als null sein; lassen Sie das Feld leer, wenn er nicht angegeben ist.",
+      "legSpacingPositive": "Der Querabstand der Bügelschenkel muss größer als null sein; lassen Sie das Feld leer, wenn er nicht angegeben ist.",
+      "fywkPositive": "Die Streckgrenze f_ywk der Bügel muss größer als null sein; lassen Sie das Feld leer, wenn sie nicht angegeben ist.",
+      "legsMin1": "Die Anzahl der Bügelschenkel muss mindestens 1 sein; lassen Sie das Feld leer, wenn es keine Bügel gibt.",
+      "stirrupDataWithoutStirrup": "Es sind Bügeldaten angegeben, obwohl kein Bügel vorhanden ist; wählen Sie einen Bügeldurchmesser oder lassen Sie die Bügeldaten leer.",
+      "legSpacingTooLarge": "Der Querabstand der Bügelschenkel beträgt {{afstand}} mm, zwischen die äußeren Schenkelachsen passen aber höchstens {{ruimte}} mm."
+    },
+    "zoneCheck": {
+      "zeroLength": "Die Stablänge ist null; ohne Länge gibt es keine Zoneneinteilung.",
+      "notANumber": "{{aanduiding}}: Das Anfangs- oder Endmaß ist keine Zahl.",
+      "endBeforeStart": "{{aanduiding}}: Das Ende ({{eind}} mm) liegt nicht hinter dem Anfang ({{begin}} mm).",
+      "outsideMember": "{{aanduiding}}: {{begin}}…{{eind}} mm liegt außerhalb des Stabs von 0 bis {{lengte}} mm.",
+      "subject": {
+        "longitudinal": {
+          "Bottom": "Die untere Bewehrung {{rij}}",
+          "Top": "Die obere Bewehrung {{rij}}"
+        },
+        "stirrupZone": "Die Bügelzone Ø{{diameter}}-{{afstand}}"
+      },
+      "stirrupZoneIncomplete": "Die Bügelzone {{begin}}…{{eind}} mm ist unvollständig: s, Ø und die Anzahl der Schenkel müssen alle drei ausgefüllt sein.",
+      "series": {
+        "longitudinal": {
+          "Bottom": "der unteren Bewehrung",
+          "Top": "der oberen Bewehrung"
+        },
+        "stirrups": "den Bügelzonen"
+      },
+      "cageDoesNotFitAt": "Bei x = {{x}} mm passt die Bewehrung nicht: {{fout}}",
+      "noBars": "ohne Stäbe",
+      "bars": "{{rij}}",
+      "firstZoneNotAtZero": "Bei {{reeks}} beginnt die erste Zone bei {{begin}} mm; sie muss bei 0 mm beginnen.",
+      "gap": "Bei {{reeks}} liegt eine Lücke von {{gat}} mm zwischen {{van}} und {{tot}} mm. Ein Abschnitt ohne Bewehrung ist eine Zone mit null Stäben, keine Lücke.",
+      "overlap": "Bei {{reeks}} überlappen sich zwei Zonen zwischen {{van}} und {{tot}} mm.",
+      "lastZoneShort": "Bei {{reeks}} endet die letzte Zone bei {{eind}} mm; sie muss bis {{lengte}} mm reichen."
     }
   },
   "profileThumbnail": {
@@ -1123,8 +1232,8 @@
       "thermal": "Temperatur",
       "alphaSteel": "1,2·10⁻⁵ /K (Stahl)",
       "actions": "Aktionen",
-      "pressBefore": "Drücken Sie",
-      "pressAfter": "um diese Last zu löschen."
+      "pressBefore": "Drücken Sie ",
+      "pressAfter": ", um diese Last zu löschen."
     },
     "plate": {
       "title": "Platte {{id}}",

@@ -20,6 +20,7 @@ import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
 import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
 import { DEFAULT_N_STRIPS, DEFAULT_REINFORCEMENT_GRADE } from "../../lib/betonCheckBuilder";
+import { vt, type VertaalbareTekst } from "../../lib/vertaalbareTekst";
 
 export interface Wapeningskorf {
   /**
@@ -248,6 +249,13 @@ export const ZIJDE_LABEL: Record<CoverSide, string> = {
   Top: "bovenzijde",
   Bottom: "onderzijde",
   Sides: "zijkanten",
+};
+
+/** `ZIJDE_LABEL` vertaalbaar, voor de meldingen van `controleerKorfMelding`. */
+const ZIJDE_TEKST: Record<CoverSide, VertaalbareTekst> = {
+  Top: vt("check:concrete.cageCheck.side.Top", ZIJDE_LABEL.Top),
+  Bottom: vt("check:concrete.cageCheck.side.Bottom", ZIJDE_LABEL.Bottom),
+  Sides: vt("check:concrete.cageCheck.side.Sides", ZIJDE_LABEL.Sides),
 };
 
 /** Kort label voor de smalle invoerkolom. */
@@ -656,35 +664,48 @@ function zijstaafSpanMm(
  * aangeroepen. `null` = in orde.
  */
 export function controleerKorf(k: Wapeningskorf): string | null {
+  return controleerKorfMelding(k)?.tekst ?? null;
+}
+
+/**
+ * `controleerKorf` in vertaalbare vorm (issue #33): de editor toont de
+ * melding in de gekozen taal, `tekst` is de Nederlandse melding die
+ * `controleerKorf` teruggeeft (de bediening en de tests lezen die).
+ */
+export function controleerKorfMelding(k: Wapeningskorf): VertaalbareTekst | null {
   const { korf } = k;
   const d = k.doorsnede;
-  if (!(d.b_mm > 0) || !(d.h_mm > 0)) return "Doorsnedeafmetingen moeten positief zijn.";
+  if (!(d.b_mm > 0) || !(d.h_mm > 0)) return vt("check:concrete.cageCheck.sectionPositive", "Doorsnedeafmetingen moeten positief zijn.");
   if (d.shape !== "Rectangle") {
-    if (!(d.b_w_mm !== null && d.b_w_mm > 0)) return "De lijfbreedte b_w moet positief zijn.";
-    if (!(d.h_f_mm !== null && d.h_f_mm > 0)) return "De flensdikte h_f moet positief zijn.";
-    if (d.b_w_mm >= d.b_mm) return "De lijfbreedte b_w moet kleiner zijn dan de flensbreedte b_f.";
-    if (d.h_f_mm >= d.h_mm) return "De flensdikte h_f laat geen lijf over binnen de hoogte h.";
+    if (!(d.b_w_mm !== null && d.b_w_mm > 0)) return vt("check:concrete.cageCheck.webWidthPositive", "De lijfbreedte b_w moet positief zijn.");
+    if (!(d.h_f_mm !== null && d.h_f_mm > 0)) return vt("check:concrete.cageCheck.flangeThicknessPositive", "De flensdikte h_f moet positief zijn.");
+    if (d.b_w_mm >= d.b_mm) return vt("check:concrete.cageCheck.webNarrowerThanFlange", "De lijfbreedte b_w moet kleiner zijn dan de flensbreedte b_f.");
+    if (d.h_f_mm >= d.h_mm) return vt("check:concrete.cageCheck.flangeLeavesNoWeb", "De flensdikte h_f laat geen lijf over binnen de hoogte h.");
   }
-  if (korf.cover_mm < 0 || korf.stirrup_diameter_mm < 0) return "Dekking en beugeldiameter mogen niet negatief zijn.";
+  if (korf.cover_mm < 0 || korf.stirrup_diameter_mm < 0) return vt("check:concrete.cageCheck.coverNegative", "Dekking en beugeldiameter mogen niet negatief zijn.");
   // De dekking per zijde. Leeg mag — dat betekent "volg het element" — maar
   // wat er staat moet een maat zijn. Zelfde grens als `validate` in de kern.
   for (const zijde of ZIJDEN) {
     const eigen = zijdeVanKorf(korf, zijde).cover_mm;
     if (eigen === undefined || eigen === null) continue;
     if (!Number.isFinite(eigen) || eigen < 0) {
-      return `De dekking aan de ${ZIJDE_LABEL[zijde]} is ${eigen} mm; dat is geen maat. Laat het veld leeg als deze zijde de dekking van het element volgt.`;
+      return vt("check:concrete.cageCheck.sideCoverInvalid",
+        `De dekking aan de ${ZIJDE_LABEL[zijde]} is ${eigen} mm; dat is geen maat. Laat het veld leeg als deze zijde de dekking van het element volgt.`,
+        { zijde: ZIJDE_TEKST[zijde], waarde: String(eigen) });
     }
   }
   const leeg = (r: RebarRow) => r.count <= 0 || r.diameter_mm <= 0;
   const zij = zijstaafRij(korf);
   if (leeg(korf.top) && leeg(korf.bottom)) {
-    if (leeg(zij)) return "De korf bevat geen hoofdwapening.";
+    if (leeg(zij)) return vt("check:concrete.cageCheck.noMainBars", "De korf bevat geen hoofdwapening.");
     // Zijstaven worden verdeeld TUSSEN de onder- en de bovenrij, en §9.5.2(4)
     // eist in iedere hoek een staaf. Zonder die twee rijen is er geen korf.
-    return "De korf heeft alleen zijstaven en geen boven- of onderwapening.";
+    return vt("check:concrete.cageCheck.onlySideBars", "De korf heeft alleen zijstaven en geen boven- of onderwapening.");
   }
   if (zij.count > 0 && !(zij.diameter_mm > 0)) {
-    return `Er zijn ${zij.count} zijstaven per zijkant opgegeven zonder diameter; kies een staafdiameter of zet het aantal op 0.`;
+    return vt("check:concrete.cageCheck.sideBarsNoDiameter",
+      `Er zijn ${zij.count} zijstaven per zijkant opgegeven zonder diameter; kies een staafdiameter of zet het aantal op 0.`,
+      { aantal: zij.count });
   }
   // De breedte OP DE HOOGTE VAN DE RIJ, net als `ReinforcementCage::validate`
   // in de kern: in een T-lijf past minder dan in de flens. De rij ligt in de
@@ -692,22 +713,26 @@ export function controleerKorf(k: Wapeningskorf): string | null {
   // zijkanten; die twee dekkingen hoeven niet dezelfde te zijn.
   const cZij = dekkingVanZijdeMm(korf, "Sides");
   for (const [naam, rij, z] of [
-    ["Onderwapening", korf.bottom, asAfstandMm(korf, korf.bottom, "onder")],
-    ["Bovenwapening", korf.top, d.h_mm - asAfstandMm(korf, korf.top, "boven")],
+    [vt("check:concrete.cageCheck.bottomReinforcement", "Onderwapening"), korf.bottom, asAfstandMm(korf, korf.bottom, "onder")],
+    [vt("check:concrete.cageCheck.topReinforcement", "Bovenwapening"), korf.top, d.h_mm - asAfstandMm(korf, korf.top, "boven")],
   ] as const) {
     if (leeg(rij)) continue;
     const breedte = breedteOpHoogteMm(d, z);
     const binnenbreedte = breedte - 2 * (cZij + korf.stirrup_diameter_mm);
     const benodigd = rij.count * rij.diameter_mm;
     if (benodigd > binnenbreedte + 1e-9) {
-      const waar =
-        d.shape === "Rectangle" ? "" : ` (de doorsnede is op z = ${maat(z)} mm ${maat(breedte)} mm breed)`;
-      return `${naam} ${rijLabel(rij)} past niet in de breedte: ${maat(benodigd)} mm staal in ${maat(binnenbreedte)} mm binnenmaat${waar}.`;
+      const waar = d.shape === "Rectangle"
+        ? ""
+        : vt("check:concrete.cageCheck.rowWidthAtHeight", ` (de doorsnede is op z = ${maat(z)} mm ${maat(breedte)} mm breed)`,
+          { z: maat(z), breedte: maat(breedte) });
+      return vt("check:concrete.cageCheck.rowTooWide",
+        `${naam.tekst} ${rijLabel(rij)} past niet in de breedte: ${maat(benodigd)} mm staal in ${maat(binnenbreedte)} mm binnenmaat${typeof waar === "string" ? waar : waar.tekst}.`,
+        { naam, rij: rijLabel(rij), staal: maat(benodigd), binnenmaat: maat(binnenbreedte), waar });
     }
   }
   const onder = leeg(korf.bottom) ? 0 : asAfstandMm(korf, korf.bottom, "onder");
   const boven = leeg(korf.top) ? 0 : asAfstandMm(korf, korf.top, "boven");
-  if (onder + boven >= d.h_mm) return "Boven- en onderwapening overlappen elkaar in de hoogte.";
+  if (onder + boven >= d.h_mm) return vt("check:concrete.cageCheck.topBottomOverlap", "Boven- en onderwapening overlappen elkaar in de hoogte.");
 
   // De zijstaven: passen ze naast elkaar in de breedte en onder elkaar in de
   // hoogte? Geen normregel, zuivere meetkunde — zelfde grenzen als
@@ -718,42 +743,50 @@ export function controleerKorf(k: Wapeningskorf): string | null {
     for (const z of [zOnder, zBoven]) {
       const hartOpHart = breedteOpHoogteMm(d, z) - 2 * inzet;
       if (hartOpHart < zij.diameter_mm - 1e-9) {
-        return `De zijstaven ${rijLabel(zij)} per zijde passen niet naast elkaar: hun harten liggen ${maat(hartOpHart)} mm uit elkaar terwijl Ø${maat(zij.diameter_mm)} mm nodig is.`;
+        return vt("check:concrete.cageCheck.sideBarsWidth",
+          `De zijstaven ${rijLabel(zij)} per zijde passen niet naast elkaar: hun harten liggen ${maat(hartOpHart)} mm uit elkaar terwijl Ø${maat(zij.diameter_mm)} mm nodig is.`,
+          { rij: rijLabel(zij), afstand: maat(hartOpHart), diameter: maat(zij.diameter_mm) });
       }
     }
     const steek = (zBoven - zOnder) / (zij.count + 1);
     if (steek < zij.diameter_mm - 1e-9) {
-      return `De zijstaven ${rijLabel(zij)} per zijde passen niet in de hoogte: zij komen op ${maat(steek)} mm uit elkaar te liggen, minder dan hun eigen Ø${maat(zij.diameter_mm)} mm.`;
+      return vt("check:concrete.cageCheck.sideBarsHeight",
+        `De zijstaven ${rijLabel(zij)} per zijde passen niet in de hoogte: zij komen op ${maat(steek)} mm uit elkaar te liggen, minder dan hun eigen Ø${maat(zij.diameter_mm)} mm.`,
+        { rij: rijLabel(zij), steek: maat(steek), diameter: maat(zij.diameter_mm) });
     }
   }
 
   // De beugelvelden. Leeglaten mag — dat betekent "niet opgegeven" — maar wat
   // er staat moet een echte maat zijn. Zelfde grenzen als
   // `ReinforcementCage::validate` in de kern.
-  for (const [naam, waarde] of [
-    ["De beugelafstand s", korf.stirrup_spacing_mm],
-    ["De dwarsafstand van de beugelbenen", korf.stirrup_leg_spacing_mm],
-    ["De vloeigrens f_ywk van de beugels", korf.stirrup_fywk_mpa],
+  for (const [sleutel, naam, waarde] of [
+    ["stirrupSpacingPositive", "De beugelafstand s", korf.stirrup_spacing_mm],
+    ["legSpacingPositive", "De dwarsafstand van de beugelbenen", korf.stirrup_leg_spacing_mm],
+    ["fywkPositive", "De vloeigrens f_ywk van de beugels", korf.stirrup_fywk_mpa],
   ] as const) {
     if (waarde === undefined || waarde === null) continue;
-    if (!(waarde > 0)) return `${naam} moet groter dan nul zijn; laat het veld leeg als hij niet is opgegeven.`;
+    if (!(waarde > 0)) {
+      return vt(`check:concrete.cageCheck.${sleutel}`, `${naam} moet groter dan nul zijn; laat het veld leeg als hij niet is opgegeven.`);
+    }
   }
   if (korf.stirrup_legs !== undefined && korf.stirrup_legs !== null && korf.stirrup_legs < 1) {
-    return "Het aantal beugelbenen moet ten minste 1 zijn; laat het veld leeg als er geen beugels zijn.";
+    return vt("check:concrete.cageCheck.legsMin1", "Het aantal beugelbenen moet ten minste 1 zijn; laat het veld leeg als er geen beugels zijn.");
   }
   const beugelgegeven =
     (korf.stirrup_spacing_mm ?? null) !== null ||
     (korf.stirrup_legs ?? null) !== null ||
     (korf.stirrup_leg_spacing_mm ?? null) !== null;
   if (beugelgegeven && !(korf.stirrup_diameter_mm > 0)) {
-    return "Er zijn beugelgegevens opgegeven terwijl er geen beugel is; kies een beugeldiameter of laat de beugelgegevens leeg.";
+    return vt("check:concrete.cageCheck.stirrupDataWithoutStirrup", "Er zijn beugelgegevens opgegeven terwijl er geen beugel is; kies een beugeldiameter of laat de beugelgegevens leeg.");
   }
   const st = korf.stirrup_leg_spacing_mm;
   if (st !== undefined && st !== null && st > 0) {
     const bW = Math.min(...banden(d).map((b) => b.bMm));
     const ruimte = bW - 2 * cZij - korf.stirrup_diameter_mm;
     if (st > ruimte + 1e-9) {
-      return `De dwarsafstand van de beugelbenen is ${maat(st)} mm, maar tussen de buitenste beenassen past hoogstens ${maat(ruimte)} mm.`;
+      return vt("check:concrete.cageCheck.legSpacingTooLarge",
+        `De dwarsafstand van de beugelbenen is ${maat(st)} mm, maar tussen de buitenste beenassen past hoogstens ${maat(ruimte)} mm.`,
+        { afstand: maat(st), ruimte: maat(ruimte) });
     }
   }
   return null;

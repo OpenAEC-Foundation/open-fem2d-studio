@@ -234,7 +234,14 @@
     "assignThisSection": "Affecter cette section à la barre",
     "openEditor": "Ouvrir l'éditeur de profilés…",
     "editorHint": "L'éditeur s'ouvre dans sa propre fenêtre. Ce que vous y enregistrez ou choisissez est affecté à la barre avec la nuance d'acier ci-dessus.",
-    "backToMaterial": "← Matériau"
+    "backToMaterial": "← Matériau",
+    "seriesLabel": {
+      "old": "{{reeks}} (ancien)",
+      "hollowHotFinished": "Profil creux fini à chaud (SHS/RHS, EN 10210)",
+      "circularHotFinished": "Tube rond fini à chaud (CHS, EN 10210)",
+      "angleEqual": "L à ailes égales",
+      "angleUnequal": "L à ailes inégales"
+    }
   },
   "connection": {
     "dof": {
@@ -581,6 +588,50 @@
       "zwaartepunt": "centre de gravité",
       "raster": "grille",
       "vrij": "libre"
+    },
+    "presets": {
+      "weldedI": {
+        "label": "I soudé",
+        "description": "Semelles 200×15, âme 400×10 (h = 430)"
+      },
+      "box": {
+        "label": "Caisson",
+        "description": "Quatre plats, 200×200, parois 10 — cellule fermée (Bredt)"
+      },
+      "tee": {
+        "label": "Profil en T",
+        "description": "Semelle 200×20 sur une âme 180×10"
+      },
+      "angle": {
+        "label": "Cornière L",
+        "description": "Cornière 100×100×10, angle vif"
+      },
+      "sfb": {
+        "label": "Poutre SFB",
+        "description": "Poutre intégrée : HEB 200 avec platine inférieure 400×15 — le plancher repose sur les bords de la platine"
+      },
+      "doubleUnp": {
+        "label": "2× UNP 200",
+        "description": "Deux UNP 200 dos à dos — pièces du catalogue, symétriques par rapport à l'axe z"
+      }
+    },
+    "transform": {
+      "plateName": "Tôle {{n}}",
+      "partName": "Pièce {{n}} ({{profiel}})",
+      "holePlace": {
+        "lijf": "dans l'âme",
+        "flensBoven": "dans la semelle supérieure",
+        "flensOnder": "dans la semelle inférieure",
+        "wand": "dans la paroi du tube",
+        "vlak": "dans le plan"
+      },
+      "holeName": "Trou {{n}} ({{plaats}})",
+      "holeWebMovesVertically": "Un trou dans l'âme ne se déplace que vers le haut et vers le bas.",
+      "holeFlangeMovesSideways": "Un trou dans une semelle ne se déplace que latéralement.",
+      "holeTubeWallByAngle": "Un trou dans la paroi du tube se déplace avec l'angle, pas avec Δy et Δz.",
+      "roundSlotNoRotation": "Un trou rond dans le plan de la section ne change pas par rotation.",
+      "holeThroughPlateNoRotation": "Un trou à travers une tôle est perpendiculaire à cette tôle et ne peut pas être tourné.",
+      "holeWebNoMirror": "Un trou dans l'âme se trouve sur l'axe et ne change pas par symétrie."
     }
   },
   "block": {
@@ -947,6 +998,64 @@
         "label": "Taux de travail",
         "hint": "Le taux de travail déterminant par section sur les trois autres couches, en barre de couleur — vert ≤ 0,9, orange jusqu'à 1,0, rouge au-delà"
       }
+    },
+    "cageCheck": {
+      "sectionPositive": "Les dimensions de la section doivent être positives.",
+      "webWidthPositive": "La largeur d'âme b_w doit être positive.",
+      "flangeThicknessPositive": "L'épaisseur de table h_f doit être positive.",
+      "webNarrowerThanFlange": "La largeur d'âme b_w doit être inférieure à la largeur de table b_f.",
+      "flangeLeavesNoWeb": "L'épaisseur de table h_f ne laisse pas d'âme dans la hauteur h.",
+      "coverNegative": "L'enrobage et le diamètre des étriers ne doivent pas être négatifs.",
+      "side": {
+        "Top": "face supérieure",
+        "Bottom": "face inférieure",
+        "Sides": "faces latérales"
+      },
+      "sideCoverInvalid": "L'enrobage ({{zijde}}) vaut {{waarde}} mm ; ce n'est pas une dimension. Laissez le champ vide si ce côté suit l'enrobage de l'élément.",
+      "noMainBars": "La cage ne contient pas d'armatures principales.",
+      "onlySideBars": "La cage n'a que des barres latérales, sans armatures supérieures ni inférieures.",
+      "sideBarsNoDiameter": "{{aantal}} barres latérales par face sont indiquées sans diamètre ; choisissez un diamètre de barre ou mettez le nombre à 0.",
+      "bottomReinforcement": "Armatures inférieures",
+      "topReinforcement": "Armatures supérieures",
+      "rowWidthAtHeight": " (la section a une largeur de {{breedte}} mm à z = {{z}} mm)",
+      "rowTooWide": "{{naam}} {{rij}} ne tiennent pas dans la largeur : {{staal}} mm d'acier pour {{binnenmaat}} mm de largeur intérieure{{waar}}.",
+      "topBottomOverlap": "Les armatures supérieures et inférieures se chevauchent en hauteur.",
+      "sideBarsWidth": "Les barres latérales {{rij}} par face ne tiennent pas côte à côte : leurs axes sont à {{afstand}} mm l'un de l'autre alors que Ø{{diameter}} mm est nécessaire.",
+      "sideBarsHeight": "Les barres latérales {{rij}} par face ne tiennent pas dans la hauteur : elles se trouvent à {{steek}} mm l'une de l'autre, moins que leur propre Ø{{diameter}} mm.",
+      "stirrupSpacingPositive": "L'espacement des étriers s doit être supérieur à zéro ; laissez le champ vide s'il n'est pas indiqué.",
+      "legSpacingPositive": "L'espacement transversal des brins d'étrier doit être supérieur à zéro ; laissez le champ vide s'il n'est pas indiqué.",
+      "fywkPositive": "La limite d'élasticité f_ywk des étriers doit être supérieure à zéro ; laissez le champ vide si elle n'est pas indiquée.",
+      "legsMin1": "Le nombre de brins d'étrier doit être au moins 1 ; laissez le champ vide s'il n'y a pas d'étriers.",
+      "stirrupDataWithoutStirrup": "Des données d'étriers sont indiquées alors qu'il n'y a pas d'étrier ; choisissez un diamètre d'étrier ou laissez les données d'étriers vides.",
+      "legSpacingTooLarge": "L'espacement transversal des brins d'étrier vaut {{afstand}} mm, mais au plus {{ruimte}} mm tiennent entre les axes des brins extérieurs."
+    },
+    "zoneCheck": {
+      "zeroLength": "La longueur de la barre est nulle ; sans longueur, il n'y a pas de découpage en zones.",
+      "notANumber": "{{aanduiding}} : la cote de début ou de fin n'est pas un nombre.",
+      "endBeforeStart": "{{aanduiding}} : la fin ({{eind}} mm) ne se trouve pas au-delà du début ({{begin}} mm).",
+      "outsideMember": "{{aanduiding}} : {{begin}}…{{eind}} mm se trouve hors de la barre, de 0 à {{lengte}} mm.",
+      "subject": {
+        "longitudinal": {
+          "Bottom": "Les armatures inférieures {{rij}}",
+          "Top": "Les armatures supérieures {{rij}}"
+        },
+        "stirrupZone": "La zone d'étriers Ø{{diameter}}-{{afstand}}"
+      },
+      "stirrupZoneIncomplete": "La zone d'étriers {{begin}}…{{eind}} mm est incomplète : s, Ø et le nombre de brins doivent être renseignés tous les trois.",
+      "series": {
+        "longitudinal": {
+          "Bottom": "les armatures inférieures",
+          "Top": "les armatures supérieures"
+        },
+        "stirrups": "les zones d'étriers"
+      },
+      "cageDoesNotFitAt": "À x = {{x}} mm, les armatures ne tiennent pas : {{fout}}",
+      "noBars": "sans barres",
+      "bars": "{{rij}}",
+      "firstZoneNotAtZero": "Pour {{reeks}}, la première zone commence à {{begin}} mm ; elle doit commencer à 0 mm.",
+      "gap": "Pour {{reeks}}, il y a un vide de {{gat}} mm entre {{van}} et {{tot}} mm. Une longueur sans armatures est une zone à zéro barre, pas un vide.",
+      "overlap": "Pour {{reeks}}, deux zones se chevauchent entre {{van}} et {{tot}} mm.",
+      "lastZoneShort": "Pour {{reeks}}, la dernière zone se termine à {{eind}} mm ; elle doit aller jusqu'à {{lengte}} mm."
     }
   },
   "profileThumbnail": {
@@ -1123,8 +1232,8 @@
       "thermal": "Température",
       "alphaSteel": "1,2·10⁻⁵ /K (acier)",
       "actions": "Actions",
-      "pressBefore": "Appuyez sur",
-      "pressAfter": "pour supprimer cette charge."
+      "pressBefore": "Appuyez sur ",
+      "pressAfter": " pour supprimer cette charge."
     },
     "plate": {
       "title": "Plaque {{id}}",

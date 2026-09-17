@@ -9,7 +9,8 @@
  */
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
+import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksLabel, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
+import { vertaalWaarde } from "../../lib/vertaalbareTekst";
 import { herkenGeslotenCel } from "../../lib/profieleditor/geometrie";
 import { nieuwId } from "../../lib/profieleditor/id";
 import { PRESETS } from "../../lib/profieleditor/presets";
@@ -107,10 +108,10 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
               if (o.soort === "samenstelling") onWijzig(o);
               onSelecteer(null);
             }}
-            title={`${preset.label} — ${preset.omschrijving}`}
+            title={`${t(preset.labelSleutel)} — ${t(preset.omschrijvingSleutel)}`}
           >
             <OntwerpMiniatuur ontwerp={vorm} />
-            <span className="pe-preset-naam">{preset.label}</span>
+            <span className="pe-preset-naam">{t(preset.labelSleutel)}</span>
           </button>
         ))}
       </div>
@@ -187,7 +188,7 @@ export default function SamenstellingPaneel({ ontwerp, onWijzig, geselecteerd, o
                     if (p) zetDeel(d.id, { profiel: p });
                   }}
                 >
-                  {REEKSEN.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                  {REEKSEN.map((r) => <option key={r.id} value={r.id}>{vertaalWaarde(t, reeksLabel(r))}</option>)}
                 </select>
                 <select
                   value={d.profiel.naam}

@@ -150,6 +150,16 @@ import { bepaalOnbepaaldheidVanModel, type OnbepaaldheidUitkomst } from "./stati
 import { materiaalVanStaaf } from "./variantInvoer";
 import { plaatMateriaalSoort } from "./plaatMateriaal";
 import { kruipcoefficientVanStaaf } from "./kruipcoefficient";
+import { vt } from "./vertaalbareTekst";
+
+/**
+ * De koppen van de meldingen hieronder, voor de projectboom. De boom toonde
+ * de eerste zin van de melding, en die bleef in elke taal Nederlands
+ * (issue #33); de melding zelf is een rekenmelding en blijft Nederlands.
+ */
+const KOP_NIET_DOORGEREKEND = vt("common:tree.timberFinalStiffness.notCalculated", "Eindstijfheid hout niet doorgerekend");
+const KOP_DOORGEREKEND_UGT = vt("common:tree.timberFinalStiffness.calculatedUls", "Eindstijfheid hout doorgerekend (UGT)");
+const KOP_DOORGEREKEND_BGT = vt("common:tree.timberFinalStiffness.calculatedSls", "Eindstijfheid hout doorgerekend (BGT)");
 
 // ── k_def ─────────────────────────────────────────────────────────────────
 
@@ -393,7 +403,7 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
       betonPhiPerStaaf: new Map(),
       reden: "tweede orde",
       meldingen: [{
-        niveau: "waarschuwing", caseId: null,
+        niveau: "waarschuwing", caseId: null, kop: KOP_NIET_DOORGEREKEND,
         tekst:
           `Eindstijfheid hout niet doorgerekend. ${kop} Bij een tweede-orde-berekening ` +
           "schrijft 2.2.2(1)P (derde streepje) rekenwaarden voor die niet zijn aangepast " +
@@ -415,7 +425,7 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
       betonPhiPerStaaf: new Map(),
       reden: "k_def onbekend",
       meldingen: [{
-        niveau: "waarschuwing", caseId: null,
+        niveau: "waarschuwing", caseId: null, kop: KOP_NIET_DOORGEREKEND,
         tekst:
           `Eindstijfheid hout niet doorgerekend. ${kop} Voor ` +
           `${zonderKdef.map(groepTekst).join("; ")} is k_def niet bekend, en zonder k_def ` +
@@ -486,7 +496,7 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
     reden: "doorrekenen",
     meldingen: [
       {
-        niveau: "waarschuwing", caseId: null,
+        niveau: "waarschuwing", caseId: null, kop: KOP_DOORGEREKEND_UGT,
         tekst:
           `Eindstijfheid hout doorgerekend (UGT). ${kop} Elke UGT-combinatie is daarom ` +
           "ook doorgerekend in de eindtoestand, met per houtstaaf E_mean,fin = " +
@@ -500,7 +510,7 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
           (bijzonder.length > 0 ? ` ${bijzonder.join(" ")}` : ""),
       },
       {
-        niveau: "waarschuwing", caseId: null,
+        niveau: "waarschuwing", caseId: null, kop: KOP_DOORGEREKEND_BGT,
         tekst:
           "Eindstijfheid hout doorgerekend (BGT). In deze constructie met verschillend " +
           "kruipgedrag geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van EN 1995-1-1 " +

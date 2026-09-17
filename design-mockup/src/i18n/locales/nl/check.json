@@ -234,7 +234,14 @@
     "assignThisSection": "Deze doorsnede op de staaf zetten",
     "openEditor": "Profieleditor openen…",
     "editorHint": "De editor opent in een eigen venster. Wat je daar bewaart of kiest landt met de staalklasse hierboven op de staaf.",
-    "backToMaterial": "← Materiaal"
+    "backToMaterial": "← Materiaal",
+    "seriesLabel": {
+      "old": "{{reeks}} (oud)",
+      "hollowHotFinished": "Koker warmvervaardigd (SHS/RHS, EN 10210)",
+      "circularHotFinished": "Buis warmvervaardigd (CHS, EN 10210)",
+      "angleEqual": "L gelijkbenig",
+      "angleUnequal": "L ongelijkbenig"
+    }
   },
   "connection": {
     "dof": {
@@ -581,6 +588,50 @@
       "zwaartepunt": "zwaartepunt",
       "raster": "raster",
       "vrij": "vrij"
+    },
+    "presets": {
+      "weldedI": {
+        "label": "Gelaste I",
+        "description": "Flenzen 200×15, lijf 400×10 (h = 430)"
+      },
+      "box": {
+        "label": "Koker",
+        "description": "Vier platen, 200×200, wanden 10 — gesloten cel (Bredt)"
+      },
+      "tee": {
+        "label": "T-profiel",
+        "description": "Flens 200×20 op een lijf 180×10"
+      },
+      "angle": {
+        "label": "Hoek L",
+        "description": "Hoekprofiel 100×100×10, scherpe hoek"
+      },
+      "sfb": {
+        "label": "SFB-ligger",
+        "description": "Geïntegreerde ligger: HEB 200 met onderplaat 400×15 — de vloer rust op de plaatranden"
+      },
+      "doubleUnp": {
+        "label": "2× UNP 200",
+        "description": "Twee UNP 200 rug aan rug — catalogusdelen, gespiegeld om de z-as"
+      }
+    },
+    "transform": {
+      "plateName": "Lamel {{n}}",
+      "partName": "Deel {{n}} ({{profiel}})",
+      "holePlace": {
+        "lijf": "in het lijf",
+        "flensBoven": "in de bovenflens",
+        "flensOnder": "in de onderflens",
+        "wand": "in de buiswand",
+        "vlak": "in het vlak"
+      },
+      "holeName": "Gat {{n}} ({{plaats}})",
+      "holeWebMovesVertically": "Een gat in het lijf schuift alleen omhoog en omlaag.",
+      "holeFlangeMovesSideways": "Een gat in een flens schuift alleen zijwaarts.",
+      "holeTubeWallByAngle": "Een gat in de buiswand verplaats je met de hoek, niet met Δy en Δz.",
+      "roundSlotNoRotation": "Een rond langsgat verandert niet door draaien.",
+      "holeThroughPlateNoRotation": "Een gat door een plaat staat loodrecht op die plaat en is niet te draaien.",
+      "holeWebNoMirror": "Een gat in het lijf ligt op de hartlijn en verandert niet door spiegelen."
     }
   },
   "block": {
@@ -947,6 +998,64 @@
         "label": "Unity checks",
         "hint": "De maatgevende unity check per snede over de andere drie lagen, als kleurbalk — groen ≤ 0,9, amber tot 1,0, rood daarboven"
       }
+    },
+    "cageCheck": {
+      "sectionPositive": "Doorsnedeafmetingen moeten positief zijn.",
+      "webWidthPositive": "De lijfbreedte b_w moet positief zijn.",
+      "flangeThicknessPositive": "De flensdikte h_f moet positief zijn.",
+      "webNarrowerThanFlange": "De lijfbreedte b_w moet kleiner zijn dan de flensbreedte b_f.",
+      "flangeLeavesNoWeb": "De flensdikte h_f laat geen lijf over binnen de hoogte h.",
+      "coverNegative": "Dekking en beugeldiameter mogen niet negatief zijn.",
+      "side": {
+        "Top": "bovenzijde",
+        "Bottom": "onderzijde",
+        "Sides": "zijkanten"
+      },
+      "sideCoverInvalid": "De dekking aan de {{zijde}} is {{waarde}} mm; dat is geen maat. Laat het veld leeg als deze zijde de dekking van het element volgt.",
+      "noMainBars": "De korf bevat geen hoofdwapening.",
+      "onlySideBars": "De korf heeft alleen zijstaven en geen boven- of onderwapening.",
+      "sideBarsNoDiameter": "Er zijn {{aantal}} zijstaven per zijkant opgegeven zonder diameter; kies een staafdiameter of zet het aantal op 0.",
+      "bottomReinforcement": "Onderwapening",
+      "topReinforcement": "Bovenwapening",
+      "rowWidthAtHeight": " (de doorsnede is op z = {{z}} mm {{breedte}} mm breed)",
+      "rowTooWide": "{{naam}} {{rij}} past niet in de breedte: {{staal}} mm staal in {{binnenmaat}} mm binnenmaat{{waar}}.",
+      "topBottomOverlap": "Boven- en onderwapening overlappen elkaar in de hoogte.",
+      "sideBarsWidth": "De zijstaven {{rij}} per zijde passen niet naast elkaar: hun harten liggen {{afstand}} mm uit elkaar terwijl Ø{{diameter}} mm nodig is.",
+      "sideBarsHeight": "De zijstaven {{rij}} per zijde passen niet in de hoogte: zij komen op {{steek}} mm uit elkaar te liggen, minder dan hun eigen Ø{{diameter}} mm.",
+      "stirrupSpacingPositive": "De beugelafstand s moet groter dan nul zijn; laat het veld leeg als hij niet is opgegeven.",
+      "legSpacingPositive": "De dwarsafstand van de beugelbenen moet groter dan nul zijn; laat het veld leeg als hij niet is opgegeven.",
+      "fywkPositive": "De vloeigrens f_ywk van de beugels moet groter dan nul zijn; laat het veld leeg als hij niet is opgegeven.",
+      "legsMin1": "Het aantal beugelbenen moet ten minste 1 zijn; laat het veld leeg als er geen beugels zijn.",
+      "stirrupDataWithoutStirrup": "Er zijn beugelgegevens opgegeven terwijl er geen beugel is; kies een beugeldiameter of laat de beugelgegevens leeg.",
+      "legSpacingTooLarge": "De dwarsafstand van de beugelbenen is {{afstand}} mm, maar tussen de buitenste beenassen past hoogstens {{ruimte}} mm."
+    },
+    "zoneCheck": {
+      "zeroLength": "De staaflengte is nul; zonder lengte is er geen zone-indeling.",
+      "notANumber": "{{aanduiding}}: de begin- of eindmaat is geen getal.",
+      "endBeforeStart": "{{aanduiding}}: het einde ({{eind}} mm) ligt niet voorbij het begin ({{begin}} mm).",
+      "outsideMember": "{{aanduiding}}: {{begin}}…{{eind}} mm valt buiten de staaf van 0 tot {{lengte}} mm.",
+      "subject": {
+        "longitudinal": {
+          "Bottom": "De onderwapening {{rij}}",
+          "Top": "De bovenwapening {{rij}}"
+        },
+        "stirrupZone": "De beugelzone Ø{{diameter}}-{{afstand}}"
+      },
+      "stirrupZoneIncomplete": "De beugelzone {{begin}}…{{eind}} mm is onvolledig: s, Ø en het aantal benen moeten alle drie zijn ingevuld.",
+      "series": {
+        "longitudinal": {
+          "Bottom": "de onderwapening",
+          "Top": "de bovenwapening"
+        },
+        "stirrups": "de beugelzones"
+      },
+      "cageDoesNotFitAt": "Op x = {{x}} mm past de wapening niet: {{fout}}",
+      "noBars": "zonder staven",
+      "bars": "{{rij}}",
+      "firstZoneNotAtZero": "Bij {{reeks}} begint de eerste zone op {{begin}} mm; zij moet op 0 mm beginnen.",
+      "gap": "Bij {{reeks}} zit een gat van {{gat}} mm tussen {{van}} en {{tot}} mm. Een stuk zonder wapening is een zone met nul staven, geen gat.",
+      "overlap": "Bij {{reeks}} overlappen twee zones tussen {{van}} en {{tot}} mm.",
+      "lastZoneShort": "Bij {{reeks}} eindigt de laatste zone op {{eind}} mm; zij moet tot {{lengte}} mm doorlopen."
     }
   },
   "profileThumbnail": {
@@ -1123,8 +1232,8 @@
       "thermal": "Temperatuur",
       "alphaSteel": "1.2·10⁻⁵ /K (staal)",
       "actions": "Acties",
-      "pressBefore": "Druk",
-      "pressAfter": "om deze belasting te verwijderen."
+      "pressBefore": "Druk ",
+      "pressAfter": " om deze belasting te verwijderen."
     },
     "plate": {
       "title": "Plaat {{id}}",

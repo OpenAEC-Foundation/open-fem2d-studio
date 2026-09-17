@@ -188,7 +188,53 @@
     "btnClear": "Effacer les charges de vent générées",
     "btnGenerate": "Générer",
     "beamType": "Type de barre",
-    "beamTypeAuto": "Automatique — {{role}}"
+    "beamTypeAuto": "Automatique — {{role}}",
+    "schema": {
+      "sectionAria": "Coupe du portique, h = {{h}} m, d = {{d}} m",
+      "wallHeight": "mur {{h}} m",
+      "beamTitle": "Barre {{id}} — {{rol}}",
+      "windPerpendicular": "Vent perpendiculaire au portique (normal au plan)",
+      "allDirections": "Toutes les directions du vent (NEN-EN 1991-1-4 §7.3(3))",
+      "blockageAria": "Obstruction sous la toiture : φ = {{phi}}",
+      "blockageEmpty": "φ = 0 — vide",
+      "planAria": "Plan, longueur du bâtiment {{b}} m, portée {{d}} m",
+      "innerFrameAt": "Portique courant à {{afstand}} m du pignon",
+      "planDims": "b = {{b}} m · entraxe {{hoh}} m"
+    },
+    "regionOption": {
+      "I": "Zone I — bande côtière et région des Wadden (v_b,0 = 29,5 m/s)",
+      "II": "Zone II — intérieur du nord-ouest (v_b,0 = 27,0 m/s)",
+      "III": "Zone III — intérieur du sud-est (v_b,0 = 24,5 m/s)"
+    },
+    "terrainOption": {
+      "0": "0 — mer, zone côtière exposée à la haute mer (aide à la lecture AN : « côtier »)",
+      "I": "I — lacs, zone plate sans obstacles",
+      "II": "II — végétation basse, obstacles isolés (aide à la lecture AN : « non bâti »)",
+      "III": "III — villages, zone suburbaine, forêt (aide à la lecture AN : « bâti »)",
+      "IV": "IV — zone urbaine, hauteur moyenne des bâtiments > 15 m"
+    },
+    "case": {
+      "dir": {
+        "links": "de gauche",
+        "rechts": "de droite",
+        "haaks": "perpendiculaire au portique"
+      },
+      "down": "vers le bas",
+      "up": "vers le haut",
+      "buildingTab": "{{richting}} (c_pi = {{cpi}})",
+      "cpnet": "c_p,net {{zin}}",
+      "cfDirection": "c_f {{zin}}, {{richting}}",
+      "cfBoth": "c_f {{zin}}, les deux versants",
+      "cfLeft": "c_f {{zin}}, versant gauche seul",
+      "cfRight": "c_f {{zin}}, versant droit seul",
+      "friction": "frottement",
+      "columns": "poteaux",
+      "frictionColumns": "frottement + poteaux",
+      "horizontal": "{{delen}}, {{richting}}",
+      "buildingName": "Vent {{deel}}",
+      "canopyName": "Vent toiture isolée {{deel}}"
+    },
+    "regionSource": "NEN-EN 1991-1-4/AN tableau NB.1"
   },
   "app": {
     "view": {
@@ -445,7 +491,33 @@
       "merge": "Fusionner",
       "repaired": "Modèle réparé",
       "repairAllTitle": "Appliquer toutes les corrections possibles — une seule étape dans l'historique",
-      "repairAll": "Tout corriger ({{n}})"
+      "repairAll": "Tout corriger ({{n}})",
+      "plateEdge": {
+        "openingOnPerimeterRoute": "la charge se trouve sur le bord d'une ouverture (`openingId`), mais elle est lue ici par un chemin qui ne connaît que le contour de la plaque. Signalez-le : l'adresse est volontairement refusée plutôt que placée en silence sur le contour.",
+        "nameAndIndex": "la charge indique à la fois un bord nommé (`edge`) et un indice de bord (`edgeIndex`). N'en indiquez qu'un : avec deux adresses, on ne peut pas savoir quel bord est visé ni à partir de quel coin les positions sont comptées.",
+        "noEdge": "la charge n'indique aucun bord. Indiquez `edgeIndex` (le bord i va du coin i au coin i+1) ou, pour un rectangle aligné sur les axes, `edge`.",
+        "plateTooFewCorners": "la plaque a {{n}} coins ; un bord n'existe qu'à partir de trois coins.",
+        "indexMissing": "l'indice de bord {{i}} n'existe pas : la plaque a {{n}} bords (edgeIndex 0 à {{max}}).",
+        "diagonal": "le bord {{rand}} (edgeIndex {{i}}, coin {{van}} → coin {{naar}}) ne suit pas le contour : les coins de ce rectangle ne sont pas dans l'ordre du contour, cette paire de coins est donc une diagonale. Choisissez le bord par un bord nommé (`edge`) ou redessinez la plaque dans l'ordre du contour.",
+        "unknownName": "\"{{edge}}\" n'est pas un bord nommé. Autorisés : {{lijst}}.",
+        "nameOnPolygon": "un bord nommé (\"{{naam}}\") n'existe que pour un rectangle aligné sur les axes ; cette plaque a {{n}} coins qui ne forment pas un tel rectangle et elle est calculée comme un polygone. Choisissez à nouveau le bord par un indice de bord (`edgeIndex` : le bord i va du coin i au coin i+1).",
+        "openingAndName": "la charge indique à la fois une ouverture (`openingId`) et un bord nommé (`edge`). Une ouverture n'a pas de bords nommés ; choisissez le bord avec `edgeIndex` (le bord j va du coin j de l'ouverture au coin j+1).",
+        "openingIdNotInteger": "`openingId` {{opening}} n'est pas un nombre entier ; indiquez l'identifiant d'une ouverture de cette plaque.",
+        "plateHasNoOpenings": "la charge se trouve sur l'ouverture {{opening}}, mais cette plaque n'a pas d'ouvertures.",
+        "openingMissing": "l'ouverture {{opening}} n'existe pas sur cette plaque. Présentes : {{lijst}}.",
+        "openingDuplicate": "l'ouverture {{opening}} apparaît {{aantal}} fois sur cette plaque ; l'adresse est donc ambiguë. Donnez à chaque ouverture son propre identifiant.",
+        "openingTooFewCorners": "l'ouverture {{opening}} a {{n}} coins ; un bord n'existe qu'à partir de trois coins.",
+        "openingNoEdge": "la charge indique l'ouverture {{opening}} mais aucun de ses bords. Indiquez `edgeIndex` (le bord j va du coin j de l'ouverture au coin j+1 ; 0 à {{max}}).",
+        "openingIndexMissing": "l'indice de bord {{i}} n'existe pas sur l'ouverture {{opening}} : cette ouverture a {{n}} bords (edgeIndex 0 à {{max}}).",
+        "openingEdgeZero": "le bord {{rand}} de l'ouverture {{opening}} a une longueur de {{lengte}} mm et ne peut pas porter de charge."
+      },
+      "plateLoad": {
+        "edgeLoad": "Charge de bord",
+        "pointLoad": "Charge ponctuelle",
+        "plateMissing": "{{soort}} {{last}} se trouve sur la plaque {{plaat}}, mais cette plaque n'existe pas.",
+        "edgeInvalid": "{{soort}} {{last}} sur la plaque {{plaat}} : {{reden}}",
+        "pointNoPosition": "La charge ponctuelle {{last}} sur la plaque {{plaat}} n'a pas de position le long du bord. Indiquez la distance depuis le coin de départ."
+      }
     },
     "grab": {
       "move": "Déplacer : ΔX = {{dx}} mm, ΔZ = {{dz}} mm",
@@ -626,7 +698,62 @@
     "creepDays": "j",
     "creepCement": "ciment",
     "creepAnnexBFailedTitle": "Coefficient de fluage selon l'annexe B non déterminé",
-    "creepAnnexBFailedBody": "Barre {{staaf}} : {{reden}} Cette barre est calculée sans coefficient de fluage."
+    "creepAnnexBFailedBody": "Barre {{staaf}} : {{reden}} Cette barre est calculée sans coefficient de fluage.",
+    "swayDerivation": {
+      "footLowestSupport": "appui le plus bas, z = {{z}} mm",
+      "footLowestNode": "pas d'appuis dans le modèle, donc le nœud le plus bas, z = {{z}} mm",
+      "heightDerivation": "h = {{h}} m — du pied ({{voet}}) jusqu'au sommet de la structure (z = {{top}} mm). L'EN 1993-1-1 figure 5.2 mesure h à partir du niveau des appuis ; l'EN 1992-1-1 §5.2(6) l'appelle la hauteur du bâtiment pour la structure de contreventement.",
+      "membersFallback": "m = 1 (valeur de repli) — ce modèle ne contient aucune barre inclinée de plus de {{graden}}° sur l'horizontale, il n'y a donc aucune file de colonnes à compter. m = 1 donne α_m = 1,00 : la plus grande valeur que la formule peut prendre, et donc la valeur de repli sûre.",
+      "columnLine": "({{n}}) x = {{x}} mm, barre {{staven}}",
+      "membersDerived_one": "m = {{count}} — {{count}} file de colonnes : {{lijst}}. Une barre compte comme verticale à partir de {{graden}}° sur l'horizontale ; les barres qui partagent un nœud forment ensemble une colonne, de sorte qu'une colonne traversant plusieurs étages compte une fois.",
+      "membersDerived_other": "m = {{count}} — {{count}} files de colonnes : {{lijst}}. Une barre compte comme verticale à partir de {{graden}}° sur l'horizontale ; les barres qui partagent un nœud forment ensemble une colonne, de sorte qu'une colonne traversant plusieurs étages compte une fois.",
+      "membersNote50Percent": "ATTENTION pour m : l'EN 1993-1-1 5.3.2(3)a ne compte que les colonnes portant au moins 50 % de l'effort vertical moyen dans les colonnes. Ces efforts résultent du calcul et le calcul a besoin de φ, ce critère n'est donc pas appliqué ici — toutes les files de colonnes comptent. Un montant peu chargé doit être retiré manuellement : un m plus petit donne un α_m plus grand et donc un φ plus grand, du côté de la sécurité.",
+      "wallsNotCounted": "Les voiles ne comptent pas dans m : un voile contrevente généralement au lieu d'être contreventé, et le compter augmenterait m et diminuerait φ. Si un voile porte ici des charges verticales, augmentez m manuellement.",
+      "base": {
+        "en1993": "φ₀ est la valeur de base : φ₀ = 1/200.",
+        "en1992": "θ₀ est la valeur de base. L'annexe nationale néerlandaise supprime la valeur EN recommandée 1/200 et prescrit 1/300.",
+        "en1995": "φ = 0,005 rad pour h ≤ 5 m ; cette norme ne connaît pas de valeur de base distincte."
+      },
+      "article": {
+        "en1992Base": "EN 1992-1-1 §5.2(5) + AN",
+        "given": "valeur saisie"
+      },
+      "en1995": {
+        "h": "la hauteur de la structure ou la longueur de l'élément, en m.",
+        "phiAbove5": "h > 5 m, donc φ = 0,005·√(5/h) = 0,005·√(5/{{h}}).",
+        "phiUpTo5": "h ≤ 5 m, donc φ = 0,005 rad. Cette norme ne connaît ni α_m ni limite inférieure pour la réduction en hauteur."
+      },
+      "h": {
+        "en1992": "l est la hauteur du bâtiment ; §5.2(6), cas 'effet sur le système de contreventement'.",
+        "en1993": "h est la hauteur de la structure, en mètres (figure 5.2)."
+      },
+      "alphaH": {
+        "upper": "α_h = 2/√h = 2/√{{h}} et est limité par la borne supérieure 1,0.",
+        "lower": "α_h = 2/√h = 2/√{{h}} et est limité par la borne inférieure 2/3.",
+        "within": "α_h = 2/√h = 2/√{{h}}, dans 2/3 ≤ α_h ≤ 1,0."
+      },
+      "m": {
+        "en1992": "m est le nombre d'éléments verticaux contribuant à l'effort horizontal sur le système de contreventement.",
+        "en1993": "m est le nombre de colonnes dans une file (seulement celles avec N_Ed ≥ 50 % de la moyenne)."
+      },
+      "alphaM": "α_m = √(0,5·(1 + 1/m)) = √(0,5·(1 + 1/{{m}})).",
+      "product": "{{symbool}}₀ · α_h · α_m = {{a}} · {{b}} · {{c}}.",
+      "fixedExplain": "Dénominateur fixe issu des paramètres du projet ; les coefficients de réduction α_h et α_m de la norme ne sont PAS appliqués. C'est la valeur de base et donc la borne supérieure sûre.",
+      "warn": {
+        "notDerivable": "h et/ou m ne peuvent pas être déduits du modèle (aucune barre verticale, ou aucune hauteur). Vérifiez-les et saisissez-les vous-même si nécessaire.",
+        "noHeight": "La structure n'a pas de hauteur, α_h prend donc sa borne supérieure 1,0. Un défaut d'aplomb sur un modèle plat est un choix de l'utilisateur et non une exigence de la norme.",
+        "noNormApplies": "Aucune des trois normes ne s'applique à ce modèle (toutes les barres ont un matériau libre ou inconnu). Le dénominateur fixe reste valable : φ = 1/{{noemer}}.",
+        "normWithoutMaterial": "{{norm}} est choisie, mais ce modèle ne contient aucun matériau relevant de cette norme (il contient : {{wel}}).",
+        "governing": "Le plus défavorable de {{lijst}}. Retenu : {{gekozen}}."
+      },
+      "heading": {
+        "fixed": "Défaut d'aplomb : dénominateur fixe issu des paramètres du projet.",
+        "norm": "Défaut d'aplomb selon {{norm}}."
+      },
+      "heightManual": "h a été saisi manuellement : {{h}} m.",
+      "membersManual": "m a été saisi manuellement : {{m}}.",
+      "directionBoth": "Direction : les deux. Chaque combinaison de charges est calculée avec le défaut d'aplomb en +x et en −x, sous forme de deux variantes portant la direction dans leur nom ; l'enveloppe et la vérification retiennent, par barre, la plus défavorable des deux (EN 1993-1-1 5.3.2(2) : l'imperfection dans la direction la plus défavorable ; 5.3.2(8) : dans toutes les directions pertinentes, une à la fois)."
+    }
   },
   "tree": {
     "runToSeeResults": "Lancez « Calculer » pour voir les résultats.",
@@ -711,7 +838,13 @@
     "envelopeLeafTitle": "Afficher l'enveloppe (toutes les combinaisons)",
     "envelopeLeaf": "Enveloppe",
     "governingTitle": "Déterminant pour au moins 1 élément",
-    "noBars": "Aucune barre dans le modèle"
+    "noBars": "Aucune barre dans le modèle",
+    "timberFinalStiffness": {
+      "notCalculated": "Rigidité finale du bois non calculée",
+      "calculatedUls": "Rigidité finale du bois calculée (ELU)",
+      "calculatedSls": "Rigidité finale du bois calculée (ELS)"
+    },
+    "combinationNotUsed": "non utilisée"
   },
   "resultsOverlay": {
     "deflectionScale": "Échelle de déformée : {{schaal}}×"
@@ -731,5 +864,10 @@
     "pointMoment": "moments ponctuels",
     "thermal": "charges thermiques",
     "edgeLoad": "charges de bord"
+  },
+  "profileName": {
+    "weldedI": "{{voorvoegsel}}I soudé {{maten}}",
+    "tapered": "{{begin}} → {{eind}} (section variable)",
+    "invalidTaper": "{{begin}} → {{eind}} (variation de section invalide)"
   }
 }

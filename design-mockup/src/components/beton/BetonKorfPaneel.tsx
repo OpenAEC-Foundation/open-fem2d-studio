@@ -21,6 +21,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { vertaal } from "../../lib/vertaalbareTekst";
 import type { ConcreteClass } from "../../lib/types/concrete/ConcreteClass";
 import type { ExposureClassInfo } from "../../lib/types/concrete/ExposureClassInfo";
 import type { ReinforcementGrade } from "../../lib/types/concrete/ReinforcementGrade";
@@ -38,7 +39,7 @@ import {
 } from "./betonKern";
 import {
   STANDAARD_KORF,
-  controleerKorf,
+  controleerKorfMelding,
   korfSamenvatting,
   nl,
   nuttigeHoogteMm,
@@ -103,7 +104,8 @@ export default function BetonKorfPaneel({
     };
   }, []);
 
-  const geometrieFout = useMemo(() => controleerKorf(korf), [korf]);
+  const geometrieMelding = useMemo(() => controleerKorfMelding(korf), [korf]);
+  const geometrieFout = geometrieMelding ? vertaal(t, geometrieMelding) : null;
 
   // Diagram opvragen, met vertraging en bescherming tegen verouderde antwoorden.
   useEffect(() => {

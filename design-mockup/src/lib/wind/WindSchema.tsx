@@ -19,7 +19,8 @@
  * het rapport hetzelfde als in het venster. Assen: x naar rechts, z omhoog,
  * meters; het SVG-stelsel klapt z om.
  */
-import type { BeamLoadRole } from "../../components/fem/femTypes";
+import { useTranslation } from "react-i18next";
+import { BEAM_LOAD_ROLE_SLEUTEL, type BeamLoadRole } from "../../components/fem/femTypes";
 import type { VlakRegel, WindGeometrie, Windrichting } from "./windGenerator";
 import type { OverkappingDakvorm, OverkappingZone } from "./windEurocode";
 
@@ -79,6 +80,7 @@ export interface DoorsnedeSchemaProps {
 export function DoorsnedeSchema({
   geometrie: g, richting, regels = [], gevelhoogte_m = null, resultanten = [], breedtePx = 440,
 }: DoorsnedeSchemaProps) {
+  const { t } = useTranslation("common");
   const vrij = g.vrijstaand;
   // Onder het model: de gedachte gevel van een kap zonder gevel, of bij een
   // vrijstaand dak het stuk tussen het model en de opgegeven hoogte h.
@@ -141,7 +143,7 @@ export function DoorsnedeSchema({
       className="wgd-schema"
       viewBox={`0 0 ${breedtePx} ${hoogtePx.toFixed(0)}`}
       role="img"
-      aria-label={`Doorsnede van het spant, h = ${nl(g.h_m, 2)} m, d = ${nl(g.d_m, 2)} m`}
+      aria-label={t("wind.schema.sectionAria", { h: nl(g.h_m, 2), d: nl(g.d_m, 2) })}
     >
       <defs>
         <marker id="wgd-pijl" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
@@ -180,7 +182,7 @@ export function DoorsnedeSchema({
           <line x1={sx(g.xLinks_m)} y1={sy(minZ + gevel)} x2={sx(g.xLinks_m)} y2={y0} />
           <line x1={sx(g.xRechts_m)} y1={sy(minZ + gevel)} x2={sx(g.xRechts_m)} y2={y0} />
           <text x={sx(g.xLinks_m) - 6} y={(sy(minZ + gevel) + y0) / 2} fontSize="9" textAnchor="end" stroke="none" fill={ROL_KLEUR.gevelLinks}>
-            {`gevel ${nl(gevel, 2)} m`}
+            {t("wind.schema.wallHeight", { h: nl(gevel, 2) })}
           </text>
         </g>
       )}
@@ -195,7 +197,7 @@ export function DoorsnedeSchema({
           strokeLinecap="round"
           className={`wgd-staaf wgd-rol-${s.rol}`}
         >
-          <title>{`Staaf ${s.beamId} — ${s.rol}`}</title>
+          <title>{t("wind.schema.beamTitle", { id: s.beamId, rol: t(BEAM_LOAD_ROLE_SLEUTEL[s.rol]) })}</title>
         </line>
       ))}
 
@@ -211,7 +213,7 @@ export function DoorsnedeSchema({
           <circle r="7" fill="none" stroke={KLEUR_WIND} strokeWidth="1.8" />
           <line x1="-5" y1="-5" x2="5" y2="5" stroke={KLEUR_WIND} strokeWidth="1.8" />
           <line x1="-5" y1="5" x2="5" y2="-5" stroke={KLEUR_WIND} strokeWidth="1.8" />
-          <title>Wind haaks op het spant (het vlak in)</title>
+          <title>{t("wind.schema.windPerpendicular")}</title>
         </g>
       )}
 
@@ -219,7 +221,7 @@ export function DoorsnedeSchema({
         <g className="wgd-wind">
           <line x1={M.l - 50} y1={windY} x2={sx(minX) - 10} y2={windY} stroke={KLEUR_WIND} strokeWidth="2.2"
             markerStart="url(#wgd-pijl)" markerEnd="url(#wgd-pijl)" />
-          <title>Alle windrichtingen (NEN-EN 1991-1-4 §7.3(3))</title>
+          <title>{t("wind.schema.allDirections")}</title>
         </g>
       )}
 
@@ -271,6 +273,7 @@ export function DoorsnedeSchema({
  * goederen aan de lijzijde. De stapel is φ van de vrije hoogte onder het dak.
  */
 export function BlokkeringSchema({ phi, dakvorm, breedtePx = 300 }: { phi: number; dakvorm: OverkappingDakvorm; breedtePx?: number }) {
+  const { t } = useTranslation("common");
   const p = Math.max(0, Math.min(1, Number.isFinite(phi) ? phi : 0));
   const H = 78, grond = 64, dakZ = 22;
   const dak = (x0: number) => dakvorm === "lessenaar"
@@ -296,13 +299,13 @@ export function BlokkeringSchema({ phi, dakvorm, breedtePx = 300 }: { phi: numbe
   };
   return (
     <svg className="wgd-schema wgd-blokkering" viewBox={`0 0 ${breedtePx} ${H}`} role="img"
-      aria-label={`Blokkering onder het dak: φ = ${nl(p, 2)}`}>
+      aria-label={t("wind.schema.blockageAria", { phi: nl(p, 2) })}>
       <defs>
         <marker id="wgd-pijl3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M 0 0 L 8 4 L 0 8 z" fill="context-stroke" />
         </marker>
       </defs>
-      {paneel(30, 0, "φ = 0 — leeg")}
+      {paneel(30, 0, t("wind.schema.blockageEmpty"))}
       {paneel(breedtePx / 2 + 28, p, `φ = ${nl(p, 2)}`)}
     </svg>
   );
@@ -332,6 +335,7 @@ export function PlattegrondSchema({
   gebouwlengte_m: b, d_m: d, hoh_m, positie, afstandTotKopgevel_m, richtingLinks, richtingRechts, richtingHaaks,
   e_m, vrijstaand, breedtePx = 440,
 }: PlattegrondSchemaProps) {
+  const { t } = useTranslation("common");
   const M = { l: 40, r: 40, t: 26, b: 22 };
   const tekenW = breedtePx - M.l - M.r;
   const schaal = Math.min(tekenW / Math.max(b, 0.1), 110 / Math.max(d, 0.1));
@@ -365,7 +369,7 @@ export function PlattegrondSchema({
   }
   return (
     <svg className="wgd-schema" viewBox={`0 0 ${breedtePx} ${hoogtePx.toFixed(0)}`} role="img"
-      aria-label={`Plattegrond, gebouwlengte ${nl(b, 1)} m, spanwijdte ${nl(d, 1)} m`}>
+      aria-label={t("wind.schema.planAria", { b: nl(b, 1), d: nl(d, 1) })}>
       <defs>
         <marker id="wgd-pijl2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M 0 0 L 8 4 L 0 8 z" fill="context-stroke" />
@@ -391,7 +395,7 @@ export function PlattegrondSchema({
         <line key={y} x1={sx(y)} y1={y0} x2={sx(y)} y2={y0 + hPx} stroke="var(--theme-text-faint, #999)" strokeWidth="0.8" className="wgd-spant" />
       ))}
       <line x1={sx(ditSpant)} y1={y0 - 4} x2={sx(ditSpant)} y2={y0 + hPx + 4} stroke="var(--theme-accent, #d97706)" strokeWidth="3" strokeLinecap="round" className="wgd-dit-spant">
-        <title>{positie === "kopgevelspant" ? "Kopgevelspant" : `Tussenspant op ${nl(ditSpant, 1)} m van de kopgevel`}</title>
+        <title>{positie === "kopgevelspant" ? t("wind.positionGable") : t("wind.schema.innerFrameAt", { afstand: nl(ditSpant, 1) })}</title>
       </line>
       {/* Windrichtingen: links/rechts in het vlak van het spant (van onder en boven in de plattegrond), haaks langs de lengte */}
       {richtingLinks && (
@@ -404,7 +408,7 @@ export function PlattegrondSchema({
         <line x1={x0 - 30} y1={y0 + hPx / 2} x2={x0 - 6} y2={y0 + hPx / 2} stroke={KLEUR_WIND} strokeWidth="2" markerEnd="url(#wgd-pijl2)" className="wgd-wind" />
       )}
       <g fill="var(--theme-text-muted, #666)" fontSize="9">
-        <text x={x0 + wPx / 2} y={y0 + hPx + 18} textAnchor="middle">{`b = ${nl(b, 1)} m · h.o.h. ${nl(hoh_m, 2)} m`}</text>
+        <text x={x0 + wPx / 2} y={y0 + hPx + 18} textAnchor="middle">{t("wind.schema.planDims", { b: nl(b, 1), hoh: nl(hoh_m, 2) })}</text>
         <text x={x0 + wPx + 6} y={y0 + hPx / 2 + 3}>{`d = ${nl(d, 1)} m`}</text>
         {positie === "tussenspant" && (
           <text x={sx(ditSpant)} y={y0 - 8} textAnchor="middle" fill="var(--theme-accent, #d97706)">{`${nl(ditSpant, 1)} m`}</text>

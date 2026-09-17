@@ -54,7 +54,7 @@ import { gradenTekst, richtingssprongNabij } from "../../lib/referentierichting"
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
 // De doorsnedenaam van een staaf komt uit één plaats — dezelfde keuring als de
 // solver en de rekenkern gebruiken; zie lib/verloopKeuze.
-import { doorsnedeNaam, verloopMaten } from "../../lib/verloopKeuze";
+import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import AansluitingKeuze from "./AansluitingKeuze";
 
 interface SectionProps {
@@ -275,7 +275,7 @@ function MultiProperties({ selection, beams, updateBeams }: {
           <Section title={t("props.beam.crossSection")}>
             {rijen.map((r) => (
               <Row key={`${r.profile}|${r.profileEnd ?? ""}|${r.material}`} label={t("props.multi.beamCount", { aantal: r.ids.length })}>
-                <code>{doorsnedeNaam(r)} — {r.material}</code>
+                <code>{doorsnedeNaamVertaald(r, t)} — {r.material}</code>
               </Row>
             ))}
             <button
@@ -1041,7 +1041,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             voorgeselecteerd; Toepassen schrijft beide velden in één keer. */}
         <Section title={t("props.beam.crossSection")}>
           <Row label={t("props.beam.profile")}>
-            <code>{doorsnedeNaam(beam)} — {material}</code>
+            <code>{doorsnedeNaamVertaald(beam, t)} — {material}</code>
           </Row>
           {/* VERLOPEND PROFIEL: begin én eind, met de maten erbij. Staat er
               alleen bij een staaf die werkelijk verloopt; bij een prismatische
@@ -1698,7 +1698,9 @@ function LoadProperties({
 
         <Section title={t("props.load.actions")} defaultOpen={false}>
           <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
-            {t("props.load.pressBefore")} <kbd>{t("props.multi.deleteKey")}</kbd> {t("props.load.pressAfter")}
+            {/* De spaties rond de toets staan in de vertaling zelf: het Duits
+                zet er een komma achter ("Entf, um …"), zonder spatie ervoor. */}
+            {t("props.load.pressBefore")}<kbd>{t("props.multi.deleteKey")}</kbd>{t("props.load.pressAfter")}
           </div>
         </Section>
       </div>

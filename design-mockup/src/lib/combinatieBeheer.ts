@@ -91,6 +91,7 @@
  * `openCombinatieStaat`, zodat app en MCP niet uit elkaar kunnen lopen.
  */
 import type { Load, LoadCase } from "../components/fem/femTypes";
+import type { VertaalbareTekst } from "./vertaalbareTekst";
 import {
   defaultCombinations,
   soortVanCombinatie,
@@ -984,6 +985,12 @@ export interface GevalMelding {
   /** Het geval waar de melding over gaat; null = het model als geheel. */
   caseId: number | null;
   tekst: string;
+  /**
+   * De kop van de melding voor de projectboom, vertaalbaar (issue #33). De
+   * boom toont anders de eerste zin van `tekst`, en die is Nederlands. De
+   * Nederlandse vorm van de kop is die eerste zin, zonder punt.
+   */
+  kop?: VertaalbareTekst;
   /**
    * De combinaties zelf zijn het probleem, en "Vervang door
    * standaardcombinaties" lost het op. De interface toont die actie dan ook.

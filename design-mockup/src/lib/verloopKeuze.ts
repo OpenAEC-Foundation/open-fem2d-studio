@@ -23,7 +23,8 @@ import {
   type VerloopMaten,
   type VerlopendeDoorsnede,
 } from "./sectionResolver";
-import { isEigenProfiel } from "./profieleditor/eigenDoorsnedenStore";
+import { EIGEN_PREFIX, isEigenProfiel } from "./profieleditor/eigenDoorsnedenStore";
+import { vertaalWaarde, vt, type VertaalbareTekst, type Vertaalfunctie } from "./vertaalbareTekst";
 
 /** Uitkomst van de keuring van één gekozen eindprofiel. */
 export type EindProfielKeuring =
@@ -107,13 +108,59 @@ export function doorsnedeNaam(b: {
   profile?: string;
   profileEnd?: string;
 }): string {
+  const w = doorsnedeNaamTekst(b);
+  return typeof w === "string" ? w : w.tekst;
+}
+
+/**
+ * Het voorvoegsel van de naam die `verloopSplitsen.gelasteINaam` aan een
+ * gelaste tussendoorsnede geeft. De naam is de sleutel in de bibliotheek en
+ * blijft dus Nederlands; alleen de weergave wordt vertaald.
+ */
+const GELAST_I_VOORVOEGSEL = "Gelast I ";
+
+/**
+ * Een profielnaam voor de interface. Een catalogusprofiel heet in elke taal
+ * hetzelfde en blijft een gewone tekst; de gelaste tussendoorsnede van een
+ * gesplitste verlopende staaf ("Gelast I 385×180×8,4×13,5", met of zonder
+ * `EIGEN:`) wordt vertaalbaar (issue #33).
+ */
+export function profielNaamTekst(naam: string): string | VertaalbareTekst {
+  const voorvoegsel = naam.startsWith(EIGEN_PREFIX) ? EIGEN_PREFIX : "";
+  const rest = naam.slice(voorvoegsel.length);
+  if (!rest.startsWith(GELAST_I_VOORVOEGSEL)) return naam;
+  const maten = rest.slice(GELAST_I_VOORVOEGSEL.length);
+  return vt("common:profileName.weldedI", naam, { voorvoegsel, maten });
+}
+
+/**
+ * `doorsnedeNaam` in vertaalbare vorm: de Nederlandse `tekst` is precies wat
+ * `doorsnedeNaam` teruggeeft (dat leest hem hier uit), de interface vertaalt
+ * "(verlopend)" en "(ongeldig verloop)" (issue #33).
+ */
+export function doorsnedeNaamTekst(b: {
+  material?: string;
+  profile?: string;
+  profileEnd?: string;
+}): string | VertaalbareTekst {
   const profiel = b.profile ?? "";
   const eind = b.profileEnd?.trim() ?? "";
-  if (eind === "") return profiel;
+  if (eind === "") return profielNaamTekst(profiel);
   const v = bepaalVerloop(b.material, b.profile, b.profileEnd);
-  if (v.status === "prismatisch") return profiel;
-  if (v.status === "fout") return `${profiel} → ${eind} (ongeldig verloop)`;
-  return `${profiel} → ${eind} (verlopend)`;
+  if (v.status === "prismatisch") return profielNaamTekst(profiel);
+  const waarden = { begin: profielNaamTekst(profiel), eind: profielNaamTekst(eind) };
+  if (v.status === "fout") {
+    return vt("common:profileName.invalidTaper", `${profiel} → ${eind} (ongeldig verloop)`, waarden);
+  }
+  return vt("common:profileName.tapered", `${profiel} → ${eind} (verlopend)`, waarden);
+}
+
+/** `doorsnedeNaam` in de taal van de interface. */
+export function doorsnedeNaamVertaald(
+  b: { material?: string; profile?: string; profileEnd?: string },
+  t: Vertaalfunctie,
+): string {
+  return vertaalWaarde(t, doorsnedeNaamTekst(b));
 }
 
 /**

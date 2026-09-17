@@ -22,6 +22,8 @@ import {
   type TerreinCategorie, type Windgebied,
 } from "./windEurocode";
 import type { WindGeneratorApi } from "../../stores/windStore";
+import { vertaal } from "../vertaalbareTekst";
+import { windGevalNaam, windGevalTab } from "./windGevalLabel";
 import {
   BlokkeringSchema, DoorsnedeSchema, PlattegrondSchema,
   KLEUR_DRUK, KLEUR_RESULTANTE, KLEUR_WIND, KLEUR_ZUIGING, ROL_KLEUR, ZONE_KLEUR,
@@ -102,9 +104,18 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
   const toonGevelhoogte = !vrijstaand && geo !== null && !geo.heeftGevels;
   const e_m = geo ? berekenE(i.gebouwlengte_m, geo.h_m) : undefined;
   const vrijGeo = geo?.vrijstaand ?? null;
-  const tabLabel = (naam: string) => vrijstaand
-    ? naam.replace("Wind vrijstaand dak ", "")
-    : naam.replace("Wind ", "").replace("wind ", "");
+  // De namen van de gevallen zijn Nederlands (ze gaan het model en het rapport
+  // in); het venster toont ze vertaald, afgeleid uit de sleutel (issue #33).
+  // Een onbekende sleutel valt terug op de naam zelf.
+  const dakvorm = s?.vrijstaand?.dakvorm ?? null;
+  const tabLabel = (gv: { sleutel: string; naam: string }) => {
+    const v = windGevalTab(gv, dakvorm);
+    return v ? vertaal(t, v) : gv.naam;
+  };
+  const gevalNaam = (gv: { sleutel: string; naam: string }) => {
+    const v = windGevalNaam(gv, dakvorm);
+    return v ? vertaal(t, v) : gv.naam;
+  };
 
   const richtingKnop = (sleutel: "richtingLinks" | "richtingRechts" | "richtingHaaks", tekst: string, titel: string) => (
     <button
@@ -151,7 +162,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                     <label>{t("wind.windZone")}</label>
                     <select value={i.windgebied} onChange={(e) => set({ windgebied: e.target.value as Windgebied })}>
                       {(Object.keys(WINDGEBIEDEN) as Windgebied[]).map((g) => (
-                        <option key={g} value={g}>{WINDGEBIEDEN[g].omschrijving}</option>
+                        <option key={g} value={g}>{t(`wind.regionOption.${g}`)}</option>
                       ))}
                     </select>
                   </div>
@@ -159,7 +170,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                     <label>{t("wind.terrainCategory")}</label>
                     <select value={i.terreincategorie} onChange={(e) => set({ terreincategorie: e.target.value as TerreinCategorie })}>
                       {(Object.keys(TERREIN_CATEGORIEEN) as TerreinCategorie[]).map((c) => (
-                        <option key={c} value={c}>{TERREIN_CATEGORIEEN[c].omschrijving}</option>
+                        <option key={c} value={c}>{t(`wind.terrainOption.${c}`)}</option>
                       ))}
                     </select>
                   </div>
@@ -376,7 +387,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                           className={`wgd-tab${gv === geval ? " actief" : ""}`}
                           onClick={() => setGevalIndex(k)}
                         >
-                          {tabLabel(gv.naam)}
+                          {tabLabel(gv)}
                         </button>
                       ))}
                     </div>
@@ -415,7 +426,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
               )}
 
               {geval && (
-                <Klapblok kop={`${t("wind.showTable")} — ${geval.naam}`}>
+                <Klapblok kop={`${t("wind.showTable")} — ${gevalNaam(geval)}`}>
                   <table className="wgd-table">
                     <thead>
                       <tr>
