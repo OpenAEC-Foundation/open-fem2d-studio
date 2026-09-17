@@ -23,6 +23,7 @@ import {
   type VerloopMaten,
   type VerlopendeDoorsnede,
 } from "./sectionResolver";
+import { isEigenProfiel } from "./profieleditor/eigenDoorsnedenStore";
 
 /** Uitkomst van de keuring van één gekozen eindprofiel. */
 export type EindProfielKeuring =
@@ -51,6 +52,41 @@ export function isVerlopend(b: {
   profileEnd?: string;
 }): boolean {
   return bepaalVerloop(b.material, b.profile, b.profileEnd).status === "verlopend";
+}
+
+/**
+ * Opent de profielkiezer deze staaf in de stap "Eigen doorsnede"?
+ *
+ * Alleen als hij PRISMATISCH een eigen doorsnede draagt. Een verlopende staaf
+ * die met een eigen doorsnede begint — het tweede deel van een gesplitste
+ * verlopende stalen staaf, `EIGEN:Gelast I …` → `IPE500` — opent in de
+ * staalstap: daar staan de schakelaar Verlopend profiel en het eindprofiel.
+ * De stap "Eigen doorsnede" kent geen verloop; wie de staaf daar opende, zag
+ * het verloop niet en kon het niet aanpassen (issue #31).
+ */
+export function kiezerOpentEigenStap(b: { profile?: string; profileEnd?: string }): boolean {
+  return isEigenProfiel(b.profile) && (b.profileEnd?.trim() ?? "") === "";
+}
+
+/**
+ * De eigen doorsneden aan het begin en het eind van een verlopende staaf.
+ *
+ * Ze staan in geen catalogusreeks, dus de staalstap van de profielkiezer zou
+ * ze niet tonen: het beginprofiel van het tweede deel en het eindprofiel van
+ * het eerste deel van een gesplitste staaf vielen daar weg. De kiezer zet ze
+ * met deze functie als extra keuze in de profiellijst en in de lijst met
+ * eindprofielen. Een prismatische staaf geeft twee keer `null`.
+ */
+export function eigenVerloopProfielen(b: {
+  profile?: string;
+  profileEnd?: string;
+}): { begin: string | null; eind: string | null } {
+  const eind = b.profileEnd?.trim() ?? "";
+  if (eind === "") return { begin: null, eind: null };
+  return {
+    begin: isEigenProfiel(b.profile) ? b.profile! : null,
+    eind: isEigenProfiel(eind) ? eind : null,
+  };
 }
 
 /**

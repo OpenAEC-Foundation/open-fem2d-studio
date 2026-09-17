@@ -156,12 +156,18 @@ export function zoekEigenDoorsnede(profile: string | undefined): EigenDoorsnede 
  * is niet uit de naam terug te rekenen. Daarom precies de gebruikte namen.
  */
 export function exporteer(
-  staven: Iterable<{ profile?: string }>,
+  staven: Iterable<{ profile?: string; profileEnd?: string }>,
 ): EigenDoorsnede[] {
   const gebruikt = new Set<string>();
   for (const s of staven) {
-    const naam = eigenNaamVan(s.profile);
-    if (naam !== null) gebruikt.add(naam);
+    // Ook het EINDprofiel: het eerste deel van een gesplitste verlopende
+    // stalen staaf verwijst alleen daar naar zijn tussendoorsnede. Zonder
+    // deze regel bleef die doorsnede buiten het bestand zodra het tweede deel
+    // een ander profiel kreeg, en was de staaf elders niet meer te rekenen.
+    for (const profiel of [s.profile, s.profileEnd]) {
+      const naam = eigenNaamVan(profiel);
+      if (naam !== null) gebruikt.add(naam);
+    }
   }
   return eigenDoorsnedenStore
     .getState()

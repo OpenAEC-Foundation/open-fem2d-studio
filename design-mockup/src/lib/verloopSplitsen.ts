@@ -59,18 +59,37 @@ import {
 } from "./sectionResolver";
 
 /**
- * Een maat als tekst, met decimaalkomma en ZONDER afronding.
+ * Een maat als tekst, met decimaalkomma.
  *
- * Afronden op tienden zou hier aantrekkelijk zijn voor de leesbaarheid, maar
- * het zou de eis breken dat splitsen geen enkel getal verandert: een hoogte
- * die met 0,05 mm verschuift, verschuift I(x) mee. `String(v)` geeft de
- * kortste decimale schrijfwijze die exact terugleest, dus een splitsing op een
- * ronde fractie (halverwege, op een derde van een 300-mm-verloop) levert
- * gewoon een ronde maat op; alleen een onronde splitsplaats levert een lange.
+ * `decimalen` rondt ALLEEN DE TEKST af; de maat in de platen blijft exact,
+ * zodat splitsen geen enkel getal verandert (een hoogte die met 0,05 mm
+ * verschuift, verschuift I(x) mee). `null` schrijft de maat onafgerond uit,
+ * zoals het houtprofiel hieronder, waar de naam zelf de maat is.
+ *
+ * Waarom de naam van de stalen tussendoorsnede wel wordt afgerond:
+ * `String(v)` schrijft ook de ruis van de drijvende komma uit. Halverwege
+ * IPE 270 -> IPE 500 is t_w = 6,6 + 0,5*(10,2 - 6,6), in drijvende komma
+ * 8,399999999999999, en die naam stond in het eigenschappenpaneel, de
+ * profielkiezer en het rapport (issue #31). `Math.round` op het gevraagde
+ * aantal decimalen en daarna `String` geeft de kortste schrijfwijze zonder
+ * nullen achteraan: 8,4 en 6,35.
  */
-function maatTekst(v: number): string {
-  return String(v).replace(".", ",");
+function maatTekst(v: number, decimalen: number | null = null): string {
+  const w = decimalen === null ? v : Math.round(v * 10 ** decimalen) / 10 ** decimalen;
+  return String(w).replace(".", ",");
 }
+
+/**
+ * De nauwkeurigheden waarmee de NAAM van de stalen tussendoorsnede wordt
+ * geschreven, van grof naar fijn. Eerst 0,01 mm: ver onder de maattolerantie
+ * van platen, en fijn genoeg om een maat als t_w = 6,35 niet als 6,3 of 6,4
+ * te tonen. De fijnere stappen en ten slotte de onafgeronde schrijfwijze zijn
+ * er alleen voor een naamsbotsing: de naam is de sleutel (`EIGEN:<naam>`), en
+ * twee verschillende doorsneden mogen nooit dezelfde naam krijgen - dan zou
+ * de tweede de eerste in de bibliotheek vervangen en rekent de staaf die naar
+ * de eerste verwees stil met andere maten.
+ */
+const NAAM_DECIMALEN: readonly (number | null)[] = [2, 3, 4, 6, null];
 
 /**
  * De naam van de tussendoorsnede, met de maten erin.
@@ -79,10 +98,13 @@ function maatTekst(v: number): string {
  * in het eigenschappenpaneel, het rapport en de PDF terechtkomt: daar moet
  * te zien zijn wélke doorsnede het is zonder de bibliotheek erbij te pakken.
  */
-export function gelasteINaam(m: VerloopMaten): string {
+export function gelasteINaam(
+  m: VerloopMaten,
+  decimalen: number | null = NAAM_DECIMALEN[0],
+): string {
   return (
-    `Gelast I ${maatTekst(m.h)}×${maatTekst(m.b)}×` +
-    `${maatTekst(m.tw ?? 0)}×${maatTekst(m.tf ?? 0)}`
+    `Gelast I ${maatTekst(m.h, decimalen)}×${maatTekst(m.b, decimalen)}×` +
+    `${maatTekst(m.tw ?? 0, decimalen)}×${maatTekst(m.tf ?? 0, decimalen)}`
   );
 }
 
@@ -187,7 +209,7 @@ export function gelasteIEigenschappen(m: VerloopMaten): SectionProperties {
 }
 
 /** De motorsamenvatting die bij een analytisch bepaalde gelaste I hoort. */
-function gelasteIMotor(m: VerloopMaten): MotorSamenvatting {
+function gelasteIMotor(m: VerloopMaten, decimalen: number | null): MotorSamenvatting {
   const tf = m.tf ?? 0;
   return {
     methode: "lamellen",
@@ -208,8 +230,9 @@ function gelasteIMotor(m: VerloopMaten): MotorSamenvatting {
       "Tussendoorsnede van een verlopende staaf, ontstaan bij het splitsen. De maten liggen " +
         "lineair tussen het begin- en het eindprofiel van de oorspronkelijke staaf.",
       "De grootheden zijn met gesloten formules bepaald voor een gelast I-profiel uit drie " +
-        `rechthoeken zonder afrondingsstraal (lijf ${maatTekst(m.h - 2 * tf)}×${maatTekst(m.tw ?? 0)}, ` +
-        `flenzen ${maatTekst(m.b)}×${maatTekst(tf)}); I_t is de open-profielformule ⅓·Σb·t³, ` +
+        `rechthoeken zonder afrondingsstraal (lijf ${maatTekst(m.h - 2 * tf, decimalen)}×` +
+        `${maatTekst(m.tw ?? 0, decimalen)}, flenzen ${maatTekst(m.b, decimalen)}×` +
+        `${maatTekst(tf, decimalen)}); I_t is de open-profielformule ⅓·Σb·t³, ` +
         "niet een uitkomst van de doorsnedemotor.",
     ],
   };
@@ -219,10 +242,14 @@ function gelasteIMotor(m: VerloopMaten): MotorSamenvatting {
  * De tussendoorsnede als bewaarde eigen doorsnede. De `id` is afgeleid van de
  * maten en niet willekeurig: splits je twee staven op dezelfde plaats van
  * hetzelfde verloop, dan is het één doorsnede in de bibliotheek en niet twee
- * met dezelfde naam.
+ * met dezelfde naam. `decimalen`: zie `NAAM_DECIMALEN`; de platen en de
+ * grootheden zijn bij elke keuze exact.
  */
-export function gelasteIDoorsnede(m: VerloopMaten): EigenDoorsnede {
-  const naam = gelasteINaam(m);
+export function gelasteIDoorsnede(
+  m: VerloopMaten,
+  decimalen: number | null = NAAM_DECIMALEN[0],
+): EigenDoorsnede {
+  const naam = gelasteINaam(m, decimalen);
   return {
     id: `verloop-${naam.replace(/[^0-9A-Za-z]+/g, "-").toLowerCase()}`,
     naam,
@@ -237,9 +264,37 @@ export function gelasteIDoorsnede(m: VerloopMaten): EigenDoorsnede {
     },
     eigenschappen: gelasteIEigenschappen(m),
     vorm: "GelasteIDubbelsymmetrisch",
-    motor: gelasteIMotor(m),
+    motor: gelasteIMotor(m, decimalen),
     berekendOp: new Date(0).toISOString(),
   };
+}
+
+/** Beschrijven twee doorsneden dezelfde platen? Exact: de platen zijn de maat. */
+function zelfdePlaten(a: EigenDoorsnede, b: EigenDoorsnede): boolean {
+  return JSON.stringify(a.ontwerp) === JSON.stringify(b.ontwerp);
+}
+
+/**
+ * De tussendoorsnede met de grofste naam uit `NAAM_DECIMALEN` die vrij is, of
+ * die al bij precies deze platen hoort (dezelfde splitsplaats van hetzelfde
+ * verloop: één doorsnede). Een naam die een ANDERE doorsnede draagt, wordt
+ * overgeslagen. Botst zelfs de onafgeronde schrijfwijze, dan heeft iemand een
+ * andere doorsnede met de hand zo genoemd; dan wordt hier geweigerd in plaats
+ * van die doorsnede stil te vervangen.
+ */
+function vrijeGelasteIDoorsnede(
+  m: VerloopMaten,
+  bestaande: readonly EigenDoorsnede[],
+): EigenDoorsnede {
+  for (const decimalen of NAAM_DECIMALEN) {
+    const d = gelasteIDoorsnede(m, decimalen);
+    const bezet = bestaande.find((x) => x.naam === d.naam);
+    if (!bezet || zelfdePlaten(bezet, d)) return d;
+  }
+  throw new Error(
+    `De tussendoorsnede "${gelasteINaam(m, null)}" kan niet bewaard worden: de bibliotheek ` +
+      "bevat al een andere eigen doorsnede met die naam. Hernoem die doorsnede en splits opnieuw.",
+  );
 }
 
 /** De profielnamen van de twee delen van een gesplitste verlopende staaf. */
@@ -257,24 +312,30 @@ export interface VerloopSplitsing {
  * dat niet bij het begin past — dan verandert het splitsen niets aan de
  * profielvelden en blijft de bestaande melding van `bepaalVerloop` staan waar
  * hij hoorde: bij het rekenen).
+ *
+ * `bestaande` is de bibliotheek waartegen de naam van een stalen
+ * tussendoorsnede op een botsing wordt gecontroleerd (standaard de winkel);
+ * zie `vrijeGelasteIDoorsnede`.
  */
 export function tussenProfielVoorSplitsing(
   material: string | undefined,
   profile: string | undefined,
   profileEnd: string | undefined,
   t: number,
+  bestaande: readonly EigenDoorsnede[] = eigenDoorsnedenStore.getState().items,
 ): VerloopSplitsing | null {
   const v = bepaalVerloop(material, profile, profileEnd);
   if (v.status !== "verlopend") return null;
   if (!(t > 0 && t < 1)) return null;
   const m = matenOpPositie(v.verloop, t);
   if (v.verloop.soort === "rechthoek") {
-    // Hout: de rechthoek past in de gewone profielnaam. Afgerond op 1/10 mm,
-    // want de naam is ook wat de gebruiker leest en "96x324,99999" is geen
-    // maat; de afronding is kleiner dan de zaagmaat waarmee gewerkt wordt.
+    // Hout: de rechthoek past in de gewone profielnaam. Hier NIET afgerond:
+    // anders dan bij staal is de naam hier zelf de maat waarmee gerekend
+    // wordt (er is geen bewaarde doorsnede achter), en afronden zou de
+    // doorsnede op de splitsplaats verschuiven.
     return { tussenProfiel: `${maatTekst(m.b)}x${maatTekst(m.h)}` };
   }
-  const doorsnede = gelasteIDoorsnede(m);
+  const doorsnede = vrijeGelasteIDoorsnede(m, bestaande);
   return { tussenProfiel: `${EIGEN_PREFIX}${doorsnede.naam}`, bewaren: doorsnede };
 }
 
