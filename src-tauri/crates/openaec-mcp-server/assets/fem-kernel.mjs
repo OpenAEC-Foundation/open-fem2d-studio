@@ -3721,8 +3721,8 @@ function solveNonlinear(mesh, options = {}) {
   const numDofs = mesh.getNodeCount() * 3;
   let displacements = new Array(numDofs).fill(0);
   let axialForces = /* @__PURE__ */ new Map();
-  const log = (regel) => {
-    opts.onLog?.(regel);
+  const log = (regel2) => {
+    opts.onLog?.(regel2);
   };
   const soortAnalyse = opts.materialNonlinear ? opts.geometricNonlinear ? "fysisch \xE9n geometrisch niet-lineair" : "fysisch niet-lineair" : opts.geometricNonlinear ? "geometrisch niet-lineair (P-\u0394)" : "lineair";
   log({
@@ -4291,8 +4291,8 @@ function assembleGeometricStiffnessMixed(mesh, displacements, nodeIdToIndex, num
 function solveMixed(mesh, opts) {
   const analysisType = "mixed_beam_plate";
   const dofsPerNode = 3;
-  const log = (regel) => {
-    opts.onLog?.(regel);
+  const log = (regel2) => {
+    opts.onLog?.(regel2);
   };
   if (mesh.elements.size < 1 && mesh.getBeamCount() < 1) {
     throw new Error("Mixed analysis requires at least one plate or beam element");
@@ -5196,6 +5196,22 @@ function applyNodalForces(mesh, forces) {
   }
 }
 
+// src/lib/vertaalbareTekst.ts
+function vt(sleutel, tekst, waarden) {
+  return waarden ? { sleutel, waarden, tekst } : { sleutel, tekst };
+}
+function isVertaalbareTekst(w) {
+  return typeof w === "object" && w !== null && typeof w.sleutel === "string";
+}
+function isTekstLijst(w) {
+  return typeof w === "object" && w !== null && Array.isArray(w.lijst);
+}
+function nederlands(w) {
+  if (isVertaalbareTekst(w)) return w.tekst;
+  if (isTekstLijst(w)) return w.lijst.map(nederlands).join(w.scheiding);
+  return String(w);
+}
+
 // src/components/fem/femTypes.ts
 var BEAM_LOAD_ROLES = [
   { id: "gevelLinks", label: "Linkergevel", kort: "Gevel L" },
@@ -5428,6 +5444,9 @@ var PLAAT_RAND_NAAM_NL = {
   right: "rechterrand"
 };
 var PLAAT_RAND_NAMEN = ["bottom", "top", "left", "right"];
+function randFout(sleutel, tekst, waarden) {
+  return { ok: false, reden: tekst, redenTekst: vt(`common:canvas.modelCheck.plateEdge.${sleutel}`, tekst, waarden) };
+}
 function bepaalPlaatRand(punten, adres, tolMm = 1) {
   const n = punten.length;
   const rechthoek = n === 4 && isAsgelijndeRechthoek(punten, tolMm);
@@ -5435,33 +5454,34 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
   const heeftNaam = adres.edge !== void 0;
   const heeftIndex = adres.edgeIndex !== void 0;
   if (adres.openingId !== void 0) {
-    return {
-      ok: false,
-      reden: "de last staat op de rand van een opening (`openingId`), maar hij wordt hier gelezen door een route die alleen de omtrek van de plaat kent. Meld dit: het adres wordt bewust geweigerd in plaats van stil op de omtrek gelegd."
-    };
+    return randFout(
+      "openingOnPerimeterRoute",
+      "de last staat op de rand van een opening (`openingId`), maar hij wordt hier gelezen door een route die alleen de omtrek van de plaat kent. Meld dit: het adres wordt bewust geweigerd in plaats van stil op de omtrek gelegd."
+    );
   }
   if (heeftNaam && heeftIndex) {
-    return {
-      ok: false,
-      reden: "de last noemt zowel een benoemde rand (`edge`) als een rand-index (`edgeIndex`). Geef er \xE9\xE9n: met twee adressen is niet te zeggen welke rand bedoeld is en vanaf welke hoek de posities tellen."
-    };
+    return randFout(
+      "nameAndIndex",
+      "de last noemt zowel een benoemde rand (`edge`) als een rand-index (`edgeIndex`). Geef er \xE9\xE9n: met twee adressen is niet te zeggen welke rand bedoeld is en vanaf welke hoek de posities tellen."
+    );
   }
   if (!heeftNaam && !heeftIndex) {
-    return {
-      ok: false,
-      reden: "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar hoek i+1) of, bij een asgelijnde rechthoek, `edge`."
-    };
+    return randFout(
+      "noEdge",
+      "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar hoek i+1) of, bij een asgelijnde rechthoek, `edge`."
+    );
   }
   if (n < 3) {
-    return { ok: false, reden: `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.` };
+    return randFout("plateTooFewCorners", `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.`, { n });
   }
   if (heeftIndex) {
     const i = adres.edgeIndex;
     if (!Number.isInteger(i) || i < 0 || i >= n) {
-      return {
-        ok: false,
-        reden: `rand-index ${i} bestaat niet: de plaat heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`
-      };
+      return randFout(
+        "indexMissing",
+        `rand-index ${i} bestaat niet: de plaat heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
+        { i, n, max: n - 1 }
+      );
     }
     const j = (i + 1) % n;
     const van2 = punten[i], naar2 = punten[j];
@@ -5479,25 +5499,28 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
     else if (op(van2.x, minX2) && op(naar2.x, minX2)) naam2 = "left";
     else if (op(van2.x, maxX2) && op(naar2.x, maxX2)) naam2 = "right";
     if (!naam2) {
-      return {
-        ok: false,
-        reden: `rand ${i + 1} (edgeIndex ${i}, hoek ${i + 1} \u2192 hoek ${j + 1}) loopt niet langs de omtrek: de hoeken van deze rechthoek staan niet in omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met een benoemde rand (\`edge\`) of teken de plaat opnieuw in omtrekvolgorde.`
-      };
+      return randFout(
+        "diagonal",
+        `rand ${i + 1} (edgeIndex ${i}, hoek ${i + 1} \u2192 hoek ${j + 1}) loopt niet langs de omtrek: de hoeken van deze rechthoek staan niet in omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met een benoemde rand (\`edge\`) of teken de plaat opnieuw in omtrekvolgorde.`,
+        { rand: i + 1, i, van: i + 1, naar: j + 1 }
+      );
     }
     return { ok: true, soort, hoekVan: i, hoekNaar: j, van: van2, naar: naar2, lengte, naam: naam2, edgeIndex: i };
   }
   const naam = adres.edge;
   if (!PLAAT_RAND_NAMEN.includes(naam)) {
-    return {
-      ok: false,
-      reden: `"${adres.edge}" is geen benoemde rand. Toegestaan: ${PLAAT_RAND_NAMEN.join(", ")}.`
-    };
+    return randFout(
+      "unknownName",
+      `"${adres.edge}" is geen benoemde rand. Toegestaan: ${PLAAT_RAND_NAMEN.join(", ")}.`,
+      { edge: String(adres.edge), lijst: PLAAT_RAND_NAMEN.join(", ") }
+    );
   }
   if (!rechthoek) {
-    return {
-      ok: false,
-      reden: `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een rand-index (\`edgeIndex\`: rand i loopt van hoek i naar hoek i+1).`
-    };
+    return randFout(
+      "nameOnPolygon",
+      `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een rand-index (\`edgeIndex\`: rand i loopt van hoek i naar hoek i+1).`,
+      { naam: vt(`common:canvas.edge.${naam}`, PLAAT_RAND_NAAM_NL[naam]), n }
+    );
   }
   const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -5520,66 +5543,74 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
 function bepaalPlaatlastRand(punten, openingen, adres, tolMm = 1) {
   if (adres.openingId === void 0) return bepaalPlaatRand(punten, adres, tolMm);
   if (adres.edge !== void 0) {
-    return {
-      ok: false,
-      reden: "de last noemt zowel een opening (`openingId`) als een benoemde rand (`edge`). Een opening heeft geen benoemde randen; kies de rand met `edgeIndex` (rand j loopt van openingshoek j naar hoek j+1)."
-    };
+    return randFout(
+      "openingAndName",
+      "de last noemt zowel een opening (`openingId`) als een benoemde rand (`edge`). Een opening heeft geen benoemde randen; kies de rand met `edgeIndex` (rand j loopt van openingshoek j naar hoek j+1)."
+    );
   }
   if (!Number.isInteger(adres.openingId)) {
-    return {
-      ok: false,
-      reden: `\`openingId\` ${adres.openingId} is geen geheel getal; geef het id van een opening van deze plaat.`
-    };
+    return randFout(
+      "openingIdNotInteger",
+      `\`openingId\` ${adres.openingId} is geen geheel getal; geef het id van een opening van deze plaat.`,
+      { opening: String(adres.openingId) }
+    );
   }
   const lijst = openingen ?? [];
   if (lijst.length === 0) {
-    return {
-      ok: false,
-      reden: `de last staat op opening ${adres.openingId}, maar deze plaat heeft geen openingen.`
-    };
+    return randFout(
+      "plateHasNoOpenings",
+      `de last staat op opening ${adres.openingId}, maar deze plaat heeft geen openingen.`,
+      { opening: adres.openingId }
+    );
   }
   const treffers = lijst.map((o, i2) => ({ o, i: i2 })).filter(({ o }) => o.id === adres.openingId);
   if (treffers.length === 0) {
-    return {
-      ok: false,
-      reden: `opening ${adres.openingId} bestaat niet op deze plaat. Aanwezig: ${lijst.map((o) => o.id).join(", ")}.`
-    };
+    return randFout(
+      "openingMissing",
+      `opening ${adres.openingId} bestaat niet op deze plaat. Aanwezig: ${lijst.map((o) => o.id).join(", ")}.`,
+      { opening: adres.openingId, lijst: lijst.map((o) => o.id).join(", ") }
+    );
   }
   if (treffers.length > 1) {
-    return {
-      ok: false,
-      reden: `opening ${adres.openingId} komt ${treffers.length} keer voor op deze plaat; het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.`
-    };
+    return randFout(
+      "openingDuplicate",
+      `opening ${adres.openingId} komt ${treffers.length} keer voor op deze plaat; het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.`,
+      { opening: adres.openingId, aantal: treffers.length }
+    );
   }
   const { o: opening, i: openingIndex } = treffers[0];
   const n = opening.punten.length;
   if (n < 3) {
-    return {
-      ok: false,
-      reden: `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`
-    };
+    return randFout(
+      "openingTooFewCorners",
+      `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`,
+      { opening: adres.openingId, n }
+    );
   }
   if (adres.edgeIndex === void 0) {
-    return {
-      ok: false,
-      reden: `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef \`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`
-    };
+    return randFout(
+      "openingNoEdge",
+      `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef \`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`,
+      { opening: adres.openingId, max: n - 1 }
+    );
   }
   const i = adres.edgeIndex;
   if (!Number.isInteger(i) || i < 0 || i >= n) {
-    return {
-      ok: false,
-      reden: `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`
-    };
+    return randFout(
+      "openingIndexMissing",
+      `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
+      { i, opening: adres.openingId, n, max: n - 1 }
+    );
   }
   const j = (i + 1) % n;
   const van = opening.punten[i], naar = opening.punten[j];
   const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
   if (!(lengte > tolMm)) {
-    return {
-      ok: false,
-      reden: `rand ${i + 1} van opening ${adres.openingId} heeft lengte ${lengte.toFixed(3)} mm en kan geen last dragen.`
-    };
+    return randFout(
+      "openingEdgeZero",
+      `rand ${i + 1} van opening ${adres.openingId} heeft lengte ${lengte.toFixed(3)} mm en kan geen last dragen.`,
+      { rand: i + 1, opening: adres.openingId, lengte: lengte.toFixed(3) }
+    );
   }
   return {
     ok: true,
@@ -13330,10 +13361,10 @@ function spiegelToetsconfig(cfg, lengteMm) {
   const uit = { ...cfg };
   for (const [sleutel, waarde] of Object.entries(cfg)) {
     if (waarde == null) continue;
-    const regel = SPIEGELREGELS_TOETSCONFIG[sleutel];
-    if (regel === "fracties" && Array.isArray(waarde)) {
+    const regel2 = SPIEGELREGELS_TOETSCONFIG[sleutel];
+    if (regel2 === "fracties" && Array.isArray(waarde)) {
       uit[sleutel] = spiegelFracties(waarde);
-    } else if (regel === "zonesMm") {
+    } else if (regel2 === "zonesMm") {
       uit[sleutel] = spiegelZones(waarde, lengteMm);
     }
   }
@@ -17907,6 +17938,7 @@ function materiaalVanStaaf(beam) {
 
 // src/lib/combinatieSelectie.ts
 var LABEL_ZUIVER_STAAL = "niet gebruikt";
+var LABEL_ZUIVER_STAAL_TEKST = vt("common:tree.combinationNotUsed", LABEL_ZUIVER_STAAL);
 function redenZuiverStaal(combo) {
   const frequent = soortVanCombinatie(combo) === "6.15b";
   const uitdrukking2 = frequent ? "6.15b" : "6.16b";
@@ -17973,6 +18005,7 @@ function selecteerCombinaties(combinations, beams, plates = [], opties = {}) {
         id: combo.id,
         naam: combo.name,
         label: LABEL_ZUIVER_STAAL,
+        labelTekst: LABEL_ZUIVER_STAAL_TEKST,
         reden
       });
       redenPerId.set(combo.id, reden);
@@ -20595,6 +20628,9 @@ function kruipcoefficientVanStaaf(eigen, project, berekend) {
 }
 
 // src/lib/houtEindstijfheid.ts
+var KOP_NIET_DOORGEREKEND = vt("common:tree.timberFinalStiffness.notCalculated", "Eindstijfheid hout niet doorgerekend");
+var KOP_DOORGEREKEND_UGT = vt("common:tree.timberFinalStiffness.calculatedUls", "Eindstijfheid hout doorgerekend (UGT)");
+var KOP_DOORGEREKEND_BGT = vt("common:tree.timberFinalStiffness.calculatedSls", "Eindstijfheid hout doorgerekend (BGT)");
 var K_DEF_TABEL_3_2 = { 1: 0.6, 2: 0.8, 3: 2 };
 function nl9(x) {
   return String(Number(x.toFixed(3))).replace(".", ",");
@@ -20748,6 +20784,7 @@ function bepaalEindstijfheidHout(model) {
       meldingen: [{
         niveau: "waarschuwing",
         caseId: null,
+        kop: KOP_NIET_DOORGEREKEND,
         tekst: `Eindstijfheid hout niet doorgerekend. ${kop} Bij een tweede-orde-berekening schrijft 2.2.2(1)P (derde streepje) rekenwaarden voor die niet zijn aangepast aan de belastingsduur, en niet E_mean,fin; er is geen eindtoestandvariant berekend. Beoordeel de krachtsverdeling in de eindtoestand apart, bijvoorbeeld met een eerste-orde-berekening. Ook de langeduurvervorming in de bruikbaarheidsgrenstoestand (2.2.3(4)) is niet berekend: de doorbuigingstoets van het hout gebruikt de vereenvoudiging w_fin = w_inst + k_def\xB7w_qp van 2.2.3(5), die hier niet geldt, en w_fin en w_add kunnen te klein zijn.`
       }]
     };
@@ -20764,6 +20801,7 @@ function bepaalEindstijfheidHout(model) {
       meldingen: [{
         niveau: "waarschuwing",
         caseId: null,
+        kop: KOP_NIET_DOORGEREKEND,
         tekst: `Eindstijfheid hout niet doorgerekend. ${kop} Voor ${zonderKdef.map(groepTekst).join("; ")} is k_def niet bekend, en zonder k_def valt E_mean,fin = E_mean/(1 + \u03C8\u2082\xB7k_def) (2.3.2.2(2)) niet te bepalen; er wordt geen k_def aangenomen. De krachtsverdeling is alleen met E_mean berekend, en welke kant de fout op gaat is niet te zeggen. Vul k_def in (kruislaaghout: ETA of productverklaring) of beoordeel de eindtoestand apart. Ook de langeduurvervorming (2.2.3(4)) is niet berekend: de doorbuigingstoets gebruikt de vereenvoudiging van 2.2.3(5), en w_fin en w_add kunnen te klein zijn.`
       }]
     };
@@ -20815,11 +20853,13 @@ function bepaalEindstijfheidHout(model) {
       {
         niveau: "waarschuwing",
         caseId: null,
+        kop: KOP_DOORGEREKEND_UGT,
         tekst: `Eindstijfheid hout doorgerekend (UGT). ${kop} Elke UGT-combinatie is daarom ook doorgerekend in de eindtoestand, met per houtstaaf E_mean,fin = E_mean/(1 + \u03C8\u2082\xB7k_def) (2.3.2.2(2), uitdrukking 2.10) en per verende aansluiting aan hout K_fin = K/(1 + \u03C8\u2082\xB72\xB7k_def) (2.3.2.2(3)). Omdat vooraf niet vaststaat welke belasting de grootste spanning geeft, is elke \u03C8\u2082 van de combinatie doorgerekend (1 voor blijvend en overig, \u03C8\u2082 van de categorie voor veranderlijk; sneeuw en wind hebben \u03C8\u2082 = 0 en veranderen niets). De varianten heten "\u2026 (eindtoestand \u03C8\u2082 = \u2026)"; de toetsing en de omhullende nemen de ongunstigste, ook de combinatie met E_mean zelf.` + (bijzonder.length > 0 ? ` ${bijzonder.join(" ")}` : "")
       },
       {
         niveau: "waarschuwing",
         caseId: null,
+        kop: KOP_DOORGEREKEND_BGT,
         tekst: 'Eindstijfheid hout doorgerekend (BGT). In deze constructie met verschillend kruipgedrag geldt de vereenvoudiging w_fin = w_inst + k_def\xB7w_qp van EN 1995-1-1 2.2.3(5) niet; 2.2.3(4) schrijft de langeduurvervorming onder de quasi-blijvende combinatie voor met E_mean,fin = E_mean/(1 + k_def) (2.3.2.2(1), uitdrukking 2.7). Elke quasi-blijvende BGT-combinatie (6.16b) is daarom ook doorgerekend in de eindtoestand, met per houtstaaf E_mean,fin = E_mean/(1 + k_def) en per verende aansluiting aan hout K_fin = K/(1 + 2\xB7k_def) (2.3.2.2(3)); staal houdt zijn E. Die varianten heten "\u2026 (eindtoestand BGT)". De doorbuigingstoets van elke houtstaaf rekent daarmee w_fin = w_inst + (w_qp,fin \u2212 w_qp) en w_add = w_fin \u2212 w\u2081 (w\u2082 + w\u2083, NEN-EN 1990 NB figuur NB.1), met w_qp en w_qp,fin uit dezelfde combinatie. Kent het model geen quasi-blijvende BGT-combinatie, dan valt die toets met een notitie terug op de vereenvoudiging.' + (bgtBijzonder.length > 0 ? ` ${bgtBijzonder.join(" ")}` : "") + " Niet doorgerekend: de doorbuigingstoetsen van staal- en betonstaven lezen hun eigen BGT-combinaties met de stijfheid direct na belasten, terwijl die delen in de eindtoestand meer kracht krijgen; hun langeduurzakking kan daardoor te klein zijn. Beoordeel die apart."
       }
     ]
@@ -20940,6 +20980,7 @@ function normenInModel(beams) {
 }
 
 // src/lib/scheefstandNorm.ts
+var S = "common:loadCases.swayDerivation.";
 var SCHEEFSTAND_BRONNEN = [
   "vast",
   "en1993",
@@ -20968,9 +21009,16 @@ function leidScheefstandGeometrieAf(model) {
   const heeftOpleggingen = opleggingZ.length > 0;
   const voetZ = heeftOpleggingen ? Math.min(...opleggingZ) : alleZ.length > 0 ? Math.min(...alleZ) : 0;
   const hoogteM = Math.max(0, (topZ - voetZ) / 1e3);
-  afleiding.push(
-    `h = ${getal3(hoogteM, 3)} m \u2014 van de voet (${heeftOpleggingen ? `laagste oplegging, z = ${getal3(voetZ, 0)} mm` : `geen opleggingen in het model, dus de laagste knoop, z = ${getal3(voetZ, 0)} mm`}) tot de bovenkant van de constructie (z = ${getal3(topZ, 0)} mm). EN 1993-1-1 figuur 5.2 meet h vanaf het opleggingsniveau; EN 1992-1-1 \xA75.2(6) noemt het voor de schorende constructie de hoogte van het gebouw.`
+  const voet = heeftOpleggingen ? vt(`${S}footLowestSupport`, `laagste oplegging, z = ${getal3(voetZ, 0)} mm`, { z: getal3(voetZ, 0) }) : vt(
+    `${S}footLowestNode`,
+    `geen opleggingen in het model, dus de laagste knoop, z = ${getal3(voetZ, 0)} mm`,
+    { z: getal3(voetZ, 0) }
   );
+  afleiding.push(vt(
+    `${S}heightDerivation`,
+    `h = ${getal3(hoogteM, 3)} m \u2014 van de voet (${voet.tekst}) tot de bovenkant van de constructie (z = ${getal3(topZ, 0)} mm). EN 1993-1-1 figuur 5.2 meet h vanaf het opleggingsniveau; EN 1992-1-1 \xA75.2(6) noemt het voor de schorende constructie de hoogte van het gebouw.`,
+    { h: getal3(hoogteM, 3), voet, top: getal3(topZ, 0) }
+  ));
   const minSinus = Math.sin(VERTICAAL_VANAF_GRADEN2 * Math.PI / 180);
   const verticaal = [];
   for (const b of model.beams) {
@@ -21020,40 +21068,56 @@ function leidScheefstandGeometrieAf(model) {
     }
     const pts = [...knopen].map((n) => knoopById.get(n)).filter((n) => !!n);
     if (pts.length === 0) continue;
-    const voet = pts.reduce((laagste, p) => p.z < laagste.z ? p : laagste, pts[0]);
+    const voet2 = pts.reduce((laagste, p) => p.z < laagste.z ? p : laagste, pts[0]);
     kolomlijnen.push({
       staafIds: [...staafIds].sort((a, b) => a - b),
-      voetZmm: voet.z,
+      voetZmm: voet2.z,
       topZmm: Math.max(...pts.map((p) => p.z)),
-      voetXmm: voet.x
+      voetXmm: voet2.x
     });
   }
   kolomlijnen.sort((a, b) => a.voetXmm - b.voetXmm || a.voetZmm - b.voetZmm);
   const aantalElementen = Math.max(1, kolomlijnen.length);
   if (kolomlijnen.length === 0) {
-    afleiding.push(
-      `m = 1 (terugval) \u2014 dit model bevat geen enkele staaf die steiler staat dan ${VERTICAAL_VANAF_GRADEN2}\xB0 met de horizontaal, dus er is geen kolomlijn te tellen. m = 1 geeft \u03B1_m = 1,00: de grootste waarde die de formule kan aannemen, en dus de veilige terugval.`
-    );
+    afleiding.push(vt(
+      `${S}membersFallback`,
+      `m = 1 (terugval) \u2014 dit model bevat geen enkele staaf die steiler staat dan ${VERTICAAL_VANAF_GRADEN2}\xB0 met de horizontaal, dus er is geen kolomlijn te tellen. m = 1 geeft \u03B1_m = 1,00: de grootste waarde die de formule kan aannemen, en dus de veilige terugval.`,
+      { graden: VERTICAAL_VANAF_GRADEN2 }
+    ));
   } else {
-    afleiding.push(
-      `m = ${aantalElementen} \u2014 ${aantalElementen} kolomlijn${aantalElementen === 1 ? "" : "en"}: ` + kolomlijnen.map(
-        (k, i) => `(${i + 1}) x = ${getal3(k.voetXmm, 0)} mm, staaf ${k.staafIds.join("+")}`
-      ).join("; ") + `. Een staaf telt als verticaal vanaf ${VERTICAAL_VANAF_GRADEN2}\xB0 met de horizontaal; staven die een knoop delen vormen samen \xE9\xE9n kolom, zodat een kolom door meerdere verdiepingen \xE9\xE9nmaal telt.`
-    );
+    const lijst = {
+      lijst: kolomlijnen.map((k, i) => vt(
+        `${S}columnLine`,
+        `(${i + 1}) x = ${getal3(k.voetXmm, 0)} mm, staaf ${k.staafIds.join("+")}`,
+        { n: i + 1, x: getal3(k.voetXmm, 0), staven: k.staafIds.join("+") }
+      )),
+      scheiding: "; "
+    };
+    afleiding.push(vt(
+      `${S}membersDerived`,
+      `m = ${aantalElementen} \u2014 ${aantalElementen} kolomlijn${aantalElementen === 1 ? "" : "en"}: ` + nederlands(lijst) + `. Een staaf telt als verticaal vanaf ${VERTICAAL_VANAF_GRADEN2}\xB0 met de horizontaal; staven die een knoop delen vormen samen \xE9\xE9n kolom, zodat een kolom door meerdere verdiepingen \xE9\xE9nmaal telt.`,
+      { count: aantalElementen, lijst, graden: VERTICAAL_VANAF_GRADEN2 }
+    ));
   }
-  afleiding.push(
+  afleiding.push(vt(
+    `${S}membersNote50Percent`,
     "LET OP bij m: EN 1993-1-1 5.3.2(3)a telt alleen kolommen mee die minstens 50 % van de gemiddelde verticale kolomkracht dragen. Die krachten volgen uit de berekening en de berekening heeft \u03C6 nodig, dus dat criterium is hier niet toegepast \u2014 \xE1lle kolomlijnen tellen mee. Een licht belaste stijl hoort er met de hand uit: kleinere m geeft grotere \u03B1_m en dus grotere \u03C6, de veilige kant."
-  );
-  afleiding.push(
+  ));
+  afleiding.push(vt(
+    `${S}wallsNotCounted`,
     "Wandschijven tellen niet mee in m: een schijf schoort meestal in plaats van geschoord te worden, en meetellen zou m verhogen en \u03C6 verlagen. Draagt een wand hier w\xE9l verticaal mee, verhoog m dan met de hand."
-  );
+  ));
   return {
     hoogteM,
     aantalElementen,
     kolomlijnen,
     afleidbaar: kolomlijnen.length > 0 && hoogteM > 0,
-    afleiding
+    afleiding: afleiding.map((a) => a.tekst),
+    afleidingTeksten: afleiding
   };
+}
+function regel(symbool, waarde, artikel, uitleg) {
+  return { symbool, waarde, artikel: nederlands(artikel), uitleg: uitleg.tekst, artikelTekst: artikel, uitlegTekst: uitleg };
 }
 function alphaH(hoogteM) {
   const ruw = hoogteM > 0 ? 2 / Math.sqrt(hoogteM) : Number.POSITIVE_INFINITY;
@@ -21070,19 +21134,22 @@ var BASISWAARDE = {
     waarde: 1 / 200,
     noemer: 200,
     artikel: "EN 1993-1-1 \xA75.3.2(3)a",
-    uitleg: "\u03C6\u2080 is de basiswaarde: \u03C6\u2080 = 1/200."
+    uitleg: vt(`${S}base.en1993`, "\u03C6\u2080 is de basiswaarde: \u03C6\u2080 = 1/200.")
   },
   en1992: {
     waarde: 1 / 300,
     noemer: 300,
-    artikel: "EN 1992-1-1 \xA75.2(5) + NB",
-    uitleg: "\u03B8\u2080 is de basiswaarde. De Nederlandse nationale bijlage haalt de aanbevolen EN-waarde 1/200 door en schrijft 1/300 voor."
+    artikel: vt(`${S}article.en1992Base`, "EN 1992-1-1 \xA75.2(5) + NB"),
+    uitleg: vt(
+      `${S}base.en1992`,
+      "\u03B8\u2080 is de basiswaarde. De Nederlandse nationale bijlage haalt de aanbevolen EN-waarde 1/200 door en schrijft 1/300 voor."
+    )
   },
   en1995: {
     waarde: 5e-3,
     noemer: 200,
     artikel: "EN 1995-1-1 \xA75.4.4(2)",
-    uitleg: "\u03C6 = 0,005 rad voor h \u2264 5 m; deze norm kent geen losse basiswaarde."
+    uitleg: vt(`${S}base.en1995`, "\u03C6 = 0,005 rad voor h \u2264 5 m; deze norm kent geen losse basiswaarde.")
   }
 };
 function phiVolgensNorm(norm, hoogteM, aantalElementen) {
@@ -21092,18 +21159,21 @@ function phiVolgensNorm(norm, hoogteM, aantalElementen) {
   const regels = [];
   if (norm === "en1995") {
     const phi2 = h > 5 ? 5e-3 * Math.sqrt(5 / h) : 5e-3;
-    regels.push({
-      symbool: "h",
-      waarde: `${getal3(h, 3)} m`,
-      artikel: "EN 1995-1-1 \xA75.4.4(2)",
-      uitleg: "de hoogte van de constructie of de lengte van het element, in m."
-    });
-    regels.push({
-      symbool: "\u03C6",
-      waarde: `${getal3(phi2, 5)} rad = 1/${getal3(1 / phi2, 0)}`,
-      artikel: "EN 1995-1-1 (5.1)",
-      uitleg: h > 5 ? `h > 5 m, dus \u03C6 = 0,005\xB7\u221A(5/h) = 0,005\xB7\u221A(5/${getal3(h, 3)}).` : "h \u2264 5 m, dus \u03C6 = 0,005 rad. Deze norm kent geen \u03B1_m en geen ondergrens op de hoogtereductie."
-    });
+    regels.push(regel(
+      "h",
+      `${getal3(h, 3)} m`,
+      "EN 1995-1-1 \xA75.4.4(2)",
+      vt(`${S}en1995.h`, "de hoogte van de constructie of de lengte van het element, in m.")
+    ));
+    regels.push(regel(
+      "\u03C6",
+      `${getal3(phi2, 5)} rad = 1/${getal3(1 / phi2, 0)}`,
+      "EN 1995-1-1 (5.1)",
+      h > 5 ? vt(`${S}en1995.phiAbove5`, `h > 5 m, dus \u03C6 = 0,005\xB7\u221A(5/h) = 0,005\xB7\u221A(5/${getal3(h, 3)}).`, { h: getal3(h, 3) }) : vt(
+        `${S}en1995.phiUpTo5`,
+        "h \u2264 5 m, dus \u03C6 = 0,005 rad. Deze norm kent geen \u03B1_m en geen ondergrens op de hoogtereductie."
+      )
+    ));
     return { norm, phi: phi2, regels };
   }
   const ah = alphaH(h);
@@ -21111,42 +21181,42 @@ function phiVolgensNorm(norm, hoogteM, aantalElementen) {
   const phi = basis.waarde * ah.waarde * am;
   const symbool = norm === "en1992" ? "\u03B8" : "\u03C6";
   const artikelFormule = norm === "en1992" ? "EN 1992-1-1 (5.1)" : "EN 1993-1-1 (5.5)";
-  regels.push({
-    symbool: `${symbool}\u2080`,
-    waarde: `1/${basis.noemer} = ${getal3(basis.waarde, 5)}`,
-    artikel: basis.artikel,
-    uitleg: basis.uitleg
-  });
-  regels.push({
-    symbool: "h",
-    waarde: `${getal3(h, 3)} m`,
-    artikel: artikelFormule,
-    uitleg: norm === "en1992" ? "l is de hoogte van het gebouw; \xA75.2(6), geval 'effect op de schorende constructie'." : "h is de hoogte van de constructie, in meter (figuur 5.2)."
-  });
-  regels.push({
-    symbool: "\u03B1_h",
-    waarde: getal3(ah.waarde, 4),
-    artikel: artikelFormule,
-    uitleg: `\u03B1_h = 2/\u221Ah = 2/\u221A${getal3(h, 3)}` + (ah.begrensd === "boven" ? " en wordt begrensd door de bovengrens 1,0." : ah.begrensd === "onder" ? " en wordt begrensd door de ondergrens 2/3." : ", binnen 2/3 \u2264 \u03B1_h \u2264 1,0.")
-  });
-  regels.push({
-    symbool: "m",
-    waarde: String(m),
-    artikel: artikelFormule,
-    uitleg: norm === "en1992" ? "m is het aantal verticale elementen dat bijdraagt aan de horizontale kracht op de schorende constructie." : "m is het aantal kolommen in een rij (alleen die met N_Ed \u2265 50 % van het gemiddelde)."
-  });
-  regels.push({
-    symbool: "\u03B1_m",
-    waarde: getal3(am, 4),
-    artikel: artikelFormule,
-    uitleg: `\u03B1_m = \u221A(0,5\xB7(1 + 1/m)) = \u221A(0,5\xB7(1 + 1/${m})).`
-  });
-  regels.push({
-    symbool: norm === "en1992" ? "\u03B8_i" : "\u03C6",
-    waarde: `${getal3(phi, 5)} rad = 1/${getal3(1 / phi, 0)}`,
-    artikel: artikelFormule,
-    uitleg: `${symbool}\u2080 \xB7 \u03B1_h \xB7 \u03B1_m = ${getal3(basis.waarde, 5)} \xB7 ${getal3(ah.waarde, 4)} \xB7 ${getal3(am, 4)}.`
-  });
+  regels.push(regel(`${symbool}\u2080`, `1/${basis.noemer} = ${getal3(basis.waarde, 5)}`, basis.artikel, basis.uitleg));
+  regels.push(regel(
+    "h",
+    `${getal3(h, 3)} m`,
+    artikelFormule,
+    norm === "en1992" ? vt(`${S}h.en1992`, "l is de hoogte van het gebouw; \xA75.2(6), geval 'effect op de schorende constructie'.") : vt(`${S}h.en1993`, "h is de hoogte van de constructie, in meter (figuur 5.2).")
+  ));
+  const hTekst = getal3(h, 3);
+  regels.push(regel(
+    "\u03B1_h",
+    getal3(ah.waarde, 4),
+    artikelFormule,
+    ah.begrensd === "boven" ? vt(`${S}alphaH.upper`, `\u03B1_h = 2/\u221Ah = 2/\u221A${hTekst} en wordt begrensd door de bovengrens 1,0.`, { h: hTekst }) : ah.begrensd === "onder" ? vt(`${S}alphaH.lower`, `\u03B1_h = 2/\u221Ah = 2/\u221A${hTekst} en wordt begrensd door de ondergrens 2/3.`, { h: hTekst }) : vt(`${S}alphaH.within`, `\u03B1_h = 2/\u221Ah = 2/\u221A${hTekst}, binnen 2/3 \u2264 \u03B1_h \u2264 1,0.`, { h: hTekst })
+  ));
+  regels.push(regel(
+    "m",
+    String(m),
+    artikelFormule,
+    norm === "en1992" ? vt(`${S}m.en1992`, "m is het aantal verticale elementen dat bijdraagt aan de horizontale kracht op de schorende constructie.") : vt(`${S}m.en1993`, "m is het aantal kolommen in een rij (alleen die met N_Ed \u2265 50 % van het gemiddelde).")
+  ));
+  regels.push(regel(
+    "\u03B1_m",
+    getal3(am, 4),
+    artikelFormule,
+    vt(`${S}alphaM`, `\u03B1_m = \u221A(0,5\xB7(1 + 1/m)) = \u221A(0,5\xB7(1 + 1/${m})).`, { m })
+  ));
+  regels.push(regel(
+    norm === "en1992" ? "\u03B8_i" : "\u03C6",
+    `${getal3(phi, 5)} rad = 1/${getal3(1 / phi, 0)}`,
+    artikelFormule,
+    vt(
+      `${S}product`,
+      `${symbool}\u2080 \xB7 \u03B1_h \xB7 \u03B1_m = ${getal3(basis.waarde, 5)} \xB7 ${getal3(ah.waarde, 4)} \xB7 ${getal3(am, 4)}.`,
+      { symbool, a: getal3(basis.waarde, 5), b: getal3(ah.waarde, 4), c: getal3(am, 4) }
+    )
+  ));
   return { norm, phi, regels };
 }
 function toepasselijkeScheefstandNormen(beams) {
@@ -21169,15 +21239,19 @@ function bepaalScheefstand(keuze, geometrie, toepasselijk) {
       hoogteHandmatig: false,
       aantalHandmatig: false,
       regels: [
-        {
-          symbool: "\u03C6",
-          waarde: `1/${getal3(noemer, 0)} = ${getal3(1 / noemer, 5)}`,
-          artikel: "opgegeven waarde",
-          uitleg: "Vaste noemer uit de projectinstellingen; de reductiefactoren \u03B1_h en \u03B1_m van de norm zijn NIET toegepast. Dit is de basiswaarde en daarmee de veilige bovengrens."
-        }
+        regel(
+          "\u03C6",
+          `1/${getal3(noemer, 0)} = ${getal3(1 / noemer, 5)}`,
+          vt(`${S}article.given`, "opgegeven waarde"),
+          vt(
+            `${S}fixedExplain`,
+            "Vaste noemer uit de projectinstellingen; de reductiefactoren \u03B1_h en \u03B1_m van de norm zijn NIET toegepast. Dit is de basiswaarde en daarmee de veilige bovengrens."
+          )
+        )
       ],
       vergelijking: [],
-      waarschuwingen
+      waarschuwingen: waarschuwingen.map((w) => w.tekst),
+      waarschuwingTeksten: waarschuwingen
     };
   };
   if (bron === "vast") return vast();
@@ -21186,37 +21260,47 @@ function bepaalScheefstand(keuze, geometrie, toepasselijk) {
   const hoogteM = hoogteHandmatig ? keuze.hoogteM : geometrie.hoogteM;
   const aantalElementen = aantalHandmatig ? Math.floor(keuze.aantalElementen) : geometrie.aantalElementen;
   if (!geometrie.afleidbaar && !(hoogteHandmatig && aantalHandmatig)) {
-    waarschuwingen.push(
+    waarschuwingen.push(vt(
+      `${S}warn.notDerivable`,
       "h en/of m zijn niet uit het model af te leiden (geen verticale staaf, of geen hoogte). Controleer ze en geef ze zo nodig zelf op."
-    );
+    ));
   }
   if (hoogteM <= 0) {
-    waarschuwingen.push(
+    waarschuwingen.push(vt(
+      `${S}warn.noHeight`,
       "De constructie heeft geen hoogte, dus \u03B1_h valt op zijn bovengrens 1,0. Een scheefstand op een vlak model is een keuze van de gebruiker en geen normvoorschrift."
-    );
+    ));
   }
   let normen;
   if (bron === "ongunstigste") {
     if (toepasselijk.length === 0) {
-      return vast(
-        `Geen van de drie normen is op dit model van toepassing (alle staven hebben een vrij of onbekend materiaal). De vaste noemer blijft gelden: \u03C6 = 1/${getal3(noemer, 0)}.`
-      );
+      return vast(vt(
+        `${S}warn.noNormApplies`,
+        `Geen van de drie normen is op dit model van toepassing (alle staven hebben een vrij of onbekend materiaal). De vaste noemer blijft gelden: \u03C6 = 1/${getal3(noemer, 0)}.`,
+        { noemer: getal3(noemer, 0) }
+      ));
     }
     normen = toepasselijk;
   } else {
     normen = [bron];
     if (toepasselijk.length > 0 && !toepasselijk.includes(bron)) {
-      waarschuwingen.push(
-        `${SCHEEFSTAND_BRON_LABEL[bron]} is gekozen, maar dit model bevat geen materiaal dat onder die norm valt (wel: ${toepasselijk.map((n) => SCHEEFSTAND_BRON_LABEL[n]).join(", ")}).`
-      );
+      const wel = toepasselijk.map((n) => SCHEEFSTAND_BRON_LABEL[n]).join(", ");
+      waarschuwingen.push(vt(
+        `${S}warn.normWithoutMaterial`,
+        `${SCHEEFSTAND_BRON_LABEL[bron]} is gekozen, maar dit model bevat geen materiaal dat onder die norm valt (wel: ${wel}).`,
+        { norm: SCHEEFSTAND_BRON_LABEL[bron], wel }
+      ));
     }
   }
   const vergelijking = normen.map((n) => phiVolgensNorm(n, hoogteM, aantalElementen));
   const gekozen = vergelijking.reduce((a, b) => b.phi > a.phi ? b : a);
   if (bron === "ongunstigste" && vergelijking.length > 1) {
-    waarschuwingen.push(
-      "Ongunstigste van " + vergelijking.map((v) => `${SCHEEFSTAND_BRON_LABEL[v.norm]} \u2192 1/${getal3(1 / v.phi, 0)}`).join(", ") + `. Gekozen: ${SCHEEFSTAND_BRON_LABEL[gekozen.norm]}.`
-    );
+    const lijst = vergelijking.map((v) => `${SCHEEFSTAND_BRON_LABEL[v.norm]} \u2192 1/${getal3(1 / v.phi, 0)}`).join(", ");
+    waarschuwingen.push(vt(
+      `${S}warn.governing`,
+      `Ongunstigste van ${lijst}. Gekozen: ${SCHEEFSTAND_BRON_LABEL[gekozen.norm]}.`,
+      { lijst, gekozen: SCHEEFSTAND_BRON_LABEL[gekozen.norm] }
+    ));
   }
   return {
     phi: gekozen.phi,
@@ -21229,7 +21313,8 @@ function bepaalScheefstand(keuze, geometrie, toepasselijk) {
     aantalHandmatig,
     regels: gekozen.regels,
     vergelijking,
-    waarschuwingen
+    waarschuwingen: waarschuwingen.map((w) => w.tekst),
+    waarschuwingTeksten: waarschuwingen
   };
 }
 
@@ -21570,12 +21655,12 @@ var AFBEELDINGEN = [
 ];
 function beeldKernfoutAf(origineel) {
   const tekst = origineel.trim();
-  for (const regel of AFBEELDINGEN) {
-    const treffer = regel.patroon.exec(tekst);
+  for (const regel2 of AFBEELDINGEN) {
+    const treffer = regel2.patroon.exec(tekst);
     if (treffer) {
       return {
-        code: regel.code,
-        melding: regel.nl(treffer),
+        code: regel2.code,
+        melding: regel2.nl(treffer),
         detail: { originele_melding: origineel },
         herkend: true
       };
@@ -22950,10 +23035,10 @@ function maakOk(id, result) {
 function maakFout(id, code, melding, detail) {
   return detail === void 0 ? { v: SIDECAR_PROTOCOL, id, ok: false, error: { code, melding } } : { v: SIDECAR_PROTOCOL, id, ok: false, error: { code, melding, detail } };
 }
-function ontleedVerzoek(regel) {
+function ontleedVerzoek(regel2) {
   let rauw;
   try {
-    rauw = JSON.parse(regel);
+    rauw = JSON.parse(regel2);
   } catch (err) {
     return {
       ok: false,
@@ -22961,7 +23046,7 @@ function ontleedVerzoek(regel) {
         0,
         "INVOER_ONGELDIG",
         "De regel is geen geldige JSON.",
-        { originele_melding: String(err), regel_lengte: regel.length }
+        { originele_melding: String(err), regel_lengte: regel2.length }
       )
     };
   }
@@ -23949,8 +24034,8 @@ function verwerkVerzoek(verzoek) {
     );
   }
 }
-function verwerkRegel(regel) {
-  const opgeschoond = regel.replace(/\r$/, "");
+function verwerkRegel(regel2) {
+  const opgeschoond = regel2.replace(/\r$/, "");
   if (opgeschoond.trim().length === 0) return null;
   const ontleed = ontleedVerzoek(opgeschoond);
   const antwoord = ontleed.ok ? verwerkVerzoek(ontleed.verzoek) : ontleed.antwoord;
@@ -23977,9 +24062,9 @@ function startSidecar() {
     buffer += brok ?? "";
     let grens = buffer.indexOf("\n");
     while (grens >= 0) {
-      const regel = buffer.slice(0, grens);
+      const regel2 = buffer.slice(0, grens);
       buffer = buffer.slice(grens + 1);
-      const antwoord = verwerkRegel(regel);
+      const antwoord = verwerkRegel(regel2);
       if (antwoord !== null) process.stdout.write(antwoord);
       grens = buffer.indexOf("\n");
     }
@@ -24049,6 +24134,7 @@ export {
   K_FI,
   K_I,
   LABEL_ZUIVER_STAAL,
+  LABEL_ZUIVER_STAAL_TEKST,
   LOAD_SOORT_MEERVOUD,
   MAX_VRIJE_GEVALLEN,
   MELDING_ZONE_I,
