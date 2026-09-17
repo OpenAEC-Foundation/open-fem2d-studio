@@ -203,6 +203,7 @@
   font: 500 11px/1 "JetBrains Mono", monospace;
 }
 .lc-tab-phi-input:focus { outline: none; border-color: var(--theme-accent); }
+.lc-tab-phi-input[inputmode="decimal"] { width: 76px; }
 .lc-tab-phi-dir {
   height: 20px;
   padding: 0 2px;

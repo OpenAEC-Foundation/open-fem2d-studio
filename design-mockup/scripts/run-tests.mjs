@@ -362,6 +362,8 @@ const BUNDEL_TESTS = new Set([
  * vergeten regel.
  */
 const ALLEEN_BRON = new Map([
+  ["mm-invoer-ui", "Interactietests van echte React-formulieren in een lokale headless browser; geen server of solver."],
+  ["mm-invoer", "Lengte-invoer aan de UI-grens, bestaande opslageenheden en labels in vier talen; geen solverwijziging."],
   ["pendelstaaf", "raakt kerninterne klassen (Assembler, Matrix)"],
   ["plaat-dkt", "raakt kerninterne klassen (Mesh, PlateRegion, DKT)"],
   ["plaat-ids", "raakt kerninterne klassen (Mesh, PlateRegion)"],

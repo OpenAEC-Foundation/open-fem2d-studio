@@ -190,16 +190,16 @@
     "beamType": "Member type",
     "beamTypeAuto": "Automatic — {{role}}",
     "schema": {
-      "sectionAria": "Cross-section of the frame, h = {{h}} m, d = {{d}} m",
-      "wallHeight": "wall {{h}} m",
+      "sectionAria": "Cross-section of the frame, h = {{h}} {{unit}}, d = {{d}} {{unit}}",
+      "wallHeight": "wall {{h}} {{unit}}",
       "beamTitle": "Member {{id}} — {{rol}}",
       "windPerpendicular": "Wind perpendicular to the frame (into the plane)",
       "allDirections": "All wind directions (NEN-EN 1991-1-4 §7.3(3))",
       "blockageAria": "Blockage under the roof: φ = {{phi}}",
       "blockageEmpty": "φ = 0 — empty",
-      "planAria": "Plan, building length {{b}} m, span {{d}} m",
-      "innerFrameAt": "Internal frame at {{afstand}} m from the gable",
-      "planDims": "b = {{b}} m · spacing {{hoh}} m"
+      "planAria": "Plan, building length {{b}} {{unit}}, span {{d}} {{unit}}",
+      "innerFrameAt": "Internal frame at {{afstand}} {{unit}} from the gable",
+      "planDims": "b = {{b}} {{unit}} · spacing {{hoh}} {{unit}}"
     },
     "regionOption": {
       "I": "Zone I — coastal strip and Wadden area (v_b,0 = 29.5 m/s)",
@@ -448,7 +448,7 @@
       "addZAxis": "Add Z grid line (horizontal line)"
     },
     "beam": {
-      "lengthPointDirection": "{{lengte}} m — point in a direction"
+      "lengthPointDirection": "{{lengte}} mm — point in a direction"
     },
     "uc": {
       "badgeTitle": "Member {{staaf}}: governing {{toets}} — click for the check",
@@ -459,8 +459,8 @@
       "tool": "Tool:",
       "continuousTitle": "Continuous drawing: the end point of a member is immediately the start of the next one (polyline). Escape ends the sequence.",
       "continuous": "continue",
-      "beamClickSecondNode": "click the second node, or type a length in m",
-      "beamLengthTyped": "m · Enter confirms · Esc clears the length",
+      "beamClickSecondNode": "click the second node, or type a length in mm",
+      "beamLengthTyped": "mm · Enter confirms · Esc clears the length",
       "plateCornersClose_one": "{{count}} corner · click the first node to close · Esc cancels",
       "plateCornersClose_other": "{{count}} corners · click the first node to close · Esc cancels",
       "plateCornersNext_one": "{{count}} corner · click the next corner · Esc cancels",
@@ -544,18 +544,18 @@
       "addPointLoadH": "Add horizontal point load",
       "edgeLoadOn": "Edge load on {{rand}}",
       "rememberedHint": "Value taken from your previous placement.",
-      "positionAlongEdge": "Distance along {{rand}} of plate {{plaat}}, from the start corner (0 – {{lengte}} m).",
-      "positionAlongBeam": "Distance from the start node of the member (0 – {{lengte}} m).",
-      "positionM": "Position (m)",
+      "positionAlongEdge": "Distance along {{rand}} of plate {{plaat}}, from the start corner (0 – {{lengte}} mm).",
+      "positionAlongBeam": "Distance from the start node of the member (0 – {{lengte}} mm).",
+      "positionM": "Position (mm)",
       "direction": "Direction",
       "directionVertical": "Vertical (+Z, gravity)",
       "directionHorizontal": "Horizontal (+X, wind)",
-      "beginM": "Start (m)",
-      "endM": "End (m)",
-      "lineLoadHint": "Negative = against the + direction (downward for Z, to the left for X). Start/end measured from the start node; 0 to {{lengte}} m = full length.",
-      "edgeLoadHint": "p acts per metre of edge length. Negative = against the + direction (downward for Z, to the left for X). Start/end measured from the start corner of the edge; 0 to {{lengte}} m = the full edge.",
-      "invalidRange": "Invalid range: 0 ≤ start < end ≤ {{lengte}} m",
-      "invalidPosition": "Invalid position: 0 ≤ position ≤ {{lengte}} m"
+      "beginM": "Start (mm)",
+      "endM": "End (mm)",
+      "lineLoadHint": "Negative = against the + direction (downward for Z, to the left for X). Start/end measured from the start node; 0 to {{lengte}} mm = full length.",
+      "edgeLoadHint": "p acts per metre of edge length. Negative = against the + direction (downward for Z, to the left for X). Start/end measured from the start corner of the edge; 0 to {{lengte}} mm = the full edge.",
+      "invalidRange": "Invalid range: 0 ≤ start < end ≤ {{lengte}} mm",
+      "invalidPosition": "Invalid position: 0 ≤ position ≤ {{lengte}} mm"
     },
     "edge": {
       "bottom": "bottom edge",
@@ -570,7 +570,7 @@
     "dim": {
       "editXAxis": "Edit X grid line dimension",
       "editZLevel": "Edit Z level dimension",
-      "distance": "Distance (m)",
+      "distance": "Distance (mm)",
       "nodesMoveWithAxis_one": "{{count}} node on this axis moves along.",
       "nodesMoveWithAxis_other": "{{count}} nodes on this axis move along.",
       "nodesMoveWithLevel_one": "{{count}} node on this level moves along.",
@@ -646,7 +646,7 @@
       "ongunstigste": "most unfavourable applicable"
     },
     "swayDenominatorTitle": "Sway imperfection φ as 1/x (default 1/200)",
-    "swayHeightTitle": "Height h in m for α_h = 2/√h. Empty = derived from the model ({{hoogte}} m): from the lowest support to the top of the structure (EN 1993-1-1 figure 5.2; EN 1992-1-1 §5.2(6) for the bracing structure).",
+    "swayHeightTitle": "Height h in mm for α_h = 2/√(h/1000). Empty = derived from the model ({{hoogte}} mm): from the lowest support to the top of the structure (EN 1993-1-1 figure 5.2; EN 1992-1-1 §5.2(6) for the bracing structure).",
     "swayMembersTitle": "Number of load-bearing vertical members m for α_m = √(0.5(1+1/m)). Empty = derived from the model ({{aantal}}): the number of column lines, where members stacked on top of each other form one column. The 50 % criterion of EN 1993-1-1 5.3.2(3)a cannot be applied here (it requires the column forces, which only follow from the analysis); remove a lightly loaded post manually — smaller m gives larger φ.",
     "swayDirectionTitle": "Direction of the equivalent horizontal forces: BOTH. Each combination is analysed with the sway imperfection in +x and in −x (EN 1993-1-1 5.3.2(2): in the most unfavourable direction); the envelope and the code check take, per member, the more unfavourable of the two, and the combination name states the direction. The preferred direction stored here ({{richting}}) only determines which variant keeps the original combination number.",
     "dialogTitle": "Load cases & combinations",
