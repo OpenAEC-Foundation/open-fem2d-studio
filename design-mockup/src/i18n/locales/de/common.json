@@ -190,16 +190,16 @@
     "beamType": "Stabtyp",
     "beamTypeAuto": "Automatisch — {{role}}",
     "schema": {
-      "sectionAria": "Schnitt durch den Rahmen, h = {{h}} m, d = {{d}} m",
-      "wallHeight": "Wand {{h}} m",
+      "sectionAria": "Schnitt durch den Rahmen, h = {{h}} {{unit}}, d = {{d}} {{unit}}",
+      "wallHeight": "Wand {{h}} {{unit}}",
       "beamTitle": "Stab {{id}} — {{rol}}",
       "windPerpendicular": "Wind quer zum Rahmen (in die Ebene hinein)",
       "allDirections": "Alle Windrichtungen (NEN-EN 1991-1-4 §7.3(3))",
       "blockageAria": "Versperrung unter dem Dach: φ = {{phi}}",
       "blockageEmpty": "φ = 0 — leer",
-      "planAria": "Grundriss, Gebäudelänge {{b}} m, Spannweite {{d}} m",
-      "innerFrameAt": "Innenrahmen im Abstand von {{afstand}} m zur Giebelwand",
-      "planDims": "b = {{b}} m · Abstand {{hoh}} m"
+      "planAria": "Grundriss, Gebäudelänge {{b}} {{unit}}, Spannweite {{d}} {{unit}}",
+      "innerFrameAt": "Innenrahmen im Abstand von {{afstand}} {{unit}} zur Giebelwand",
+      "planDims": "b = {{b}} {{unit}} · Abstand {{hoh}} {{unit}}"
     },
     "regionOption": {
       "I": "Zone I — Küstenstreifen und Wattenmeergebiet (v_b,0 = 29,5 m/s)",
@@ -448,7 +448,7 @@
       "addZAxis": "Z-Achse hinzufügen (horizontale Linie)"
     },
     "beam": {
-      "lengthPointDirection": "{{lengte}} m — zeigen Sie eine Richtung an"
+      "lengthPointDirection": "{{lengte}} mm — zeigen Sie eine Richtung an"
     },
     "uc": {
       "badgeTitle": "Stab {{staaf}}: maßgebend {{toets}} — klicken Sie für den Nachweis",
@@ -459,8 +459,8 @@
       "tool": "Werkzeug:",
       "continuousTitle": "Fortlaufend zeichnen: Der Endpunkt eines Stabs ist sofort der Anfang des nächsten (Polylinie). Escape bricht die Folge ab.",
       "continuous": "fortlaufend",
-      "beamClickSecondNode": "klicken Sie auf den zweiten Knoten oder geben Sie eine Länge in m ein",
-      "beamLengthTyped": "m · Enter bestätigt · Esc löscht das Maß",
+      "beamClickSecondNode": "klicken Sie auf den zweiten Knoten oder geben Sie eine Länge in mm ein",
+      "beamLengthTyped": "mm · Enter bestätigt · Esc löscht das Maß",
       "plateCornersClose_one": "{{count}} Ecke · klicken Sie auf den ersten Knoten zum Schließen · Esc bricht ab",
       "plateCornersClose_other": "{{count}} Ecken · klicken Sie auf den ersten Knoten zum Schließen · Esc bricht ab",
       "plateCornersNext_one": "{{count}} Ecke · klicken Sie auf die nächste Ecke · Esc bricht ab",
@@ -544,18 +544,18 @@
       "addPointLoadH": "Horizontale Punktlast hinzufügen",
       "edgeLoadOn": "Randlast auf {{rand}}",
       "rememberedHint": "Wert aus Ihrer vorherigen Platzierung übernommen.",
-      "positionAlongEdge": "Abstand entlang {{rand}} der Platte {{plaat}}, ab der Anfangsecke (0 – {{lengte}} m).",
-      "positionAlongBeam": "Abstand vom Anfangsknoten des Stabs (0 – {{lengte}} m).",
-      "positionM": "Position (m)",
+      "positionAlongEdge": "Abstand entlang {{rand}} der Platte {{plaat}}, ab der Anfangsecke (0 – {{lengte}} mm).",
+      "positionAlongBeam": "Abstand vom Anfangsknoten des Stabs (0 – {{lengte}} mm).",
+      "positionM": "Position (mm)",
       "direction": "Richtung",
       "directionVertical": "Vertikal (+Z, Schwerkraft)",
       "directionHorizontal": "Horizontal (+X, Wind)",
-      "beginM": "Anfang (m)",
-      "endM": "Ende (m)",
-      "lineLoadHint": "Negativ = entgegen der +Richtung (nach unten für Z, nach links für X). Anfang/Ende ab dem Anfangsknoten; 0 bis {{lengte}} m = volle Länge.",
-      "edgeLoadHint": "p wirkt je Meter Randlänge. Negativ = entgegen der +Richtung (nach unten für Z, nach links für X). Anfang/Ende ab der Anfangsecke des Randes; 0 bis {{lengte}} m = der ganze Rand.",
-      "invalidRange": "Ungültiger Bereich: 0 ≤ Anfang < Ende ≤ {{lengte}} m",
-      "invalidPosition": "Ungültige Position: 0 ≤ Position ≤ {{lengte}} m"
+      "beginM": "Anfang (mm)",
+      "endM": "Ende (mm)",
+      "lineLoadHint": "Negativ = entgegen der +Richtung (nach unten für Z, nach links für X). Anfang/Ende ab dem Anfangsknoten; 0 bis {{lengte}} mm = volle Länge.",
+      "edgeLoadHint": "p wirkt je Meter Randlänge. Negativ = entgegen der +Richtung (nach unten für Z, nach links für X). Anfang/Ende ab der Anfangsecke des Randes; 0 bis {{lengte}} mm = der ganze Rand.",
+      "invalidRange": "Ungültiger Bereich: 0 ≤ Anfang < Ende ≤ {{lengte}} mm",
+      "invalidPosition": "Ungültige Position: 0 ≤ Position ≤ {{lengte}} mm"
     },
     "edge": {
       "bottom": "Unterrand",
@@ -570,7 +570,7 @@
     "dim": {
       "editXAxis": "Maß der X-Achse bearbeiten",
       "editZLevel": "Maß der Z-Ebene bearbeiten",
-      "distance": "Abstand (m)",
+      "distance": "Abstand (mm)",
       "nodesMoveWithAxis_one": "{{count}} Knoten auf dieser Achse wird mitverschoben.",
       "nodesMoveWithAxis_other": "{{count}} Knoten auf dieser Achse werden mitverschoben.",
       "nodesMoveWithLevel_one": "{{count}} Knoten auf dieser Ebene wird mitverschoben.",
@@ -646,7 +646,7 @@
       "ongunstigste": "ungünstigste zutreffende"
     },
     "swayDenominatorTitle": "Schiefstellung φ als 1/x (Standard 1/200)",
-    "swayHeightTitle": "Höhe h in m für α_h = 2/√h. Leer = aus dem Modell abgeleitet ({{hoogte}} m): vom tiefsten Auflager bis zur Oberkante des Tragwerks (EN 1993-1-1 Bild 5.2; EN 1992-1-1 §5.2(6) für das aussteifende Tragwerk).",
+    "swayHeightTitle": "Höhe h in mm für α_h = 2/√(h/1000). Leer = aus dem Modell abgeleitet ({{hoogte}} mm): vom tiefsten Auflager bis zur Oberkante des Tragwerks (EN 1993-1-1 Bild 5.2; EN 1992-1-1 §5.2(6) für das aussteifende Tragwerk).",
     "swayMembersTitle": "Anzahl tragender vertikaler Bauteile m für α_m = √(0,5(1+1/m)). Leer = aus dem Modell abgeleitet ({{aantal}}): die Anzahl der Stützenachsen, wobei übereinanderstehende Stäbe eine Stütze bilden. Das 50-%-Kriterium nach EN 1993-1-1 5.3.2(3)a kann hier nicht angewendet werden (es erfordert die Stützenkräfte, die sich erst aus der Berechnung ergeben); nehmen Sie eine gering belastete Stütze von Hand heraus — kleineres m ergibt größeres φ.",
     "swayDirectionTitle": "Richtung der Ersatzhorizontalkräfte: BEIDE. Jede Kombination wird mit der Schiefstellung in +x und in −x gerechnet (EN 1993-1-1 5.3.2(2): in der ungünstigsten Richtung); Umhüllende und Nachweis nehmen je Stab die ungünstigere der beiden, und der Kombinationsname nennt die Richtung. Die hier gespeicherte Vorzugsrichtung ({{richting}}) bestimmt nur, welche Variante die ursprüngliche Kombinationsnummer behält.",
     "dialogTitle": "Lastfälle & Kombinationen",

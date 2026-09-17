@@ -50,6 +50,8 @@
  * `kolomgegevens.ts` houdt het vakje om z bij de schoring om z.
  */
 import { useTranslation } from "react-i18next";
+import LengthInput from "../LengthInput";
+import { formatLength, mmToMeters, metersToMm } from "../../lib/lengthInput";
 import type { Beugelzone } from "../../lib/types/concrete/Beugelzone";
 import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
 import type { Knikgeval } from "../../lib/types/concrete/Knikgeval";
@@ -88,12 +90,8 @@ function sleutelVan(keuze: Kniklengtekeuze | undefined): string {
 
 function keuzeVanSleutel(v: string, lengteMm: number): Kniklengtekeuze | undefined {
   if (v === "") return undefined;
-  if (v === "Opgegeven") return { soort: "Opgegeven", l0_m: Math.round(lengteMm) / 1000 };
+  if (v === "Opgegeven") return { soort: "Opgegeven", l0_m: mmToMeters(lengteMm) };
   return { soort: "Figuur57", geval: v.slice("Figuur57:".length) as Knikgeval };
-}
-
-function toonM(mm: number): string {
-  return (mm / 1000).toFixed(2).replace(".", ",");
 }
 
 interface Props {
@@ -157,7 +155,7 @@ export default function KolomVelden({
     k === undefined
       ? null
       : k.soort === "Opgegeven"
-        ? k.l0_m * 1000
+        ? metersToMm(k.l0_m)
         : (l0FactorVan(k.geval) ?? 0) * lengteMm;
   const l0Mm = l0Van(keuze);
 
@@ -219,21 +217,19 @@ export default function KolomVelden({
           </label>
 
           {waarde.buckling_length.soort === "Opgegeven" && (
-            <Getal
-              id={`${idPrefix}-l0`}
-              label="l₀"
-              eenheid="m"
-              waarde={waarde.buckling_length.l0_m}
-              min={0}
-              stap={0.1}
-              onChange={(v) => zet({ buckling_length: { soort: "Opgegeven", l0_m: v } })}
-            />
+            <label className="beton-rij" htmlFor={`${idPrefix}-l0`}>
+              <span className="beton-label">l₀ (mm)</span>
+              <LengthInput required id={`${idPrefix}-l0`} className="beton-invoer" positive storedUnit="m"
+                value={waarde.buckling_length.l0_m}
+                onChange={v => { if (v !== undefined) zet({ buckling_length: { soort: "Opgegeven", l0_m: v } }); }}
+              />
+            </label>
           )}
 
           <div className="beton-hint">
             {l0Mm !== null && lengteMm > 0 && (
               <>
-                {t("concrete.column.l0Info", { l0: toonM(l0Mm), l: toonM(lengteMm) })}{" "}
+                {t("concrete.column.l0Info", { l0: formatLength(l0Mm), l: formatLength(lengteMm) })}{" "}
               </>
             )}
             {t("concrete.column.casesFgHint")}
@@ -312,15 +308,13 @@ export default function KolomVelden({
           </label>
 
           {waarde.buckling_length_z?.soort === "Opgegeven" && (
-            <Getal
-              id={`${idPrefix}-l0-z`}
-              label="l₀,z"
-              eenheid="m"
-              waarde={waarde.buckling_length_z.l0_m}
-              min={0}
-              stap={0.1}
-              onChange={(v) => zet({ buckling_length_z: { soort: "Opgegeven", l0_m: v } })}
-            />
+            <label className="beton-rij" htmlFor={`${idPrefix}-l0-z`}>
+              <span className="beton-label">l₀,z (mm)</span>
+              <LengthInput required id={`${idPrefix}-l0-z`} className="beton-invoer" positive storedUnit="m"
+                value={waarde.buckling_length_z.l0_m}
+                onChange={v => { if (v !== undefined) zet({ buckling_length_z: { soort: "Opgegeven", l0_m: v } }); }}
+              />
+            </label>
           )}
 
           <Getal
@@ -333,7 +327,7 @@ export default function KolomVelden({
           />
 
           <div className="beton-hint">
-            {l0zMm !== null && lengteMm > 0 && <>l₀,z = {toonM(l0zMm)} m. </>}
+            {l0zMm !== null && lengteMm > 0 && <>l₀,z = {formatLength(l0zMm)} mm. </>}
             {t("concrete.column.zAxisHint")}
           </div>
 

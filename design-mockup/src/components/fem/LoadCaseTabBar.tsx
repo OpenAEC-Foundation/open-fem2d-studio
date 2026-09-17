@@ -8,6 +8,8 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import LengthInput from "../LengthInput";
+import { formatLength } from "../../lib/lengthInput";
 import type { LoadCase, Load, Analysetype } from "./femTypes";
 import { ANALYSETYPEN } from "./femTypes";
 import {
@@ -483,22 +485,13 @@ export default function LoadCaseTabBar({
       {setScheefstandEnabled && scheefstandEnabled && scheefstandBron !== "vast" && (
         <span className="lc-tab-phi" title={scheefstandToelichting}>
           <span className="lc-tab-phi-label">h =</span>
-          <input
-            type="number"
-            className="lc-tab-phi-input"
-            min={0}
-            step={0.5}
-            placeholder={scheefstandAfgeleideHoogteM.toFixed(2)}
-            value={scheefstandHoogteM ?? ""}
-            onChange={(e) => {
-              const t = e.target.value.trim();
-              if (t === "") { setScheefstandHoogteM?.(null); return; }
-              const v = Number(t);
-              if (Number.isFinite(v) && v > 0) setScheefstandHoogteM?.(v);
-            }}
-            title={t("loadCases.swayHeightTitle", { hoogte: scheefstandAfgeleideHoogteM.toFixed(3) })}
+          <LengthInput className="lc-tab-phi-input" positive storedUnit="m"
+            placeholder={formatLength(scheefstandAfgeleideHoogteM, "m")}
+            value={scheefstandHoogteM}
+            onChange={v => setScheefstandHoogteM?.(v ?? null)}
+            title={t("loadCases.swayHeightTitle", { hoogte: formatLength(scheefstandAfgeleideHoogteM, "m") })}
           />
-          <span className="lc-tab-phi-label">m</span>
+          <span className="lc-tab-phi-label">mm</span>
           <input
             type="number"
             className="lc-tab-phi-input"
