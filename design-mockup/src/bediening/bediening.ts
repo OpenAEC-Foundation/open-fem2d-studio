@@ -12,8 +12,17 @@
  * toestand STAAT. Voor de zustand-stores (toetsing, dekkingslijn) gebeurt dat
  * met `wachtOpStore` — een abonnement dat oplost bij de eerste toestand die
  * voldoet. Voor de raamwerkstore, die op React-state draait en niets te
- * abonneren heeft, gebeurt het met `wachtOpRender`: de hook lost hem op na
- * de eerstvolgende commit. Geen timers, geen "even wachten".
+ * abonneren heeft, gebeurt het met `verseRender`: een eigen tik die altijd
+ * een commit oplevert, en de hook lost hem op na die commit. Geen timers,
+ * geen "even wachten".
+ *
+ * NOOIT KAAL OP DE VOLGENDE RENDER WACHTEN NA EEN ACTIE. Een opdracht die
+ * niets verandert — de weergave zetten naar de weergave die al actief is,
+ * dezelfde staaf opnieuw selecteren, hetzelfde analysetype — levert in React
+ * geen commit op (gelijke state wordt overgeslagen). Wie dan op "de
+ * eerstvolgende render" wacht, wacht tot de time-out van Rust (30 s) en
+ * krijgt een fout terwijl er niets mis is (issue #28). Daarom wacht elke
+ * actie hieronder op `verseRender`, nooit op `wachtOpRender`.
  *
  * FOUTEN REIZEN MEE. Wat de app zelf zou melden — een korf die
  * `controleerKorf` weigert, toetsen zonder model — gaat letterlijk terug als
@@ -163,8 +172,9 @@ export function useBediening(acties: BedieningActies): boolean {
   // `verseRender`: forceer een commit en wacht erop. Nodig na een ASYNCHRONE
   // actie (een rekengang met toetsing): de commits die daarbij hoorden kunnen
   // al voorbij zijn, en dan zou `wachtOpRender` op een render wachten die
-  // nooit komt. Met een eigen tik komt er altijd één, en daarna staat de
-  // laatste modelstate gegarandeerd in `actiesRef`.
+  // nooit komt. Evengoed na een actie die niets verandert (#28): React slaat
+  // gelijke state over en commit dan niet. Met een eigen tik komt er altijd
+  // één, en daarna staat de laatste modelstate gegarandeerd in `actiesRef`.
   const [, setTik] = useState(0);
   const verseRender = () => {
     const p = wachtOpRender();
@@ -211,7 +221,13 @@ export function useBediening(acties: BedieningActies): boolean {
 
 // ── De acties ───────────────────────────────────────────────────────────────
 
-async function voerUit(
+/**
+ * Voer één opdracht uit. Geëxporteerd voor test-bediening-wachten.mjs, dat
+ * zonder app nagaat dat geen actie op een render wacht die niet komt.
+ * `wachtOpRender` gaat alleen door naar `rapportVoorbereiden`, dat hem pas
+ * gebruikt nadat het de weergave aantoonbaar heeft gewisseld.
+ */
+export async function voerUit(
   naam: string,
   args: Record<string, unknown>,
   ref: { current: BedieningActies },
@@ -281,7 +297,7 @@ async function voerUit(
       const tekst = args.tekst;
       if (typeof tekst !== "string") throw new Error("`tekst` ontbreekt");
       await a().laadProjectTekst(tekst, typeof args.pad === "string" ? args.pad : undefined);
-      await wachtOpRender();
+      await verseRender();
       const f = a().fem;
       return { aantalKnopen: f.nodes.length, aantalStaven: f.beams.length, aantalLasten: f.loads.length };
     }
@@ -306,7 +322,7 @@ async function voerUit(
       }
       for (const naam of (args.load_cases as string[] | undefined) ?? []) f.addLoadCase(naam);
       for (const l of (args.loads as Array<Omit<Load, "id">> | undefined) ?? []) f.addLoad(l);
-      await wachtOpRender();
+      await verseRender();
       return { nodeIds, beamIds };
     }
 
@@ -314,7 +330,7 @@ async function voerUit(
       const id = getal("id");
       staaf(id);
       a().setSelection({ type: "beam", id });
-      await wachtOpRender();
+      await verseRender();
       return staaf(id);
     }
 
@@ -328,7 +344,7 @@ async function voerUit(
       // zetten. De rest van checkConfig blijft staan.
       const huidig = staaf(id).checkConfig ?? {};
       a().fem.updateBeam(id, { checkConfig: { ...huidig, betonKorf: korf } });
-      await wachtOpRender();
+      await verseRender();
       return staaf(id);
     }
 
@@ -338,7 +354,7 @@ async function voerUit(
         throw new Error(`onbekend analysetype ${String(v)}`);
       }
       a().fem.setAnalysetype(v);
-      await wachtOpRender();
+      await verseRender();
       return { analysetype: a().fem.analysetype };
     }
 
@@ -392,7 +408,7 @@ async function voerUit(
       const v0 = st.volgnummer;
       a().setSelection({ type: "beam", id });
       a().setBottomPanelOpen(true);
-      await wachtOpRender();
+      await verseRender();
       // Het venster vraagt de kern pas na een korte vertraging; wacht tot hij
       // óf klaar is (volgnummer hoger) óf aantoonbaar bezig, en dan tot klaar.
       // Was deze staaf al open en klaar, dan verandert er niets en is het
@@ -419,7 +435,7 @@ async function voerUit(
       const v = args.view;
       if (typeof v !== "string") throw new Error("`view` ontbreekt");
       a().setActiveView(v);
-      await wachtOpRender();
+      await verseRender();
       return { weergave: a().activeView };
     }
 
