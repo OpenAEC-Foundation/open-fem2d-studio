@@ -188,5 +188,61 @@ log("\n[f] dezelfde kernresultaten naar de PDF-export");
   checkTrue("overgeslagen plaat blijft zichtbaar", wire.plate_skipped[0].reden === "geen materiaal — test");
 }
 
+log("\n[g] compacte getallen in het live rapport");
+{
+  const { fmtUc, fmtValue, latexGetal, unityCheckLatex, vulGetallenIn } =
+    await import("./src/components/report/checkReportUtils.ts");
+  for (const [waarde, uc, tekstwaarde, latex] of [
+    [Number.MAX_VALUE, "∞", "∞", "\\infty"],
+    [Infinity, "∞", "∞", "\\infty"],
+    [-Infinity, "-∞", "-∞", "-\\infty"],
+    [1.23456e100, "1,23E100", "1,235E100", "1{,}235 \\times 10^{100}"],
+    [-1.23456e100, "-1,23E100", "-1,235E100", "-1{,}235 \\times 10^{100}"],
+    [1e6, "1,00E6", "1E6", "1 \\times 10^{6}"],
+    [999999, "999.999,00", "999.999", "999999"],
+    [0.6789, "0,68", "0,679", "0{,}679"],
+    [0, "0,00", "0", "0"],
+  ]) {
+    checkTrue(`UC-opmaak ${waarde}`, fmtUc(waarde) === uc, fmtUc(waarde));
+    checkTrue(`waarde-opmaak ${waarde}`, fmtValue(waarde) === tekstwaarde, fmtValue(waarde));
+    checkTrue(`LaTeX-opmaak ${waarde}`, latexGetal(waarde) === latex, latexGetal(waarde));
+  }
+  checkTrue("LaTeX behoudt afronding van negatieve bijna-nul", latexGetal(-1e-16) === "0");
+  checkTrue("eigen precisie bij grote waarden", fmtValue(1.23456e100, 1) === "1,2E100");
+  checkTrue("grote factor blijft gegroepeerd onder een macht",
+    vulGetallenIn("x^2", [{ symbol: "x", value: 1.23e100, unit: "" }]).latex ===
+      "\\left(1{,}23 \\times 10^{100}\\right)^2");
+  checkTrue("nulweerstand houdt belasting, nul en overschrijding zichtbaar",
+    unityCheckLatex({ formula_latex: "E / R", ed: 100, rd: 0, uc: Number.MAX_VALUE }) ===
+      "\\frac{E}{R} = \\frac{100}{0} = \\infty > 1{,}0");
+
+  // Dezelfde formatter moet ook de overzichtsrij, combinaties, afleiding,
+  // variabelen en deelstappen bereiken, niet alleen een losse UC-functie.
+  for (const [waarde, verwacht] of [[Number.MAX_VALUE, "∞"], [1.23e100, "1,23E100"]]) {
+    const plaat = structuredClone(res[0]);
+    plaat.uc_max = waarde;
+    plaat.status = "NotOk";
+    plaat.combinaties[0].uc = waarde;
+    const check = plaat.checks[0].kind.data;
+    check.value = waarde;
+    check.status = "NotOk";
+    check.uc = { ...check.uc, ed: 100, rd: 0, uc: waarde };
+    check.variables[0].value = waarde;
+    check.deelstappen[0].value = waarde;
+    for (const gedetailleerd of [false, true]) {
+      const html = renderToStaticMarkup(React.createElement(PlaatToetsRapport, {
+        plateResults: [plaat], plateSkipped: [], lastRunAt: null, gedetailleerd,
+        aantalPlaten: 1, combinations: [],
+      }));
+      checkTrue(`rapport ${waarde}, detail ${gedetailleerd}: compacte tabelwaarde`, html.includes(verwacht));
+      checkTrue(`rapport ${waarde}, detail ${gedetailleerd}: geen lange cijferreeks`,
+        !/[0-9][0-9.,]{30}/.test(html));
+      checkTrue(`rapport ${waarde}, detail ${gedetailleerd}: geldige KaTeX`, !html.includes("katex-error"));
+      checkTrue(`rapport ${waarde}, detail ${gedetailleerd}: overschrijding blijft herkenbaar`,
+        html.includes("rpt-uc-fail"));
+    }
+  }
+}
+
 log(`\n${passed} geslaagd, ${failed} mislukt`);
 process.exit(failed > 0 ? 1 : 0);
