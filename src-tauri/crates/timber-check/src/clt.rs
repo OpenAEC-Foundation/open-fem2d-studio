@@ -152,6 +152,23 @@ pub struct CltBeamCheckInput {
     /// en welke terugval er eventueel is toegepast.
     #[serde(default)]
     pub deflection_notes: Vec<String>,
+    /// Langeduurzakking w_qp,fin (mm, met teken): de zakking onder de
+    /// quasi-blijvende BGT-combinatie, berekend met de EINDSTIJFHEID
+    /// E_mean,fin = E_mean/(1 + k_def) van het hout (EN 1995-1-1 2.3.2.2(1),
+    /// uitdrukking 2.7) en de langeduurstijfheid van de andere delen.
+    ///
+    /// Waarom dit bestaat: in een statisch onbepaalde constructie met delen
+    /// van verschillend kruipgedrag (hout naast staal, beton of hout met een
+    /// andere k_def) geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van
+    /// 2.2.3(5) niet; 2.2.3(4) schrijft dan w_fin = w_inst + (w_qp,fin − w_qp)
+    /// voor. De kern kan w_qp,fin niet zelf bepalen — daar is een doorrekening
+    /// van het hele model voor nodig — dus levert de bouwer hem aan.
+    ///
+    /// `None` (weglaten) = de vereenvoudiging van 2.2.3(5), precies zoals
+    /// vóór dit veld. Een niet-eindig getal wordt geweigerd met reden.
+    #[serde(default)]
+    #[ts(optional)]
+    pub deflection_quasi_perm_fin_mm: Option<f64>,
 }
 
 /// Uitkomst per laag — de regel in de tabel "toetsing per lamel".
@@ -340,9 +357,10 @@ fn doorbuiging_toetsen(input: &CltBeamCheckInput) -> Vec<NamedCheck> {
             doorbuiging_niet_getoetst("deflection_w_add", "Doorbuiging w_add (BGT)", &reden),
         ],
         Ok((kdef, bron)) => {
-            let (mut fin, add) = deflection::check_deflection_pair(
+            let (mut fin, add) = deflection::check_deflection_pair_met_langeduur(
                 input.deflection_inst_mm,
                 input.deflection_quasi_perm_mm,
+                input.deflection_quasi_perm_fin_mm,
                 input.deflection_permanent_mm,
                 kdef,
                 input.length_m * 1e3,
@@ -605,6 +623,7 @@ pub fn check_clt_beam(input: CltBeamCheckInput) -> CltBeamCheckResult {
     // en zelfde weigering als bij massief hout (`check_timber_beam`).
     if let Err(reden) =
         deflection::keur_noemers(input.deflection_limit_fin, input.deflection_limit_add)
+            .and_then(|_| deflection::keur_langeduurzakking(input.deflection_quasi_perm_fin_mm))
     {
         let mut r = foutresultaat(&input, reden.clone());
         r.notes = vec![format!("Niet getoetst: {reden}")];
@@ -820,6 +839,7 @@ mod tests {
             deflection_limit_fin: default_noemer_fin(),
             deflection_limit_add: default_noemer_add(),
             deflection_notes: vec![],
+            deflection_quasi_perm_fin_mm: None,
         }
     }
 

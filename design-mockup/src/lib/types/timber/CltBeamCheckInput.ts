@@ -117,4 +117,21 @@ deflection_limit_add: number,
  * [`crate::TimberBeamCheckInput`]: uit welke combinatie elke zakking komt
  * en welke terugval er eventueel is toegepast.
  */
-deflection_notes: Array<string>, };
+deflection_notes: Array<string>, 
+/**
+ * Langeduurzakking w_qp,fin (mm, met teken): de zakking onder de
+ * quasi-blijvende BGT-combinatie, berekend met de EINDSTIJFHEID
+ * E_mean,fin = E_mean/(1 + k_def) van het hout (EN 1995-1-1 2.3.2.2(1),
+ * uitdrukking 2.7) en de langeduurstijfheid van de andere delen.
+ *
+ * Waarom dit bestaat: in een statisch onbepaalde constructie met delen
+ * van verschillend kruipgedrag (hout naast staal, beton of hout met een
+ * andere k_def) geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van
+ * 2.2.3(5) niet; 2.2.3(4) schrijft dan w_fin = w_inst + (w_qp,fin − w_qp)
+ * voor. De kern kan w_qp,fin niet zelf bepalen — daar is een doorrekening
+ * van het hele model voor nodig — dus levert de bouwer hem aan.
+ *
+ * `None` (weglaten) = de vereenvoudiging van 2.2.3(5), precies zoals
+ * vóór dit veld. Een niet-eindig getal wordt geweigerd met reden.
+ */
+deflection_quasi_perm_fin_mm?: number, };

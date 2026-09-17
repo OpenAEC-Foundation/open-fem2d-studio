@@ -203,6 +203,23 @@ pub struct TimberBeamCheckInput {
     /// en een onzichtbare aanname is geen aanname maar een fout in wording.
     #[serde(default)]
     pub deflection_notes: Vec<String>,
+    /// Langeduurzakking w_qp,fin (mm, met teken): de zakking onder de
+    /// quasi-blijvende BGT-combinatie, berekend met de EINDSTIJFHEID
+    /// E_mean,fin = E_mean/(1 + k_def) van het hout (EN 1995-1-1 2.3.2.2(1),
+    /// uitdrukking 2.7) en de langeduurstijfheid van de andere delen.
+    ///
+    /// Waarom dit bestaat: in een statisch onbepaalde constructie met delen
+    /// van verschillend kruipgedrag (hout naast staal, beton of hout met een
+    /// andere k_def) geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van
+    /// 2.2.3(5) niet; 2.2.3(4) schrijft dan w_fin = w_inst + (w_qp,fin − w_qp)
+    /// voor. De kern kan w_qp,fin niet zelf bepalen — daar is een doorrekening
+    /// van het hele model voor nodig — dus levert de bouwer hem aan.
+    ///
+    /// `None` (weglaten) = de vereenvoudiging van 2.2.3(5), precies zoals
+    /// vóór dit veld. Een niet-eindig getal wordt geweigerd met reden.
+    #[serde(default)]
+    #[ts(optional)]
+    pub deflection_quasi_perm_fin_mm: Option<f64>,
     /// Toelichtingen bij de STAAF ALS GEHEEL, letterlijk bij de kolomtoets
     /// (art. 6.3.2), de kiptoets (art. 6.3.3) en de eindzakking gezet; rekenen
     /// nergens mee. De bouwer zet hier wat hij van de staaf weet en de kern

@@ -662,6 +662,11 @@ export function buildCltCheckInputs(ruweData: CltBuildData): CltBuildResult {
       ...(cfg.cltKdefBron !== undefined ? { k_def_bron: cfg.cltKdefBron } : {}),
       deflection_inst_mm: doorbuiging.instMm,
       deflection_quasi_perm_mm: doorbuiging.quasiMm,
+      // w_qp,fin (EN 1995-1-1 2.2.3(4)) alleen als 2.2.3(5) niet geldt; zie
+      // `houtDoorbuigingsInvoer`.
+      ...(doorbuiging.quasiFinMm !== undefined
+        ? { deflection_quasi_perm_fin_mm: doorbuiging.quasiFinMm }
+        : {}),
       deflection_permanent_mm: doorbuiging.permMm,
       deflection_limit_fin: defl.fin,
       deflection_limit_add: defl.add,

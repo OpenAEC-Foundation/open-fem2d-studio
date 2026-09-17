@@ -72,7 +72,7 @@
 import type { Beam, Node } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
-import { combinatiesVanSoort } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, zonderBgtEindtoestand } from "../components/fem/solver/combinations";
 import type { ConcreteBeamCheckInput } from "./types/concrete/ConcreteBeamCheckInput";
 import type { ConcreteColumnInput } from "./types/concrete/ConcreteColumnInput";
 import type { ConcreteSectionInput } from "./types/concrete/ConcreteSectionInput";
@@ -531,7 +531,9 @@ export function buildBetonCheckInputs(ruweData: BetonBuildData): BetonBuildResul
   // opvalt. ALLE frequente combinaties gaan mee, niet de eerste treffer: er is
   // er een per leidende veranderlijke last (ψ₁ op de leidende, ψ₂ op de
   // andere), en bij een kolom onder wind is die met wind leidend maatgevend.
-  const slsCombos = data.combinations.filter((c) => c.type === "sls");
+  // Zonder de BGT-eindtoestand van hout (EN 1995-1-1 2.2.3(4)): die is er
+  // alleen voor de houtdoorbuiging; M₀Eqp hoort bij de gewone 6.16b.
+  const slsCombos = zonderBgtEindtoestand(data.combinations.filter((c) => c.type === "sls"));
   const frequentLijst = combinatiesVanSoort(slsCombos, "6.15b");
 
   // DE QUASI-BLIJVENDE BGT-COMBINATIE (6.16b) voor §5.8.4. Herkend via het

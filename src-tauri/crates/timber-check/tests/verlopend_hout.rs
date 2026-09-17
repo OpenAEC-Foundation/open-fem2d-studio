@@ -82,6 +82,7 @@ fn staaf(
         deflection_limit_fin: 250.0,
         deflection_limit_add: 333.0,
         deflection_notes: vec![],
+        deflection_quasi_perm_fin_mm: None,
         staaf_notities: None,
         width_end_mm: b_eind,
         height_end_mm: h_eind,

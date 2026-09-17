@@ -157,6 +157,15 @@ const BUNDEL_TESTS = new Set([
   // laat de bundel de varianten vallen, dan toetst de MCP-weg het staal naast
   // weggekropen hout stil met de krachtsverdeling van E_mean.
   "hout-eindstijfheid",
+  // De BGT-eindtoestand van hout (EN 1995-1-1 2.2.3(4), issue #23): w_qp,fin uit
+  // de quasi-blijvende combinatie met E_mean,fin, tegen de handberekening voor
+  // hout naast staal en naast beton met φ, en w_fin/w_add uit de kern. Praat
+  // met `engine`, `combinations`, `bouwMultiInput`, `houtEindstijfheid`, de
+  // staal- en houtbouwer en de in-proces sidecar — alles in de barrel — en
+  // start toetsbrug en de MCP-server. Hoort juist óók tegen de bundel: laat de
+  // bundel de BGT-eindtoestand vallen, dan toetst `check_fem_model` het hout
+  // stil weer met de vereenvoudiging van 2.2.3(5).
+  "hout-bgt-eindtoestand",
   "lastomschrijving",
   "leeg-geval",
   "n-teken",

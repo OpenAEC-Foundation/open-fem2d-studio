@@ -23,6 +23,36 @@ pub fn w_add_mm(w_fin_mm: f64, w_perm_mm: f64) -> f64 {
     w_fin_mm - w_perm_mm
 }
 
+/// Eindzakking volgens 2.2.3(4), bij delen met VERSCHILLEND kruipgedrag:
+/// w_fin = w_inst + (w_qp,fin − w_qp) (mm, met teken).
+///
+/// 2.2.3(4) zegt: de langeduurvervorming onder de quasi-blijvende combinatie
+/// wordt berekend met E_mean,fin volgens 2.3.2.2(1) — dat is `w_qp_fin_mm` —
+/// en daarbij komt de ogenblikkelijke vervorming door het verschil tussen de
+/// karakteristieke en de quasi-blijvende combinatie, w_inst − w_qp. Samen:
+/// w_qp,fin + (w_inst − w_qp), hier geschreven als w_inst + kruipdeel.
+///
+/// Geldt 2.2.3(5) wél (één kruipgedrag, lineair), dan is w_qp,fin = (1 +
+/// k_def)·w_qp en valt dit terug op [`w_fin_mm`]; de twee zijn dus één regel
+/// met twee manieren om het kruipdeel te bepalen.
+pub fn w_fin_langeduur_mm(w_inst_mm: f64, w_quasi_perm_mm: f64, w_quasi_perm_fin_mm: f64) -> f64 {
+    w_inst_mm + (w_quasi_perm_fin_mm - w_quasi_perm_mm)
+}
+
+/// Keurt een aangeleverde langeduurzakking w_qp,fin. Weglaten (`None`) is
+/// altijd goed — dan geldt de vereenvoudiging van 2.2.3(5). Een opgegeven
+/// getal moet eindig zijn: NaN of oneindig gaf anders een w_fin zonder
+/// betekenis met een willekeurige status.
+pub fn keur_langeduurzakking(w_quasi_perm_fin_mm: Option<f64>) -> Result<(), String> {
+    match w_quasi_perm_fin_mm {
+        Some(w) if !w.is_finite() => Err(format!(
+            "de langeduurzakking w_qp,fin (deflection_quasi_perm_fin_mm) is {w}: \
+             alleen een eindig getal is een zakking (EN 1995-1-1 2.2.3(4)) — er is niet getoetst"
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// Standaard NB-noemers zoals gebruikt in de referentie-uitwerking.
 ///
 /// Doorbuigingsgrenzen zijn nationaal bepaald (7.2(2) staat in de NDP-lijst van
@@ -154,6 +184,99 @@ pub fn check_deflection_pair(
     )
 }
 
+/// Getal met decimale komma en `cijfers` decimalen, voor de notities.
+fn nl(x: f64, cijfers: usize) -> String {
+    format!("{x:.cijfers$}").replace('.', ",")
+}
+
+/// Beide doorbuigingstoetsen, met w_fin volgens 2.2.3(4) als de
+/// langeduurzakking w_qp,fin is aangeleverd, en anders precies
+/// [`check_deflection_pair`] (tot op het laatste bit).
+///
+/// WAAROM DE KERN w_qp,fin AANNEEMT EN NIET EEN KANT-EN-KLARE w_fin. 2.2.3(4)
+/// bouwt w_fin op uit twee delen: de langeduurvervorming onder de
+/// quasi-blijvende combinatie met E_mean,fin, en de ogenblikkelijke vervorming
+/// door het verschil tussen de karakteristieke en de quasi-blijvende
+/// combinatie. Met w_qp,fin als invoer staat die opbouw in de afleiding, en
+/// blijven w_inst, w_qp en w₁ dezelfde grootheden als in de vereenvoudiging.
+/// Een kale w_fin zou in het rapport niet te onderscheiden zijn van een
+/// aangenomen getal.
+///
+/// DE NB-GROOTHEDEN. NEN-EN 1990:2002/NB:2019 figuur NB.1: w_tot = w₁ + w₂ +
+/// w₃, w₁ de ogenblikkelijke zakking onder de blijvende belasting, w₂ het
+/// kruipdeel, w₃ de ogenblikkelijke zakking onder de veranderlijke belasting.
+/// w_fin (= w_tot zonder zeeg) en w_add = w_fin − w₁ = w₂ + w₃ blijven zo
+/// gedefinieerd; alleen w₂ verandert van k_def·w_qp in w_qp,fin − w_qp. w₁
+/// blijft momentaan (E_mean): het kruipdeel zit in w₂, niet in w₁.
+#[allow(clippy::too_many_arguments)]
+pub fn check_deflection_pair_met_langeduur(
+    w_inst_mm: f64,
+    w_quasi_perm_mm: f64,
+    w_quasi_perm_fin_mm: Option<f64>,
+    w_perm_mm: f64,
+    k_def: f64,
+    lengte_mm: f64,
+    noemer_fin: f64,
+    noemer_add: f64,
+) -> (ResistanceCalc, ResistanceCalc) {
+    let Some(w_qp_fin) = w_quasi_perm_fin_mm else {
+        return check_deflection_pair(
+            w_inst_mm, w_quasi_perm_mm, w_perm_mm, k_def, lengte_mm, noemer_fin, noemer_add,
+        );
+    };
+    let w_fin = w_fin_langeduur_mm(w_inst_mm, w_quasi_perm_mm, w_qp_fin);
+    let w_add = w_add_mm(w_fin, w_perm_mm);
+    let kruip = w_qp_fin - w_quasi_perm_mm;
+    let vereenvoudigd = w_fin_mm(w_inst_mm, k_def, w_quasi_perm_mm);
+    let mut fin = doorbuigingstoets(
+        "deflection_w_fin",
+        "Doorbuiging w_fin (BGT)",
+        w_fin,
+        lengte_mm,
+        noemer_fin,
+        r"w_{fin,z} = w_z + \left(w_{qp,fin,z} - w_{qp,z}\right)",
+        vec![
+            NamedValue { symbol: r"w_{qp}".to_string(), value: w_quasi_perm_mm, unit: "mm".to_string() },
+            NamedValue { symbol: r"w_{qp,fin}".to_string(), value: w_qp_fin, unit: "mm".to_string() },
+        ],
+    );
+    fin.notes.push(format!(
+        "Langeduurvervorming volgens EN 1995-1-1 2.2.3(4): de constructie bestaat uit delen met \
+         verschillend kruipgedrag, en dan geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp \
+         van 2.2.3(5) niet. w_qp,fin = {} mm is AANGELEVERD: de zakking onder de quasi-blijvende \
+         combinatie, berekend met E_mean,fin = E_mean/(1 + k_def) voor het hout (2.3.2.2(1), \
+         uitdrukking 2.7). w_fin = w_inst + (w_qp,fin − w_qp) = {} + ({} − {}) = {} mm: de \
+         langeduurvervorming plus de ogenblikkelijke vervorming door het verschil tussen de \
+         karakteristieke en de quasi-blijvende combinatie. Ter vergelijking: de vereenvoudiging \
+         had w_fin = {} + {}·{} = {} mm gegeven.",
+        nl(w_qp_fin, 2),
+        nl(w_inst_mm, 2),
+        nl(w_qp_fin, 2),
+        nl(w_quasi_perm_mm, 2),
+        nl(w_fin, 2),
+        nl(w_inst_mm, 2),
+        nl(k_def, 2),
+        nl(w_quasi_perm_mm, 2),
+        nl(vereenvoudigd, 2),
+    ));
+    let mut add = doorbuigingstoets(
+        "deflection_w_add",
+        "Doorbuiging w_add (BGT)",
+        w_add,
+        lengte_mm,
+        noemer_add,
+        r"w_{add,z} = w_{fin,z} - w_{perm,z}",
+        vec![NamedValue { symbol: r"w_{perm}".to_string(), value: w_perm_mm, unit: "mm".to_string() }],
+    );
+    add.notes.push(format!(
+        "w_add = w_fin − w₁ = w₂ + w₃ (NEN-EN 1990:2002/NB:2019 figuur NB.1). Het kruipdeel w₂ is \
+         hier de berekende langeduurvervorming w_qp,fin − w_qp = {} mm (EN 1995-1-1 2.2.3(4)), \
+         niet k_def·w_qp; w₁ blijft de ogenblikkelijke zakking onder de blijvende belasting.",
+        nl(kruip, 2),
+    ));
+    (fin, add)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,6 +310,38 @@ mod tests {
         let w_fin = w_fin_mm(-10.0, 0.8, -6.0);
         assert_relative_eq!(w_fin, -14.8, max_relative = 1e-9);
         assert_relative_eq!(w_add_mm(w_fin, -6.0), -8.8, max_relative = 1e-9);
+    }
+
+    /// Issue #23: zonder w_qp,fin exact de vereenvoudiging; met w_qp,fin =
+    /// (1 + k_def)·w_qp dezelfde getallen (2.2.3(5) is een bijzonder geval
+    /// van 2.2.3(4)); met een andere w_qp,fin de opbouw van 2.2.3(4).
+    #[test]
+    fn langeduurzakking_volgens_2_2_3_4() {
+        let (f0, a0) = check_deflection_pair(-10.0, -6.0, -4.0, 0.6, 5000.0, 250.0, 333.0);
+        let (f1, a1) = check_deflection_pair_met_langeduur(-10.0, -6.0, None, -4.0, 0.6, 5000.0, 250.0, 333.0);
+        assert_eq!(format!("{f0:?}"), format!("{f1:?}"));
+        assert_eq!(format!("{a0:?}"), format!("{a1:?}"));
+
+        let (f2, a2) =
+            check_deflection_pair_met_langeduur(-10.0, -6.0, Some(-9.6), -4.0, 0.6, 5000.0, 250.0, 333.0);
+        assert_relative_eq!(f2.variables[1].value, -13.6, max_relative = 1e-12);
+        assert_relative_eq!(f2.uc.as_ref().unwrap().ed, f0.uc.as_ref().unwrap().ed, max_relative = 1e-12);
+        assert_relative_eq!(a2.uc.as_ref().unwrap().ed, a0.uc.as_ref().unwrap().ed, max_relative = 1e-12);
+
+        // Gemengd: het hout kruipt harder dan de vereenvoudiging zegt.
+        let (f3, a3) =
+            check_deflection_pair_met_langeduur(-10.0, -6.0, Some(-11.0), -4.0, 0.6, 5000.0, 250.0, 333.0);
+        assert_relative_eq!(f3.variables[1].value, -15.0, max_relative = 1e-12);
+        assert_relative_eq!(a3.variables[1].value, -11.0, max_relative = 1e-12);
+        assert!(f3.formula_latex.contains("w_{qp,fin,z}"));
+        assert!(f3.notes.iter().any(|n| n.contains("2.2.3(4)") && n.contains("13,60")));
+        assert!(a3.notes.iter().any(|n| n.contains("w₂ + w₃") && n.contains("-5,00")));
+
+        assert!(keur_langeduurzakking(None).is_ok());
+        assert!(keur_langeduurzakking(Some(-3.0)).is_ok());
+        for w in [f64::NAN, f64::INFINITY] {
+            assert!(keur_langeduurzakking(Some(w)).unwrap_err().contains("w_qp,fin"));
+        }
     }
 
     /// Issue #9: een noemer van 0, negatief of niet eindig geeft geen grens.

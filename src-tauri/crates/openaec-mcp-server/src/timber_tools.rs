@@ -255,6 +255,8 @@ fn schema_houten_staaf() -> Value {
                 "description": "Noemer n in de eis L/n voor de eindzakking w_fin. Default 250, de NB-waarde (geldt als het veld wegblijft). Een opgegeven 0, negatieve of niet-eindige waarde is een invoerfout: de staaf wordt dan niet getoetst en krijgt status NotApplicable met de reden in governing_check_id." },
             "deflection_limit_add": { "type": "number", "exclusiveMinimum": 0, "default": 333,
                 "description": "Noemer n in de eis L/n voor de bijkomende zakking w_add. Default 333, de NB-waarde (geldt als het veld wegblijft). Een opgegeven 0, negatieve of niet-eindige waarde is een invoerfout: de staaf wordt dan niet getoetst en krijgt status NotApplicable met de reden in governing_check_id." },
+            "deflection_quasi_perm_fin_mm": { "type": "number",
+                "description": "Langeduurzakking w_qp,fin in mm, met teken: de zakking onder de quasi-blijvende BGT-combinatie, berekend met E_mean,fin = E_mean/(1 + k_def) voor het hout (EN 1995-1-1 2.3.2.2(1), uitdrukking 2.7) en de langeduurstijfheid van de andere delen. Alleen nodig in een statisch onbepaalde constructie met delen van VERSCHILLEND kruipgedrag (hout naast staal, beton of hout met een andere k_def): dan geldt de vereenvoudiging w_fin = w_inst + k_def * w_qp van 2.2.3(5) niet en rekent de kern volgens 2.2.3(4) w_fin = w_inst + (w_qp,fin - w_qp); w_add blijft w_fin - w_perm = w2 + w3, met w2 = w_qp,fin - w_qp. Weglaten = de vereenvoudiging. `check_fem_model` vult dit veld zelf in zo'n constructie, uit de eindtoestandvariant van de quasi-blijvende combinatie." },
             "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
                 "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel van het resultaat. Bedoeld om zichtbaar te maken uit welke combinatie 'deflection_quasi_perm_mm' komt — of dat die combinatie niet gevonden is en er op de volle last is teruggevallen." },
             "staaf_notities": { "type": "array", "items": { "type": "string" }, "default": [],
@@ -346,6 +348,8 @@ fn schema_clt_staaf() -> Value {
                 "description": "Noemer n in de eis L/n voor de eindzakking w_fin. Default 250, de NB-waarde (geldt als het veld wegblijft). Een opgegeven 0, negatieve of niet-eindige waarde is een invoerfout: de staaf wordt dan niet getoetst en krijgt status NotApplicable met de reden in governing_check_id." },
             "deflection_limit_add": { "type": "number", "exclusiveMinimum": 0, "default": 333,
                 "description": "Noemer n in de eis L/n voor de bijkomende zakking w_add. Default 333, de NB-waarde (geldt als het veld wegblijft). Een opgegeven 0, negatieve of niet-eindige waarde is een invoerfout: de staaf wordt dan niet getoetst en krijgt status NotApplicable met de reden in governing_check_id." },
+            "deflection_quasi_perm_fin_mm": { "type": "number",
+                "description": "Langeduurzakking w_qp,fin in mm, met teken: de zakking onder de quasi-blijvende BGT-combinatie, berekend met E_mean,fin = E_mean/(1 + k_def) voor het hout (EN 1995-1-1 2.3.2.2(1), uitdrukking 2.7) en de langeduurstijfheid van de andere delen. Alleen nodig in een statisch onbepaalde constructie met delen van VERSCHILLEND kruipgedrag (hout naast staal, beton of hout met een andere k_def): dan geldt de vereenvoudiging w_fin = w_inst + k_def * w_qp van 2.2.3(5) niet en rekent de kern volgens 2.2.3(4) w_fin = w_inst + (w_qp,fin - w_qp); w_add blijft w_fin - w_perm = w2 + w3, met w2 = w_qp,fin - w_qp. Weglaten = de vereenvoudiging. `check_fem_model` vult dit veld zelf in zo'n constructie, uit de eindtoestandvariant van de quasi-blijvende combinatie." },
             "deflection_notes": { "type": "array", "items": { "type": "string" }, "default": [],
                 "description": "Vrije toelichtingen bij de doorbuigingstoets; ze komen letterlijk in de 'notes' van de w_fin-regel. Bedoeld om zichtbaar te maken uit welke combinatie elke zakking komt, en welke terugval er eventueel is toegepast." }
         },
@@ -514,6 +518,8 @@ mod tests {
             "deflection_limit_fin",
             "deflection_limit_add",
             "deflection_notes",
+            // Issue #23: de langeduurzakking volgens 2.2.3(4).
+            "deflection_quasi_perm_fin_mm",
             "staaf_notities",
             // Verlopende staaf (ontwerp 15-09-2026, §5): de rechthoek aan het
             // eind van de staaf.
@@ -590,6 +596,7 @@ mod tests {
             "deflection_limit_fin",
             "deflection_limit_add",
             "deflection_notes",
+            "deflection_quasi_perm_fin_mm",
         ];
         for v in verwacht {
             assert!(velden.contains_key(v), "het CLT-schema mist `{v}`");
