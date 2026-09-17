@@ -104,7 +104,12 @@ log("\n[trekwand] 3×3 m, t=20 mm, 6×6 Quad4 via solveAllCases");
     checkTrue(`bovenrandknoop ${id} heeft verplaatsing`, r.displacements.has(id));
   }
   checkRel("u_top = σ·h/E (knoop 11, midden)", r.displacements.get(11)?.uz ?? 0, uTopVerwacht, 0.01);
-  checkRel("maxDisplacement ≈ u_top", r.maxDisplacement, uTopVerwacht, 0.01);
+  // maxDisplacement is sinds issue #32 de lengte √(ux² + uz²) — dezelfde maat
+  // als de vervormingsweergave. Grootst in de bovenhoeken: uz = σ·h/E plus de
+  // dwarscontractie ux = ν·σ·(B/2)/E vanaf het middelste (x-vaste) steunpunt.
+  // √(0,0714286² + 0,0107143²) = 0,0722276 mm (voorheen max(|ux|,|uz|) = u_top).
+  const uHoekVerwacht = Math.hypot(uTopVerwacht, 0.3 * SIGMA * (B / 2) / E_PLAAT);
+  checkRel("maxDisplacement ≈ √(u_top² + (ν·σ·B/2E)²) (bovenhoek)", r.maxDisplacement, uHoekVerwacht, 0.01);
 
   // Plaatspanningen
   checkTrue("plateElements aanwezig", Array.isArray(r.plateElements) && r.plateElements.length === 1);

@@ -675,7 +675,7 @@
             ]
           }
         },
-        "maxDisplacement": 0.1472754050076638
+        "maxDisplacement": 6.8802575688095855
       },
       "2": {
         "reactions": {
@@ -1194,7 +1194,7 @@
             ]
           }
         },
-        "maxDisplacement": 0.08836524300459826
+        "maxDisplacement": 4.128154541285751
       }
     },
     "combinations": {
@@ -1715,7 +1715,7 @@
             ]
           }
         },
-        "maxDisplacement": 0.309278350516094
+        "maxDisplacement": 14.448540894500127
       }
     },
     "envelope": {
@@ -1768,7 +1768,7 @@
           "fz_max": 62.99999999999999
         }
       },
-      "maxDisplacement": 0.309278350516094,
+      "maxDisplacement": 14.448540894500127,
       "maxDisplacementCombinationId": 1
     },
     "stability": {

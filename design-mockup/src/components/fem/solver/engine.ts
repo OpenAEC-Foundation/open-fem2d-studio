@@ -55,6 +55,7 @@ import type {
   PlateElementStress,
   PlateStressRange,
 } from "./types";
+import { grootsteVerplaatsing } from "./grootsteVerplaatsing";
 
 type AnyMesh = any; // structural typing — Mesh shape from core/fem/Mesh
 
@@ -1877,7 +1878,6 @@ function convertResult(
     meshNodes.forEach((n: any, i: number) => indexById.set(n.id, i));
   }
 
-  let maxDisp = 0;
   for (const [uiId, meshId] of nodeIdMap) {
     const idx = indexById.get(meshId);
     if (idx === undefined) continue;
@@ -1887,7 +1887,6 @@ function convertResult(
     const ry   = engineResult.displacements[base + 2] ?? 0;
     const ux = ux_m * 1000, uz = uz_m * 1000;
     displacements.set(uiId, { ux, uz, ry });
-    maxDisp = Math.max(maxDisp, Math.abs(ux), Math.abs(uz));
 
     const support = supports.find(s => s.nodeId === uiId);
     if (support) {
@@ -2047,6 +2046,10 @@ function convertResult(
     });
   }
 
+  // maxDisplacement: de knopen én de veldkromme langs de staven (issue #32,
+  // zie grootsteVerplaatsing) — pas hier, als de staafresultaten er zijn.
+  let maxDisp = grootsteVerplaatsing(displacements.values(), elements.values());
+
   // ── Plaatresultaten (P2.2) ────────────────────────────────────────────────
   // 1. Plaatknopen (mesh-id ≥ 1000 én hergebruikte UI-knopen) tellen mee in
   //    maxDisplacement, zodat de canvas-schaal ook zuivere plaatvervorming volgt.
@@ -2063,7 +2066,7 @@ function convertResult(
         const base = idx * 3;
         const ux = (engineResult.displacements[base + 0] ?? 0) * 1000;
         const uz = (engineResult.displacements[base + 1] ?? 0) * 1000;
-        maxDisp = Math.max(maxDisp, Math.abs(ux), Math.abs(uz));
+        maxDisp = Math.max(maxDisp, Math.hypot(ux, uz));
       }
 
       const mkRange = (): PlateStressRange => ({ min: Infinity, max: -Infinity });

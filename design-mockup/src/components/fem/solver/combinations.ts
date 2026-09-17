@@ -34,6 +34,7 @@ import type {
   SolverResult, NodalDisp, NodalReaction, ElementForces,
   PlateResult, PlateElementStress,
 } from "./types";
+import { grootsteVerplaatsing } from "./grootsteVerplaatsing";
 import {
   getScheefstandRichtingen,
   getSecondOrderState,
@@ -433,7 +434,6 @@ export function combineResults(
   }
 
   const displacements = new Map<number, NodalDisp>();
-  let maxDisp = 0;
   for (const nid of nodeIds) {
     let ux = 0, uz = 0, ry = 0;
     for (const [caseId, factor] of combo.factors) {
@@ -446,8 +446,6 @@ export function combineResults(
       ry += factor * d.ry;
     }
     displacements.set(nid, { ux, uz, ry });
-    const mag = Math.max(Math.abs(ux), Math.abs(uz));
-    if (mag > maxDisp) maxDisp = mag;
   }
 
   const reactions = new Map<number, NodalReaction>();
@@ -615,6 +613,9 @@ export function combineResults(
     if (plateElements.length === 0) plateElements = undefined;
   }
 
+  // Knopen én de gecombineerde veldkromme langs de staven (issue #32): de
+  // combinatie is lineair, dus de stationsarrays hierboven zijn exact.
+  const maxDisp = grootsteVerplaatsing(displacements.values(), elements.values());
   return { displacements, reactions, elements, maxDisplacement: maxDisp, plateElements };
 }
 
