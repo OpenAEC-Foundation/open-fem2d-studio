@@ -1034,6 +1034,7 @@ mod tests {
             .as_object()
             .expect("properties");
         let verwacht = [
+            "bijlage",
             "beam_id",
             "section",
             "concrete_class",
