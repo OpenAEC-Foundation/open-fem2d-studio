@@ -1098,6 +1098,7 @@ function rekenDoor(payload: Record<string, unknown>) {
   // Altijd alle platen — `beam_ids` gaat over staven. De toetsing zelf gebeurt
   // in Rust (`plaat_check::check_all_plates`).
   const plaat = buildPlaatCheckInputs({
+    nodes: gelezen.model.nodes,
     plates: gelezen.model.plates ?? [],
     combinations: combinaties,
     combinationResults,

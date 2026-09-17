@@ -1236,6 +1236,14 @@
       "pressAfter": " pour supprimer cette charge."
     },
     "plate": {
+      "buckling": "Voilement de plaque §10",
+      "bucklingA": "Panneau entier x (mm)",
+      "bucklingB": "Panneau entier z (mm)",
+      "bucklingSupports": "Quatre bords maintenus hors plan",
+      "bucklingSource": "Justification des appuis",
+      "bucklingUnstiffened": "Panneau non raidi confirmé",
+      "bucklingUniform": "Champ de contraintes uniforme confirmé",
+      "bucklingScope": "Uniquement le panneau rectangulaire entier aligné sur les axes, sans ouverture, avec appuis simples continus hors plan sur les quatre bords. Les nœuds du maillage ne justifient pas ces appuis. Les contraintes non uniformes, la traction et l’interaction avec le flambement de type poteau sont refusées ; la compression dans la direction courte est également exclue. Dimensionner séparément les appuis et assemblages.",
       "title": "Plaque {{id}}",
       "typeWall": "Voile (dans le plan)",
       "corner": "Coin {{nummer}}",

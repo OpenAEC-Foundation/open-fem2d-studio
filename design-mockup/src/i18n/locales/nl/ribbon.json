@@ -297,6 +297,7 @@
     "envelope": "Maatgevend (envelope)"
   },
   "report": {
+    "plaatPlooiNoot": "De optionele plooicontrole betreft het volledige bevestigde plaatveld. De veld-UC geldt voor alle elementen; het vermelde element is daarbij een representant.",
     "report": "Rapport",
     "print": "Afdrukken / PDF",
     "printHint": "Opent de printdialoog — kies daar 'Opslaan als PDF' voor een PDF.",

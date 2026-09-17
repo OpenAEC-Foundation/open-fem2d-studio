@@ -23,6 +23,7 @@ fn plaat(materiaal: &str, t_mm: f64, combinaties: Vec<(u32, Vec<PlaatElementSpan
         soort: PlaatMateriaalSoort::Staal,
         materiaal: materiaal.to_string(),
         thickness_mm: t_mm,
+        plooi: None,
         notities: vec![],
         hoofdrichting_graden: 0.0,
         service_class: None,

@@ -362,6 +362,7 @@ const BUNDEL_TESTS = new Set([
  * vergeten regel.
  */
 const ALLEEN_BRON = new Map([
+  ["plaat-plooi", "Controleert de expliciete veldinvoer, geometriepoort, projectserialisatie en strikte MCP-validatie rechtstreeks op de bron."],
   ["pendelstaaf", "raakt kerninterne klassen (Assembler, Matrix)"],
   ["plaat-dkt", "raakt kerninterne klassen (Mesh, PlateRegion, DKT)"],
   ["plaat-ids", "raakt kerninterne klassen (Mesh, PlateRegion)"],

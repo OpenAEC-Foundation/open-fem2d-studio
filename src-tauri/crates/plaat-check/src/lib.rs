@@ -17,7 +17,7 @@
 //! # Per materiaal
 //!
 //! * **Staal** — het vloeicriterium van NEN-EN 1993-1-1 6.2.1(5), zie
-//!   [`staal`]. Plooi (NEN-EN 1993-1-5) niet.
+//!   [`staal`]. Optioneel de begrensde plaatplooitoets volgens §10 van EN 1993-1-5.
 //! * **Hout** (massief en gelijmd gelamineerd) — NEN-EN 1995-1-1 6.1.2, 6.1.4,
 //!   6.1.5, 6.1.7 en 6.2.2 in de materiaalassen, zie [`hout`]. Trek loodrecht
 //!   op de vezel (6.1.3) niet: daar geeft de norm geen uitdrukking voor.
@@ -40,6 +40,7 @@ pub mod input;
 pub mod latex;
 pub mod result;
 pub mod staal;
+pub mod staal_plooi;
 mod verzamel;
 
 pub use input::{PlaatCombinatie, PlaatElementSpanning, PlaatMateriaalSoort, PlateCheckInput};
@@ -60,6 +61,9 @@ pub fn check_all_plates(inputs: Vec<PlateCheckInput>) -> Vec<PlateCheckResult> {
 
 /// Toets één plaat.
 pub fn check_plate(input: &PlateCheckInput) -> PlateCheckResult {
+    if input.plooi.is_some() && input.soort != PlaatMateriaalSoort::Staal {
+        return geweigerd(input, "plaatplooi volgens NEN-EN 1993-1-5 is alleen beschikbaar voor staal".into());
+    }
     if !(input.thickness_mm.is_finite() && input.thickness_mm > 0.0) {
         return geweigerd(
             input,

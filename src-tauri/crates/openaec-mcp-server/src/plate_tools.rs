@@ -54,6 +54,33 @@ pub async fn dispatch(naam: &str, args: Value) -> Result<Value, RpcError> {
 
 /// Het schema van één plaat (`PlateCheckInput`). Ook gebruikt door
 /// `check_fem_model` om `plate_check_inputs` in de uitvoer te beschrijven.
+pub fn schema_plooi(model: bool) -> Value {
+    let mut schema = json!({
+        "type":"object", "additionalProperties":false,
+        "description":"Optionele EN 1993-1-5 §10(5a) toets van één volledig asgelijnd rechthoekig onverstijfd veld zonder openingen. Maten in mm. Geen automatische steun uit meshknopen. Niet-uniforme spanningen, trek en kolominteractie worden geweigerd. Zonder invoer blijft de oude vloeicontrole gelden.",
+        "properties": {
+            "expected_element_ids":{"type":"array","minItems":1,"uniqueItems":true,"items":{"type":"integer","minimum":0},"description":"Verplichte volledige elementset uit de mesh, onafhankelijk van beschikbare spanningen. Iedere combinatie moet exact deze set leveren."},
+            "a_mm":{"type":"number","exclusiveMinimum":0,"description":"Volledige veldlengte in globale x-richting, mm."},
+            "b_mm":{"type":"number","exclusiveMinimum":0,"description":"Volledige veldlengte in globale z-richting, mm."},
+            "randvoorwaarden":{"type":"string","enum":["vierzijdig_scharnierend"],"description":"Vier continue scharnierende steunen UIT HET VLAK; afzonderlijk onderbouwd."},
+            "steun_bron":{"type":"string","minLength":1,"description":"Herkomst van de bevestigde steunvoorwaarden; ontwerp/tekening."},
+            "onverstijfd":{"type":"boolean","description":"Moet true zijn; verstijfde velden zijn niet ondersteund."},
+            "uniforme_spanning":{"type":"boolean","description":"Bevestiging uniform volledig veld. De kern controleert tevens alle elementspanningen per combinatie; niet-uniform wordt geweigerd."},
+            "rechthoek_zonder_openingen":{"type":"boolean","description":"Directe API: bevestiging van de volledige asgelijnde rechthoek zonder openingen."},
+            "geometrie_fout":{"type":"string","description":"Fout uit de modelbouwer; leidt altijd tot weigering."}
+        },
+        "required":["expected_element_ids","a_mm","b_mm","randvoorwaarden","steun_bron","onverstijfd","uniforme_spanning","rechthoek_zonder_openingen"]
+    });
+    if model {
+        let props = schema["properties"].as_object_mut().unwrap();
+        props.remove("rechthoek_zonder_openingen");
+        props.remove("geometrie_fout");
+        props.remove("expected_element_ids");
+        schema["required"].as_array_mut().unwrap().retain(|v| v != "rechthoek_zonder_openingen" && v != "expected_element_ids");
+    }
+    schema
+}
+
 pub fn schema_plaat() -> Value {
     json!({
         "type": "object",
@@ -61,6 +88,7 @@ pub fn schema_plaat() -> Value {
         "description": "Eén plaat (wandschijf, belast in het vlak) met de elementspanningen per UGT-combinatie. Een onbekende veldnaam wordt geweigerd.",
         "properties": {
             "bijlage": crate::schema_bijlage(),
+            "plooi": schema_plooi(false),
             "plate_id": { "type": "integer", "minimum": 0,
                 "description": "Plaatnummer; komt onveranderd terug." },
             "soort": { "type": "string", "enum": ["Staal", "Hout", "Kruislaaghout", "Beton", "Vrij"],
@@ -128,7 +156,7 @@ pub fn schema_plaat() -> Value {
 pub fn tool_definitions() -> Vec<Value> {
     vec![json!({
         "name": "check_plates",
-        "description": "Check wall plates (membranes loaded in their plane) element by element. Input per plate: material kind and name, thickness and the element-averaged stresses sigma_x, sigma_y (vertical model direction) and tau_xy per ULS combination, as the FEM solver delivers them. Steel: yield criterion of NEN-EN 1993-1-1 6.2.1(5) eq. (6.1) with f_y from table 3.1 for the plate thickness and gamma_M0 from the National Annex; the unity check is sqrt(left-hand side) = sigma_eq,Ed/(f_y/gamma_M0). Returns per plate the envelope UC per element (`elementen`), the governing element per combination (`combinaties`), the derivation at the governing point (`checks`) and `niet_getoetst` with reasons — plate buckling (NEN-EN 1993-1-5) is NOT checked. Timber (solid EN 338 and glulam EN 14080): NEN-EN 1995-1-1 in the material axes (fibre direction `hoofdrichting_graden`) — tension and compression parallel (6.1.2, 6.1.4), compression perpendicular (6.1.5, k_c,90 = 1,0), shear (6.1.7) and compression at an angle (6.2.2 eq. 6.16) on each principal compressive stress, with k_mod per combination from `load_duration_per_combination` and `service_class`; tension perpendicular to the grain (6.1.3) is NOT checked because the code gives no expression for the volume effect, and where it occurs the plate status is NotApplicable. Concrete (full class name such as C30/37): NEN-EN 1992-1-1 annex F — per element the required tensile force in the reinforcement in the model directions x and z (`wapening`, n_td = f'_td·t in kN/m, eqs. F.2–F.7) and the concrete check: principal compression ≤ f_cd where no reinforcement is needed (F.1(3), 6.55), σ_cd ≤ 0,6·ν'·f_cd in cracked regions (F.1(4), 6.56); the provided reinforcement is NOT checked, so where reinforcement is needed the status is NotApplicable; minimum wall reinforcement (9.6), crack width and wall buckling are not checked. Every other material (cross-laminated timber, free material) comes back with `geweigerd` and a reason, never with a UC that reads as passing. Same input and output types as the Tauri command and the toetsbrug opdracht `check_plates`; all three run through `plaat_check::check_all_plates`, as does the plate check inside `check_fem_model`.",
+        "description": "Check wall plates (membranes loaded in their plane) element by element. Input per plate: material kind and name, thickness and the element-averaged stresses sigma_x, sigma_y (vertical model direction) and tau_xy per ULS combination, as the FEM solver delivers them. Steel: yield criterion of NEN-EN 1993-1-1 6.2.1(5) eq. (6.1) with f_y from table 3.1 for the plate thickness and gamma_M0 from the National Annex; the unity check is sqrt(left-hand side) = sigma_eq,Ed/(f_y/gamma_M0). Returns per plate the envelope UC per element (`elementen`), the governing element per combination (`combinaties`), the derivation at the governing point (`checks`) and `niet_getoetst` with reasons — optional `plooi` checks a confirmed simply supported rectangular unstiffened field with uniform stresses by NEN-EN 1993-1-5 section 10(5a). Tension, nonuniform fields and column interaction are refused. Without `plooi`, buckling remains unchecked. Timber (solid EN 338 and glulam EN 14080): NEN-EN 1995-1-1 in the material axes (fibre direction `hoofdrichting_graden`) — tension and compression parallel (6.1.2, 6.1.4), compression perpendicular (6.1.5, k_c,90 = 1,0), shear (6.1.7) and compression at an angle (6.2.2 eq. 6.16) on each principal compressive stress, with k_mod per combination from `load_duration_per_combination` and `service_class`; tension perpendicular to the grain (6.1.3) is NOT checked because the code gives no expression for the volume effect, and where it occurs the plate status is NotApplicable. Concrete (full class name such as C30/37): NEN-EN 1992-1-1 annex F — per element the required tensile force in the reinforcement in the model directions x and z (`wapening`, n_td = f'_td·t in kN/m, eqs. F.2–F.7) and the concrete check: principal compression ≤ f_cd where no reinforcement is needed (F.1(3), 6.55), σ_cd ≤ 0,6·ν'·f_cd in cracked regions (F.1(4), 6.56); the provided reinforcement is NOT checked, so where reinforcement is needed the status is NotApplicable; minimum wall reinforcement (9.6), crack width and wall buckling are not checked. Every other material (cross-laminated timber, free material) comes back with `geweigerd` and a reason, never with a UC that reads as passing. Same input and output types as the Tauri command and the toetsbrug opdracht `check_plates`; all three run through `plaat_check::check_all_plates`, as does the plate check inside `check_fem_model`.",
         "inputSchema": {
             "type": "object",
             "additionalProperties": false,
@@ -158,6 +186,28 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn plaatplooi_loopt_via_dezelfde_kern_en_weigert_ontbrekende_steun() {
+        let mut p = json!({
+            "plate_id":1,"soort":"Staal","materiaal":"S235","thickness_mm":10,
+            "plooi":{"expected_element_ids":[1],"a_mm":2000,"b_mm":1000,"randvoorwaarden":"vierzijdig_scharnierend",
+                "steun_bron":"randdetail","onverstijfd":true,"uniforme_spanning":true,"rechthoek_zonder_openingen":true},
+            "combinations":[{"combination_id":1,"elements":[
+                {"element_id":1,"sigma_x_mpa":-100,"sigma_y_mpa":0,"tau_xy_mpa":50}
+            ]}]
+        });
+        let r = dispatch("check_plates",json!({"inputs":[p.clone()]})).await.unwrap();
+        assert!((r["results"][0]["uc_max"].as_f64().unwrap() - 1.083729230553457).abs() < 1e-12);
+        assert_eq!(r["results"][0]["checks"].as_array().unwrap().len(),2);
+        p["plooi"]["randvoorwaarden"] = json!("");
+        let r = dispatch("check_plates",json!({"inputs":[p.clone()]})).await.unwrap();
+        assert_eq!(r["results"][0]["status"],"NotApplicable");
+        assert!(r["results"][0]["geweigerd"].as_str().unwrap().contains("UIT HET VLAK"));
+        p.as_object_mut().unwrap().remove("plooi");
+        let r = dispatch("check_plates",json!({"inputs":[p]})).await.unwrap();
+        assert_eq!(r["results"][0]["checks"].as_array().unwrap().len(),1);
+    }
+
     /// Het schema noemt precies de velden van het invoertype, op elk niveau:
     /// met `additionalProperties: false` zou een vergeten veld een geldige
     /// invoer laten weigeren door een client die het schema volgt.
@@ -169,6 +219,12 @@ mod tests {
             soort: plaat_check::PlaatMateriaalSoort::Staal,
             materiaal: "S235".into(),
             thickness_mm: 10.0,
+            plooi: Some(plaat_check::input::PlaatPlooiInput {
+                expected_element_ids:vec![0],
+                a_mm:2000.0, b_mm:1000.0, randvoorwaarden:"vierzijdig_scharnierend".into(),
+                steun_bron:"tekening".into(), onverstijfd:true, uniforme_spanning:true,
+                rechthoek_zonder_openingen:true, geometrie_fout:Some("controle".into()),
+            }),
             notities: vec!["x".into()],
             hoofdrichting_graden: 30.0,
             service_class: Some(nen_en_1995_1_1::ServiceClass::Sc1),
@@ -191,6 +247,7 @@ mod tests {
         };
         let schema = schema_plaat();
         assert_eq!(sleutels(&schema["properties"]), sleutels(&waarde));
+        assert_eq!(sleutels(&schema["properties"]["plooi"]["properties"]), sleutels(&waarde["plooi"]));
         let comb = &schema["properties"]["combinations"]["items"];
         assert_eq!(sleutels(&comb["properties"]), sleutels(&waarde["combinations"][0]));
         let el = &comb["properties"]["elements"]["items"];

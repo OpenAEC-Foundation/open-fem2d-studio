@@ -297,6 +297,7 @@
     "envelope": "Maßgebend (Umhüllende)"
   },
   "report": {
+    "plaatPlooiNoot": "Der optionale Beulnachweis gilt für das gesamte bestätigte Plattenfeld. Der Ausnutzungsgrad des Feldes gilt für alle Elemente; das angegebene Element ist stellvertretend.",
     "report": "Bericht",
     "print": "Drucken / PDF",
     "printHint": "Öffnet den Druckdialog — wählen Sie dort 'Als PDF speichern' für eine PDF.",

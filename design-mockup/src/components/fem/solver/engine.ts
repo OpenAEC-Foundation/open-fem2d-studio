@@ -2121,6 +2121,7 @@ function convertResult(
       }
       plateResults.push({
         plateId: info.plateId, elements: plaatElementen, ranges,
+        expectedElementIds: [...info.region.elementIds],
         ...(info.materiaalHoekGraden !== undefined
           ? { materiaalassen: materiaalasRanges(plaatElementen, info.materiaalHoekGraden) }
           : {}),
