@@ -113,6 +113,7 @@ fn invoer(wind: Option<String>) -> ReportInput {
         engineer: "Proef".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-09-17".into(),
+        taal: Default::default(),
         steel_check_results: vec![proefstaaf()],
         timber_check_results: vec![],
         clt_check_results: vec![],

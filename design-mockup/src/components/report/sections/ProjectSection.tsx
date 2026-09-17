@@ -28,8 +28,8 @@ import { DEFAULT_UITGANGSPUNTEN } from "../../project/ProjectSettingsDialog";
 import { kFi, partieleFactoren } from "../../fem/solver/normcombinaties";
 import { vrijstaandDakUitgangspunten } from "../../../lib/wind/windGenerator";
 import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE } from "../../../lib/normAanduidingen";
+import { datumVoluit } from "../../../lib/rapportDatum";
 
-/** yyyy-mm-dd → nl-notatie; alles wat niet parsebaar is blijft zoals het is. */
 /**
  * Wat er bij "Nationale bijlage" in het rapport komt te staan.
  *
@@ -48,11 +48,10 @@ function bijlageTekst(t: TFunction, code: string | undefined): string {
   }
 }
 
+/** Dezelfde notatie als de paginakop en de PDF (issue #20, `lib/rapportDatum`). */
 function formatDate(raw: string, taal: string): string {
   if (!raw) return "—";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString(taal, { day: "numeric", month: "long", year: "numeric" });
+  return datumVoluit(raw, taal);
 }
 
 /**

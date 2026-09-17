@@ -249,6 +249,7 @@ fn invoer(clt: Vec<CltBeamCheckResult>) -> ReportInput {
         engineer: "Test Engineer".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-09-08".into(),
+        taal: Default::default(),
         steel_check_results: vec![staalstaaf()],
         timber_check_results: vec![],
         clt_check_results: clt,

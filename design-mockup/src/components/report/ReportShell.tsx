@@ -47,6 +47,7 @@ import { useRapportProjectInfo } from "./useProjectInfo";
 import { useReportData } from "./ReportDataContext";
 import { pagineer, koppelBedieningsDoorgifte } from "./paginate";
 import { tocToestand } from "./toc";
+import { datumVoluit } from "../../lib/rapportDatum";
 import {
   abonneerHerpagineerVerzoek,
   leesHerpagineerVerzoek,
@@ -169,7 +170,9 @@ export default function ReportShell({ onDetach }: ReportShellProps) {
     [t("report.kopOmschrijving", "Omschrijving"), info.description],
   ].filter((r): r is [string, string] => !!r[1]);
   const kopRechts: Array<[string, string]> = [
-    [t("report.kopDatum", "Datum"), info.date],
+    // Voluit en in de taal van de app, zoals op het titelblad en in de PDF
+    // (issue #20); hier stond de ruwe JJJJ-MM-DD.
+    [t("report.kopDatum", "Datum"), datumVoluit(info.date, i18n.language)],
     [t("report.kopConstructeur", "Constructeur"), info.engineer],
   ].filter((r): r is [string, string] => !!r[1]);
   const kopBedrijf = info.reportHeader || info.company;

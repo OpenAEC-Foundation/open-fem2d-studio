@@ -6,6 +6,7 @@ import type { CltBeamCheckResult } from "../timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "../concrete/ConcreteBeamCheckResult";
 import type { DekkingslijnAntwoord } from "../concrete/DekkingslijnAntwoord";
 import type { NationaleBijlage } from "../norm/NationaleBijlage";
+import type { RapportTaal } from "./RapportTaal";
 import type { SpanningBeamCheckResult } from "../spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "../timber/TimberBeamCheckResult";
 
@@ -25,7 +26,21 @@ export type ReportInput = {
  * betekenen (zie `zodra_er_een_tweede_bijlage_is_moet_de_serde_default_weg`);
  * in TypeScript daarom optioneel.
  */
-bijlage?: NationaleBijlage, project_name: string, project_number: string, engineer: string, company: string, date: string, steel_check_results: Array<BeamCheckResult>, 
+bijlage?: NationaleBijlage, project_name: string, project_number: string, engineer: string, company: string, 
+/**
+ * De projectdatum zoals ingevuld, normaal `JJJJ-MM-DD`. Het rapport zet
+ * hem op titelblad én paginakop voluit in [`Self::taal`] — zie
+ * [`datum::datum_voluit`].
+ */
+date: string, 
+/**
+ * De taal waarin het rapport de datum noemt (issue #20): de taal van de
+ * app, zodat het papier dezelfde notatie draagt als het live rapport.
+ *
+ * `#[serde(default)]` = Nederlands, de taal van de overige PDF-tekst; een
+ * aanroep zonder dit veld blijft geldig. In TypeScript daarom optioneel.
+ */
+taal?: RapportTaal, steel_check_results: Array<BeamCheckResult>, 
 /**
  * Houttoetsingen (EN 1995-1-1). `#[serde(default)]` zodat bestaande
  * aanroepen zonder dit veld geldig blijven; in TypeScript daarom

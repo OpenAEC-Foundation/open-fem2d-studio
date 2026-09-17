@@ -434,6 +434,7 @@ fn tool_definitions() -> Value {
                     "engineer":            { "type": "string" },
                     "company":             { "type": "string" },
                     "date":                { "type": "string" },
+                    "taal": { "type": "string", "enum": ["nl", "en", "de", "fr"], "default": "nl", "description": "Language in which the report writes the project date, on the cover and in the header of every page: 'nl' 16 september 2026, 'en' September 16, 2026, 'de' 16. September 2026, 'fr' 16 septembre 2026. A date that is not a calendar date YYYY-MM-DD is printed verbatim. Omit = 'nl'; any other value is REJECTED." },
                     "steel_check_results": { "type": "array" },
                     "timber_check_results":   { "type": "array" },
                     "clt_check_results":      { "type": "array" },
