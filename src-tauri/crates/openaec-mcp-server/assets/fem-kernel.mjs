@@ -12785,6 +12785,13 @@ function combineResults(combo, perCase) {
         if (referentie) break;
       }
       if (!referentie) continue;
+      const expectedIds = referentie.expectedElementIds;
+      let volledigeMesh = !!expectedIds?.length && new Set(expectedIds).size === expectedIds.length;
+      for (const [caseId, factor] of combo.factors) {
+        if (factor === 0) continue;
+        const bron = perCase.get(idVan(caseId))?.plateElements?.find((p) => p.plateId === pid);
+        if (!expectedIds || !bron || bron.expectedElementIds?.length !== expectedIds.length || bron.elements.length !== expectedIds.length || referentie.elements.length !== expectedIds.length || expectedIds.some((id, i) => bron.expectedElementIds?.[i] !== id || bron.elements[i]?.elementId !== id || referentie.elements[i]?.elementId !== id)) volledigeMesh = false;
+      }
       const n = referentie.elements.length;
       const gecombineerd = referentie.elements.map((el) => ({
         elementId: el.elementId,
@@ -12852,6 +12859,7 @@ function combineResults(combo, perCase) {
         plateId: pid,
         elements: gecombineerd,
         ranges,
+        ...expectedIds ? { expectedElementIds: volledigeMesh ? [...expectedIds] : [] } : {},
         ...referentie.materiaalassen ? { materiaalassen: materiaalasRanges(gecombineerd, referentie.materiaalassen.hoekGraden) } : {}
       });
     }
@@ -13157,7 +13165,7 @@ function blijvendeZakking(opties) {
   return { mm: gekozen.w, combo: gekozen.combo, notes };
 }
 
-// node_modules/zustand/esm/vanilla.mjs
+// ../../../../design-mockup/node_modules/zustand/esm/vanilla.mjs
 var createStoreImpl = (createState) => {
   let state;
   const listeners = /* @__PURE__ */ new Set();
@@ -15201,11 +15209,11 @@ function buildCltCheckInputs(ruweData) {
       });
       continue;
     }
-    const onbekend = layup.layers.find((l) => !matchSupportedTimberGrade(l.strength_class, grades));
-    if (onbekend) {
+    const onbekend2 = layup.layers.find((l) => !matchSupportedTimberGrade(l.strength_class, grades));
+    if (onbekend2) {
       skipped.push({
         beamId: beam.id,
-        reason: `sterkteklasse "${onbekend.strength_class}" in de opbouw is onbekend \u2014 bekend zijn ${grades.join(", ")}`
+        reason: `sterkteklasse "${onbekend2.strength_class}" in de opbouw is onbekend \u2014 bekend zijn ${grades.join(", ")}`
       });
       continue;
     }
@@ -17495,6 +17503,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
         plateId: info.plateId,
         elements: plaatElementen,
         ranges,
+        expectedElementIds: [...info.region.elementIds],
         ...info.materiaalHoekGraden !== void 0 ? { materiaalassen: materiaalasRanges(plaatElementen, info.materiaalHoekGraden) } : {}
       });
     }
@@ -17829,6 +17838,31 @@ function buildMatrices(input) {
   return { K, nDof, nodeIndex: uiNodeIndex, beams: beamCache, rigidConstraints, springs };
 }
 
+// src/lib/plaatPlooi.ts
+function plaatPlooiGeometrieFout(p, nodes) {
+  if (!p.plooi) return void 0;
+  if (p.openingen?.length) return "openingen zijn niet ondersteund bij plaatplooi";
+  const punten = p.nodeIds.map((id) => nodes?.find((n) => n.id === id));
+  if (punten.length !== 4 || punten.some((n) => !n || !Number.isFinite(n.x) || !Number.isFinite(n.z))) {
+    return "plaatplooi vraagt vier bekende hoekknopen van het volledige veld";
+  }
+  const hoeken = punten;
+  if (!isAsgelijndeRechthoek(hoeken, 1e-7)) return "plaatplooi ondersteunt alleen een asgelijnde rechthoek";
+  if (hoeken.some((p2, i) => {
+    const q = hoeken[(i + 1) % 4];
+    return Math.abs(p2.x - q.x) > 1e-7 && Math.abs(p2.z - q.z) > 1e-7;
+  })) return "plaatplooi vraagt hoekknopen in omtrekvolgorde, zonder kruisende randen";
+  const a = Math.max(...hoeken.map((n) => n.x)) - Math.min(...hoeken.map((n) => n.x));
+  const b = Math.max(...hoeken.map((n) => n.z)) - Math.min(...hoeken.map((n) => n.z));
+  if (Math.abs(a - p.plooi.a_mm) > 1e-7 || Math.abs(b - p.plooi.b_mm) > 1e-7) {
+    return "a_mm en b_mm moeten overeenkomen met de volledige plaat in x en z; deelvelden of aangenomen tussensteunen zijn niet ondersteund";
+  }
+  if (p.E !== void 0 && p.E !== 21e4 || p.nu !== void 0 && p.nu !== 0.3) {
+    return "plaatplooi ondersteunt geen overschreven E of nu (vereist 210000 N/mm\xB2 en 0,3)";
+  }
+  return void 0;
+}
+
 // src/lib/plaatCheckBuilder.ts
 var KERN_SOORT = {
   staal: "Staal",
@@ -17871,23 +17905,41 @@ function buildPlaatCheckInputs(data) {
     const soort = KERN_SOORT[s.soort];
     const combinaties = [];
     const notities = [];
+    let expectedElementIds;
+    let dekkingFout;
+    const spanningen = (c) => {
+      const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+      if (!pr || pr.elements.length === 0) return null;
+      return {
+        combination_id: c.id,
+        elements: pr.elements.map((el) => ({
+          element_id: el.elementId,
+          sigma_x_mpa: el.sigmaX,
+          sigma_y_mpa: el.sigmaY,
+          tau_xy_mpa: el.tauXY
+        }))
+      };
+    };
     if (SOORT_MET_SPANNINGEN.has(soort)) {
       const zonder = [];
       for (const c of ugt) {
-        const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
-        if (!pr || pr.elements.length === 0) {
+        const comb = spanningen(c);
+        if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
+          if (plaat.plooi || soort === "Beton" && plaat.wapening) combinaties.push({ combination_id: c.id, elements: [] });
           continue;
         }
-        combinaties.push({
-          combination_id: c.id,
-          elements: pr.elements.map((el) => ({
-            element_id: el.elementId,
-            sigma_x_mpa: el.sigmaX,
-            sigma_y_mpa: el.sigmaY,
-            tau_xy_mpa: el.tauXY
-          }))
-        });
+        if (plaat.plooi) {
+          const ids = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id)?.expectedElementIds;
+          if (!ids?.length || new Set(ids).size !== ids.length) {
+            dekkingFout = "onafhankelijke volledige mesh-elementset ontbreekt; bereken opnieuw met de actuele solver";
+          } else if (expectedElementIds && (expectedElementIds.length !== ids.length || expectedElementIds.some((id, i) => id !== ids[i]))) {
+            dekkingFout = "de onafhankelijke mesh-elementset verschilt tussen UGT-combinaties";
+          } else {
+            expectedElementIds = [...ids];
+          }
+        }
+        combinaties.push(comb);
       }
       if (zonder.length > 0) {
         notities.push(
@@ -17917,17 +17969,29 @@ function buildPlaatCheckInputs(data) {
         }) : []
       };
     })() : {};
+    const geometrieFout = plaatPlooiGeometrieFout(plaat, data.nodes) ?? dekkingFout;
+    const beton = soort === "Beton" && plaat.wapening ? {
+      wapening_aanwezig: plaat.wapening,
+      frequente_combinaties: combinatiesVanSoort(data.combinations, "6.15b").map((c) => spanningen(c) ?? { combination_id: c.id, elements: [] })
+    } : {};
     inputs.push({
       bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       plate_id: plaat.id,
       soort,
       materiaal: s.naam,
+      ...plaat.plooi ? { plooi: {
+        ...plaat.plooi,
+        expected_element_ids: expectedElementIds ?? [],
+        rechthoek_zonder_openingen: !geometrieFout,
+        ...geometrieFout ? { geometrie_fout: geometrieFout } : {}
+      } } : {},
       ...hout,
       // Dezelfde aanvulling als de solverinvoer (`plaatNaarSolverInput`): de
       // spanningen zijn met deze dikte berekend.
       thickness_mm: withPlateDefaults(plaat).thickness,
       ...notities.length > 0 ? { notities } : {},
-      combinations: combinaties
+      combinations: combinaties,
+      ...beton
     });
   }
   return { inputs, skipped };
@@ -19499,9 +19563,9 @@ function verwijderWeesFactoren(combinations, loadCases) {
   const ids = new Set(loadCases.map((c) => c.id));
   const wees = [];
   const combinaties = combinations.map((c) => {
-    const onbekend = [...c.factors.keys()].filter((id) => !ids.has(id)).sort((a, b) => a - b);
-    if (onbekend.length === 0) return c;
-    wees.push({ combinatieId: c.id, naam: c.name, caseIds: onbekend });
+    const onbekend2 = [...c.factors.keys()].filter((id) => !ids.has(id)).sort((a, b) => a - b);
+    if (onbekend2.length === 0) return c;
+    wees.push({ combinatieId: c.id, naam: c.name, caseIds: onbekend2 });
     return zonderOnbekendeGevallen(c, ids);
   });
   return { combinaties, wees };
@@ -20269,8 +20333,8 @@ function liftSpringK(s) {
 }
 function controleerDoorsneden(beams, opties = {}) {
   const lijst = Array.from(beams);
-  const onbekend = onbekendeDoorsneden(lijst);
-  if (onbekend.length === 0) {
+  const onbekend2 = onbekendeDoorsneden(lijst);
+  if (onbekend2.length === 0) {
     if (!opties.heeftPlaten) return;
     const verlopend = lijst.filter(
       (b) => bepaalVerloop(b.material, b.profile, b.profileEnd).status === "verlopend"
@@ -20282,11 +20346,11 @@ function controleerDoorsneden(beams, opties = {}) {
       verlopend.map((b) => ({ beamId: b.id, reden }))
     );
   }
-  const eerste = onbekend.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
-  const rest = onbekend.length - eerste.length;
+  const eerste = onbekend2.slice(0, 5).map((o) => `staaf ${o.beamId}: ${o.reden}`);
+  const rest = onbekend2.length - eerste.length;
   throw new DoorsnedeOnbekendFout(
-    `De berekening is gestopt: van ${onbekend.length} ${onbekend.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te bepalen. ${eerste.join("; ")}` + (rest > 0 ? `; en nog ${rest} andere` : "") + ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij een ander model dan is ingevoerd.",
-    onbekend
+    `De berekening is gestopt: van ${onbekend2.length} ${onbekend2.length === 1 ? "staaf is" : "staven is"} de doorsnede niet te bepalen. ${eerste.join("; ")}` + (rest > 0 ? `; en nog ${rest} andere` : "") + ". Doorrekenen met een vervangende doorsnede zou een antwoord geven bij een ander model dan is ingevoerd.",
+    onbekend2
   );
 }
 var VERLOOP_SEGMENTEN = 20;
@@ -21780,6 +21844,107 @@ function zoekStaafeindenBijPlaatrand(model, tolMm = CONTROLE_TOL_MM) {
   return uit;
 }
 
+// src/lib/plaatWapening.ts
+var PLAAT_STAALSOORTEN = ["B500A", "B500B", "B500C"];
+var PLAAT_MILIEUKLASSEN = [
+  "X0",
+  "XC1",
+  "XC2",
+  "XC3",
+  "XC4",
+  "XD1",
+  "XD2",
+  "XD3",
+  "XS1",
+  "XS2",
+  "XS3",
+  "XF1",
+  "XF2",
+  "XF3",
+  "XF4",
+  "XA1",
+  "XA2",
+  "XA3"
+];
+var WAPENING_VELDEN = ["staalsoort", "horizontaal", "verticaal", "milieuklasse", "f_ct_eff_mpa", "langdurend", "hoge_aanhechting"];
+var RICHTING_VELDEN = ["zijde_1", "zijde_2"];
+var LAAG_VELDEN = ["diameter_mm", "hoh_mm", "as_mm2_per_m", "dekking_mm"];
+function isObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function positief(v) {
+  return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+function onbekend(o, toegestaan, pad, fouten) {
+  for (const k of Object.keys(o)) {
+    if (!toegestaan.includes(k)) fouten.push(`${pad}.${k}: onbekend veld (toegestaan: ${toegestaan.join(", ")}).`);
+  }
+}
+function keurLaag(laag, pad, fouten) {
+  if (!isObject(laag)) {
+    fouten.push(`${pad}: object verwacht.`);
+    return;
+  }
+  onbekend(laag, LAAG_VELDEN, pad, fouten);
+  const metStaven = laag.diameter_mm !== void 0 || laag.hoh_mm !== void 0;
+  const metOppervlak = laag.as_mm2_per_m !== void 0;
+  if (metStaven && metOppervlak) {
+    fouten.push(`${pad}: \xF3f diameter_mm met hoh_mm, \xF3f as_mm2_per_m \u2014 niet beide.`);
+  } else if (metStaven) {
+    if (!positief(laag.diameter_mm)) fouten.push(`${pad}.diameter_mm: positief getal verwacht.`);
+    if (!positief(laag.hoh_mm)) fouten.push(`${pad}.hoh_mm: positief getal verwacht.`);
+  } else if (metOppervlak) {
+    if (!positief(laag.as_mm2_per_m)) fouten.push(`${pad}.as_mm2_per_m: positief getal verwacht.`);
+  } else {
+    fouten.push(`${pad}: geef diameter_mm met hoh_mm, of as_mm2_per_m.`);
+  }
+  if (!positief(laag.dekking_mm)) fouten.push(`${pad}.dekking_mm: positieve dekking in mm verwacht.`);
+}
+function keurPlaatWapening(w, pad, dikte) {
+  const fouten = [];
+  if (!isObject(w)) return [`${pad}: object verwacht.`];
+  onbekend(w, WAPENING_VELDEN, pad, fouten);
+  if (w.f_ct_eff_mpa !== void 0 && !positief(w.f_ct_eff_mpa)) fouten.push(`${pad}.f_ct_eff_mpa: positief eindig getal verwacht.`);
+  for (const veld of ["langdurend", "hoge_aanhechting"]) {
+    if (w[veld] !== void 0 && typeof w[veld] !== "boolean") fouten.push(`${pad}.${veld}: true of false verwacht.`);
+  }
+  if (typeof w.staalsoort !== "string" || !PLAAT_STAALSOORTEN.includes(w.staalsoort)) {
+    fouten.push(`${pad}.staalsoort: ${PLAAT_STAALSOORTEN.join(", ")} verwacht.`);
+  }
+  if (w.milieuklasse !== void 0 && !PLAAT_MILIEUKLASSEN.includes(w.milieuklasse)) {
+    fouten.push(`${pad}.milieuklasse: een milieuklasse uit tabel 4.1 verwacht (bijvoorbeeld XC3).`);
+  }
+  for (const richting2 of ["horizontaal", "verticaal"]) {
+    const r = w[richting2];
+    const rp = `${pad}.${richting2}`;
+    if (!isObject(r)) {
+      fouten.push(`${rp}: object verwacht.`);
+      continue;
+    }
+    onbekend(r, RICHTING_VELDEN, rp, fouten);
+    for (const zijde of RICHTING_VELDEN) {
+      if (r[zijde] !== void 0) keurLaag(r[zijde], `${rp}.${zijde}`, fouten);
+    }
+  }
+  if (fouten.length === 0) {
+    const invoer = w;
+    const dieptes = [0, 0];
+    for (const [i, zijde] of ["zijde_1", "zijde_2"].entries()) {
+      const h = invoer.horizontaal[zijde], v = invoer.verticaal[zijde];
+      for (const laag of [h, v]) {
+        if (!laag) continue;
+        if (laag.diameter_mm !== void 0 && laag.hoh_mm <= laag.diameter_mm) fouten.push(`${pad}.${zijde}: h.o.h. moet groter zijn dan \xD8.`);
+        const diepte = laag.dekking_mm + (laag.diameter_mm ?? 0);
+        dieptes[i] = Math.max(dieptes[i], diepte);
+        if (dikte !== void 0 && diepte >= dikte) fouten.push(`${pad}.${zijde}: laag past niet binnen de wanddikte.`);
+      }
+      if (h?.diameter_mm !== void 0 && v?.diameter_mm !== void 0 && h.dekking_mm + h.diameter_mm > v.dekking_mm + 1e-9 && v.dekking_mm + v.diameter_mm > h.dekking_mm + 1e-9) fouten.push(`${pad}.${zijde}: kruisende staven overlappen in de dikterichting.`);
+    }
+    if (dikte !== void 0 && dieptes[0] + dieptes[1] >= dikte) fouten.push(`${pad}: lagen aan beide zijden passen niet in de wanddikte.`);
+  }
+  return fouten;
+}
+
 // src/mcp/valideerModel.ts
 var MODEL_VELDEN = [
   "nodes",
@@ -21951,6 +22116,7 @@ var MILIEUKLASSEN = [
 var CONSTRUCTIEKLASSEN = ["S1", "S2", "S3", "S4", "S5", "S6"];
 var STAALTAKKEN = ["Horizontal", "Inclined"];
 var SUPPORT_VELDEN = ["nodeId", "type", "k"];
+var PLOOI_VELDEN = ["a_mm", "b_mm", "randvoorwaarden", "steun_bron", "onverstijfd", "uniforme_spanning"];
 var PLATE_VELDEN = [
   "id",
   "nodeIds",
@@ -21967,7 +22133,9 @@ var PLATE_VELDEN = [
   "cltG12",
   "cltG12Bron",
   "cltG12Bovengrens",
-  "klimaatklasse"
+  "klimaatklasse",
+  "plooi",
+  "wapening"
 ];
 var OPENING_VELDEN = ["id", "punten"];
 var MESHCACHE_VELDEN = [
@@ -22041,7 +22209,7 @@ var VASTGEZET = {
   zSpring: ["z"],
   rotSpring: ["ry"]
 };
-var isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+var isObject2 = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isGetal = (v) => typeof v === "number" && Number.isFinite(v);
 var isGeheel = (v) => isGetal(v) && Number.isInteger(v);
 var isEindig = (v) => typeof v === "number" && Number.isFinite(v);
@@ -22092,13 +22260,13 @@ function keurEnum(waarde, toegestaan, pad, fouten) {
     );
   }
 }
-function keurGetal(waarde, pad, fouten, { positief = false, nietNegatief = false } = {}) {
+function keurGetal(waarde, pad, fouten, { positief: positief2 = false, nietNegatief = false } = {}) {
   if (waarde === void 0) return;
   if (!isGetal(waarde)) {
     fouten.push(`${pad}: moet een getal zijn, maar is ${JSON.stringify(waarde)}.`);
     return;
   }
-  if (positief && waarde <= 0) {
+  if (positief2 && waarde <= 0) {
     fouten.push(`${pad}: moet groter dan nul zijn, maar is ${waarde}.`);
   }
   if (nietNegatief && waarde < 0) {
@@ -22107,7 +22275,7 @@ function keurGetal(waarde, pad, fouten, { positief = false, nietNegatief = false
 }
 function keurVeren(waarde, pad, fouten) {
   if (waarde === void 0) return;
-  if (!isObject(waarde)) {
+  if (!isObject2(waarde)) {
     fouten.push(`${pad}: moet een object met veerstijfheden per staafeinde zijn.`);
     return;
   }
@@ -22124,7 +22292,7 @@ function keurVeren(waarde, pad, fouten) {
 }
 function keurBedding(waarde, pad, fouten) {
   if (waarde === void 0) return;
-  if (!isObject(waarde)) {
+  if (!isObject2(waarde)) {
     fouten.push(`${pad}: moet een object met \`k\` (kN/m\xB3) en \`b\` (mm) zijn.`);
     return;
   }
@@ -22141,7 +22309,7 @@ function keurBedding(waarde, pad, fouten) {
 }
 function keurZones(waarde, pad, fouten) {
   if (waarde === void 0) return;
-  if (!isObject(waarde)) {
+  if (!isObject2(waarde)) {
     fouten.push(`${pad}: moet een object met \`longitudinal\` en \`stirrups\` zijn.`);
     return;
   }
@@ -22155,7 +22323,7 @@ function keurZones(waarde, pad, fouten) {
     }
     zones.forEach((z, i) => {
       const zpad = `${pad}.${lijst}[${i}]`;
-      if (!isObject(z)) return void fouten.push(`${zpad}: moet een object zijn.`);
+      if (!isObject2(z)) return void fouten.push(`${zpad}: moet een object zijn.`);
       keurVelden(
         z,
         lijst === "longitudinal" ? ZONE_LANGS_VELDEN : ZONE_BEUGEL_VELDEN,
@@ -22186,7 +22354,7 @@ function keurZones(waarde, pad, fouten) {
         const rij = z.row;
         if (rij === void 0) {
           fouten.push(`${zpad}.row ontbreekt; een langswapeningszone heeft aantal en diameter nodig.`);
-        } else if (!isObject(rij)) {
+        } else if (!isObject2(rij)) {
           fouten.push(`${zpad}.row: moet een object met \`count\` en \`diameter_mm\` zijn.`);
         } else {
           keurVelden(rij, ["count", "diameter_mm"], `${zpad}.row`, fouten);
@@ -22207,7 +22375,7 @@ function keurZones(waarde, pad, fouten) {
 }
 function keurKorf(waarde, pad, fouten) {
   if (waarde === void 0) return;
-  if (!isObject(waarde)) {
+  if (!isObject2(waarde)) {
     fouten.push(`${pad}: moet een object zijn (dekking, beugel, boven- en onderwapening).`);
     return;
   }
@@ -22236,7 +22404,7 @@ function keurKorf(waarde, pad, fouten) {
   for (const kant of ["top", "bottom"]) {
     const rij = waarde[kant];
     if (rij === void 0) continue;
-    if (!isObject(rij)) {
+    if (!isObject2(rij)) {
       fouten.push(`${pad}.${kant}: moet een object met \`count\` en \`diameter_mm\` zijn.`);
       continue;
     }
@@ -22253,7 +22421,7 @@ function keurKorf(waarde, pad, fouten) {
 }
 function keurKolom(waarde, pad, fouten) {
   if (waarde === void 0) return;
-  if (!isObject(waarde)) {
+  if (!isObject2(waarde)) {
     fouten.push(`${pad}: moet een object zijn (schoring, kniklengte en de \xA79.5-keuzen).`);
     return;
   }
@@ -22279,7 +22447,7 @@ function keurKolom(waarde, pad, fouten) {
   keurKniklengte(waarde.buckling_length, `${pad}.buckling_length`, fouten);
 }
 function keurKniklengte(kl, pad, fouten) {
-  if (!isObject(kl)) {
+  if (!isObject2(kl)) {
     fouten.push(`${pad}: moet een object met \`soort\` zijn.`);
     return;
   }
@@ -22319,7 +22487,7 @@ function leesArray(model, veld, fouten) {
 }
 function keurCheckConfig(waarde, cpad) {
   const fouten = [];
-  if (!isObject(waarde)) {
+  if (!isObject2(waarde)) {
     fouten.push(`${cpad}: moet een object zijn.`);
     return fouten;
   }
@@ -22373,7 +22541,7 @@ function keurCheckConfig(waarde, cpad) {
 }
 function controleerVelden(rauw) {
   const fouten = [];
-  if (!isObject(rauw)) {
+  if (!isObject2(rauw)) {
     return ["model: moet een JSON-object zijn."];
   }
   keurVelden(rauw, MODEL_VELDEN, "model", fouten);
@@ -22404,7 +22572,7 @@ function controleerVelden(rauw) {
   const nodes = leesArray(rauw, "nodes", fouten);
   nodes.forEach((n, i) => {
     const pad = `model.nodes[${i}]`;
-    if (!isObject(n)) return void fouten.push(`${pad}: moet een object zijn.`);
+    if (!isObject2(n)) return void fouten.push(`${pad}: moet een object zijn.`);
     keurVelden(n, NODE_VELDEN, pad, fouten);
     eisGeheel(n.id, `${pad}.id`, fouten);
     if (!isGetal(n.x)) fouten.push(`${pad}.x: verplicht getal (mm).`);
@@ -22413,7 +22581,7 @@ function controleerVelden(rauw) {
   const beams = leesArray(rauw, "beams", fouten);
   beams.forEach((b, i) => {
     const pad = `model.beams[${i}]`;
-    if (!isObject(b)) return void fouten.push(`${pad}: moet een object zijn.`);
+    if (!isObject2(b)) return void fouten.push(`${pad}: moet een object zijn.`);
     keurVelden(b, BEAM_VELDEN, pad, fouten);
     eisGeheel(b.id, `${pad}.id`, fouten);
     eisGeheel(b.from, `${pad}.from`, fouten);
@@ -22425,7 +22593,7 @@ function controleerVelden(rauw) {
     }
     keurEnum(b.loadRole, LOADROLLEN, `${pad}.loadRole`, fouten);
     if (b.releases !== void 0) {
-      if (!isObject(b.releases)) {
+      if (!isObject2(b.releases)) {
         fouten.push(`${pad}.releases: moet een object zijn.`);
       } else {
         keurVelden(b.releases, RELEASE_VELDEN, `${pad}.releases`, fouten);
@@ -22445,7 +22613,7 @@ function controleerVelden(rauw) {
   const supports = leesArray(rauw, "supports", fouten);
   supports.forEach((s, i) => {
     const pad = `model.supports[${i}]`;
-    if (!isObject(s)) return void fouten.push(`${pad}: moet een object zijn.`);
+    if (!isObject2(s)) return void fouten.push(`${pad}: moet een object zijn.`);
     keurVelden(s, SUPPORT_VELDEN, pad, fouten);
     eisGeheel(s.nodeId, `${pad}.nodeId`, fouten);
     if (s.type === void 0) {
@@ -22458,7 +22626,7 @@ function controleerVelden(rauw) {
   const plates = leesArray(rauw, "plates", fouten);
   plates.forEach((p, i) => {
     const pad = `model.plates[${i}]`;
-    if (!isObject(p)) return void fouten.push(`${pad}: moet een object zijn.`);
+    if (!isObject2(p)) return void fouten.push(`${pad}: moet een object zijn.`);
     keurVelden(p, PLATE_VELDEN, pad, fouten);
     eisGeheel(p.id, `${pad}.id`, fouten);
     if (!Array.isArray(p.nodeIds) || !p.nodeIds.every(isGeheel)) {
@@ -22500,6 +22668,36 @@ function controleerVelden(rauw) {
         );
       }
     }
+    if (p.plooi !== void 0) {
+      if (!isObject2(p.plooi)) {
+        fouten.push(`${pad}.plooi: een object met expliciete veldmaten en randvoorwaarden is vereist.`);
+      } else {
+        const q = p.plooi;
+        keurVelden(q, PLOOI_VELDEN, `${pad}.plooi`, fouten);
+        for (const key of ["a_mm", "b_mm"]) {
+          if (!isEindig(q[key]) || q[key] <= 0) fouten.push(`${pad}.plooi.${key}: positief eindig getal in mm vereist.`);
+        }
+        if (q.randvoorwaarden !== "vierzijdig_scharnierend") fouten.push(`${pad}.plooi.randvoorwaarden: alleen vierzijdig_scharnierend UIT HET VLAK ondersteund.`);
+        if (typeof q.steun_bron !== "string" || !q.steun_bron.trim()) fouten.push(`${pad}.plooi.steun_bron: beschrijf het bewijs voor de vier continue steunen uit het vlak.`);
+        for (const key of ["onverstijfd", "uniforme_spanning"]) {
+          if (q[key] !== true) fouten.push(`${pad}.plooi.${key}: moet expliciet true zijn voor deze methode.`);
+        }
+        if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : void 0) !== "staal") fouten.push(`${pad}.plooi: alleen ondersteund voor staal.`);
+        if (Array.isArray(p.nodeIds) && (p.openingen === void 0 || Array.isArray(p.openingen))) {
+          const reden = plaatPlooiGeometrieFout(p, nodes.filter(isObject2));
+          if (reden) fouten.push(`${pad}.plooi: ${reden}`);
+        }
+      }
+    }
+    if (p.wapening !== void 0) {
+      if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : void 0) !== "beton") {
+        fouten.push(
+          `${pad}.wapening: hoort alleen bij een betonplaat; bij dit materiaal wordt zij geweigerd in plaats van stil genegeerd.`
+        );
+      } else {
+        fouten.push(...keurPlaatWapening(p.wapening, `${pad}.wapening`, typeof p.thickness === "number" ? p.thickness : PLATE_DEFAULTS.thickness));
+      }
+    }
     keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);
     keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
     if (p.openingen !== void 0) {
@@ -22508,17 +22706,17 @@ function controleerVelden(rauw) {
       } else {
         p.openingen.forEach((o, k) => {
           const opad = `${pad}.openingen[${k}]`;
-          if (!isObject(o)) return void fouten.push(`${opad}: moet een object zijn.`);
+          if (!isObject2(o)) return void fouten.push(`${opad}: moet een object zijn.`);
           keurVelden(o, OPENING_VELDEN, opad, fouten);
           eisGeheel(o.id, `${opad}.id`, fouten);
-          if (!Array.isArray(o.punten) || o.punten.length < 3 || !o.punten.every((q) => isObject(q) && isEindig(q.x) && isEindig(q.z))) {
+          if (!Array.isArray(o.punten) || o.punten.length < 3 || !o.punten.every((q) => isObject2(q) && isEindig(q.x) && isEindig(q.z))) {
             fouten.push(`${opad}.punten: verplichte array van minstens drie punten {x, z} in mm.`);
           }
         });
       }
     }
     if (p.meshCache !== void 0) {
-      if (!isObject(p.meshCache)) {
+      if (!isObject2(p.meshCache)) {
         fouten.push(`${pad}.meshCache: moet een object zijn.`);
       } else {
         keurVelden(p.meshCache, MESHCACHE_VELDEN, `${pad}.meshCache`, fouten);
@@ -22566,7 +22764,7 @@ function controleerVelden(rauw) {
   const loadCases = leesArray(rauw, "loadCases", fouten);
   loadCases.forEach((lc, i) => {
     const pad = `model.loadCases[${i}]`;
-    if (!isObject(lc)) return void fouten.push(`${pad}: moet een object zijn.`);
+    if (!isObject2(lc)) return void fouten.push(`${pad}: moet een object zijn.`);
     keurVelden(lc, LOADCASE_VELDEN, pad, fouten);
     eisGeheel(lc.id, `${pad}.id`, fouten);
     if (typeof lc.name !== "string" || lc.name.length === 0) {
@@ -22578,7 +22776,7 @@ function controleerVelden(rauw) {
   const loads = leesArray(rauw, "loads", fouten);
   loads.forEach((l, i) => {
     const pad = `model.loads[${i}]`;
-    if (!isObject(l)) return void fouten.push(`${pad}: moet een object zijn.`);
+    if (!isObject2(l)) return void fouten.push(`${pad}: moet een object zijn.`);
     keurVelden(l, LOAD_VELDEN, pad, fouten);
     eisGeheel(l.id, `${pad}.id`, fouten);
     eisGeheel(l.caseId, `${pad}.caseId`, fouten);
@@ -23725,6 +23923,7 @@ function rekenDoor(payload) {
   const clt = buildCltCheckInputs({ ...houtData, beams: staafSelectie });
   const metHout = gelezen.beams.some((b) => matchSupportedTimberGrade(b.material) !== null);
   const plaat = buildPlaatCheckInputs({
+    nodes: gelezen.model.nodes,
     plates: gelezen.model.plates ?? [],
     combinations: combinaties,
     combinationResults,

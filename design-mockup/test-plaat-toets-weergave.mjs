@@ -110,6 +110,32 @@ log("\n[b2] kaart van een betonnen plaat");
   checkTrue("benodigde wapening zonder openklappen", t.includes("Benodigde wapening") && t.includes("600"), t);
 }
 
+log("\n[b3] gewapende wand met maatgevende detaillering");
+{
+  const laag = (dekking_mm) => ({ diameter_mm: 12, hoh_mm: 150, dekking_mm });
+  const wand = {
+    ...invoer[2],
+    combinations: [{ combination_id: 4, elements: [
+      { element_id: 1, sigma_x_mpa: 0.1, sigma_y_mpa: 0, tau_xy_mpa: 0 },
+    ] }],
+    wapening_aanwezig: {
+      staalsoort: "B500B",
+      horizontaal: { zijde_1: laag(30), zijde_2: laag(30) },
+      verticaal: { zijde_1: laag(42), zijde_2: laag(42) },
+    },
+  };
+  const antwoord = spawnSync(TOETSBRUG, [], {
+    input: JSON.stringify({ opdracht: "check_plates", inputs: [wand] }), encoding: "utf8",
+  });
+  const [result] = JSON.parse(antwoord.stdout);
+  checkTrue("kern heeft aanwezige wapening per zijde getoetst", result.checks.some((c) => c.id === "F_wapening_x_zijde_1"));
+  checkTrue("maatgevende wanddetaillering heeft geen element of combinatie", result.governing_element_id == null && result.governing_combination_id == null);
+  const t = tekst(renderToStaticMarkup(React.createElement(PlaatToetsKaart, { result })));
+  checkTrue("kaart ontkent uitgevoerde wapeningscontrole niet", !t.includes("aanwezige wapening niet getoetst"), t);
+  checkTrue("kaart verwijst naar toetsen en beperkingen", t.includes("toetsen en niet-getoetste onderdelen"), t);
+  checkTrue("detaillering toont geen lege plaatsaanduiding", !t.includes("element in combinatie"), t);
+}
+
 log("\n[c] rapportsectie");
 {
   const html = renderToStaticMarkup(React.createElement(PlaatToetsRapport, {

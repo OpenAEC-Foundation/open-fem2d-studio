@@ -155,9 +155,14 @@ log("\n[4] Isotroop blijft ongewijzigd");
   for (const [naam, p] of [["zonder materiaal", zonder], ["S355", staal], ["S355 met hoofdrichting 30°", staal30]]) {
     checkTrue(`${naam}: geen materiaalassen-blok op plaat of element`,
       p.materiaalassen === undefined && p.elements.every((e) => !("materiaalassen" in e)));
-    checkTrue(`${naam}: sleutels van het plaatresultaat ongewijzigd`,
-      JSON.stringify(Object.keys(p)) === JSON.stringify(["plateId", "elements", "ranges"]),
+    checkTrue(`${naam}: alleen basisresultaten en onafhankelijke meshdekking`,
+      JSON.stringify(Object.keys(p)) === JSON.stringify(["plateId", "elements", "ranges", "expectedElementIds"]),
       Object.keys(p).join(","));
+    checkTrue(`${naam}: meshdekking bevat alle berekende elementen precies eenmaal`,
+      p.expectedElementIds.length > 0
+        && new Set(p.expectedElementIds).size === p.expectedElementIds.length
+        && JSON.stringify([...p.expectedElementIds].sort((a, b) => a - b))
+          === JSON.stringify(p.elements.map((e) => e.elementId).sort((a, b) => a - b)));
   }
   let gelijk = staal.elements.length === staal30.elements.length;
   for (let i = 0; i < staal.elements.length && gelijk; i++) {

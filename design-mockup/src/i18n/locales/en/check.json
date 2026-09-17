@@ -1383,6 +1383,6 @@
     "nietGetoetst": "Not checked",
     "krachtregel": "Combination {{combinatie}} — element-averaged in-plane stresses; the element is named in the notes",
     "overgeslagenTitel": "Skipped plates",
-    "wapening": "Required reinforcement (annex F): x up to {{x}} kN/m (element {{ex}}), z up to {{z}} kN/m (element {{ez}}) — provided reinforcement not checked"
+    "wapening": "Required reinforcement (annex F): x up to {{x}} kN/m (element {{ex}}), z up to {{z}} kN/m (element {{ez}}) — see checks and unchecked items for the provided reinforcement"
   }
 }
