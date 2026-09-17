@@ -5203,6 +5203,7 @@ var BEAM_LOAD_ROLES = [
   { id: "binnen", label: "Binnenstaaf (geen windvlak)", kort: "Binnen" }
 ];
 var BEAM_LOAD_ROLE_LABEL = Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, r.label]));
+var BEAM_LOAD_ROLE_SLEUTEL = Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, `common:beamLoadRole.${r.id}`]));
 function bepaalStandaardRol(beam, nodes) {
   const a = nodes.find((n) => n.id === beam.from);
   const b = nodes.find((n) => n.id === beam.to);
@@ -5599,6 +5600,20 @@ function plaatRandLabel(adres) {
   }
   return "rand onbekend";
 }
+function plaatRandSleutel(adres) {
+  if (adres.openingId !== void 0) {
+    return adres.edgeIndex !== void 0 ? { sleutel: "common:canvas.edge.numberedOfOpening", waarden: { rand: adres.edgeIndex + 1, opening: adres.openingId } } : { sleutel: "common:canvas.edge.openingUnknownEdge", waarden: { opening: adres.openingId } };
+  }
+  if (adres.edgeIndex !== void 0) return { sleutel: "common:canvas.edge.numbered", waarden: { rand: adres.edgeIndex + 1 } };
+  if (adres.edge !== void 0 && PLAAT_RAND_NAMEN.includes(adres.edge)) {
+    return { sleutel: `common:canvas.edge.${adres.edge}` };
+  }
+  return { sleutel: "common:canvas.edge.unknown" };
+}
+function plaatRandTekst(adres, t) {
+  const r = plaatRandSleutel(adres);
+  return t(r.sleutel, r.waarden);
+}
 var STAAFEINDE_BIJ_RAND_MM = 50;
 function dichtstbijzijndePlaatrand(punt, hoeken, openingen = []) {
   if (hoeken.length < 3) return null;
@@ -5633,11 +5648,11 @@ function commitPlaatMeshCache(plateId, cache) {
   meshCacheCommitter?.(plateId, cache);
 }
 var LOAD_SOORT_MEERVOUD = {
-  lineLoad: "lijnlasten",
-  pointForce: "puntlasten",
-  pointMoment: "momenten",
-  thermal: "temperatuurlasten",
-  edgeLoad: "randlasten"
+  lineLoad: "common:loadKindPlural.lineLoad",
+  pointForce: "common:loadKindPlural.pointForce",
+  pointMoment: "common:loadKindPlural.pointMoment",
+  thermal: "common:loadKindPlural.thermal",
+  edgeLoad: "common:loadKindPlural.edgeLoad"
 };
 var GEBRUIKSCATEGORIEEN = [
   "A",
@@ -23772,6 +23787,7 @@ export {
   AnalysetypeOnbekendFout,
   BEAM_LOAD_ROLES,
   BEAM_LOAD_ROLE_LABEL,
+  BEAM_LOAD_ROLE_SLEUTEL,
   BIJLAGEN_GEVULD,
   CF0_SCHERPHOEKIG,
   CONCRETE_E_CM,
@@ -23996,6 +24012,8 @@ export {
   plaatMeshSignatuurVan,
   plaatNaarSolverInput,
   plaatRandLabel,
+  plaatRandSleutel,
+  plaatRandTekst,
   plaatRekentAlsRaster,
   profileLookupKey,
   psi2VoorEindstijfheid,
