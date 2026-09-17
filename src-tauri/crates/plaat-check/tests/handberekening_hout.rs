@@ -117,6 +117,16 @@ fn trek_loodrecht_op_de_vezel_is_niet_getoetst() {
     assert!(n.bepaalt_status);
     assert!(n.reden.contains("volume-effect"), "{}", n.reden);
     assert!(n.reden.contains("0,2"), "{}", n.reden);
+    // Issue #25 (3): de reden is normgebaseerd en expliciet — 6.1.3 zonder
+    // uitdrukking, k_vol (6.51) alleen voor 6.4.3(6), geen aangenomen regel, en
+    // de uitweg binnen de norm: trek loodrecht op de vezel vermijden.
+    for woord in ["6.1.3(1)P", "k_vol", "(6.51)", "6.4.3(6)", "geen uitdrukking", "n.v.t.", "niet optreedt"] {
+        assert!(n.reden.contains(woord), "{woord:?} ontbreekt in: {}", n.reden);
+    }
+    assert_eq!(
+        n.reden,
+        plaat_check::hout::reden_trek_loodrecht(0.2, 1, 1, nen_en_1995_1_1::TimberType::Solid)
+    );
     // σ₁ = σ_y = −1 → druk langs de vezel: 1/12,923077 = 0,077381, getoetst.
     assert_relative_eq!(uc(&r, DRUK_0_ID), 0.077_381, max_relative = 1e-5);
     assert_eq!(r.status, CheckStatus::NotApplicable);

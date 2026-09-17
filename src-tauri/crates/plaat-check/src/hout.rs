@@ -52,6 +52,16 @@
 //! element trek loodrecht op de vezel, dan is de plaat daarom niet volledig
 //! getoetst: status `NotApplicable`, met de grootste σ_t,90,d en waar die zit.
 //!
+//! Waarom er ook geen k_vol wordt "geleend": de enige volumefactor die de norm
+//! geeft, k_vol in (6.51), hoort bij 6.4.3(6) — de topzone van liggers met een
+//! tweezijdig taps verlopende hoogte, gebogen liggers en zadeldakliggers, met
+//! het referentievolume V_0 = 0,01 m³ en het belaste volume van die topzone.
+//! Voor een schijf geeft de norm geen volume en geen exponent; die regel hier
+//! overnemen zou een regel verzinnen. Er staat in de repo ook geen andere
+//! onderbouwde bron voor. De reden in het resultaat zegt dat, en wijst de
+//! ontwerper op de uitweg die wél binnen de norm blijft: trek loodrecht op de
+//! vezel in het ontwerp vermijden. Zie [`reden_trek_loodrecht`].
+//!
 //! Verder niet: stabiliteit (6.3 geeft knik- en kipregels voor staven, geen
 //! plooi van een schijf) en de verbindingen.
 
@@ -74,6 +84,37 @@ pub const DRUK_90_ID: &str = "6.1.5_druk_loodrecht";
 pub const AFSCHUIF_ID: &str = "6.1.7_afschuiving";
 pub const DRUK_HOEK_ID: &str = "6.2.2_druk_onder_hoek";
 pub const TREK_90_ID: &str = "6.1.3_trek_loodrecht";
+
+/// De reden waarom trek loodrecht op de vezel in een schijf NIET getoetst is.
+///
+/// Normgebaseerd en zonder verzonnen regel: 6.1.3(1)P eist het volume-effect
+/// maar geeft geen uitdrukking; de enige k_vol van de norm (6.51) hoort bij
+/// 6.4.3(6) en niet bij een schijf. De laatste zin wijst op wat de ontwerper
+/// wél binnen de norm kan doen: de trek loodrecht op de vezel vermijden.
+///
+/// Publiek zodat paneel-, rapport- en PDF-tests de zin kunnen terugzoeken.
+pub fn reden_trek_loodrecht(sigma_t90_mpa: f64, element: u32, comb: u32, soort: TimberType) -> String {
+    format!(
+        "In deze plaat staat trek loodrecht op de vezel: σ_t,90,d tot {} N/mm² (element {} in \
+         combinatie {}). NEN-EN 1995-1-1 6.1.3(1)P eist dat \"het volume-effect van een element\" \
+         in rekening is gebracht, maar geeft daar geen uitdrukking voor{}. De enige volumefactor \
+         in de norm, k_vol in (6.51), geldt volgens 6.4.3(6) voor de topzone van liggers met een \
+         tweezijdig taps verlopende hoogte, gebogen liggers en zadeldakliggers; voor k_vol in een \
+         schijf geeft de norm geen uitdrukking, en er wordt er hier geen aangenomen. Een toets \
+         σ_t,90,d ≤ f_t,90,d zonder dat effect geeft de norm niet en zou aan de onveilige kant \
+         liggen. Deze component is NIET getoetst (n.v.t.); de plaat heet daarom niet \"voldoet\". \
+         Ontwerp de schijf zo dat trek loodrecht op de vezel niet optreedt, bijvoorbeeld door de \
+         hoofdrichting (vezel) langs de trekrichting te leggen.",
+        tekst(sigma_t90_mpa, 3),
+        element,
+        comb,
+        if soort == TimberType::Glulam {
+            "; voor gelijmd gelamineerd hout eist 3.3(5)P hetzelfde"
+        } else {
+            ""
+        }
+    )
+}
 
 /// k_c,90 volgens 6.1.5(2): "De waarde van k_c,90 behoort gelijk te zijn aan
 /// 1,0, tenzij de voorwaarden uit de volgende paragrafen van toepassing zijn".
@@ -232,21 +273,7 @@ pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
         niet_getoetst.push(PlaatNietGetoetst {
             id: TREK_90_ID.to_string(),
             titel: "Trek loodrecht op de vezel (6.1.3)".to_string(),
-            reden: format!(
-                "In deze plaat staat trek loodrecht op de vezel: σ_t,90,d tot {} N/mm² (element {} in \
-                 combinatie {}). NEN-EN 1995-1-1 6.1.3(1)P eist dat \"het volume-effect van een element\" \
-                 in rekening is gebracht, maar geeft daar geen uitdrukking voor{}. Een toets \
-                 σ_t,90,d ≤ f_t,90,d zonder dat effect geeft de norm niet en zou aan de onveilige kant \
-                 liggen. Deze component is NIET getoetst; de plaat heet daarom niet \"voldoet\".",
-                tekst(s, 3),
-                element,
-                comb,
-                if klasse.timber_type == TimberType::Glulam {
-                    "; voor gelijmd gelamineerd hout eist 3.3(5)P hetzelfde"
-                } else {
-                    ""
-                }
-            ),
+            reden: reden_trek_loodrecht(s, element, comb, klasse.timber_type),
             bepaalt_status: true,
         });
     }
