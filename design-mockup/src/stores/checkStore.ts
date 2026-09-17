@@ -365,6 +365,26 @@ export function korvenUitStaven(
   return korven;
 }
 
+/**
+ * De generatie van de toetsuitslag: elke `run` en elke `clear` hoogt haar op.
+ *
+ * WAAROM (issue #18, basisaudit ruw 31). Een ronde is asynchroon: tussen het
+ * vertrek naar de rekenkern en het antwoord kan het model veranderen. `clear()`
+ * wiste dan wel de oude uitslag, maar de lopende ronde schreef zijn antwoord
+ * er daarna gewoon overheen. Die uitslag is gesleuteld op STAAFNUMMER, en
+ * staafnummers worden hergebruikt (`Math.max + 1`): verwijder staaf 6, teken
+ * een nieuwe, en de nieuwe staaf 6 kreeg de UC-badge, de kaart en de
+ * rapportregel van de oude — een betonbalk-uitslag op een stalen staaf.
+ * Hetzelfde gebeurt als een oudere, tragere ronde na een nieuwere terugkomt.
+ *
+ * Een ronde schrijft dus alleen nog als er sinds zijn vertrek niets gewist of
+ * opnieuw gestart is; anders gooit hij zijn antwoord weg. Liever geen uitslag
+ * dan een uitslag van een ander model.
+ */
+let toetsGeneratie = 0;
+/** De generatie van de laatst GESTARTE ronde — voor het afsluiten van `isRunning`. */
+let laatsteRonde = 0;
+
 export const useCheckStore = create<CheckState>((set) => ({
   results: [],
   skipped: [],
@@ -384,6 +404,18 @@ export const useCheckStore = create<CheckState>((set) => ({
     // berekening. Is de rekenkern onbereikbaar, dan komt dat als een gewone
     // fout terug uit `roepKern` en staat het in het toetsingspaneel — in
     // plaats van dat de toetsing er stilzwijgend niet is.
+    const mijnRonde = ++toetsGeneratie;
+    laatsteRonde = mijnRonde;
+    /**
+     * Is deze ronde ingehaald (gewist of door een nieuwere vervangen)? Dan
+     * schrijft hij niets. `isRunning` zet hij alleen terug als er geen nieuwere
+     * ronde loopt — die sluit zichzelf af.
+     */
+    const ingehaald = (): boolean => {
+      if (mijnRonde === toetsGeneratie) return false;
+      if (laatsteRonde === mijnRonde) set({ isRunning: false });
+      return true;
+    };
     set({ isRunning: true, error: null });
     try {
       const [profileDb, timberGrades, concreteClasses] = await Promise.all([
@@ -508,6 +540,7 @@ export const useCheckStore = create<CheckState>((set) => ({
         ...spanningResults,
       ].sort((a, b) => a.beam_id - b.beam_id);
 
+      if (ingehaald()) return;
       set({
         results: merged,
         skipped: skipped.sort((a, b) => a.beamId - b.beamId),
@@ -530,6 +563,9 @@ export const useCheckStore = create<CheckState>((set) => ({
         },
       });
     } catch (e) {
+      // Ook een fout van een ingehaalde ronde hoort bij een ander model: hij
+      // mag de uitslag of de foutbanner van de lopende ronde niet overschrijven.
+      if (ingehaald()) return;
       // EEN MISLUKTE RONDE LAAT GEEN OUDE UITSLAG ACHTER. Hier werd alleen de
       // fout gezet; resultaten, overgeslagen staven en rapportinvoer van de
       // VORIGE ronde bleven staan. Het toetsingspaneel toonde de foutbanner,
@@ -559,7 +595,10 @@ export const useCheckStore = create<CheckState>((set) => ({
     }
   },
 
-  clear: () =>
+  clear: () => {
+    // Een lopende ronde rekent op het model van vóór deze wis; zijn antwoord
+    // mag er niet meer in (zie `toetsGeneratie`).
+    toetsGeneratie += 1;
     set({
       results: [],
       skipped: [],
@@ -572,7 +611,8 @@ export const useCheckStore = create<CheckState>((set) => ({
       lastRunAt: null,
       lastRunData: null,
       lastRunInputs: null,
-    }),
+    });
+  },
 }));
 
 /**

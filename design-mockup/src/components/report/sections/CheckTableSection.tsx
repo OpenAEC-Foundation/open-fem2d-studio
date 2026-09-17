@@ -32,6 +32,7 @@ import {
   type CheckSkip,
   type MemberCheckResult,
 } from "../../../lib/checkTypes";
+import { nietUitgevoerdOverzicht, nietUitgevoerdToetsen } from "../../../lib/nietUitgevoerd";
 import { useReportData } from "../ReportDataContext";
 import { useRapportProjectInfo } from "../useProjectInfo";
 import {
@@ -119,6 +120,39 @@ function OvergeslagenStaven({ skipped }: { skipped: CheckSkip[] }) {
   );
 }
 
+/**
+ * De toetsen die de kern niet kon afrekenen, per staaf (issue #18). De status
+ * in de tabel zegt alleen DAT er iets ontbrak ("N.v.t."); dit zegt WAT. Blijft
+ * weg als er niets overgeslagen is, net als het overzicht in de PDF.
+ */
+function NietUitgevoerdeToetsen({ results }: { results: MemberCheckResult[] }) {
+  const { t } = useTranslation("ribbon");
+  const regels = nietUitgevoerdOverzicht(results);
+  if (regels.length === 0) return null;
+  const detailleringseis = t("report.detailleringseis", "detailleringseis");
+  return (
+    <div className="rpt-skipped rpt-niet-uitgevoerd">
+      <h3 className="rpt-h3">{t("report.nietUitgevoerdTitel", "Niet uitgevoerd")}</h3>
+      <p className="rpt-note">
+        {t(
+          "report.nietUitgevoerdToelichting",
+          "Deze toetsen konden niet worden afgerekend; de reden staat bij de toetsing van de staaf. Ontbreekt een toets die de draagkracht bepaalt, dan is de status van de staaf N.v.t. en niet Voldoet. Een detailleringseis bepaalt de status niet.",
+        )}
+      </p>
+      <ul>
+        {regels.map((r) => (
+          <li key={r.beamId}>
+            <strong>
+              {t("report.colBeam", "Staaf")} {r.beamId}
+            </strong>{" "}
+            ({r.sectie}, {r.klasse}): {nietUitgevoerdToetsen(r, detailleringseis)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function CheckTableSection() {
   const { t } = useTranslation("ribbon");
   const results = useCheckStore((s) => s.results);
@@ -196,6 +230,8 @@ export default function CheckTableSection() {
           </table>
 
           {basis && <p className="rpt-note rpt-check-basis">{basis}</p>}
+
+          <NietUitgevoerdeToetsen results={results} />
 
           <OvergeslagenStaven skipped={skipped} />
         </>

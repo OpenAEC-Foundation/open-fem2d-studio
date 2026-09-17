@@ -24,6 +24,7 @@
  *    die er is, anders de eerste combinatie met resultaten).
  */
 import { create } from 'zustand';
+import { snoeiToetsStaafKeuze } from '../lib/verdwenenStaven';
 
 export type ReportPageSize = 'A4' | 'A3';
 export type ReportOrientation = 'portrait' | 'landscape';
@@ -186,6 +187,12 @@ interface ReportState extends ReportOpmaak {
   setToetsStaafZichtbaar: (beamId: number, zichtbaar: boolean) => void;
   /** De hele staafkeuze in één keer zetten (rapporttype-voorinstelling, sync). */
   setVerborgenToetsStaven: (keuze: ToetsStaafKeuze) => void;
+  /**
+   * Wis de keuze van staven die niet meer in het model staan. Een nieuwe
+   * staaf die hetzelfde nummer krijgt, erft zo geen "uit" van zijn voorganger
+   * (issue #18; zie lib/verdwenenStaven.ts).
+   */
+  snoeiToetsStaven: (bestaandeStaven: ReadonlySet<number>) => void;
   /** Alle staven weer in de afleidingssectie. */
   resetToetsStaven: () => void;
   /** Alle secties weer aan. */
@@ -258,6 +265,12 @@ export const useReportStore = create<ReportState>((set) => ({
     }),
 
   setVerborgenToetsStaven: (verborgenToetsStaven) => set({ verborgenToetsStaven }),
+
+  snoeiToetsStaven: (bestaandeStaven) =>
+    set((state) => {
+      const verborgenToetsStaven = snoeiToetsStaafKeuze(state.verborgenToetsStaven, bestaandeStaven);
+      return verborgenToetsStaven === state.verborgenToetsStaven ? state : { verborgenToetsStaven };
+    }),
 
   resetToetsStaven: () => set({ verborgenToetsStaven: {} }),
 
