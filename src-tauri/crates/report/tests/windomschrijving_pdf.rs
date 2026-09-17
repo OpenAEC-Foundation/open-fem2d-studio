@@ -126,6 +126,7 @@ fn invoer(wind: Option<String>) -> ReportInput {
         analyse_toelichting: None,
         wind_toelichting: wind,
         plate_results: Vec::new(),
+        plate_inputs: Vec::new(),
         plate_skipped: Vec::new(),
     }
 }

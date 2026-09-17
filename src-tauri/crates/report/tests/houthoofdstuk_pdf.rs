@@ -267,6 +267,7 @@ fn invoer(clt: Vec<CltBeamCheckResult>) -> ReportInput {
         analyse_toelichting: None,
         wind_toelichting: None,
         plate_results: Vec::new(),
+        plate_inputs: Vec::new(),
         plate_skipped: Vec::new(),
     }
 }

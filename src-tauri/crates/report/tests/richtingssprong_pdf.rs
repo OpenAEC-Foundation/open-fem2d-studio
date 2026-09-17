@@ -144,6 +144,7 @@ fn de_pdf_toont_de_richtingssprong_bij_staal_en_beton() {
         analyse_toelichting: None,
         wind_toelichting: None,
         plate_results: Vec::new(),
+        plate_inputs: Vec::new(),
         plate_skipped: Vec::new(),
     });
     let pad = std::env::temp_dir().join("richtingssprong_proef.pdf");

@@ -106,6 +106,7 @@ fn de_pdf_noemt_de_kniklengte_uit_het_vlak_met_haar_herkomst() {
         analyse_toelichting: None,
         wind_toelichting: None,
         plate_results: Vec::new(),
+        plate_inputs: Vec::new(),
         plate_skipped: Vec::new(),
     });
     let pad = std::env::temp_dir().join("zwakke_as_proef.pdf");

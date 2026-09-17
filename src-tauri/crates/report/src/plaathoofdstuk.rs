@@ -41,7 +41,7 @@ use openaec_layout::{
     table::{Table, TableStyleConfig},
     types::{Color, Padding, Pt},
 };
-use plaat_check::PlateCheckResult;
+use plaat_check::{PlateCheckInput, PlateCheckResult};
 use serde::{Deserialize, Serialize};
 use steel_check::result::CheckKind;
 use ts_rs::TS;
@@ -57,7 +57,7 @@ pub const KOP: &str = "Platen — toetsing in het vlak";
 /// De toelichting onder de kop, woordelijk die van het live rapport
 /// (`report.plaatToetsNoot`).
 pub const NOOT: &str = "Per element van het rekenmesh getoetst met de elementgemiddelde spanningen \
-     in het vlak; per plaat de hoogste unity check over alle UGT-combinaties. Wat niet getoetst is, \
+     in het vlak; per plaat de hoogste unity check over de relevante UGT- en BGT-combinaties. Wat niet getoetst is, \
      staat per plaat met de reden.";
 
 /// Een plaat die de app NIET naar de kern stuurde, met de reden — de spiegel
@@ -77,7 +77,9 @@ pub struct RapportPlaatOvergeslagen {
 /// Kan dit rapport dit hoofdstuk vullen? Alleen wanneer er platen in de invoer
 /// zitten — getoetst, geweigerd of overgeslagen.
 pub fn van_toepassing(input: &ReportInput) -> bool {
-    !input.plate_results.is_empty() || !input.plate_skipped.is_empty()
+    !input.plate_results.is_empty()
+        || !input.plate_skipped.is_empty()
+        || !input.plate_inputs.is_empty()
 }
 
 /// De overzichtsregel van één plaat: de cellen van de overzichtstabel.
@@ -101,10 +103,13 @@ pub fn overzichtsregel(r: &PlateCheckResult) -> Vec<String> {
         r.plate_id.to_string(),
         r.materiaal.clone(),
         dikte(r.thickness_mm),
-        r.norm.clone(),
+        // Spaties bij de uitgaveonderdelen voorkomen een afgebroken jaartal
+        // in de smalle normkolom; de volledige aanduiding staat ook eronder.
+        r.norm.replace('+', " + ").replace('/', " / "),
         uc_tekst(r.uc_max),
         r.governing_element_id.map_or("—".into(), |e| e.to_string()),
-        r.governing_combination_id.map_or("—".into(), |c| c.to_string()),
+        r.governing_combination_id
+            .map_or("—".into(), |c| c.to_string()),
         status_label(&r.status).into(),
     ]
 }
@@ -112,7 +117,7 @@ pub fn overzichtsregel(r: &PlateCheckResult) -> Vec<String> {
 /// Een unity check zoals dit hoofdstuk hem schrijft: twee decimalen, zoals de
 /// samenvattingstabel van de staven.
 pub fn uc_tekst(uc: f64) -> String {
-    format!("{uc:.2}")
+    crate::getal_tekst(uc, 2)
 }
 
 fn dikte(t: f64) -> String {
@@ -129,7 +134,9 @@ pub fn extend_with_plaathoofdstuk(flow: &mut Vec<Box<dyn Flowable>>, input: &Rep
     if !van_toepassing(input) {
         return;
     }
-    flow.push(Box::new(PageBreak));
+    if !flow.is_empty() {
+        flow.push(Box::new(PageBreak));
+    }
     flow.push(Box::new(Paragraph::new(KOP, style_h2()).kop()));
     flow.push(Box::new(Paragraph::new(NOOT, style_body())));
     flow.push(Box::new(Spacer::from_mm(2.0)));
@@ -148,14 +155,39 @@ pub fn extend_with_plaathoofdstuk(flow: &mut Vec<Box<dyn Flowable>>, input: &Rep
             "Niet getoetst".into(),
         ]);
     }
+    for p in &input.plate_inputs {
+        if !input.plate_results.iter().any(|r| r.plate_id == p.plate_id)
+            && !input.plate_skipped.iter().any(|s| s.plate_id == p.plate_id)
+        {
+            rijen.push(vec![
+                p.plate_id.to_string(),
+                p.materiaal.clone(),
+                dikte(p.thickness_mm),
+                "—".into(),
+                "—".into(),
+                "—".into(),
+                "—".into(),
+                "Niet getoetst".into(),
+            ]);
+        }
+    }
     flow.push(Box::new(
         Table::new(
-            ["Plaat", "Materiaal", "t [mm]", "Norm", "UC", "Element", "Combinatie", "Status"]
-                .map(String::from)
-                .to_vec(),
+            [
+                "Plaat",
+                "Materiaal",
+                "t [mm]",
+                "Norm",
+                "UC",
+                "Element",
+                "Combinatie",
+                "Status",
+            ]
+            .map(String::from)
+            .to_vec(),
             rijen,
         )
-        .with_col_widths_mm(vec![12.0, 30.0, 13.0, 45.0, 12.0, 16.0, 20.0, 22.0])
+        .with_col_widths_mm(vec![10.0, 23.0, 13.0, 40.0, 23.0, 16.0, 23.0, 22.0])
         .with_style(stijl_tabel())
         .with_repeat_header(true),
     ));
@@ -164,10 +196,15 @@ pub fn extend_with_plaathoofdstuk(flow: &mut Vec<Box<dyn Flowable>>, input: &Rep
     // De redenen van de platen zonder toets, woordelijk. In het live rapport
     // staan ze in de tabelrij zelf; hier eronder, omdat een alinea van vijf
     // regels in een tabelcel van 45 mm onleesbaar wordt.
-    let geweigerd: Vec<&PlateCheckResult> =
-        input.plate_results.iter().filter(|r| r.geweigerd.is_some()).collect();
+    let geweigerd: Vec<&PlateCheckResult> = input
+        .plate_results
+        .iter()
+        .filter(|r| r.geweigerd.is_some())
+        .collect();
     if !geweigerd.is_empty() || !input.plate_skipped.is_empty() {
-        flow.push(Box::new(Paragraph::new("Niet getoetste platen", style_h3()).kop()));
+        flow.push(Box::new(
+            Paragraph::new("Niet getoetste platen", style_h3()).kop(),
+        ));
         for r in &geweigerd {
             flow.push(Box::new(Paragraph::new(
                 format!(
@@ -179,6 +216,9 @@ pub fn extend_with_plaathoofdstuk(flow: &mut Vec<Box<dyn Flowable>>, input: &Rep
                 ),
                 style_body(),
             )));
+            for note in &r.notes {
+                flow.push(Box::new(Paragraph::new(note.clone(), style_note())));
+            }
         }
         for s in &input.plate_skipped {
             flow.push(Box::new(Paragraph::new(
@@ -191,29 +231,178 @@ pub fn extend_with_plaathoofdstuk(flow: &mut Vec<Box<dyn Flowable>>, input: &Rep
 
     // ── 2. Per getoetste plaat ──
     for r in input.plate_results.iter().filter(|r| r.geweigerd.is_none()) {
+        let bron = input.plate_inputs.iter().find(|p| p.plate_id == r.plate_id);
+        if bron.is_none() {
+            flow.push(Box::new(Paragraph::new(
+                format!("Plaat {}: oorspronkelijke toetsinvoer niet meegestuurd; hieronder staan de aangeleverde resultaten.", r.plate_id),
+                style_note(),
+            )));
+        }
         extend_met_plaat(flow, r);
+    }
+    for p in &input.plate_inputs {
+        let resultaat = input
+            .plate_results
+            .iter()
+            .find(|r| r.plate_id == p.plate_id);
+        extend_met_invoer(flow, p, resultaat);
+    }
+}
+
+/// Eén regel per aangeleverde combinatie. De volledige mesh reist mee in de
+/// invoer; op papier staan het aantal elementen en de spanningen bij het
+/// maatgevende element, zodat grote meshes geen onleesbare tabellen geven.
+fn extend_met_invoer(
+    flow: &mut Vec<Box<dyn Flowable>>,
+    p: &PlateCheckInput,
+    r: Option<&PlateCheckResult>,
+) {
+    flow.push(Box::new(
+        Paragraph::new(format!("Plaat {} — toetsinvoer", p.plate_id), style_h3()).kop(),
+    ));
+    flow.push(Box::new(Paragraph::new(
+        format!(
+            "Materiaal: {}; dikte: {} mm; nationale bijlage: {:?}.",
+            p.materiaal,
+            dikte(p.thickness_mm),
+            p.bijlage
+        ),
+        style_body(),
+    )));
+    if p.soort == plaat_check::PlaatMateriaalSoort::Hout {
+        flow.push(Box::new(Paragraph::new(
+            format!(
+                "Vezelrichting: {}° vanaf de globale x-as; klimaatklasse: {}.",
+                p.hoofdrichting_graden,
+                p.service_class
+                    .map_or("niet opgegeven".into(), |s| format!("{s:?}"))
+            ),
+            style_body(),
+        )));
+        for d in &p.load_duration_per_combination {
+            flow.push(Box::new(Paragraph::new(
+                format!(
+                    "Combinatie {}: belastingduur {}. {}",
+                    d.combination_id,
+                    timber_check::belastingduur::duurklasse_naam(d.load_duration),
+                    d.basis
+                ),
+                style_body(),
+            )));
+        }
+    }
+    if r.is_none() {
+        flow.push(Box::new(Paragraph::new(
+            "Niet getoetst: geen toetsresultaat aangeleverd voor deze plaat.",
+            style_body(),
+        )));
+    }
+    if p.combinations.is_empty() {
+        flow.push(Box::new(Paragraph::new(
+            "Geen combinaties aangeleverd.",
+            style_note(),
+        )));
+        return;
+    }
+    flow.push(Box::new(Paragraph::new(
+        "Alle aangeleverde combinaties (UGT en BGT). Spanningen in N/mm², trek positief; x horizontaal, z verticaal. Per combinatie het maatgevende element van de uitgevoerde toetsen.",
+        style_note(),
+    )));
+    let rows = p
+        .combinations
+        .iter()
+        .map(|c| {
+            let maatgevend = r.and_then(|r| {
+                r.combinaties
+                    .iter()
+                    .find(|u| u.combination_id == c.combination_id)
+            });
+            let spanning =
+                maatgevend.and_then(|u| c.elements.iter().find(|e| e.element_id == u.element_id));
+            vec![
+                c.combination_id.to_string(),
+                c.elements.len().to_string(),
+                maatgevend.map_or("—".into(), |u| u.element_id.to_string()),
+                spanning.map_or("—".into(), |e| format!("{:.3}", e.sigma_x_mpa)),
+                spanning.map_or("—".into(), |e| format!("{:.3}", e.sigma_y_mpa)),
+                spanning.map_or("—".into(), |e| format!("{:.3}", e.tau_xy_mpa)),
+            ]
+        })
+        .collect();
+    flow.push(Box::new(
+        Table::new(
+            [
+                "Combinatie",
+                "Aantal elementen",
+                "Maatgevend element",
+                "σ_x",
+                "σ_z",
+                "τ_xz",
+            ]
+            .map(String::from)
+            .to_vec(),
+            rows,
+        )
+        .with_col_widths_mm(vec![25.0, 30.0, 40.0, 25.0, 25.0, 25.0])
+        .with_style(stijl_tabel())
+        .with_repeat_header(true),
+    ));
+    for c in &p.combinations {
+        let maatgevend = r.and_then(|r| {
+            r.combinaties
+                .iter()
+                .find(|u| u.combination_id == c.combination_id)
+        });
+        let melding = match maatgevend {
+            None => Some("geen toetsuitkomst beschikbaar; niet getoetst"),
+            Some(u) if !c.elements.iter().any(|e| e.element_id == u.element_id) => {
+                Some("invoerspanningen van het maatgevende element ontbreken")
+            }
+            _ => None,
+        };
+        if let Some(tekst) = melding {
+            flow.push(Box::new(Paragraph::new(
+                format!("Combinatie {}: {}.", c.combination_id, tekst),
+                style_note(),
+            )));
+        }
     }
 }
 
 fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
     flow.push(Box::new(
         Paragraph::new(
-            format!("Plaat {} — {} (t = {} mm)", r.plate_id, r.materiaal, dikte(r.thickness_mm)),
+            format!(
+                "Plaat {} — {} (t = {} mm)",
+                r.plate_id,
+                r.materiaal,
+                dikte(r.thickness_mm)
+            ),
             style_h3(),
         )
         .kop(),
     ));
     flow.push(Box::new(Paragraph::new(
-        format!("{}    UC = {}    {}", r.norm, uc_tekst(r.uc_max), status_label(&r.status)),
+        format!(
+            "{}    UC = {}    {}",
+            r.norm,
+            uc_tekst(r.uc_max),
+            status_label(&r.status)
+        ),
         style_body(),
     )));
 
     // Wat NIET getoetst is: staat vóór de getallen, want het is de grens van
     // de conclusie die eronder staat.
     if !r.niet_getoetst.is_empty() {
-        flow.push(Box::new(Paragraph::new("Niet getoetst:", style_body()).kop()));
+        flow.push(Box::new(
+            Paragraph::new("Niet getoetst:", style_body()).kop(),
+        ));
         for n in &r.niet_getoetst {
-            flow.push(Box::new(Paragraph::new(format!("{} — {}", n.titel, n.reden), style_body())));
+            flow.push(Box::new(Paragraph::new(
+                format!("{} — {}", n.titel, n.reden),
+                style_body(),
+            )));
         }
         flow.push(Box::new(Spacer::from_mm(1.5)));
     }
@@ -224,9 +413,14 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
         ));
         flow.push(Box::new(
             Table::new(
-                ["Richting", "n_td,max [kN/m]", "Maatgevend element", "Maatgevende combinatie"]
-                    .map(String::from)
-                    .to_vec(),
+                [
+                    "Richting",
+                    "n_td,max [kN/m]",
+                    "Maatgevend element",
+                    "Maatgevende combinatie",
+                ]
+                .map(String::from)
+                .to_vec(),
                 vec![
                     vec![
                         "x".into(),
@@ -248,7 +442,7 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
         flow.push(Box::new(Paragraph::new(
             "n_td = f'_td · t: de benodigde trekkracht in de wapening per meter wand, over beide \
              zijden samen, in de horizontale (x) en verticale (z) modelrichting; A_s = n_td / f_yd. \
-             De aanwezige wapening is niet getoetst.",
+             De toetsing van aanwezige wapening en eventuele beperkingen staan bij de toetsen en niet-getoetste onderdelen.",
             style_note(),
         )));
         flow.push(Box::new(Spacer::from_mm(1.5)));
@@ -287,10 +481,12 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
             .collect();
         flow.push(Box::new(
             Table::new(
-                ["Toets", "Artikel", "UC", "Combinatie", "Status"].map(String::from).to_vec(),
+                ["Toets", "Artikel", "UC", "Combinatie", "Status"]
+                    .map(String::from)
+                    .to_vec(),
                 rijen,
             )
-            .with_col_widths_mm(vec![62.0, 45.0, 15.0, 25.0, 23.0])
+            .with_col_widths_mm(vec![62.0, 37.0, 23.0, 25.0, 23.0])
             .with_style(stijl_tabel()),
         ));
         flow.push(Box::new(Spacer::from_mm(2.0)));
@@ -300,7 +496,9 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
     if !r.combinaties.is_empty() {
         flow.push(Box::new(
             Table::new(
-                ["Combinatie", "UC", "Maatgevend element", "Toets"].map(String::from).to_vec(),
+                ["Combinatie", "UC", "Maatgevend element", "Toets"]
+                    .map(String::from)
+                    .to_vec(),
                 r.combinaties
                     .iter()
                     .map(|c| {
@@ -313,7 +511,7 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
                     })
                     .collect(),
             )
-            .with_col_widths_mm(vec![25.0, 15.0, 35.0, 95.0])
+            .with_col_widths_mm(vec![25.0, 23.0, 35.0, 87.0])
             .with_style(stijl_tabel())
             .with_repeat_header(true),
         ));
@@ -347,8 +545,11 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
         };
         if !stappen.is_empty() {
             flow.push(Box::new(
-                Paragraph::new(format!("Maatgevende toets, uitgeschreven: {titel}"), style_h3())
-                    .kop(),
+                Paragraph::new(
+                    format!("Maatgevende toets, uitgeschreven: {titel}"),
+                    style_h3(),
+                )
+                .kop(),
             ));
             extend_with_deelstappen(flow, stappen);
         }
@@ -371,4 +572,3 @@ fn stijl_tabel() -> TableStyleConfig {
         header_font_size: Pt(7.5),
     }
 }
-

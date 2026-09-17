@@ -69,7 +69,7 @@ pub const REDEN_KRUISLAAGHOUT: &str =
      product en geeft geen sterkte of toetsregel voor een gekruiste opbouw belast in het vlak, \
      dus er is geen normgrondslag. Een toets vraagt de productnorm of een technische goedkeuring \
      (ETA) van het product met die sterkten en regels; die staat niet op schijf, en de \
-     plaatinvoer heeft geen invoerveld om zo'n bron op te geven (de G₁₂-bron van de plaat geldt \
+     plaatinvoer heeft geen invoerveld om zo'n bron op te geven (de G12-bron van de plaat geldt \
      alleen voor de stijfheid in de berekening, niet voor de sterkte). Er is niet getoetst; de \
      plaat heet daarom niet \"voldoet\".";
 

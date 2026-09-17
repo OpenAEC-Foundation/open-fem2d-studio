@@ -116,7 +116,7 @@ use spanning_check::SpanningBeamCheckResult;
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck, VerloopRapport};
 use timber_check::clt::CltBeamCheckResult;
 use timber_check::TimberBeamCheckResult;
-use plaat_check::PlateCheckResult;
+use plaat_check::{PlateCheckInput, PlateCheckResult};
 
 // ── Bundled fonts (Liberation Sans, OFL licence) ──────────────────────────────
 
@@ -329,6 +329,12 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(as = "Option<Vec<PlateCheckResult>>", optional)]
     pub plate_results: Vec<PlateCheckResult>,
+    /// Oorspronkelijke plaatinvoer van dezelfde toetsronde, met alle
+    /// combinaties en elementspanningen. Zonder invoer blijven bestaande
+    /// resultaataanroepen geldig; het hoofdstuk meldt dan de ontbrekende invoer.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<PlateCheckInput>>", optional)]
+    pub plate_inputs: Vec<PlateCheckInput>,
     /// De platen die de app NIET naar de kern stuurde, met de reden (geen
     /// materiaal, geen rekenresultaat, …). Het live rapport noemt ze in het
     /// overzicht; zonder dit veld zou de PDF er stil over zijn.
@@ -1261,7 +1267,7 @@ pub(crate) fn extend_with_deelstappen(flow: &mut Vec<Box<dyn Flowable>>, stappen
             let vars: String = stap
                 .variables
                 .iter()
-                .map(|v| format!("{} = {:.3} {}", v.symbol, v.value, v.unit))
+                .map(|v| format!("{} = {} {}", v.symbol, getal_tekst(v.value, 3), v.unit))
                 .collect::<Vec<_>>()
                 .join("   ");
             flow.push(Box::new(Paragraph::new(vars, style_mono())));
@@ -1269,7 +1275,7 @@ pub(crate) fn extend_with_deelstappen(flow: &mut Vec<Box<dyn Flowable>>, stappen
         if let Some(v) = stap.value {
             let symbool = if stap.symbol.is_empty() { String::new() } else { format!("{} = ", stap.symbol) };
             flow.push(Box::new(Paragraph::new(
-                format!("{symbool}{:.3} {}", v, stap.unit),
+                format!("{symbool}{} {}", getal_tekst(v, 3), stap.unit),
                 style_amber_value(),
             )));
         }
@@ -1548,7 +1554,7 @@ fn build_summary_table(members: &[ReportMember<'_>]) -> Table {
                 m.section_label.to_string(),
                 m.grade_label.to_string(),
                 m.norm_label().to_string(),
-                format!("{:.2}", m.uc_max),
+                getal_tekst(m.uc_max, 2),
                 m.governing_check_id.to_string(),
                 status_label(m.status).into(),
             ]
@@ -1604,7 +1610,7 @@ pub(crate) fn extend_with_check_block_regel(
     flow.push(Box::new(Paragraph::new(
         format!("{}    [{}]", f.title, f.article),
         style_h3(),
-    )));
+    ).kop()));
 
     // Force state line
     flow.push(Box::new(Paragraph::new(
@@ -1626,7 +1632,7 @@ pub(crate) fn extend_with_check_block_regel(
         let vars: String = f
             .variables
             .iter()
-            .map(|v| format!("{} = {:.3} {}", v.symbol, v.value, v.unit))
+            .map(|v| format!("{} = {} {}", v.symbol, getal_tekst(v.value, 3), v.unit))
             .collect::<Vec<_>>()
             .join("   ");
         flow.push(Box::new(Paragraph::new(vars, style_mono())));
@@ -1634,7 +1640,7 @@ pub(crate) fn extend_with_check_block_regel(
 
     // Result value
     flow.push(Box::new(Paragraph::new(
-        format!("= {:.3} {}", f.value, f.unit),
+        format!("= {} {}", getal_tekst(f.value, 3), f.unit),
         style_amber_value(),
     )));
 
@@ -1642,10 +1648,10 @@ pub(crate) fn extend_with_check_block_regel(
     if let (Some(ed), Some(rd), Some(uc)) = (f.uc_ed, f.uc_rd, f.uc_uc) {
         let uc_color = if uc > 1.0 { C_FAIL } else { C_OK };
         let line = format!(
-            "UC = {:.3} / {:.3} = {:.3}     {}",
-            ed,
-            rd,
-            uc,
+            "UC = {} / {} = {}     {}",
+            getal_tekst(ed, 3),
+            getal_tekst(rd, 3),
+            getal_tekst(uc, 3),
             status_label(f.status)
         );
         flow.push(Box::new(Paragraph::new(line, style_uc(uc_color))));
@@ -1659,7 +1665,7 @@ pub(crate) fn extend_with_check_block_regel(
         let line: String = f
             .intermediates
             .iter()
-            .map(|v| format!("{} = {:.3}", v.symbol, v.value))
+            .map(|v| format!("{} = {}", v.symbol, getal_tekst(v.value, 3)))
             .collect::<Vec<_>>()
             .join("   ");
         flow.push(Box::new(Paragraph::new(line, style_mono())));
@@ -1739,6 +1745,23 @@ fn extract(kind: &CheckKind) -> ExtractedFields<'_> {
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
+
+/// Beperk de tekstbreedte zonder normale rapportwaarden anders af te ronden.
+/// De plaatkern gebruikt MAX als eindige JSON-representatie van UC bij
+/// positieve belasting en nulweerstand; de resultaatnotities geven de reden.
+pub(crate) fn getal_tekst(waarde: f64, decimalen: usize) -> String {
+    if waarde == f64::MAX || waarde == f64::INFINITY {
+        "onbegrensd".into()
+    } else if waarde == f64::NEG_INFINITY {
+        "-onbegrensd".into()
+    } else if waarde.is_nan() {
+        "ongeldig".into()
+    } else if waarde.abs() >= 1e6 {
+        format!("{waarde:.decimalen$e}")
+    } else {
+        format!("{waarde:.decimalen$}")
+    }
+}
 
 pub(crate) fn status_label(s: &CheckStatus) -> &'static str {
     match s {
