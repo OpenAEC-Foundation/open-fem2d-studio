@@ -23,7 +23,7 @@
  * hoort niet door de brug te reizen om met een zin terug te komen.
  */
 import { withPlateDefaults, type Plate } from "../components/fem/femTypes";
-import type { LoadCombination } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, type LoadCombination } from "../components/fem/solver/combinations";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { PlateCheckInput } from "./types/plaat/PlateCheckInput";
 import type { PlaatMateriaalSoort as KernSoort } from "./types/plaat/PlaatMateriaalSoort";
@@ -121,23 +121,29 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
     const soort = KERN_SOORT[s.soort];
     const combinaties: PlaatCombinatie[] = [];
     const notities: string[] = [];
+    /** De elementspanningen van één combinatie, of null zonder plaatspanningen. */
+    const spanningen = (c: LoadCombination): PlaatCombinatie | null => {
+      const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+      if (!pr || pr.elements.length === 0) return null;
+      return {
+        combination_id: c.id,
+        elements: pr.elements.map((el) => ({
+          element_id: el.elementId,
+          sigma_x_mpa: el.sigmaX,
+          sigma_y_mpa: el.sigmaY,
+          tau_xy_mpa: el.tauXY,
+        })),
+      };
+    };
     if (SOORT_MET_SPANNINGEN.has(soort)) {
       const zonder: string[] = [];
       for (const c of ugt) {
-        const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
-        if (!pr || pr.elements.length === 0) {
+        const comb = spanningen(c);
+        if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
           continue;
         }
-        combinaties.push({
-          combination_id: c.id,
-          elements: pr.elements.map((el) => ({
-            element_id: el.elementId,
-            sigma_x_mpa: el.sigmaX,
-            sigma_y_mpa: el.sigmaY,
-            tau_xy_mpa: el.tauXY,
-          })),
-        });
+        combinaties.push(comb);
       }
       if (zonder.length > 0) {
         notities.push(
@@ -175,6 +181,20 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
             };
           })()
         : {};
+    // Beton met ingevoerde wapening (issue #25): de wapening ongewijzigd, en
+    // de spanningen van de FREQUENTE BGT-combinaties (6.15b) — daaronder laat
+    // de nationale bijlage bij 7.3.1(5) de scheurwijdte toetsen. Herkend op
+    // soort, zoals de betonbalkbouwer; een andere BGT-combinatie gaat niet mee.
+    // Zonder wapening gaat er niets extra mee: de invoer blijft zoals hij was.
+    const beton =
+      soort === "Beton" && plaat.wapening
+        ? {
+            wapening_aanwezig: plaat.wapening,
+            frequente_combinaties: combinatiesVanSoort(data.combinations, "6.15b")
+              .map(spanningen)
+              .filter((c): c is PlaatCombinatie => c !== null),
+          }
+        : {};
     inputs.push({
       bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       plate_id: plaat.id,
@@ -186,6 +206,7 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
       thickness_mm: withPlateDefaults(plaat).thickness!,
       ...(notities.length > 0 ? { notities } : {}),
       combinations: combinaties,
+      ...beton,
     });
   }
   return { inputs, skipped };

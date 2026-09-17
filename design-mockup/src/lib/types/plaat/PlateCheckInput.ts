@@ -3,6 +3,7 @@ import type { CombinationLoadDuration } from "../timber/CombinationLoadDuration"
 import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { PlaatCombinatie } from "./PlaatCombinatie";
 import type { PlaatMateriaalSoort } from "./PlaatMateriaalSoort";
+import type { PlaatWapeningInvoer } from "./PlaatWapeningInvoer";
 import type { ServiceClass } from "../timber/ServiceClass";
 
 /**
@@ -54,4 +55,18 @@ notities?: Array<string>,
 /**
  * De elementspanningen per UGT-combinatie.
  */
-combinations: Array<PlaatCombinatie>, };
+combinations: Array<PlaatCombinatie>, 
+/**
+ * Beton: de AANWEZIGE wapening van de wand (issue #25). Weglaten = niet
+ * ingevoerd; dan toetst de kern alleen de benodigde wapening en het beton,
+ * precies zoals zonder dit veld, met de melding dat de aanwezige wapening
+ * niet is ingevoerd. Bij een ander materiaal dan beton geweigerd.
+ */
+wapening_aanwezig?: PlaatWapeningInvoer, 
+/**
+ * Beton: de elementspanningen per FREQUENTE BGT-combinatie (6.15b) — de
+ * combinatie waaronder de nationale bijlage bij 7.3.1(5) (tabel 7.1N) de
+ * scheurwijdte laat toetsen. Alleen gelezen samen met
+ * `wapening_aanwezig`; leeg = scheurwijdte niet getoetst, met reden.
+ */
+frequente_combinaties?: Array<PlaatCombinatie>, };

@@ -9,6 +9,7 @@ import type { ReinforcementCage } from "../../lib/types/concrete/ReinforcementCa
 import type { ReinforcementZones } from "../../lib/types/concrete/ReinforcementZones";
 import type { SteelBranch } from "../../lib/types/concrete/SteelBranch";
 import type { ExposureClass } from "../../lib/types/concrete/ExposureClass";
+import type { PlaatWapeningInvoer } from "../../lib/types/plaat/PlaatWapeningInvoer";
 import type { StructuralClass } from "../../lib/types/concrete/StructuralClass";
 import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColumnInput";
 // De mesher zelf blijft in de kern; hier alleen zijn typen en drie pure
@@ -666,6 +667,15 @@ export interface Plate {
    * niet mee in de stijfheid.
    */
   klimaatklasse?: 1 | 2 | 3;
+  /**
+   * Alleen bij BETON: de aanwezige wapening van de wand, per richting
+   * (horizontaal = model-x, verticaal = model-z) en per zijde, met dekking,
+   * betonstaalsoort en milieuklasse (issue #25). Dezelfde vorm als de invoer
+   * van de plaattoets (`PlaatWapeningInvoer`), zodat de bouwer niets hoeft om
+   * te zetten. Ontbreekt = niet ingevoerd: de toets blijft zoals hij was en
+   * meldt dat. Rekent niet mee in de stijfheid.
+   */
+  wapening?: PlaatWapeningInvoer;
 }
 
 /** De elementkeuzes die een plaat kan dragen — ook de poort en het MCP-schema lezen deze lijst. */

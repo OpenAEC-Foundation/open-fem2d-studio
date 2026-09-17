@@ -42,7 +42,10 @@ pub mod result;
 pub mod staal;
 mod verzamel;
 
-pub use input::{PlaatCombinatie, PlaatElementSpanning, PlaatMateriaalSoort, PlateCheckInput};
+pub use input::{
+    PlaatCombinatie, PlaatElementSpanning, PlaatMateriaalSoort, PlaatWapeningInvoer,
+    PlaatWapeningLaag, PlaatWapeningRichting, PlateCheckInput,
+};
 pub use result::{
     PlaatCombinatieUitkomst, PlaatElementUitkomst, PlaatNietGetoetst, PlaatWapening,
     PlaatWapeningElement, PlateCheckResult,
@@ -83,6 +86,16 @@ pub fn check_plate(input: &PlateCheckInput) -> PlateCheckResult {
                 );
             }
         }
+    }
+    if input.soort != PlaatMateriaalSoort::Beton
+        && (input.wapening_aanwezig.is_some() || !input.frequente_combinaties.is_empty())
+    {
+        return geweigerd(
+            input,
+            "aanwezige wapening en frequente BGT-combinaties horen alleen bij een betonplaat; bij \
+             dit materiaal worden zij geweigerd in plaats van stil genegeerd, en er is niet getoetst"
+                .to_string(),
+        );
     }
     match input.soort {
         PlaatMateriaalSoort::Staal => staal::toets(input),

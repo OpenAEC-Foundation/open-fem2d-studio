@@ -63,6 +63,7 @@ import { zoekDubbeleKnopen, zoekStaafeindenBijPlaatrand } from "../lib/modelCont
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
 import { keurPlaatMateriaal, plaatMateriaalSoort } from "../lib/plaatMateriaal";
+import { keurPlaatWapening } from "../lib/plaatWapening";
 // De geldige bronnen van de scheefstand — één lijst met de app en de sidecar.
 import { SCHEEFSTAND_BRONNEN } from "../lib/scheefstandNorm";
 // De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
@@ -250,7 +251,7 @@ const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 const PLATE_VELDEN = [
   "id", "nodeIds", "thickness", "E", "nu", "rho", "meshSize", "meshCache",
   "meshType", "openingen", "materiaal", "hoofdrichting",
-  "cltG12", "cltG12Bron", "cltG12Bovengrens", "klimaatklasse",
+  "cltG12", "cltG12Bron", "cltG12Bovengrens", "klimaatklasse", "wapening",
 ] as const;
 
 /** Velden van één opening in een plaat (`PlaatOpening`). */
@@ -953,6 +954,19 @@ export function controleerVelden(rauw: unknown): string[] {
           `${pad}.klimaatklasse: hoort alleen bij een houten plaat (massief of gelijmd gelamineerd); ` +
             "bij dit materiaal wordt hij geweigerd in plaats van stil genegeerd.",
         );
+      }
+    }
+    // Aanwezige wapening (plaattoets beton, issue #25): de vorm van de
+    // kerninvoer, en alleen bij een betonplaat — elders zou zij stil
+    // genegeerd worden.
+    if (p.wapening !== undefined) {
+      if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : undefined) !== "beton") {
+        fouten.push(
+          `${pad}.wapening: hoort alleen bij een betonplaat; bij dit materiaal wordt zij geweigerd ` +
+            "in plaats van stil genegeerd.",
+        );
+      } else {
+        fouten.push(...keurPlaatWapening(p.wapening, `${pad}.wapening`));
       }
     }
     // Hoofdrichting in graden; elke eindige hoek mag, ook negatief of > 360.

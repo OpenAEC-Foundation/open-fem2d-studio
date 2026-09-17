@@ -31,6 +31,8 @@ fn plaat(materiaal: &str, t_mm: f64, combinaties: Vec<(u32, Vec<PlaatElementSpan
             .into_iter()
             .map(|(id, elements)| PlaatCombinatie { combination_id: id, elements })
             .collect(),
+        wapening_aanwezig: None,
+        frequente_combinaties: vec![],
     }
 }
 

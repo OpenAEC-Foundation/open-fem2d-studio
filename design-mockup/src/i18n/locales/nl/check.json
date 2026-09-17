@@ -1296,7 +1296,26 @@
       "removeOpening": "Verwijder",
       "openingsHint": "Het rekenmesh laat de openingen vrij en legt knopen op de openingsrand.",
       "openingsHintCdt": "Een niet-rechthoekige opening rekent via de CDT (meshcache).",
-      "serviceClassTitle": "Klimaatklasse voor de plaattoets (NEN-EN 1995-1-1 2.3.1.3): bepaalt met de belastingduur k_mod. De stijfheid verandert niet."
+      "serviceClassTitle": "Klimaatklasse voor de plaattoets (NEN-EN 1995-1-1 2.3.1.3): bepaalt met de belastingduur k_mod. De stijfheid verandert niet.",
+      "wapening": {
+        "titel": "Aanwezige wapening",
+        "hint": "Aanwezige wapening voor de plaattoets (NEN-EN 1992-1-1 bijlage F, 9.6, 7.3); de stijfheid verandert niet.",
+        "staalsoort": "Betonstaal",
+        "milieuklasse": "Milieuklasse",
+        "milieuklasseHint": "Milieuklasse (tabel 4.1): de ingang van tabel 7.1N voor w_max. Leeg = scheurwijdte niet getoetst.",
+        "geenKlasse": "— niet opgegeven",
+        "horizontaal": "Horizontaal",
+        "verticaal": "Verticaal",
+        "zijde_1": "zijde 1",
+        "zijde_2": "zijde 2",
+        "geen": "geen",
+        "staaf": "Ø + h.o.h.",
+        "oppervlak": "mm²/m",
+        "diameter": "Ø [mm]",
+        "hoh": "h.o.h. [mm]",
+        "oppervlakWaarde": "A_s [mm²/m]",
+        "dekking": "Dekking [mm]"
+      }
     }
   },
   "barDialog": {

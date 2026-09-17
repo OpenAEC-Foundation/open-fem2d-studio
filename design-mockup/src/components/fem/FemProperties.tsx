@@ -56,6 +56,7 @@ import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./Profie
 // solver en de rekenkern gebruiken; zie lib/verloopKeuze.
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import AansluitingKeuze from "./AansluitingKeuze";
+import { PlaatWapeningVenster } from "./PlaatWapeningVenster";
 
 interface SectionProps {
   title: string;
@@ -1961,6 +1962,9 @@ function PlateProperties({ plate, nodes, updatePlate }: {
               </select>
             </Row>
           )}
+          {/* Aanwezige wapening van een betonwand (issue #25): alleen voor de
+              plaattoets; de stijfheid verandert niet. */}
+          {stijfheid?.soort === "beton" && <PlaatWapeningVenster plate={plate} updatePlate={updatePlate} />}
           {stijfheid?.orthotroop && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
               {t("props.plate.orthotropic", {
