@@ -84,6 +84,9 @@ pub mod datum;
 pub mod figuur;
 pub mod houtfiguren;
 pub mod houthoofdstuk;
+/// Platen (wandschijven): de normtoets per plaat, zoals het live rapport hem
+/// toont (issue #25, onderdeel 5). Zie de moduledocumentatie.
+pub mod plaathoofdstuk;
 /// Verlopend profiel: de toetsdoorsneden van één staaf op papier
 /// (ontwerp 15-09-2026, §6). Zie de moduledocumentatie.
 pub mod verloopblok;
@@ -113,6 +116,7 @@ use spanning_check::SpanningBeamCheckResult;
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck, VerloopRapport};
 use timber_check::clt::CltBeamCheckResult;
 use timber_check::TimberBeamCheckResult;
+use plaat_check::PlateCheckResult;
 
 // ── Bundled fonts (Liberation Sans, OFL licence) ──────────────────────────────
 
@@ -311,6 +315,26 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(optional)]
     pub wind_toelichting: Option<String>,
+    /// De plaattoets (wandschijven, belast in het vlak) per plaat, zoals
+    /// `plaat_check::check_all_plates` hem leverde — getoetst of geweigerd met
+    /// reden. Hieruit komt het hoofdstuk [`crate::plaathoofdstuk`].
+    ///
+    /// Waarom (issue #25): het live rapport had een sectie "Toetsing platen",
+    /// het papier niet. Een wand die op het scherm "niet getoetst: trek
+    /// loodrecht op de vezel" draagt, hoort dat ook op het ingediende stuk te
+    /// doen.
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij de andere kernen: een
+    /// aanroep zonder platen blijft geldig, en het hoofdstuk blijft dan weg.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<PlateCheckResult>>", optional)]
+    pub plate_results: Vec<PlateCheckResult>,
+    /// De platen die de app NIET naar de kern stuurde, met de reden (geen
+    /// materiaal, geen rekenresultaat, …). Het live rapport noemt ze in het
+    /// overzicht; zonder dit veld zou de PDF er stil over zijn.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<plaathoofdstuk::RapportPlaatOvergeslagen>>", optional)]
+    pub plate_skipped: Vec<plaathoofdstuk::RapportPlaatOvergeslagen>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -600,10 +624,19 @@ struct ToegepasteKaders {
 
 impl ToegepasteKaders {
     fn van(input: &ReportInput) -> Self {
+        // Een plaat telt alleen mee als de kern haar WERKELIJK getoetst heeft:
+        // een geweigerde plaat (kruislaaghout, vrij materiaal, onbekende
+        // klasse) is tegen geen enkele norm gerekend en claimt er dus ook geen.
+        let plaat = |soort: plaat_check::PlaatMateriaalSoort| {
+            input.plate_results.iter().any(|r| r.soort == soort && r.geweigerd.is_none())
+        };
+        use plaat_check::PlaatMateriaalSoort as S;
         Self {
-            staal: !input.steel_check_results.is_empty(),
-            hout: !input.timber_check_results.is_empty() || !input.clt_check_results.is_empty(),
-            beton: !input.concrete_check_results.is_empty(),
+            staal: !input.steel_check_results.is_empty() || plaat(S::Staal),
+            hout: !input.timber_check_results.is_empty()
+                || !input.clt_check_results.is_empty()
+                || plaat(S::Hout),
+            beton: !input.concrete_check_results.is_empty() || plaat(S::Beton),
             vrij: !input.stress_check_results.is_empty(),
         }
     }
@@ -959,7 +992,11 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     //     lezer al vier hoofdstukken lang niet had.
     extend_with_uitgangspunten(&mut flow, &input);
 
-    if members.is_empty() {
+    if members.is_empty() && plaathoofdstuk::van_toepassing(&input) {
+        // Geen staven, wel platen: het plaathoofdstuk hieronder is dan het
+        // hele rapport. Een melding "geen toetsresultaten" zou daar onwaar
+        // naast staan, en een lege samenvattingstabel evenzeer.
+    } else if members.is_empty() {
         // Geen enkele getoetste staaf. Een samenvattingshoofdstuk met een lege
         // tabel zou de lezer laten zoeken naar wat er weggevallen is; deze
         // melding zegt wat er aan de hand is en wat hij eraan kan doen.
@@ -1021,6 +1058,11 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
         // die telt is die van de toets die het ontwerp begrenst.
         extend_with_maatgevende_afleiding(&mut flow, m);
     }
+
+    // 4a. Platen — de toets in het vlak per plaat, met wat niet getoetst is en
+    //     waarom. Blijft in zijn geheel weg bij een rapport zonder platen; zie
+    //     `plaathoofdstuk::van_toepassing`.
+    plaathoofdstuk::extend_with_plaathoofdstuk(&mut flow, &input);
 
     // 4b. Beton — fysisch niet-lineaire tweede orde: de segmenttabellen, het
     //     convergentiespoor en de vier figuren. Blijft in zijn geheel weg bij
@@ -1544,6 +1586,18 @@ fn build_summary_table(members: &[ReportMember<'_>]) -> Table {
 // ── Per-check block (heading + force state + formula + UC + notes) ────────────
 
 fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) {
+    extend_with_check_block_regel(flow, kind, None);
+}
+
+/// Het toetsblok, met een eigen krachtregel waar de snedekrachten niets
+/// zeggen. `None` = de regel van een staaf (combinatie, x, N, V, M). Een plaat
+/// rekent met elementgemiddelde spanningen en heeft geen N, V of M; een regel
+/// met drie nullen erin zou suggereren dat die krachten nul zijn.
+pub(crate) fn extend_with_check_block_regel(
+    flow: &mut Vec<Box<dyn Flowable>>,
+    kind: &CheckKind,
+    krachtregel: Option<String>,
+) {
     let f = extract(kind);
 
     // Title with article reference appended in muted amber
@@ -1554,10 +1608,12 @@ fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) 
 
     // Force state line
     flow.push(Box::new(Paragraph::new(
-        format!(
-            "Comb {}  ·  x = {:.0} mm  ·  N_Ed = {:.2} kN  ·  V_Ed = {:.2} kN  ·  M_Ed = {:.2} kNm",
-            f.combo, f.pos_mm, f.n_ed, f.vz_ed, f.my_ed
-        ),
+        krachtregel.unwrap_or_else(|| {
+            format!(
+                "Comb {}  ·  x = {:.0} mm  ·  N_Ed = {:.2} kN  ·  V_Ed = {:.2} kN  ·  M_Ed = {:.2} kNm",
+                f.combo, f.pos_mm, f.n_ed, f.vz_ed, f.my_ed
+            )
+        }),
         style_mono(),
     )));
 

@@ -405,6 +405,8 @@ fn invoer(
         scheefstand_toelichting: scheefstand,
         analyse_toelichting: None,
         wind_toelichting: None,
+        plate_results: Vec::new(),
+        plate_skipped: Vec::new(),
     }
 }
 
