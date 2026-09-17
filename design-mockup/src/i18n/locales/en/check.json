@@ -1236,6 +1236,14 @@
       "pressAfter": " to delete this load."
     },
     "plate": {
+      "buckling": "Plate buckling §10",
+      "bucklingA": "Full panel x (mm)",
+      "bucklingB": "Full panel z (mm)",
+      "bucklingSupports": "Four edges restrained out of plane",
+      "bucklingSource": "Support evidence",
+      "bucklingUnstiffened": "Unstiffened panel confirmed",
+      "bucklingUniform": "Uniform stress field confirmed",
+      "bucklingScope": "Only the complete axis-aligned rectangular panel without openings, continuously simply supported out of plane along all four edges. Mesh nodes do not establish these restraints. Nonuniform stresses, tension and column interaction are refused; compression along the shorter panel dimension is also unsupported. Design supports and connections separately.",
       "title": "Plate {{id}}",
       "typeWall": "Shear wall (in-plane)",
       "corner": "Corner {{nummer}}",

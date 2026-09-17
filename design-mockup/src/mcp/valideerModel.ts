@@ -63,6 +63,8 @@ import { zoekDubbeleKnopen, zoekStaafeindenBijPlaatrand } from "../lib/modelCont
 import { bouwMultiInput, type FemModelInvoer } from "../lib/modelNaarSolverInput";
 import { bepaalVerloop, resolveSection } from "../lib/sectionResolver";
 import { keurPlaatMateriaal, plaatMateriaalSoort } from "../lib/plaatMateriaal";
+import { plaatPlooiGeometrieFout } from "../lib/plaatPlooi";
+import type { Plate, Node } from "../components/fem/femTypes";
 // De geldige bronnen van de scheefstand — één lijst met de app en de sidecar.
 import { SCHEEFSTAND_BRONNEN } from "../lib/scheefstandNorm";
 // De wapeningsstaalsoorten komen uit de betonbouwer en worden hier niet
@@ -247,10 +249,11 @@ const STAALTAKKEN = ["Horizontal", "Inclined"] as const;
 
 const SUPPORT_VELDEN = ["nodeId", "type", "k"] as const;
 
+const PLOOI_VELDEN = ["a_mm", "b_mm", "randvoorwaarden", "steun_bron", "onverstijfd", "uniforme_spanning"] as const;
 const PLATE_VELDEN = [
   "id", "nodeIds", "thickness", "E", "nu", "rho", "meshSize", "meshCache",
   "meshType", "openingen", "materiaal", "hoofdrichting",
-  "cltG12", "cltG12Bron", "cltG12Bovengrens", "klimaatklasse",
+  "cltG12", "cltG12Bron", "cltG12Bovengrens", "klimaatklasse", "plooi",
 ] as const;
 
 /** Velden van één opening in een plaat (`PlaatOpening`). */
@@ -953,6 +956,27 @@ export function controleerVelden(rauw: unknown): string[] {
           `${pad}.klimaatklasse: hoort alleen bij een houten plaat (massief of gelijmd gelamineerd); ` +
             "bij dit materiaal wordt hij geweigerd in plaats van stil genegeerd.",
         );
+      }
+    }
+    if (p.plooi !== undefined) {
+      if (!isObject(p.plooi)) {
+        fouten.push(`${pad}.plooi: een object met expliciete veldmaten en randvoorwaarden is vereist.`);
+      } else {
+        const q = p.plooi;
+        keurVelden(q, PLOOI_VELDEN, `${pad}.plooi`, fouten);
+        for (const key of ["a_mm", "b_mm"]) {
+          if (!isEindig(q[key]) || (q[key] as number) <= 0) fouten.push(`${pad}.plooi.${key}: positief eindig getal in mm vereist.`);
+        }
+        if (q.randvoorwaarden !== "vierzijdig_scharnierend") fouten.push(`${pad}.plooi.randvoorwaarden: alleen vierzijdig_scharnierend UIT HET VLAK ondersteund.`);
+        if (typeof q.steun_bron !== "string" || !q.steun_bron.trim()) fouten.push(`${pad}.plooi.steun_bron: beschrijf het bewijs voor de vier continue steunen uit het vlak.`);
+        for (const key of ["onverstijfd", "uniforme_spanning"]) {
+          if (q[key] !== true) fouten.push(`${pad}.plooi.${key}: moet expliciet true zijn voor deze methode.`);
+        }
+        if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : undefined) !== "staal") fouten.push(`${pad}.plooi: alleen ondersteund voor staal.`);
+        if (Array.isArray(p.nodeIds) && (p.openingen === undefined || Array.isArray(p.openingen))) {
+          const reden = plaatPlooiGeometrieFout(p as unknown as Plate, nodes.filter(isObject) as unknown as Node[]);
+          if (reden) fouten.push(`${pad}.plooi: ${reden}`);
+        }
       }
     }
     // Hoofdrichting in graden; elke eindige hoek mag, ook negatief of > 360.

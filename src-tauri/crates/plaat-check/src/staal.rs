@@ -34,11 +34,8 @@
 //!
 //! # Wat NIET getoetst wordt
 //!
-//! Plooi van plaatvelden. 6.2.1(2) verwijst voor lokaal plooien en plooien door
-//! afschuiving naar NEN-EN 1993-1-5. Die toets vraagt het plaatveld tussen de
-//! verstijvingen, de randvoorwaarden en de spanningsverdeling over dat veld; het
-//! schijfmodel levert alleen elementspanningen en kent geen plooimodus. Het
-//! resultaat draagt dat als [`PlaatNietGetoetst`].
+//! Zonder expliciete veldinvoer blijft plooi niet getoetst. Met veldinvoer
+//! voert `staal_plooi` de begrensde methode van EN 1993-1-5 §10 uit.
 
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nationale_bijlage::{Aanduidingen, Ndp1993};
@@ -55,6 +52,15 @@ use crate::{geweigerd, status_uit, VLOEI_ID};
 
 /// σ_eq,Ed volgens de vlakke-spanningsvorm van het criterium.
 pub fn sigma_eq(sigma_x: f64, sigma_z: f64, tau: f64) -> f64 {
+    // Behoud de bestaande afronding voor normale invoer. Buiten het veilige
+    // kwadrateerbereik gebruiken we een geschaalde equivalente kwadratische vorm.
+    let scale = sigma_x.abs().max(sigma_z.abs()).max(tau.abs());
+    if scale > 1e150 || (scale > 0.0 && scale < 1e-150) {
+        let x = sigma_x / scale;
+        let z = sigma_z / scale;
+        let t = tau / scale;
+        return (x - 0.5 * z).hypot(3.0_f64.sqrt() * 0.5 * z).hypot(3.0_f64.sqrt() * t) * scale;
+    }
     (sigma_x * sigma_x + sigma_z * sigma_z - sigma_x * sigma_z + 3.0 * tau * tau)
         .max(0.0)
         .sqrt()
@@ -103,9 +109,23 @@ pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
     let gamma_m0 = Ndp1993::voor(input.bijlage).gamma_m0;
     let f_y = soort_dik.fy_mpa;
     let f_d = f_y / gamma_m0;
+    if input.combinations.iter().flat_map(|c| &c.elements).any(|e| {
+        let eq = sigma_eq(e.sigma_x_mpa, e.sigma_y_mpa, e.tau_xy_mpa);
+        !eq.is_finite() || !linkerlid_6_1(e.sigma_x_mpa, e.sigma_y_mpa, e.tau_xy_mpa, f_d).is_finite()
+    }) {
+        return geweigerd(input, "staalplaat: spanningen leveren een niet-representeerbaar vloeicriterium op".into());
+    }
 
-    let v = verzamel(input, |_, el| {
-        vec![(VLOEI_ID.to_string(), sigma_eq(el.sigma_x_mpa, el.sigma_y_mpa, el.tau_xy_mpa) / f_d)]
+    let plooi = if input.plooi.is_some() {
+        match crate::staal_plooi::bereken(input, f_y) {
+            Ok(v) => Some(v),
+            Err(reden) => return geweigerd(input, reden),
+        }
+    } else { None };
+    let v = verzamel(input, |comb, el| {
+        let mut checks = vec![(VLOEI_ID.to_string(), sigma_eq(el.sigma_x_mpa, el.sigma_y_mpa, el.tau_xy_mpa) / f_d)];
+        if let Some(p) = &plooi { checks.push((crate::staal_plooi::PLOOI_ID.into(), p[&comb].uc)); }
+        checks
     });
     let Some(maatgevend) = v.per_toets.first() else {
         return geweigerd(
@@ -116,17 +136,25 @@ pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
         );
     };
 
-    let calc = afleiding(&maatgevend.punt, f_y, gamma_m0, &naam, &dikte_notitie);
-    let checks = vec![NamedCheck { id: VLOEI_ID.to_string(), kind: CheckKind::Resistance(calc) }];
-    let niet_getoetst = vec![niet_getoetst_plooi()];
-    let uc_max = maatgevend.punt.uc;
+    let mut calc = afleiding(&maatgevend.punt, f_y, gamma_m0, &naam, &dikte_notitie);
+    if plooi.is_some() { calc.notes.pop(); }
+    let mut checks = vec![NamedCheck { id: VLOEI_ID.to_string(), kind: CheckKind::Resistance(calc) }];
+    let niet_getoetst = if let Some(p) = &plooi {
+        let m = v.per_toets.iter().find(|m| m.check_id == crate::staal_plooi::PLOOI_ID).unwrap();
+        checks.push(NamedCheck { id: crate::staal_plooi::PLOOI_ID.into(), kind: CheckKind::Resistance(
+            crate::staal_plooi::afleiding(input, m.punt.combination_id, f_y, &p[&m.punt.combination_id])) });
+        vec![PlaatNietGetoetst { id:"plooi_steunontwerp".into(), titel:"Steunconstructie en globale stabiliteit".into(),
+            reden:"De opgegeven steun uit het vlak is een expliciete ontwerpvoorwaarde. Sterkte/stijfheid van steunen en verbindingen (§9), globale stabiliteit en buiging uit het vlak vallen buiten deze veldtoets.".into(), bepaalt_status:false }]
+    } else { vec![niet_getoetst_plooi()] };
+    let best = v.per_toets.iter().fold(maatgevend, |best, m| if m.punt.uc > best.punt.uc { m } else { best });
+    let uc_max = best.punt.uc;
     let mut notes = input.notities.clone();
     notes.push(format!(
         "Getoetst per element van het rekenmesh met de elementgemiddelde spanning \
          (constante-rek-elementen). Een spanningspiek in een inspringende hoek of langs een \
          opening wordt daardoor uitgemiddeld over het element; verfijn het mesh daar om de piek \
          te benaderen. Maatgevend: element {} in combinatie {}.",
-        maatgevend.punt.element.element_id, maatgevend.punt.combination_id
+        best.punt.element.element_id, best.punt.combination_id
     ));
 
     PlateCheckResult {
@@ -134,13 +162,13 @@ pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
         soort: input.soort,
         materiaal: naam,
         thickness_mm: input.thickness_mm,
-        norm: Aanduidingen::voor(input.bijlage).norm_staal_vol.to_string(),
+        norm: if plooi.is_some() { format!("{}; NEN-EN 1993-1-5+C1:2012 §10 + NB:2011", Aanduidingen::voor(input.bijlage).norm_staal_vol) } else { Aanduidingen::voor(input.bijlage).norm_staal_vol.to_string() },
         status: status_uit(uc_max, &niet_getoetst),
         checks,
         uc_max,
-        governing_check_id: VLOEI_ID.to_string(),
-        governing_element_id: Some(maatgevend.punt.element.element_id),
-        governing_combination_id: Some(maatgevend.punt.combination_id),
+        governing_check_id: best.check_id.clone(),
+        governing_element_id: Some(best.punt.element.element_id),
+        governing_combination_id: Some(best.punt.combination_id),
         combinaties: v.per_combinatie,
         elementen: v.per_element,
         niet_getoetst,

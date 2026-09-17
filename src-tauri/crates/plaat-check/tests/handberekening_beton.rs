@@ -24,6 +24,7 @@ fn plaat(klasse: &str, elementen: Vec<PlaatElementSpanning>) -> PlateCheckInput 
         soort: PlaatMateriaalSoort::Beton,
         materiaal: klasse.to_string(),
         thickness_mm: 200.0,
+        plooi: None,
         hoofdrichting_graden: 0.0,
         service_class: None,
         load_duration_per_combination: vec![],

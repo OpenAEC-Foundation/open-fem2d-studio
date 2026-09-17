@@ -297,6 +297,7 @@
     "envelope": "Governing (envelope)"
   },
   "report": {
+    "plaatPlooiNoot": "The optional buckling check applies to the entire confirmed panel. The panel utilisation applies to every element; the listed element is a representative.",
     "report": "Report",
     "print": "Print / PDF",
     "printHint": "Opens the print dialog — choose 'Save as PDF' there for a PDF.",

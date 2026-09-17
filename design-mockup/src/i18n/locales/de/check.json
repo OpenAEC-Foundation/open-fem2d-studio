@@ -1236,6 +1236,14 @@
       "pressAfter": ", um diese Last zu löschen."
     },
     "plate": {
+      "buckling": "Plattenbeulen §10",
+      "bucklingA": "Gesamtes Feld x (mm)",
+      "bucklingB": "Gesamtes Feld z (mm)",
+      "bucklingSupports": "Vier Ränder aus der Ebene gehalten",
+      "bucklingSource": "Nachweis der Randlagerung",
+      "bucklingUnstiffened": "Unversteiftes Feld bestätigt",
+      "bucklingUniform": "Gleichmäßiger Spannungszustand bestätigt",
+      "bucklingScope": "Nur das gesamte achsparallele rechteckige Feld ohne Öffnungen, an allen vier Rändern durchgehend gelenkig aus der Ebene gelagert. Netzknoten weisen diese Lagerung nicht nach. Ungleichmäßige Spannungen, Zug und knickartige Interaktion werden abgelehnt; Druck in der kurzen Feldrichtung wird ebenfalls nicht unterstützt. Lagerungen und Verbindungen gesondert bemessen.",
       "title": "Platte {{id}}",
       "typeWall": "Wandscheibe (in der Ebene)",
       "corner": "Ecke {{nummer}}",

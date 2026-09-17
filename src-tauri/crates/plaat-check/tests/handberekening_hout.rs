@@ -38,6 +38,7 @@ fn plaat(
         soort: PlaatMateriaalSoort::Hout,
         materiaal: klasse.to_string(),
         thickness_mm: 100.0,
+        plooi: None,
         hoofdrichting_graden: hoek,
         service_class: Some(ServiceClass::Sc1),
         load_duration_per_combination: combinaties

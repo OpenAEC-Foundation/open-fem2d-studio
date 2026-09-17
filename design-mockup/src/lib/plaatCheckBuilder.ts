@@ -33,6 +33,8 @@ import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen
 import type { LoadCase } from "../components/fem/femTypes";
 import type { ServiceClass } from "./types/timber/ServiceClass";
 import { belastingduurPerCombinatie } from "./belastingduur";
+import { plaatPlooiGeometrieFout } from "./plaatPlooi";
+import type { Node } from "../components/fem/femTypes";
 
 /** Een plaat die niet naar de kern ging, met de reden. */
 export interface PlaatSkip {
@@ -41,6 +43,7 @@ export interface PlaatSkip {
 }
 
 export interface PlaatBuildData {
+  nodes?: readonly Pick<Node, "id" | "x" | "z">[];
   plates: readonly Plate[];
   combinations: readonly LoadCombination[];
   combinationResults: ReadonlyMap<number, SolverResult>;
@@ -121,13 +124,26 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
     const soort = KERN_SOORT[s.soort];
     const combinaties: PlaatCombinatie[] = [];
     const notities: string[] = [];
+    let expectedElementIds: number[] | undefined;
+    let dekkingFout: string | undefined;
     if (SOORT_MET_SPANNINGEN.has(soort)) {
       const zonder: string[] = [];
       for (const c of ugt) {
         const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
         if (!pr || pr.elements.length === 0) {
+          if (plaat.plooi) combinaties.push({ combination_id: c.id, elements: [] });
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
           continue;
+        }
+        if (plaat.plooi) {
+          const ids = pr.expectedElementIds;
+          if (!ids?.length || new Set(ids).size !== ids.length) {
+            dekkingFout = "onafhankelijke volledige mesh-elementset ontbreekt; bereken opnieuw met de actuele solver";
+          } else if (expectedElementIds && (expectedElementIds.length !== ids.length || expectedElementIds.some((id, i) => id !== ids[i]))) {
+            dekkingFout = "de onafhankelijke mesh-elementset verschilt tussen UGT-combinaties";
+          } else {
+            expectedElementIds = [...ids];
+          }
         }
         combinaties.push({
           combination_id: c.id,
@@ -175,11 +191,18 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
             };
           })()
         : {};
+    const geometrieFout = plaatPlooiGeometrieFout(plaat, data.nodes) ?? dekkingFout;
     inputs.push({
       bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       plate_id: plaat.id,
       soort,
       materiaal: s.naam,
+      ...(plaat.plooi ? { plooi: {
+        ...plaat.plooi,
+        expected_element_ids: expectedElementIds ?? [],
+        rechthoek_zonder_openingen: !geometrieFout,
+        ...(geometrieFout ? { geometrie_fout: geometrieFout } : {}),
+      } } : {}),
       ...hout,
       // Dezelfde aanvulling als de solverinvoer (`plaatNaarSolverInput`): de
       // spanningen zijn met deze dikte berekend.

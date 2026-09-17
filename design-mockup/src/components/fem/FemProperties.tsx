@@ -34,6 +34,7 @@ import {
 // rapport, zodat het paneel geen eigen oordeel velt over wat een geldig
 // materiaal is.
 import { bepaalPlaatStijfheid, plaatMateriaalSoort } from "../../lib/plaatMateriaal";
+import { parsePlooiLengthMm } from "../../lib/plaatPlooi";
 import { CLT_VOORINSTELLINGEN } from "../../lib/cltVoorinstellingen.generated";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -1693,6 +1694,21 @@ function LoadProperties({
  * elke plaatmutatie wist de resultaten, waarna Berekenen opnieuw rekent —
  * identiek aan staafwijzigingen (materiaal/profiel).
  */
+function PlooiMaatVeld({ value, onCommit }: { value: number; onCommit: (value: number) => void }) {
+  const { i18n } = useTranslation("check");
+  const formatted = String(value).replace(".", i18n.language.startsWith("en") ? "." : ",");
+  const [text, setText] = useState(formatted);
+  useEffect(() => setText(formatted), [formatted]);
+  const commit = () => {
+    const parsed = parsePlooiLengthMm(text);
+    if (parsed === null) setText(formatted);
+    else { onCommit(parsed); setText(String(parsed).replace(".", i18n.language.startsWith("en") ? "." : ",")); }
+  };
+  return <input type="text" inputMode="decimal" className="fem-prop-input fem-prop-input-mono"
+    value={text} onChange={e => setText(e.target.value)} onBlur={commit}
+    onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />;
+}
+
 function PlateProperties({ plate, nodes, updatePlate }: {
   plate: Plate; nodes: Node[];
   updatePlate?: (id: number, updates: Partial<Plate>) => void;
@@ -1850,6 +1866,9 @@ function PlateProperties({ plate, nodes, updatePlate }: {
     materiaal: t("props.plate.sourceMaterial"), handmatig: t("props.plate.sourceManual"), standaard: t("props.plate.sourceDefault"),
     aanname: t("props.plate.sourceAssumption"),
   };
+  const updatePlooi = (patch: Partial<NonNullable<Plate["plooi"]>>) => {
+    if (plate.plooi) updatePlate?.(plate.id, { plooi: { ...plate.plooi, ...patch } });
+  };
 
   const openingMaat = (p: { x: number; z: number }[]) => {
     const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
@@ -1922,6 +1941,41 @@ function PlateProperties({ plate, nodes, updatePlate }: {
               />
             </Row>
           )}
+          {(stijfheid?.soort === "staal" || plate.plooi) && <>
+            <Row label={t("props.plate.buckling")}>
+              <input type="checkbox" checked={!!plate.plooi} onChange={e => updatePlate?.(plate.id, {
+                plooi: e.target.checked ? {
+                  a_mm: punten ? Math.max(...punten.map(p => p.x)) - Math.min(...punten.map(p => p.x)) : 0,
+                  b_mm: punten ? Math.max(...punten.map(p => p.z)) - Math.min(...punten.map(p => p.z)) : 0,
+                  randvoorwaarden: "", steun_bron: "", onverstijfd: false, uniforme_spanning: false,
+                } : undefined,
+              })} />
+            </Row>
+            {plate.plooi && <>
+              <Row label={t("props.plate.bucklingA")}>
+                <PlooiMaatVeld value={plate.plooi.a_mm} onCommit={a_mm => updatePlooi({ a_mm })} />
+              </Row>
+              <Row label={t("props.plate.bucklingB")}>
+                <PlooiMaatVeld value={plate.plooi.b_mm} onCommit={b_mm => updatePlooi({ b_mm })} />
+              </Row>
+              <Row label={t("props.plate.bucklingSupports")}>
+                <input type="checkbox" checked={plate.plooi.randvoorwaarden === "vierzijdig_scharnierend"}
+                  onChange={e => updatePlooi({ randvoorwaarden: e.target.checked ? "vierzijdig_scharnierend" : "" })} />
+              </Row>
+              <Row label={t("props.plate.bucklingSource")}>
+                <input className="fem-prop-input" value={plate.plooi.steun_bron} onChange={e => updatePlooi({ steun_bron: e.target.value })} />
+              </Row>
+              <Row label={t("props.plate.bucklingUnstiffened")}>
+                <input type="checkbox" checked={plate.plooi.onverstijfd} onChange={e => updatePlooi({ onverstijfd: e.target.checked })} />
+              </Row>
+              <Row label={t("props.plate.bucklingUniform")}>
+                <input type="checkbox" checked={plate.plooi.uniforme_spanning} onChange={e => updatePlooi({ uniforme_spanning: e.target.checked })} />
+              </Row>
+              <div style={{ padding: "4px 10px", fontSize: 11 }}>
+                {t("props.plate.bucklingScope")}
+              </div>
+            </>}
+          </>}
           {/* Klimaatklasse van een houten plaat: alleen voor de plaattoets
               (k_mod, NEN-EN 1995-1-1 tabel 3.1); de stijfheid verandert niet. */}
           {stijfheid?.soort === "hout" && (

@@ -666,6 +666,15 @@ export interface Plate {
    * niet mee in de stijfheid.
    */
   klimaatklasse?: 1 | 2 | 3;
+  /** Expliciet volledig plaatveld voor EN 1993-1-5 §10; geen defaults bij laden. */
+  plooi?: {
+    a_mm: number;
+    b_mm: number;
+    randvoorwaarden: string;
+    steun_bron: string;
+    onverstijfd: boolean;
+    uniforme_spanning: boolean;
+  };
 }
 
 /** De elementkeuzes die een plaat kan dragen — ook de poort en het MCP-schema lezen deze lijst. */

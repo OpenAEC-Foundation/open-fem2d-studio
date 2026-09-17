@@ -3,6 +3,7 @@ import type { CombinationLoadDuration } from "../timber/CombinationLoadDuration"
 import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { PlaatCombinatie } from "./PlaatCombinatie";
 import type { PlaatMateriaalSoort } from "./PlaatMateriaalSoort";
+import type { PlaatPlooiInput } from "./PlaatPlooiInput";
 import type { ServiceClass } from "../timber/ServiceClass";
 
 /**
@@ -29,6 +30,10 @@ materiaal: string,
  * Plaatdikte in mm. Bij staal bepaalt zij de dikteklasse van tabel 3.1.
  */
 thickness_mm: number, 
+/**
+ * Zonder dit veld blijft de bestaande vloeicontrole ongewijzigd.
+ */
+plooi?: PlaatPlooiInput,
 /**
  * Hout: hoofdrichting (vezel) in GRADEN tegen de klok in vanaf de globale
  * x-as — dezelfde hoek als `Plate.hoofdrichting` en als de solver gebruikt.

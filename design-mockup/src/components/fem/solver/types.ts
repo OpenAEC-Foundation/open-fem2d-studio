@@ -696,6 +696,8 @@ export interface PlateMaterialAxisStress {
 /** Resultaat per plaat: elementspanningen + min/max-ranges voor de legenda. */
 export interface PlateResult {
   plateId: number;
+  /** Volledige mesh-elementset, onafhankelijk van aanwezige spanningsresultaten. */
+  expectedElementIds?: number[];
   elements: PlateElementStress[];
   ranges: {
     sigmaX: PlateStressRange;

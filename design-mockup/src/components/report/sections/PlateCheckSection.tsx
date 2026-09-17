@@ -98,6 +98,7 @@ export function PlaatToetsRapport({
       <p className="rpt-note">
         {checkedTime && `${t("report.checkedAt", "Toetsing uitgevoerd op")} ${checkedTime}. `}
         {t("report.plaatToetsNoot")}
+        {plateResults.some(r => r.checks.some(c => c.id === "en1993_1_5_10_plooi")) && " " + t("report.plaatPlooiNoot")}
       </p>
 
       {/* ── 1. Overzicht ── */}

@@ -297,6 +297,7 @@
     "envelope": "Déterminant (enveloppe)"
   },
   "report": {
+    "plaatPlooiNoot": "La vérification optionnelle du voilement porte sur le panneau entier confirmé. Le taux de travail du panneau s’applique à tous les éléments ; l’élément indiqué est représentatif.",
     "report": "Rapport",
     "print": "Imprimer / PDF",
     "printHint": "Ouvre la boîte de dialogue d'impression — choisissez-y « Enregistrer au format PDF » pour obtenir un PDF.",

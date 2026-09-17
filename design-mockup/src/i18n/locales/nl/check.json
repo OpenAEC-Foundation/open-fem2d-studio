@@ -1236,6 +1236,14 @@
       "pressAfter": " om deze belasting te verwijderen."
     },
     "plate": {
+      "buckling": "Plaatplooi §10",
+      "bucklingA": "Volledig veld x (mm)",
+      "bucklingB": "Volledig veld z (mm)",
+      "bucklingSupports": "Vier randen gesteund uit het vlak",
+      "bucklingSource": "Bron steunvoorwaarden",
+      "bucklingUnstiffened": "Onverstijfd veld bevestigd",
+      "bucklingUniform": "Uniform spanningsveld bevestigd",
+      "bucklingScope": "Alleen het volledige asgelijnde rechthoekige veld zonder openingen, met vier continue scharnierende steunen uit het vlak. Meshknopen bevestigen deze steun niet. Niet-uniforme spanningen, trek en kolominteractie worden geweigerd; ook druk in de korte veldrichting is niet ondersteund. Steunen en verbindingen afzonderlijk ontwerpen.",
       "title": "Plaat {{id}}",
       "typeWall": "Wandschijf (in het vlak)",
       "corner": "Hoek {{nummer}}",
