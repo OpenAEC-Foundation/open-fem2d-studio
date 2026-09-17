@@ -96,7 +96,8 @@ function verloopVan(r: MemberCheckResult): VerloopRapport | null {
   return v && typeof v === "object" && "toetsdoorsneden" in v ? (v as VerloopRapport) : null;
 }
 
-function VerloopBlok({ verloop }: { verloop: VerloopRapport }) {
+/** Geëxporteerd voor test-rapport-verloop-reden.mjs (#30). */
+export function VerloopBlok({ verloop }: { verloop: VerloopRapport }) {
   const { t } = useTranslation("ribbon");
   const maatX = verloop.maatgevend?.doorsnede.x_mm;
   const maten = (m: VerloopMaten): string =>
@@ -201,7 +202,7 @@ function VerloopBlok({ verloop }: { verloop: VerloopRapport }) {
                 <th>{t("report.verloopStabColToets", "Toets")}</th>
                 <th>x [mm]</th>
                 <th>{t("report.verloopColMaten", "Doorsnede [mm]")}</th>
-                <th>{t("report.verloopStabColReden", "Reden")}</th>
+                <th className="rpt-verloop-reden">{t("report.verloopStabColReden", "Reden")}</th>
               </tr>
             </thead>
             <tbody>
