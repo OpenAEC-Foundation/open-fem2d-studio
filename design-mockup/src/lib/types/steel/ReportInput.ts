@@ -6,6 +6,9 @@ import type { CltBeamCheckResult } from "../timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "../concrete/ConcreteBeamCheckResult";
 import type { DekkingslijnAntwoord } from "../concrete/DekkingslijnAntwoord";
 import type { NationaleBijlage } from "../norm/NationaleBijlage";
+import type { PlateCheckInput } from "../plaat/PlateCheckInput";
+import type { PlateCheckResult } from "../plaat/PlateCheckResult";
+import type { RapportPlaatOvergeslagen } from "./RapportPlaatOvergeslagen";
 import type { RapportTaal } from "./RapportTaal";
 import type { SpanningBeamCheckResult } from "../spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "../timber/TimberBeamCheckResult";
@@ -181,4 +184,30 @@ analyse_toelichting?: string,
  * Leeg of afwezig = geen gegenereerde windlast met omschrijving; het
  * rapport zwijgt dan.
  */
-wind_toelichting?: string, };
+wind_toelichting?: string,
+/**
+ * De plaattoets (wandschijven, belast in het vlak) per plaat, zoals
+ * `plaat_check::check_all_plates` hem leverde — getoetst of geweigerd met
+ * reden. Hieruit komt het hoofdstuk [`crate::plaathoofdstuk`].
+ *
+ * Waarom (issue #25): het live rapport had een sectie "Toetsing platen",
+ * het papier niet. Een wand die op het scherm "niet getoetst: trek
+ * loodrecht op de vezel" draagt, hoort dat ook op het ingediende stuk te
+ * doen.
+ *
+ * `#[serde(default)]` om dezelfde reden als bij de andere kernen: een
+ * aanroep zonder platen blijft geldig, en het hoofdstuk blijft dan weg.
+ */
+plate_results?: Array<PlateCheckResult>,
+/**
+ * Oorspronkelijke plaatinvoer van dezelfde toetsronde, met alle
+ * combinaties en elementspanningen. Zonder invoer blijven bestaande
+ * resultaataanroepen geldig; het hoofdstuk meldt dan de ontbrekende invoer.
+ */
+plate_inputs?: Array<PlateCheckInput>,
+/**
+ * De platen die de app NIET naar de kern stuurde, met de reden (geen
+ * materiaal, geen rekenresultaat, …). Het live rapport noemt ze in het
+ * overzicht; zonder dit veld zou de PDF er stil over zijn.
+ */
+plate_skipped?: Array<RapportPlaatOvergeslagen>, };

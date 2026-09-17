@@ -83,6 +83,9 @@ import type { CltBeamCheckResult } from "./types/timber/CltBeamCheckResult";
 import type { ConcreteBeamCheckResult } from "./types/concrete/ConcreteBeamCheckResult";
 import type { ReinforcementCage } from "./types/concrete/ReinforcementCage";
 import type { ReportInput } from "./types/steel/ReportInput";
+import type { PlateCheckInput } from "./types/plaat/PlateCheckInput";
+import type { PlateCheckResult } from "./types/plaat/PlateCheckResult";
+import type { PlaatSkip } from "./plaatCheckBuilder";
 import type { SpanningBeamCheckResult } from "./types/spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "./types/timber/TimberBeamCheckResult";
 import { bijlageUitBestand } from "./normAanduidingen";
@@ -136,6 +139,10 @@ export interface RapportPdfBronnen {
   taal?: string;
   /** De toetsresultaten uit `checkStore`, ongefilterd. */
   checkResults: MemberCheckResult[];
+  /** Plaatgegevens van dezelfde toetsronde, ongefilterd op rapportcombinatie. */
+  plaatInvoer?: readonly PlateCheckInput[];
+  plateResults?: readonly PlateCheckResult[];
+  plateSkipped?: readonly PlaatSkip[];
   /** Het spoor uit `betonStijfheidStore`; laat weg als er niets staat. */
   stijfheid?: StijfheidSpoorInvoer;
   /**
@@ -415,6 +422,11 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   if (clt.length > 0) invoer.clt_check_results = clt;
   if (beton.length > 0) invoer.concrete_check_results = beton;
   if (spanning.length > 0) invoer.stress_check_results = spanning;
+  if (bron.plaatInvoer?.length) invoer.plate_inputs = [...bron.plaatInvoer];
+  if (bron.plateResults?.length) invoer.plate_results = [...bron.plateResults];
+  if (bron.plateSkipped?.length) {
+    invoer.plate_skipped = bron.plateSkipped.map((s) => ({ plate_id: s.plateId, reden: s.reason }));
+  }
   // De dekkingslijnen, de wapeningszones en de scheefstand: alleen meesturen
   // als er iets in zit. De Rust-kant heeft `#[serde(default)]` op alle drie, en
   // een leeg veld en een ontbrekend veld betekenen daar hetzelfde; weglaten
@@ -493,7 +505,7 @@ export async function genereerRapportPdf(invoer: ReportInput): Promise<Uint8Arra
  */
 export const NIET_IN_PDF = [
   "de doorsnedetekening met het spanningsverloop van staal en massief hout",
-  "plaatspanningen",
+  "de kleurkaarten van plaatspanningen",
   "krachtsverdeling",
   "oplegreacties",
 ] as const;

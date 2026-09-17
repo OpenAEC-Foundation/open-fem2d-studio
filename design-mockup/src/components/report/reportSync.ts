@@ -160,6 +160,8 @@ interface WireCheckState {
    */
   plateResults?: PlateCheckResult[];
   plateSkipped?: PlaatSkip[];
+  /** De kerninvoer hoort bij dit snapshot; oudere vensters laten haar weg. */
+  lastRunInputs?: ReturnType<typeof useCheckStore.getState>["lastRunInputs"];
   lastRunAt: number | null;
   /**
    * De fout van de laatste toetsronde, of null. Reist mee zodat het losse
@@ -462,6 +464,8 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
   const checkSkipped = useCheckStore((s) => s.skipped);
   const checkLastRunAt = useCheckStore((s) => s.lastRunAt);
   const checkPlateResults = useCheckStore((s) => s.plateResults);
+  const checkPlateSkipped = useCheckStore((s) => s.plateSkipped);
+  const checkLastRunInputs = useCheckStore((s) => s.lastRunInputs);
   // Het segmentspoor van de fysisch niet-lineaire berekening. `berekendOp`
   // volstaat als aanleiding: hij wisselt bij elke verse run én bij het wissen.
   const stijfheidBerekendOp = useBetonStijfheidStore((s) => s.berekendOp);
@@ -492,6 +496,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
         kruip: check.kruip,
         plateResults: check.plateResults,
         plateSkipped: check.plateSkipped,
+        lastRunInputs: check.lastRunInputs,
         lastRunAt: check.lastRunAt,
         error: check.error,
       },
@@ -545,6 +550,8 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     checkSkipped,
     checkLastRunAt,
     checkPlateResults,
+    checkPlateSkipped,
+    checkLastRunInputs,
     stijfheidBerekendOp,
     stijfheidCombinaties,
   ]);
@@ -635,6 +642,7 @@ export function useDetachedReportSync(): ReportData | null {
           kruip: msg.check.kruip ?? [],
           plateResults: msg.check.plateResults ?? [],
           plateSkipped: msg.check.plateSkipped ?? [],
+          lastRunInputs: msg.check.lastRunInputs ?? null,
           lastRunAt: msg.check.lastRunAt,
           isRunning: false,
           // De fout van het hoofdvenster, niet stil `null`: een mislukte ronde

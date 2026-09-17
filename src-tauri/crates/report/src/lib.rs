@@ -84,6 +84,9 @@ pub mod datum;
 pub mod figuur;
 pub mod houtfiguren;
 pub mod houthoofdstuk;
+/// Platen (wandschijven): de normtoets per plaat, zoals het live rapport hem
+/// toont (issue #25, onderdeel 5). Zie de moduledocumentatie.
+pub mod plaathoofdstuk;
 /// Verlopend profiel: de toetsdoorsneden van één staaf op papier
 /// (ontwerp 15-09-2026, §6). Zie de moduledocumentatie.
 pub mod verloopblok;
@@ -113,6 +116,7 @@ use spanning_check::SpanningBeamCheckResult;
 use steel_check::result::{BeamCheckResult, CheckKind, NamedCheck, VerloopRapport};
 use timber_check::clt::CltBeamCheckResult;
 use timber_check::TimberBeamCheckResult;
+use plaat_check::{PlateCheckInput, PlateCheckResult};
 
 // ── Bundled fonts (Liberation Sans, OFL licence) ──────────────────────────────
 
@@ -311,6 +315,32 @@ pub struct ReportInput {
     #[serde(default)]
     #[ts(optional)]
     pub wind_toelichting: Option<String>,
+    /// De plaattoets (wandschijven, belast in het vlak) per plaat, zoals
+    /// `plaat_check::check_all_plates` hem leverde — getoetst of geweigerd met
+    /// reden. Hieruit komt het hoofdstuk [`crate::plaathoofdstuk`].
+    ///
+    /// Waarom (issue #25): het live rapport had een sectie "Toetsing platen",
+    /// het papier niet. Een wand die op het scherm "niet getoetst: trek
+    /// loodrecht op de vezel" draagt, hoort dat ook op het ingediende stuk te
+    /// doen.
+    ///
+    /// `#[serde(default)]` om dezelfde reden als bij de andere kernen: een
+    /// aanroep zonder platen blijft geldig, en het hoofdstuk blijft dan weg.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<PlateCheckResult>>", optional)]
+    pub plate_results: Vec<PlateCheckResult>,
+    /// Oorspronkelijke plaatinvoer van dezelfde toetsronde, met alle
+    /// combinaties en elementspanningen. Zonder invoer blijven bestaande
+    /// resultaataanroepen geldig; het hoofdstuk meldt dan de ontbrekende invoer.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<PlateCheckInput>>", optional)]
+    pub plate_inputs: Vec<PlateCheckInput>,
+    /// De platen die de app NIET naar de kern stuurde, met de reden (geen
+    /// materiaal, geen rekenresultaat, …). Het live rapport noemt ze in het
+    /// overzicht; zonder dit veld zou de PDF er stil over zijn.
+    #[serde(default)]
+    #[ts(as = "Option<Vec<plaathoofdstuk::RapportPlaatOvergeslagen>>", optional)]
+    pub plate_skipped: Vec<plaathoofdstuk::RapportPlaatOvergeslagen>,
 }
 
 // ── Materiaal-neutrale rapportweergave ────────────────────────────────────────
@@ -600,10 +630,19 @@ struct ToegepasteKaders {
 
 impl ToegepasteKaders {
     fn van(input: &ReportInput) -> Self {
+        // Een plaat telt alleen mee als de kern haar WERKELIJK getoetst heeft:
+        // een geweigerde plaat (kruislaaghout, vrij materiaal, onbekende
+        // klasse) is tegen geen enkele norm gerekend en claimt er dus ook geen.
+        let plaat = |soort: plaat_check::PlaatMateriaalSoort| {
+            input.plate_results.iter().any(|r| r.soort == soort && r.geweigerd.is_none())
+        };
+        use plaat_check::PlaatMateriaalSoort as S;
         Self {
-            staal: !input.steel_check_results.is_empty(),
-            hout: !input.timber_check_results.is_empty() || !input.clt_check_results.is_empty(),
-            beton: !input.concrete_check_results.is_empty(),
+            staal: !input.steel_check_results.is_empty() || plaat(S::Staal),
+            hout: !input.timber_check_results.is_empty()
+                || !input.clt_check_results.is_empty()
+                || plaat(S::Hout),
+            beton: !input.concrete_check_results.is_empty() || plaat(S::Beton),
             vrij: !input.stress_check_results.is_empty(),
         }
     }
@@ -959,7 +998,11 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
     //     lezer al vier hoofdstukken lang niet had.
     extend_with_uitgangspunten(&mut flow, &input);
 
-    if members.is_empty() {
+    if members.is_empty() && plaathoofdstuk::van_toepassing(&input) {
+        // Geen staven, wel platen: het plaathoofdstuk hieronder is dan het
+        // hele rapport. Een melding "geen toetsresultaten" zou daar onwaar
+        // naast staan, en een lege samenvattingstabel evenzeer.
+    } else if members.is_empty() {
         // Geen enkele getoetste staaf. Een samenvattingshoofdstuk met een lege
         // tabel zou de lezer laten zoeken naar wat er weggevallen is; deze
         // melding zegt wat er aan de hand is en wat hij eraan kan doen.
@@ -1021,6 +1064,11 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
         // die telt is die van de toets die het ontwerp begrenst.
         extend_with_maatgevende_afleiding(&mut flow, m);
     }
+
+    // 4a. Platen — de toets in het vlak per plaat, met wat niet getoetst is en
+    //     waarom. Blijft in zijn geheel weg bij een rapport zonder platen; zie
+    //     `plaathoofdstuk::van_toepassing`.
+    plaathoofdstuk::extend_with_plaathoofdstuk(&mut flow, &input);
 
     // 4b. Beton — fysisch niet-lineaire tweede orde: de segmenttabellen, het
     //     convergentiespoor en de vier figuren. Blijft in zijn geheel weg bij
@@ -1219,7 +1267,7 @@ pub(crate) fn extend_with_deelstappen(flow: &mut Vec<Box<dyn Flowable>>, stappen
             let vars: String = stap
                 .variables
                 .iter()
-                .map(|v| format!("{} = {:.3} {}", v.symbol, v.value, v.unit))
+                .map(|v| format!("{} = {} {}", v.symbol, getal_tekst(v.value, 3), v.unit))
                 .collect::<Vec<_>>()
                 .join("   ");
             flow.push(Box::new(Paragraph::new(vars, style_mono())));
@@ -1227,7 +1275,7 @@ pub(crate) fn extend_with_deelstappen(flow: &mut Vec<Box<dyn Flowable>>, stappen
         if let Some(v) = stap.value {
             let symbool = if stap.symbol.is_empty() { String::new() } else { format!("{} = ", stap.symbol) };
             flow.push(Box::new(Paragraph::new(
-                format!("{symbool}{:.3} {}", v, stap.unit),
+                format!("{symbool}{} {}", getal_tekst(v, 3), stap.unit),
                 style_amber_value(),
             )));
         }
@@ -1506,7 +1554,7 @@ fn build_summary_table(members: &[ReportMember<'_>]) -> Table {
                 m.section_label.to_string(),
                 m.grade_label.to_string(),
                 m.norm_label().to_string(),
-                format!("{:.2}", m.uc_max),
+                getal_tekst(m.uc_max, 2),
                 m.governing_check_id.to_string(),
                 status_label(m.status).into(),
             ]
@@ -1544,20 +1592,34 @@ fn build_summary_table(members: &[ReportMember<'_>]) -> Table {
 // ── Per-check block (heading + force state + formula + UC + notes) ────────────
 
 fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) {
+    extend_with_check_block_regel(flow, kind, None);
+}
+
+/// Het toetsblok, met een eigen krachtregel waar de snedekrachten niets
+/// zeggen. `None` = de regel van een staaf (combinatie, x, N, V, M). Een plaat
+/// rekent met elementgemiddelde spanningen en heeft geen N, V of M; een regel
+/// met drie nullen erin zou suggereren dat die krachten nul zijn.
+pub(crate) fn extend_with_check_block_regel(
+    flow: &mut Vec<Box<dyn Flowable>>,
+    kind: &CheckKind,
+    krachtregel: Option<String>,
+) {
     let f = extract(kind);
 
     // Title with article reference appended in muted amber
     flow.push(Box::new(Paragraph::new(
         format!("{}    [{}]", f.title, f.article),
         style_h3(),
-    )));
+    ).kop()));
 
     // Force state line
     flow.push(Box::new(Paragraph::new(
-        format!(
-            "Comb {}  ·  x = {:.0} mm  ·  N_Ed = {:.2} kN  ·  V_Ed = {:.2} kN  ·  M_Ed = {:.2} kNm",
-            f.combo, f.pos_mm, f.n_ed, f.vz_ed, f.my_ed
-        ),
+        krachtregel.unwrap_or_else(|| {
+            format!(
+                "Comb {}  ·  x = {:.0} mm  ·  N_Ed = {:.2} kN  ·  V_Ed = {:.2} kN  ·  M_Ed = {:.2} kNm",
+                f.combo, f.pos_mm, f.n_ed, f.vz_ed, f.my_ed
+            )
+        }),
         style_mono(),
     )));
 
@@ -1570,7 +1632,7 @@ fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) 
         let vars: String = f
             .variables
             .iter()
-            .map(|v| format!("{} = {:.3} {}", v.symbol, v.value, v.unit))
+            .map(|v| format!("{} = {} {}", v.symbol, getal_tekst(v.value, 3), v.unit))
             .collect::<Vec<_>>()
             .join("   ");
         flow.push(Box::new(Paragraph::new(vars, style_mono())));
@@ -1578,7 +1640,7 @@ fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) 
 
     // Result value
     flow.push(Box::new(Paragraph::new(
-        format!("= {:.3} {}", f.value, f.unit),
+        format!("= {} {}", getal_tekst(f.value, 3), f.unit),
         style_amber_value(),
     )));
 
@@ -1586,10 +1648,10 @@ fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) 
     if let (Some(ed), Some(rd), Some(uc)) = (f.uc_ed, f.uc_rd, f.uc_uc) {
         let uc_color = if uc > 1.0 { C_FAIL } else { C_OK };
         let line = format!(
-            "UC = {:.3} / {:.3} = {:.3}     {}",
-            ed,
-            rd,
-            uc,
+            "UC = {} / {} = {}     {}",
+            getal_tekst(ed, 3),
+            getal_tekst(rd, 3),
+            getal_tekst(uc, 3),
             status_label(f.status)
         );
         flow.push(Box::new(Paragraph::new(line, style_uc(uc_color))));
@@ -1603,7 +1665,7 @@ fn extend_with_check_block(flow: &mut Vec<Box<dyn Flowable>>, kind: &CheckKind) 
         let line: String = f
             .intermediates
             .iter()
-            .map(|v| format!("{} = {:.3}", v.symbol, v.value))
+            .map(|v| format!("{} = {}", v.symbol, getal_tekst(v.value, 3)))
             .collect::<Vec<_>>()
             .join("   ");
         flow.push(Box::new(Paragraph::new(line, style_mono())));
@@ -1683,6 +1745,23 @@ fn extract(kind: &CheckKind) -> ExtractedFields<'_> {
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
+
+/// Beperk de tekstbreedte zonder normale rapportwaarden anders af te ronden.
+/// De plaatkern gebruikt MAX als eindige JSON-representatie van UC bij
+/// positieve belasting en nulweerstand; de resultaatnotities geven de reden.
+pub(crate) fn getal_tekst(waarde: f64, decimalen: usize) -> String {
+    if waarde == f64::MAX || waarde == f64::INFINITY {
+        "onbegrensd".into()
+    } else if waarde == f64::NEG_INFINITY {
+        "-onbegrensd".into()
+    } else if waarde.is_nan() {
+        "ongeldig".into()
+    } else if waarde.abs() >= 1e6 {
+        format!("{waarde:.decimalen$e}")
+    } else {
+        format!("{waarde:.decimalen$}")
+    }
+}
 
 pub(crate) fn status_label(s: &CheckStatus) -> &'static str {
     match s {

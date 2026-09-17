@@ -53,6 +53,26 @@ use nen_en_1993_1_1_section::CheckStatus;
 /// Het toets-id van het vloeicriterium van staal.
 pub const VLOEI_ID: &str = "6.2.1_von_mises";
 
+/// De reden waarom een plaat van kruislaaghout NIET getoetst wordt.
+///
+/// Er is geen normgrondslag: NEN-EN 1995-1-1 kent kruislaaghout niet als
+/// product en geeft voor een gekruiste opbouw belast in het vlak geen sterkte
+/// en geen toetsregel. Die komen uit de productnorm of een ETA van het product
+/// — en de plaatinvoer heeft geen veld om zo'n bron met haar sterkten en
+/// toetsregels op te geven. De G₁₂-bron van de plaat (`cltG12Bron`) gaat alleen
+/// over de STIJFHEID in de schijfberekening, niet over de sterkte. Liever een
+/// weigering met deze reden dan een toets met aangenomen regels.
+///
+/// Publiek zodat paneel-, rapport- en PDF-tests de zin kunnen terugzoeken.
+pub const REDEN_KRUISLAAGHOUT: &str =
+    "kruislaaghout als plaat wordt niet getoetst: NEN-EN 1995-1-1 kent kruislaaghout niet als \
+     product en geeft geen sterkte of toetsregel voor een gekruiste opbouw belast in het vlak, \
+     dus er is geen normgrondslag. Een toets vraagt de productnorm of een technische goedkeuring \
+     (ETA) van het product met die sterkten en regels; die staat niet op schijf, en de \
+     plaatinvoer heeft geen invoerveld om zo'n bron op te geven (de G12-bron van de plaat geldt \
+     alleen voor de stijfheid in de berekening, niet voor de sterkte). Er is niet getoetst; de \
+     plaat heet daarom niet \"voldoet\".";
+
 /// Toets een lijst platen, in de volgorde van de invoer.
 pub fn check_all_plates(inputs: Vec<PlateCheckInput>) -> Vec<PlateCheckResult> {
     inputs.iter().map(check_plate).collect()
@@ -87,14 +107,7 @@ pub fn check_plate(input: &PlateCheckInput) -> PlateCheckResult {
     match input.soort {
         PlaatMateriaalSoort::Staal => staal::toets(input),
         PlaatMateriaalSoort::Hout => hout::toets(input),
-        PlaatMateriaalSoort::Kruislaaghout => geweigerd(
-            input,
-            "kruislaaghout als plaat wordt niet getoetst: NEN-EN 1995-1-1 kent kruislaaghout niet \
-             als product en geeft geen sterkte of toetsregel voor een gekruiste opbouw belast in \
-             het vlak; de productnorm of een technische goedkeuring (ETA) met die regels staat \
-             niet op schijf"
-                .to_string(),
-        ),
+        PlaatMateriaalSoort::Kruislaaghout => geweigerd(input, REDEN_KRUISLAAGHOUT.to_string()),
         PlaatMateriaalSoort::Beton => beton::toets(input),
         PlaatMateriaalSoort::Vrij => geweigerd(
             input,

@@ -103,6 +103,9 @@ fn pdf_van(r: BeamCheckResult, naam: &str) -> String {
         scheefstand_toelichting: None,
         analyse_toelichting: None,
         wind_toelichting: None,
+        plate_results: Vec::new(),
+        plate_inputs: Vec::new(),
+        plate_skipped: Vec::new(),
     });
     let pad = std::env::temp_dir().join(naam);
     std::fs::write(&pad, &pdf).expect("de PDF moet weg te schrijven zijn");

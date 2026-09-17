@@ -3386,6 +3386,7 @@ dependencies = [
  "nen-en-1993-1-1-stability",
  "nen-en-1995-1-1",
  "openaec-layout",
+ "plaat-check",
  "serde",
  "serde_json",
  "spanning-check",
