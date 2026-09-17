@@ -82,6 +82,7 @@ import {
   bepaalScheefstand,
   leidScheefstandGeometrieAf,
   scheefstandToelichting,
+  scheefstandToelichtingVertaald,
   toepasselijkeScheefstandNormen,
 } from "./lib/scheefstandNorm";
 import { useCheckStore, anyCheckableBeams, anyCheckablePlates, roepKern } from "./stores/checkStore";
@@ -2565,7 +2566,9 @@ function App() {
           // daar is zij een vooruitblik op wat aanzetten zou opleveren. Het
           // rapport krijgt `scheefstandTekst`, die dan juist leeg is.
           scheefstandToelichting={
-            scheefstandToelichting(scheefstandUitkomst, scheefstandGeometrie)
+            // In de taal van de interface; het rapport krijgt de Nederlandse
+            // `scheefstandTekst` (issue #33).
+            scheefstandToelichtingVertaald(scheefstandUitkomst, scheefstandGeometrie, t)
           }
           scheefstandWaarschuwingen={scheefstandUitkomst.waarschuwingen}
           showLoads={fem.showLoads}

@@ -131,6 +131,18 @@
  */
 import type { Beam } from "../components/fem/femTypes";
 import { normenInModel, type NormSleutel } from "./normenInRapport";
+import {
+  nederlands, vertaalWaarde, vt,
+  type TekstWaarde, type VertaalbareTekst, type Vertaalfunctie,
+} from "./vertaalbareTekst";
+
+/**
+ * Voorvoegsel van de i18n-sleutels van deze afleiding. De afleiding zelf is
+ * Nederlands (rapport, PDF, MCP); de tooltip op de φ-knop toont haar in de
+ * taal van de interface (issue #33). Elke zin staat daarom één keer als
+ * `vt(sleutel, Nederlandse tekst, waarden)`.
+ */
+const S = "common:loadCases.swayDerivation.";
 
 // ── Keuze en opslag ─────────────────────────────────────────────────────────
 
@@ -226,8 +238,10 @@ export interface ScheefstandGeometrie {
    * zijn h en m een terugval en geen afleiding, en dat hoort op het scherm.
    */
   afleidbaar: boolean;
-  /** De afleiding in gewone zinnen, bedoeld om te tonen. */
+  /** De afleiding in gewone zinnen, bedoeld om te tonen (Nederlands). */
   afleiding: string[];
+  /** Dezelfde zinnen, vertaalbaar. */
+  afleidingTeksten: VertaalbareTekst[];
 }
 
 /** Nederlandse getalweergave: komma als decimaalteken. */
@@ -296,7 +310,7 @@ export function leidScheefstandGeometrieAf(model: {
   beams: { id: number; from: number; to: number }[];
   supports: { nodeId: number }[];
 }): ScheefstandGeometrie {
-  const afleiding: string[] = [];
+  const afleiding: VertaalbareTekst[] = [];
   const knoopById = new Map(model.nodes.map((n) => [n.id, n]));
 
   // ── h ────────────────────────────────────────────────────────────────────
@@ -313,16 +327,17 @@ export function leidScheefstandGeometrieAf(model: {
       : 0;
   const hoogteM = Math.max(0, (topZ - voetZ) / 1000);
 
-  afleiding.push(
-    `h = ${getal(hoogteM, 3)} m — van de voet (${
-      heeftOpleggingen
-        ? `laagste oplegging, z = ${getal(voetZ, 0)} mm`
-        : `geen opleggingen in het model, dus de laagste knoop, z = ${getal(voetZ, 0)} mm`
-    }) tot de bovenkant van de constructie (z = ${getal(topZ, 0)} mm). ` +
+  const voet = heeftOpleggingen
+    ? vt(`${S}footLowestSupport`, `laagste oplegging, z = ${getal(voetZ, 0)} mm`, { z: getal(voetZ, 0) })
+    : vt(`${S}footLowestNode`, `geen opleggingen in het model, dus de laagste knoop, z = ${getal(voetZ, 0)} mm`,
+      { z: getal(voetZ, 0) });
+  afleiding.push(vt(`${S}heightDerivation`,
+    `h = ${getal(hoogteM, 3)} m — van de voet (${voet.tekst}) tot de bovenkant van de constructie ` +
+      `(z = ${getal(topZ, 0)} mm). ` +
       "EN 1993-1-1 figuur 5.2 meet h vanaf het opleggingsniveau; " +
       "EN 1992-1-1 §5.2(6) noemt het voor de schorende constructie de hoogte " +
       "van het gebouw.",
-  );
+    { h: getal(hoogteM, 3), voet, top: getal(topZ, 0) }));
 
   // ── m ────────────────────────────────────────────────────────────────────
   const minSinus = Math.sin((VERTICAAL_VANAF_GRADEN * Math.PI) / 180);
@@ -397,47 +412,47 @@ export function leidScheefstandGeometrieAf(model: {
   const aantalElementen = Math.max(1, kolomlijnen.length);
 
   if (kolomlijnen.length === 0) {
-    afleiding.push(
+    afleiding.push(vt(`${S}membersFallback`,
       "m = 1 (terugval) — dit model bevat geen enkele staaf die steiler staat " +
         `dan ${VERTICAAL_VANAF_GRADEN}° met de horizontaal, dus er is geen kolomlijn te tellen. ` +
         "m = 1 geeft α_m = 1,00: de grootste waarde die de formule kan " +
         "aannemen, en dus de veilige terugval.",
-    );
+      { graden: VERTICAAL_VANAF_GRADEN }));
   } else {
-    afleiding.push(
+    const lijst = {
+      lijst: kolomlijnen.map((k, i) => vt(`${S}columnLine`,
+        `(${i + 1}) x = ${getal(k.voetXmm, 0)} mm, staaf ${k.staafIds.join("+")}`,
+        { n: i + 1, x: getal(k.voetXmm, 0), staven: k.staafIds.join("+") })),
+      scheiding: "; ",
+    };
+    afleiding.push(vt(`${S}membersDerived`,
       `m = ${aantalElementen} — ${aantalElementen} kolomlijn${aantalElementen === 1 ? "" : "en"}: ` +
-        kolomlijnen
-          .map(
-            (k, i) =>
-              `(${i + 1}) x = ${getal(k.voetXmm, 0)} mm, staaf ${k.staafIds.join("+")}`,
-          )
-          .join("; ") +
+        nederlands(lijst) +
         `. Een staaf telt als verticaal vanaf ${VERTICAAL_VANAF_GRADEN}° met de horizontaal; ` +
         "staven die een knoop delen vormen samen één kolom, zodat een kolom " +
         "door meerdere verdiepingen éénmaal telt.",
-    );
+      { count: aantalElementen, lijst, graden: VERTICAAL_VANAF_GRADEN }));
   }
 
-  afleiding.push(
+  afleiding.push(vt(`${S}membersNote50Percent`,
     "LET OP bij m: EN 1993-1-1 5.3.2(3)a telt alleen kolommen mee die " +
       "minstens 50 % van de gemiddelde verticale kolomkracht dragen. Die " +
       "krachten volgen uit de berekening en de berekening heeft φ nodig, dus " +
       "dat criterium is hier niet toegepast — álle kolomlijnen tellen mee. " +
       "Een licht belaste stijl hoort er met de hand uit: kleinere m geeft " +
-      "grotere α_m en dus grotere φ, de veilige kant.",
-  );
-  afleiding.push(
+      "grotere α_m en dus grotere φ, de veilige kant."));
+  afleiding.push(vt(`${S}wallsNotCounted`,
     "Wandschijven tellen niet mee in m: een schijf schoort meestal in plaats " +
       "van geschoord te worden, en meetellen zou m verhogen en φ verlagen. " +
-      "Draagt een wand hier wél verticaal mee, verhoog m dan met de hand.",
-  );
+      "Draagt een wand hier wél verticaal mee, verhoog m dan met de hand."));
 
   return {
     hoogteM,
     aantalElementen,
     kolomlijnen,
     afleidbaar: kolomlijnen.length > 0 && hoogteM > 0,
-    afleiding,
+    afleiding: afleiding.map((a) => a.tekst),
+    afleidingTeksten: afleiding,
   };
 }
 
@@ -453,6 +468,14 @@ export interface ScheefstandRegel {
   artikel: string;
   /** Waarom die waarde dit is. */
   uitleg: string;
+  /** `artikel` en `uitleg` vertaalbaar, voor de tooltip (issue #33). */
+  artikelTekst: TekstWaarde;
+  uitlegTekst: VertaalbareTekst;
+}
+
+/** Een regel uit vertaalbare delen; de Nederlandse velden volgen eruit. */
+function regel(symbool: string, waarde: string, artikel: TekstWaarde, uitleg: VertaalbareTekst): ScheefstandRegel {
+  return { symbool, waarde, artikel: nederlands(artikel), uitleg: uitleg.tekst, artikelTekst: artikel, uitlegTekst: uitleg };
 }
 
 /** α_h volgens EN 1993-1-1 (5.5) en EN 1992-1-1 (5.1): 2/√h, 2/3 ≤ α_h ≤ 1. */
@@ -472,26 +495,26 @@ export function alphaM(aantalElementen: number): number {
 }
 
 /** De basiswaarde φ₀ (θ₀) per norm, met het artikel waar hij vandaan komt. */
-const BASISWAARDE: Record<ScheefstandNorm, { waarde: number; noemer: number; artikel: string; uitleg: string }> = {
+const BASISWAARDE: Record<ScheefstandNorm, { waarde: number; noemer: number; artikel: TekstWaarde; uitleg: VertaalbareTekst }> = {
   en1993: {
     waarde: 1 / 200,
     noemer: 200,
     artikel: "EN 1993-1-1 §5.3.2(3)a",
-    uitleg: "φ₀ is de basiswaarde: φ₀ = 1/200.",
+    uitleg: vt(`${S}base.en1993`, "φ₀ is de basiswaarde: φ₀ = 1/200."),
   },
   en1992: {
     waarde: 1 / 300,
     noemer: 300,
-    artikel: "EN 1992-1-1 §5.2(5) + NB",
-    uitleg:
+    artikel: vt(`${S}article.en1992Base`, "EN 1992-1-1 §5.2(5) + NB"),
+    uitleg: vt(`${S}base.en1992`,
       "θ₀ is de basiswaarde. De Nederlandse nationale bijlage haalt de " +
-      "aanbevolen EN-waarde 1/200 door en schrijft 1/300 voor.",
+      "aanbevolen EN-waarde 1/200 door en schrijft 1/300 voor."),
   },
   en1995: {
     waarde: 0.005,
     noemer: 200,
     artikel: "EN 1995-1-1 §5.4.4(2)",
-    uitleg: "φ = 0,005 rad voor h ≤ 5 m; deze norm kent geen losse basiswaarde.",
+    uitleg: vt(`${S}base.en1995`, "φ = 0,005 rad voor h ≤ 5 m; deze norm kent geen losse basiswaarde."),
   },
 };
 
@@ -521,22 +544,14 @@ export function phiVolgensNorm(
     // EN 1995-1-1 (5.1): geen α_m, geen ondergrens op de hoogtereductie. De
     // norm zegt "behoort minimaal gelijk te zijn aan" — een ondergrens dus.
     const phi = h > 5 ? 0.005 * Math.sqrt(5 / h) : 0.005;
-    regels.push({
-      symbool: "h",
-      waarde: `${getal(h, 3)} m`,
-      artikel: "EN 1995-1-1 §5.4.4(2)",
-      uitleg: "de hoogte van de constructie of de lengte van het element, in m.",
-    });
-    regels.push({
-      symbool: "φ",
-      waarde: `${getal(phi, 5)} rad = 1/${getal(1 / phi, 0)}`,
-      artikel: "EN 1995-1-1 (5.1)",
-      uitleg:
-        h > 5
-          ? `h > 5 m, dus φ = 0,005·√(5/h) = 0,005·√(5/${getal(h, 3)}).`
-          : "h ≤ 5 m, dus φ = 0,005 rad. Deze norm kent geen α_m en geen " +
-            "ondergrens op de hoogtereductie.",
-    });
+    regels.push(regel("h", `${getal(h, 3)} m`, "EN 1995-1-1 §5.4.4(2)",
+      vt(`${S}en1995.h`, "de hoogte van de constructie of de lengte van het element, in m.")));
+    regels.push(regel("φ", `${getal(phi, 5)} rad = 1/${getal(1 / phi, 0)}`, "EN 1995-1-1 (5.1)",
+      h > 5
+        ? vt(`${S}en1995.phiAbove5`, `h > 5 m, dus φ = 0,005·√(5/h) = 0,005·√(5/${getal(h, 3)}).`, { h: getal(h, 3) })
+        : vt(`${S}en1995.phiUpTo5`,
+          "h ≤ 5 m, dus φ = 0,005 rad. Deze norm kent geen α_m en geen " +
+            "ondergrens op de hoogtereductie.")));
     return { norm, phi, regels };
   }
 
@@ -546,55 +561,28 @@ export function phiVolgensNorm(
   const symbool = norm === "en1992" ? "θ" : "φ";
   const artikelFormule = norm === "en1992" ? "EN 1992-1-1 (5.1)" : "EN 1993-1-1 (5.5)";
 
-  regels.push({
-    symbool: `${symbool}₀`,
-    waarde: `1/${basis.noemer} = ${getal(basis.waarde, 5)}`,
-    artikel: basis.artikel,
-    uitleg: basis.uitleg,
-  });
-  regels.push({
-    symbool: "h",
-    waarde: `${getal(h, 3)} m`,
-    artikel: artikelFormule,
-    uitleg:
-      norm === "en1992"
-        ? "l is de hoogte van het gebouw; §5.2(6), geval 'effect op de schorende constructie'."
-        : "h is de hoogte van de constructie, in meter (figuur 5.2).",
-  });
-  regels.push({
-    symbool: "α_h",
-    waarde: getal(ah.waarde, 4),
-    artikel: artikelFormule,
-    uitleg:
-      `α_h = 2/√h = 2/√${getal(h, 3)}` +
-      (ah.begrensd === "boven"
-        ? " en wordt begrensd door de bovengrens 1,0."
-        : ah.begrensd === "onder"
-          ? " en wordt begrensd door de ondergrens 2/3."
-          : ", binnen 2/3 ≤ α_h ≤ 1,0."),
-  });
-  regels.push({
-    symbool: "m",
-    waarde: String(m),
-    artikel: artikelFormule,
-    uitleg:
-      norm === "en1992"
-        ? "m is het aantal verticale elementen dat bijdraagt aan de horizontale kracht op de schorende constructie."
-        : "m is het aantal kolommen in een rij (alleen die met N_Ed ≥ 50 % van het gemiddelde).",
-  });
-  regels.push({
-    symbool: "α_m",
-    waarde: getal(am, 4),
-    artikel: artikelFormule,
-    uitleg: `α_m = √(0,5·(1 + 1/m)) = √(0,5·(1 + 1/${m})).`,
-  });
-  regels.push({
-    symbool: norm === "en1992" ? "θ_i" : "φ",
-    waarde: `${getal(phi, 5)} rad = 1/${getal(1 / phi, 0)}`,
-    artikel: artikelFormule,
-    uitleg:
+  regels.push(regel(`${symbool}₀`, `1/${basis.noemer} = ${getal(basis.waarde, 5)}`, basis.artikel, basis.uitleg));
+  regels.push(regel("h", `${getal(h, 3)} m`, artikelFormule,
+    norm === "en1992"
+      ? vt(`${S}h.en1992`, "l is de hoogte van het gebouw; §5.2(6), geval 'effect op de schorende constructie'.")
+      : vt(`${S}h.en1993`, "h is de hoogte van de constructie, in meter (figuur 5.2).")));
+  const hTekst = getal(h, 3);
+  regels.push(regel("α_h", getal(ah.waarde, 4), artikelFormule,
+    ah.begrensd === "boven"
+      ? vt(`${S}alphaH.upper`, `α_h = 2/√h = 2/√${hTekst} en wordt begrensd door de bovengrens 1,0.`, { h: hTekst })
+      : ah.begrensd === "onder"
+        ? vt(`${S}alphaH.lower`, `α_h = 2/√h = 2/√${hTekst} en wordt begrensd door de ondergrens 2/3.`, { h: hTekst })
+        : vt(`${S}alphaH.within`, `α_h = 2/√h = 2/√${hTekst}, binnen 2/3 ≤ α_h ≤ 1,0.`, { h: hTekst })));
+  regels.push(regel("m", String(m), artikelFormule,
+    norm === "en1992"
+      ? vt(`${S}m.en1992`, "m is het aantal verticale elementen dat bijdraagt aan de horizontale kracht op de schorende constructie.")
+      : vt(`${S}m.en1993`, "m is het aantal kolommen in een rij (alleen die met N_Ed ≥ 50 % van het gemiddelde).")));
+  regels.push(regel("α_m", getal(am, 4), artikelFormule,
+    vt(`${S}alphaM`, `α_m = √(0,5·(1 + 1/m)) = √(0,5·(1 + 1/${m})).`, { m })));
+  regels.push(regel(norm === "en1992" ? "θ_i" : "φ", `${getal(phi, 5)} rad = 1/${getal(1 / phi, 0)}`, artikelFormule,
+    vt(`${S}product`,
       `${symbool}₀ · α_h · α_m = ${getal(basis.waarde, 5)} · ${getal(ah.waarde, 4)} · ${getal(am, 4)}.`,
-  });
+      { symbool, a: getal(basis.waarde, 5), b: getal(ah.waarde, 4), c: getal(am, 4) })));
 
   return { norm, phi, regels };
 }
@@ -639,6 +627,8 @@ export interface ScheefstandUitkomst {
   vergelijking: NormUitkomst[];
   /** Wat de gebruiker hierover hoort te weten. Leeg = niets aan de hand. */
   waarschuwingen: string[];
+  /** Dezelfde waarschuwingen, vertaalbaar (issue #33). */
+  waarschuwingTeksten: VertaalbareTekst[];
 }
 
 /**
@@ -655,9 +645,9 @@ export function bepaalScheefstand(
 ): ScheefstandUitkomst {
   const noemer = Number.isFinite(keuze.noemer) && keuze.noemer > 0 ? keuze.noemer : 200;
   const bron = keuze.bron ?? "vast";
-  const waarschuwingen: string[] = [];
+  const waarschuwingen: VertaalbareTekst[] = [];
 
-  const vast = (extraWaarschuwing?: string): ScheefstandUitkomst => {
+  const vast = (extraWaarschuwing?: VertaalbareTekst): ScheefstandUitkomst => {
     if (extraWaarschuwing) waarschuwingen.push(extraWaarschuwing);
     return {
       phi: 1 / noemer,
@@ -669,18 +659,16 @@ export function bepaalScheefstand(
       hoogteHandmatig: false,
       aantalHandmatig: false,
       regels: [
-        {
-          symbool: "φ",
-          waarde: `1/${getal(noemer, 0)} = ${getal(1 / noemer, 5)}`,
-          artikel: "opgegeven waarde",
-          uitleg:
+        regel("φ", `1/${getal(noemer, 0)} = ${getal(1 / noemer, 5)}`,
+          vt(`${S}article.given`, "opgegeven waarde"),
+          vt(`${S}fixedExplain`,
             "Vaste noemer uit de projectinstellingen; de reductiefactoren α_h " +
             "en α_m van de norm zijn NIET toegepast. Dit is de basiswaarde en " +
-            "daarmee de veilige bovengrens.",
-        },
+            "daarmee de veilige bovengrens.")),
       ],
       vergelijking: [],
-      waarschuwingen,
+      waarschuwingen: waarschuwingen.map((w) => w.tekst),
+      waarschuwingTeksten: waarschuwingen,
     };
   };
 
@@ -699,17 +687,15 @@ export function bepaalScheefstand(
     : geometrie.aantalElementen;
 
   if (!geometrie.afleidbaar && !(hoogteHandmatig && aantalHandmatig)) {
-    waarschuwingen.push(
+    waarschuwingen.push(vt(`${S}warn.notDerivable`,
       "h en/of m zijn niet uit het model af te leiden (geen verticale staaf, " +
-        "of geen hoogte). Controleer ze en geef ze zo nodig zelf op.",
-    );
+        "of geen hoogte). Controleer ze en geef ze zo nodig zelf op."));
   }
   if (hoogteM <= 0) {
-    waarschuwingen.push(
+    waarschuwingen.push(vt(`${S}warn.noHeight`,
       "De constructie heeft geen hoogte, dus α_h valt op zijn bovengrens 1,0. " +
         "Een scheefstand op een vlak model is een keuze van de gebruiker en " +
-        "geen normvoorschrift.",
-    );
+        "geen normvoorschrift."));
   }
 
   // Welke normen doen mee. Bij een expliciete normkeuze telt die keuze, ook
@@ -718,22 +704,21 @@ export function bepaalScheefstand(
   let normen: ScheefstandNorm[];
   if (bron === "ongunstigste") {
     if (toepasselijk.length === 0) {
-      return vast(
+      return vast(vt(`${S}warn.noNormApplies`,
         "Geen van de drie normen is op dit model van toepassing (alle staven " +
           "hebben een vrij of onbekend materiaal). De vaste noemer blijft " +
           `gelden: φ = 1/${getal(noemer, 0)}.`,
-      );
+        { noemer: getal(noemer, 0) }));
     }
     normen = toepasselijk;
   } else {
     normen = [bron];
     if (toepasselijk.length > 0 && !toepasselijk.includes(bron)) {
-      waarschuwingen.push(
+      const wel = toepasselijk.map((n) => SCHEEFSTAND_BRON_LABEL[n]).join(", ");
+      waarschuwingen.push(vt(`${S}warn.normWithoutMaterial`,
         `${SCHEEFSTAND_BRON_LABEL[bron]} is gekozen, maar dit model bevat geen ` +
-          `materiaal dat onder die norm valt (wel: ${toepasselijk
-            .map((n) => SCHEEFSTAND_BRON_LABEL[n])
-            .join(", ")}).`,
-      );
+          `materiaal dat onder die norm valt (wel: ${wel}).`,
+        { norm: SCHEEFSTAND_BRON_LABEL[bron], wel }));
     }
   }
 
@@ -743,13 +728,12 @@ export function bepaalScheefstand(
   const gekozen = vergelijking.reduce((a, b) => (b.phi > a.phi ? b : a));
 
   if (bron === "ongunstigste" && vergelijking.length > 1) {
-    waarschuwingen.push(
-      "Ongunstigste van " +
-        vergelijking
-          .map((v) => `${SCHEEFSTAND_BRON_LABEL[v.norm]} → 1/${getal(1 / v.phi, 0)}`)
-          .join(", ") +
-        `. Gekozen: ${SCHEEFSTAND_BRON_LABEL[gekozen.norm]}.`,
-    );
+    const lijst = vergelijking
+      .map((v) => `${SCHEEFSTAND_BRON_LABEL[v.norm]} → 1/${getal(1 / v.phi, 0)}`)
+      .join(", ");
+    waarschuwingen.push(vt(`${S}warn.governing`,
+      `Ongunstigste van ${lijst}. Gekozen: ${SCHEEFSTAND_BRON_LABEL[gekozen.norm]}.`,
+      { lijst, gekozen: SCHEEFSTAND_BRON_LABEL[gekozen.norm] }));
   }
 
   return {
@@ -763,7 +747,8 @@ export function bepaalScheefstand(
     aantalHandmatig,
     regels: gekozen.regels,
     vergelijking,
-    waarschuwingen,
+    waarschuwingen: waarschuwingen.map((w) => w.tekst),
+    waarschuwingTeksten: waarschuwingen,
   };
 }
 
@@ -776,42 +761,65 @@ export function scheefstandToelichting(
   uitkomst: ScheefstandUitkomst,
   geometrie: ScheefstandGeometrie,
 ): string {
-  const regels: string[] = [];
+  return toelichtingRegels(uitkomst, geometrie).map(nederlands).join("\n");
+}
+
+/**
+ * `scheefstandToelichting` in de taal van de interface — voor de tooltip op
+ * de φ-knop (issue #33). Dezelfde regels; het rapport en de PDF houden de
+ * Nederlandse vorm.
+ */
+export function scheefstandToelichtingVertaald(
+  uitkomst: ScheefstandUitkomst,
+  geometrie: ScheefstandGeometrie,
+  t: Vertaalfunctie,
+): string {
+  return toelichtingRegels(uitkomst, geometrie).map((r) => vertaalWaarde(t, r)).join("\n");
+}
+
+/** De regels van de toelichting, elk als tekst of vertaalbare tekst. */
+function toelichtingRegels(
+  uitkomst: ScheefstandUitkomst,
+  geometrie: ScheefstandGeometrie,
+): TekstWaarde[] {
+  const regels: TekstWaarde[] = [];
   regels.push(
     uitkomst.norm === null
-      ? "Scheefstand: vaste noemer uit de projectinstellingen."
-      : `Scheefstand volgens ${SCHEEFSTAND_BRON_LABEL[uitkomst.norm]}.`,
+      ? vt(`${S}heading.fixed`, "Scheefstand: vaste noemer uit de projectinstellingen.")
+      : vt(`${S}heading.norm`, `Scheefstand volgens ${SCHEEFSTAND_BRON_LABEL[uitkomst.norm]}.`,
+        { norm: SCHEEFSTAND_BRON_LABEL[uitkomst.norm] }),
   );
   regels.push("");
   for (const r of uitkomst.regels) {
-    regels.push(`${r.symbool} = ${r.waarde}   [${r.artikel}]`);
-    regels.push(`    ${r.uitleg}`);
+    regels.push({ lijst: [`${r.symbool} = ${r.waarde}   [`, r.artikelTekst, "]"], scheiding: "" });
+    regels.push({ lijst: ["    ", r.uitlegTekst], scheiding: "" });
   }
   if (uitkomst.norm !== null) {
     regels.push("");
     regels.push(
       uitkomst.hoogteHandmatig
-        ? `h is handmatig opgegeven: ${getal(uitkomst.hoogteM, 3)} m.`
-        : geometrie.afleiding[0] ?? "",
+        ? vt(`${S}heightManual`, `h is handmatig opgegeven: ${getal(uitkomst.hoogteM, 3)} m.`,
+          { h: getal(uitkomst.hoogteM, 3) })
+        : geometrie.afleidingTeksten[0] ?? "",
     );
     regels.push(
       uitkomst.aantalHandmatig
-        ? `m is handmatig opgegeven: ${uitkomst.aantalElementen}.`
-        : geometrie.afleiding[1] ?? "",
+        ? vt(`${S}membersManual`, `m is handmatig opgegeven: ${uitkomst.aantalElementen}.`,
+          { m: uitkomst.aantalElementen })
+        : geometrie.afleidingTeksten[1] ?? "",
     );
-    for (const r of geometrie.afleiding.slice(2)) regels.push(r);
+    for (const r of geometrie.afleidingTeksten.slice(2)) regels.push(r);
   }
   regels.push("");
-  regels.push(
+  regels.push(vt(`${S}directionBoth`,
     "Richting: beide. Elke belastingcombinatie is doorgerekend met de scheefstand in +x " +
       "én in −x, als twee varianten met de richting in de naam; de omhullende en de " +
       "toetsing nemen per staaf de ongunstigste van de twee (EN 1993-1-1 5.3.2(2): de " +
       "imperfectie in de meest ongunstige richting; 5.3.2(8): in alle relevante " +
-      "richtingen, één per keer).",
-  );
-  if (uitkomst.waarschuwingen.length > 0) {
+      "richtingen, één per keer)."));
+  if (uitkomst.waarschuwingTeksten.length > 0) {
     regels.push("");
-    for (const w of uitkomst.waarschuwingen) regels.push(`! ${w}`);
+    for (const w of uitkomst.waarschuwingTeksten) regels.push({ lijst: ["! ", w], scheiding: "" });
   }
-  return regels.filter((r) => r !== undefined).join("\n");
+  return regels;
 }

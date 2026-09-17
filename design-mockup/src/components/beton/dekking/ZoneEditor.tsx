@@ -32,6 +32,7 @@
  * geen lijn.
  */
 import { useTranslation } from "react-i18next";
+import { vertaal } from "../../../lib/vertaalbareTekst";
 import type { ConcreteSectionInput } from "../../../lib/types/concrete/ConcreteSectionInput";
 import type { LongitudinalZone } from "../../../lib/types/concrete/LongitudinalZone";
 import type { ReinforcementCage } from "../../../lib/types/concrete/ReinforcementCage";
@@ -41,7 +42,7 @@ import type { StirrupZone } from "../../../lib/types/concrete/StirrupZone";
 import type { Stortpositie } from "../../../lib/types/concrete/Stortpositie";
 import { STAAFDIAMETERS, BEUGELDIAMETERS, maat, type Wapeningskorf } from "../wapeningskorf";
 import {
-  controleerZones,
+  controleerZonesMelding,
   splitsOpX,
   standaardZonesUitKorf,
   voegSamenMetRechts,
@@ -93,7 +94,8 @@ export default function ZoneEditor({
 }: Props) {
   const { t } = useTranslation("check");
   const leeg = zonesZijnLeeg(zones);
-  const fout = controleerZones(zones, korf, doorsnede, lengteMm, restKorf);
+  const foutMelding = controleerZonesMelding(zones, korf, doorsnede, lengteMm, restKorf);
+  const fout = foutMelding ? vertaal(t, foutMelding) : null;
 
   if (leeg) {
     return (

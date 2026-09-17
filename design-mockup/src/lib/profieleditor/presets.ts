@@ -17,18 +17,21 @@ function samenstelling(lamellen: Lamel[], catalogusdelen: Catalogusdeel[] = []):
 
 export interface Preset {
   id: string;
-  /** Korte naam op de knop; het paneel toont hem naast een silhouet. */
-  label: string;
-  /** Volledige omschrijving; staat als tooltip op de knop, niet in beeld. */
-  omschrijving: string;
+  /**
+   * i18n-sleutel van de korte naam op de knop; het paneel toont hem naast een
+   * silhouet. Dit bestand laadt geen i18n: het paneel vertaalt (issue #33).
+   */
+  labelSleutel: string;
+  /** i18n-sleutel van de volledige omschrijving (tooltip op de knop). */
+  omschrijvingSleutel: string;
   maak: () => DoorsnedeOntwerp;
 }
 
 export const PRESETS: Preset[] = [
   {
     id: "gelaste-i",
-    label: "Gelaste I",
-    omschrijving: "Flenzen 200×15, lijf 400×10 (h = 430)",
+    labelSleutel: "check:profileEditor.presets.weldedI.label",
+    omschrijvingSleutel: "check:profileEditor.presets.weldedI.description",
     maak: () =>
       samenstelling([
         lamel(200, 15, 0, 207.5),
@@ -38,8 +41,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "koker",
-    label: "Koker",
-    omschrijving: "Vier platen, 200×200, wanden 10 — gesloten cel (Bredt)",
+    labelSleutel: "check:profileEditor.presets.box.label",
+    omschrijvingSleutel: "check:profileEditor.presets.box.description",
     maak: () =>
       samenstelling([
         lamel(200, 10, 0, 95),
@@ -50,20 +53,20 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "t",
-    label: "T-profiel",
-    omschrijving: "Flens 200×20 op een lijf 180×10",
+    labelSleutel: "check:profileEditor.presets.tee.label",
+    omschrijvingSleutel: "check:profileEditor.presets.tee.description",
     maak: () => samenstelling([lamel(200, 20, 0, 190), lamel(180, 10, 0, 90, 90)]),
   },
   {
     id: "hoek",
-    label: "Hoek L",
-    omschrijving: "Hoekprofiel 100×100×10, scherpe hoek",
+    labelSleutel: "check:profileEditor.presets.angle.label",
+    omschrijvingSleutel: "check:profileEditor.presets.angle.description",
     maak: () => samenstelling([lamel(100, 10, 5, 50, 90), lamel(90, 10, 55, 5)]),
   },
   {
     id: "sfb",
-    label: "SFB-ligger",
-    omschrijving: "Geïntegreerde ligger: HEB 200 met onderplaat 400×15 — de vloer rust op de plaatranden",
+    labelSleutel: "check:profileEditor.presets.sfb.label",
+    omschrijvingSleutel: "check:profileEditor.presets.sfb.description",
     maak: () => {
       const p = basisprofielVan("HEB 200");
       if (!p) return samenstelling([]);
@@ -79,8 +82,8 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "dubbel-unp",
-    label: "2× UNP 200",
-    omschrijving: "Twee UNP 200 rug aan rug — catalogusdelen, gespiegeld om de z-as",
+    labelSleutel: "check:profileEditor.presets.doubleUnp.label",
+    omschrijvingSleutel: "check:profileEditor.presets.doubleUnp.description",
     maak: () => {
       const p = basisprofielVan("UNP 200");
       if (!p) return samenstelling([]);

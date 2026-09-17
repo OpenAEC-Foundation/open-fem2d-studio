@@ -14,6 +14,7 @@ import type { ConcreteColumnInput } from "../../lib/types/concrete/ConcreteColum
 // De mesher zelf blijft in de kern; hier alleen zijn typen en drie pure
 // meetkundehulpjes (geen WASM, geen DOM — de sidecarbundel mag ze zien).
 import type { PlaatMeshSoort, PlaatMeshType } from "../../core/fem/PlaatMesher";
+import { vt, type TekstWaarde, type VertaalbareTekst } from "../../lib/vertaalbareTekst";
 export type { PlaatMeshSoort, PlaatMeshType };
 import {
   PLAAT_OPENING_MIN_AFSTAND_MM, afstandTotLijnstuk, puntInPolygoon,
@@ -1067,7 +1068,22 @@ export type PlaatRandUitkomst =
       /** Bij `soort: "opening"`: het `PlaatOpening.id` van die opening. */
       openingId?: number;
     }
-  | { ok: false; reden: string };
+  | {
+      ok: false;
+      /** De Nederlandse reden — engine, MCP-droogloop en modelmeldingen. */
+      reden: string;
+      /** Dezelfde reden, vertaalbaar voor de modelcontrole op het canvas (issue #33). */
+      redenTekst: VertaalbareTekst;
+    };
+
+/** Een weigering van `bepaalPlaatRand`/`bepaalPlaatlastRand`, in beide vormen. */
+function randFout(
+  sleutel: string,
+  tekst: string,
+  waarden?: Record<string, TekstWaarde>,
+): { ok: false; reden: string; redenTekst: VertaalbareTekst } {
+  return { ok: false, reden: tekst, redenTekst: vt(`common:canvas.modelCheck.plateEdge.${sleutel}`, tekst, waarden) };
+}
 
 /**
  * Zet het randadres van een plaatlast om naar de canonieke rand (zie het
@@ -1091,45 +1107,33 @@ export function bepaalPlaatRand(
   // volstrekt andere plaats, die in geen enkel resultaat opvalt. Daarom een
   // weigering; `bepaalPlaatlastRand` is de aanroep die openingen wél kan.
   if (adres.openingId !== undefined) {
-    return {
-      ok: false,
-      reden:
-        "de last staat op de rand van een opening (`openingId`), maar hij wordt " +
-        "hier gelezen door een route die alleen de omtrek van de plaat kent. " +
-        "Meld dit: het adres wordt bewust geweigerd in plaats van stil op de " +
-        "omtrek gelegd.",
-    };
+    return randFout("openingOnPerimeterRoute",
+      "de last staat op de rand van een opening (`openingId`), maar hij wordt " +
+      "hier gelezen door een route die alleen de omtrek van de plaat kent. " +
+      "Meld dit: het adres wordt bewust geweigerd in plaats van stil op de " +
+      "omtrek gelegd.");
   }
   if (heeftNaam && heeftIndex) {
-    return {
-      ok: false,
-      reden:
-        "de last noemt zowel een benoemde rand (`edge`) als een rand-index " +
-        "(`edgeIndex`). Geef er één: met twee adressen is niet te zeggen welke " +
-        "rand bedoeld is en vanaf welke hoek de posities tellen.",
-    };
+    return randFout("nameAndIndex",
+      "de last noemt zowel een benoemde rand (`edge`) als een rand-index " +
+      "(`edgeIndex`). Geef er één: met twee adressen is niet te zeggen welke " +
+      "rand bedoeld is en vanaf welke hoek de posities tellen.");
   }
   if (!heeftNaam && !heeftIndex) {
-    return {
-      ok: false,
-      reden:
-        "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar " +
-        "hoek i+1) of, bij een asgelijnde rechthoek, `edge`.",
-    };
+    return randFout("noEdge",
+      "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar " +
+      "hoek i+1) of, bij een asgelijnde rechthoek, `edge`.");
   }
   if (n < 3) {
-    return { ok: false, reden: `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.` };
+    return randFout("plateTooFewCorners", `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.`, { n });
   }
 
   if (heeftIndex) {
     const i = adres.edgeIndex!;
     if (!Number.isInteger(i) || i < 0 || i >= n) {
-      return {
-        ok: false,
-        reden:
-          `rand-index ${i} bestaat niet: de plaat heeft ${n} randen ` +
-          `(edgeIndex 0 t/m ${n - 1}).`,
-      };
+      return randFout("indexMissing",
+        `rand-index ${i} bestaat niet: de plaat heeft ${n} randen ` +
+        `(edgeIndex 0 t/m ${n - 1}).`, { i, n, max: n - 1 });
     }
     const j = (i + 1) % n;
     const van = punten[i], naar = punten[j];
@@ -1150,34 +1154,29 @@ export function bepaalPlaatRand(
     else if (op(van.x, minX) && op(naar.x, minX)) naam = "left";
     else if (op(van.x, maxX) && op(naar.x, maxX)) naam = "right";
     if (!naam) {
-      return {
-        ok: false,
-        reden:
-          `rand ${i + 1} (edgeIndex ${i}, hoek ${i + 1} → hoek ${j + 1}) loopt niet ` +
-          "langs de omtrek: de hoeken van deze rechthoek staan niet in " +
-          "omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met " +
-          "een benoemde rand (`edge`) of teken de plaat opnieuw in omtrekvolgorde.",
-      };
+      return randFout("diagonal",
+        `rand ${i + 1} (edgeIndex ${i}, hoek ${i + 1} → hoek ${j + 1}) loopt niet ` +
+        "langs de omtrek: de hoeken van deze rechthoek staan niet in " +
+        "omtrekvolgorde, dus dit hoekpaar is een diagonaal. Kies de rand met " +
+        "een benoemde rand (`edge`) of teken de plaat opnieuw in omtrekvolgorde.",
+        { rand: i + 1, i, van: i + 1, naar: j + 1 });
     }
     return { ok: true, soort, hoekVan: i, hoekNaar: j, van, naar, lengte, naam, edgeIndex: i };
   }
 
   const naam = adres.edge as PlaatRandNaam;
   if (!PLAAT_RAND_NAMEN.includes(naam)) {
-    return {
-      ok: false,
-      reden: `"${adres.edge}" is geen benoemde rand. Toegestaan: ${PLAAT_RAND_NAMEN.join(", ")}.`,
-    };
+    return randFout("unknownName",
+      `"${adres.edge}" is geen benoemde rand. Toegestaan: ${PLAAT_RAND_NAMEN.join(", ")}.`,
+      { edge: String(adres.edge), lijst: PLAAT_RAND_NAMEN.join(", ") });
   }
   if (!rechthoek) {
-    return {
-      ok: false,
-      reden:
-        `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een ` +
-        `asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde ` +
-        "rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een " +
-        "rand-index (`edgeIndex`: rand i loopt van hoek i naar hoek i+1).",
-    };
+    return randFout("nameOnPolygon",
+      `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een ` +
+      `asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde ` +
+      "rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een " +
+      "rand-index (`edgeIndex`: rand i loopt van hoek i naar hoek i+1).",
+      { naam: vt(`common:canvas.edge.${naam}`, PLAAT_RAND_NAAM_NL[naam]), n });
   }
   const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -1222,84 +1221,67 @@ export function bepaalPlaatlastRand(
   // Een opening heeft geen onder-, boven-, linker- of rechterrand: het
   // rekenmesh nummert haar randen langs de hoekvolgorde en verder niets.
   if (adres.edge !== undefined) {
-    return {
-      ok: false,
-      reden:
-        "de last noemt zowel een opening (`openingId`) als een benoemde rand " +
-        "(`edge`). Een opening heeft geen benoemde randen; kies de rand met " +
-        "`edgeIndex` (rand j loopt van openingshoek j naar hoek j+1).",
-    };
+    return randFout("openingAndName",
+      "de last noemt zowel een opening (`openingId`) als een benoemde rand " +
+      "(`edge`). Een opening heeft geen benoemde randen; kies de rand met " +
+      "`edgeIndex` (rand j loopt van openingshoek j naar hoek j+1).");
   }
   if (!Number.isInteger(adres.openingId)) {
-    return {
-      ok: false,
-      reden: `\`openingId\` ${adres.openingId} is geen geheel getal; geef het id van een opening van deze plaat.`,
-    };
+    return randFout("openingIdNotInteger",
+      `\`openingId\` ${adres.openingId} is geen geheel getal; geef het id van een opening van deze plaat.`,
+      { opening: String(adres.openingId) });
   }
   const lijst = openingen ?? [];
   if (lijst.length === 0) {
-    return {
-      ok: false,
-      reden:
-        `de last staat op opening ${adres.openingId}, maar deze plaat heeft geen openingen.`,
-    };
+    return randFout("plateHasNoOpenings",
+      `de last staat op opening ${adres.openingId}, maar deze plaat heeft geen openingen.`,
+      { opening: adres.openingId });
   }
   const treffers = lijst
     .map((o, i) => ({ o, i }))
     .filter(({ o }) => o.id === adres.openingId);
   if (treffers.length === 0) {
-    return {
-      ok: false,
-      reden:
-        `opening ${adres.openingId} bestaat niet op deze plaat. Aanwezig: ` +
-        `${lijst.map((o) => o.id).join(", ")}.`,
-    };
+    return randFout("openingMissing",
+      `opening ${adres.openingId} bestaat niet op deze plaat. Aanwezig: ` +
+      `${lijst.map((o) => o.id).join(", ")}.`,
+      { opening: adres.openingId, lijst: lijst.map((o) => o.id).join(", ") });
   }
   if (treffers.length > 1) {
     // Dubbele id's kunnen alleen uit een handgeschreven of beschadigd model
     // komen; welke opening bedoeld is, valt dan niet te zeggen.
-    return {
-      ok: false,
-      reden:
-        `opening ${adres.openingId} komt ${treffers.length} keer voor op deze plaat; ` +
-        "het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.",
-    };
+    return randFout("openingDuplicate",
+      `opening ${adres.openingId} komt ${treffers.length} keer voor op deze plaat; ` +
+      "het adres is daarmee dubbelzinnig. Geef elke opening een eigen id.",
+      { opening: adres.openingId, aantal: treffers.length });
   }
   const { o: opening, i: openingIndex } = treffers[0];
   const n = opening.punten.length;
   if (n < 3) {
-    return {
-      ok: false,
-      reden: `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`,
-    };
+    return randFout("openingTooFewCorners",
+      `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`,
+      { opening: adres.openingId, n });
   }
   if (adres.edgeIndex === undefined) {
-    return {
-      ok: false,
-      reden:
-        `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef ` +
-        `\`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`,
-    };
+    return randFout("openingNoEdge",
+      `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef ` +
+      `\`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`,
+      { opening: adres.openingId, max: n - 1 });
   }
   const i = adres.edgeIndex;
   if (!Number.isInteger(i) || i < 0 || i >= n) {
-    return {
-      ok: false,
-      reden:
-        `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening ` +
-        `heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
-    };
+    return randFout("openingIndexMissing",
+      `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening ` +
+      `heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
+      { i, opening: adres.openingId, n, max: n - 1 });
   }
   const j = (i + 1) % n;
   const van = opening.punten[i], naar = opening.punten[j];
   const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
   if (!(lengte > tolMm)) {
-    return {
-      ok: false,
-      reden:
-        `rand ${i + 1} van opening ${adres.openingId} heeft lengte ${lengte.toFixed(3)} mm ` +
-        "en kan geen last dragen.",
-    };
+    return randFout("openingEdgeZero",
+      `rand ${i + 1} van opening ${adres.openingId} heeft lengte ${lengte.toFixed(3)} mm ` +
+      "en kan geen last dragen.",
+      { rand: i + 1, opening: adres.openingId, lengte: lengte.toFixed(3) });
   }
   return {
     ok: true, soort: "opening", hoekVan: i, hoekNaar: j, van, naar, lengte,

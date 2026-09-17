@@ -29,8 +29,8 @@ import { VORM_SLEUTEL, gaatAlsLamellen, maakEigenDoorsnede, stelVormVoor } from 
 import {
   aantalBouwstenen,
   hartVan,
-  naamVanBouwsteen,
-  naamVanGat,
+  naamVanBouwsteenTekst,
+  naamVanGatTekst,
   normaliseerHoek,
   roteer,
   roteerGaten,
@@ -41,6 +41,7 @@ import {
   type GatBewerking,
   type Punt2,
 } from "../../lib/profieleditor/transformeren";
+import { vertaal } from "../../lib/vertaalbareTekst";
 import { VANG_SLEUTEL, type VangSoort } from "../../lib/profieleditor/snappunten";
 import type { DoorsnedeOntwerp, EigenDoorsnede } from "../../lib/profieleditor/types";
 import { useMotorBerekening } from "../../lib/profieleditor/useMotorBerekening";
@@ -317,7 +318,8 @@ export default function ProfielEditor({
     () => (geselecteerd && hartVan(samenstelling, geselecteerd) ? geselecteerd : null),
     [geselecteerd, samenstelling],
   );
-  const doelNaam = doelId ? naamVanBouwsteen(samenstelling, doelId) : null;
+  const doelNaamTekst = doelId ? naamVanBouwsteenTekst(samenstelling, doelId) : null;
+  const doelNaam = doelNaamTekst ? vertaal(t, doelNaamTekst) : null;
   const aantal = aantalBouwstenen(samenstelling);
   /**
    * Waar het hele ontwerp omheen draait en spiegelt: het zwaartepunt uit de
@@ -452,13 +454,14 @@ export default function ProfielEditor({
   // bewerkingen doen wat kan en zeggen wat niet kon; die melding komt kort in
   // de gereedschapsbalk te staan.
   const gatDoelId = useMemo(
-    () => (geselecteerd && naamVanGat(gatOntwerp, geselecteerd) ? geselecteerd : null),
+    () => (geselecteerd && naamVanGatTekst(gatOntwerp, geselecteerd) ? geselecteerd : null),
     [geselecteerd, gatOntwerp],
   );
   const pasGatBewerkingToe = useCallback((b: GatBewerking) => {
     setGatOntwerp((o) => ({ ...o, gaten: b.gaten }));
-    setTransformMelding(b.melding);
-  }, []);
+    // De melding wordt hier vertaald; `b.melding` is de Nederlandse vorm.
+    setTransformMelding(b.meldingTeksten.length > 0 ? b.meldingTeksten.map((r) => vertaal(t, r)).join(" ") : null);
+  }, [t]);
   const verplaatsGatenNu = useCallback(
     (dy: number, dz: number) => pasGatBewerkingToe(verplaatsGaten(gatOntwerp, gatDoelId, dy, dz)),
     [gatOntwerp, gatDoelId, pasGatBewerkingToe],
@@ -548,7 +551,8 @@ export default function ProfielEditor({
   /** Wat de modus in het tekenvlak laat zien. */
   const tekenvlakModus: TekenvlakModus | null = useMemo(() => {
     if (!modus) return null;
-    const wat = modus.doelId ? (naamVanBouwsteen(samenstelling, modus.doelId) ?? t("profileEditor.main.buildingBlock")) : t("profileEditor.main.wholeDesign");
+    const watTekst = modus.doelId ? naamVanBouwsteenTekst(samenstelling, modus.doelId) : null;
+    const wat = modus.doelId ? (watTekst ? vertaal(t, watTekst) : t("profileEditor.main.buildingBlock")) : t("profileEditor.main.wholeDesign");
     const getypt = modus.getypt ? `  ⌨ ${modus.getypt}` : "";
     const gemeen = {
       snapOntwerp: modus.origineel,
@@ -595,7 +599,8 @@ export default function ProfielEditor({
   const balk = (() => {
     if (tab === "gat") {
       const n = gatOntwerp.gaten.length;
-      const naam = gatDoelId ? naamVanGat(gatOntwerp, gatDoelId) : null;
+      const naamTekst = gatDoelId ? naamVanGatTekst(gatOntwerp, gatDoelId) : null;
+      const naam = naamTekst ? vertaal(t, naamTekst) : null;
       const leegReden = n === 0 ? t("profileEditor.main.noHoleYet") : null;
       return {
         doelKort: n === 0 ? t("profileEditor.main.noHoles") : (naam ?? t("profileEditor.main.allHolesShort", { n })),

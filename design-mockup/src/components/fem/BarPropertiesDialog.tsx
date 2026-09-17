@@ -29,7 +29,7 @@ import { parseVrijMateriaal } from "../../lib/vrijMateriaal";
 import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
 // Één bron voor de doorsnedenaam en de begin-/eindmaten van een verlopende
 // staaf — dezelfde keuring als de solver en de rekenkern; zie lib/verloopKeuze.
-import { doorsnedeNaam, verloopMaten } from "../../lib/verloopKeuze";
+import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import "./BarPropertiesDialog.css";
 
 /**
@@ -452,7 +452,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     (ProfielKiezer) vervangt de losse invoervelden. */}
                 <div className="bar-props-row">
                   <span>{t("barDialog.profile")}</span>
-                  <code>{doorsnedeNaam({ material, profile, profileEnd })} — {material}</code>
+                  <code>{doorsnedeNaamVertaald({ material, profile, profileEnd }, t)} — {material}</code>
                 </div>
                 {/* Begin en eind apart, met de maten erbij — alleen bij een
                     staaf die werkelijk verloopt. */}
@@ -593,7 +593,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
               <div className="bar-props-section">
                 <div className="bar-props-section-title">{t("barDialog.materialAndSection")}</div>
                 <div className="bar-props-row"><span>{t("barDialog.material")}</span><code>{material}</code></div>
-                <div className="bar-props-row"><span>{t("barDialog.profile")}</span><code>{doorsnedeNaam({ material, profile, profileEnd })}</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.profile")}</span><code>{doorsnedeNaamVertaald({ material, profile, profileEnd }, t)}</code></div>
                 <div className="bar-props-row">
                   <span>{t("barDialog.standard")}</span>
                   <code>

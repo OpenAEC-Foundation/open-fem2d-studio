@@ -188,7 +188,53 @@
     "btnClear": "Clear generated wind loads",
     "btnGenerate": "Generate",
     "beamType": "Member type",
-    "beamTypeAuto": "Automatic — {{role}}"
+    "beamTypeAuto": "Automatic — {{role}}",
+    "schema": {
+      "sectionAria": "Cross-section of the frame, h = {{h}} m, d = {{d}} m",
+      "wallHeight": "wall {{h}} m",
+      "beamTitle": "Member {{id}} — {{rol}}",
+      "windPerpendicular": "Wind perpendicular to the frame (into the plane)",
+      "allDirections": "All wind directions (NEN-EN 1991-1-4 §7.3(3))",
+      "blockageAria": "Blockage under the roof: φ = {{phi}}",
+      "blockageEmpty": "φ = 0 — empty",
+      "planAria": "Plan, building length {{b}} m, span {{d}} m",
+      "innerFrameAt": "Internal frame at {{afstand}} m from the gable",
+      "planDims": "b = {{b}} m · spacing {{hoh}} m"
+    },
+    "regionOption": {
+      "I": "Zone I — coastal strip and Wadden area (v_b,0 = 29.5 m/s)",
+      "II": "Zone II — north-western inland (v_b,0 = 27.0 m/s)",
+      "III": "Zone III — south-eastern inland (v_b,0 = 24.5 m/s)"
+    },
+    "terrainOption": {
+      "0": "0 — sea, coastal area exposed to the open sea (Dutch NA reading aid: “coastal”)",
+      "I": "I — lakes, flat area without obstacles",
+      "II": "II — low vegetation, isolated obstacles (Dutch NA reading aid: “unbuilt”)",
+      "III": "III — villages, suburban area, forest (Dutch NA reading aid: “built-up”)",
+      "IV": "IV — urban area, average building height > 15 m"
+    },
+    "case": {
+      "dir": {
+        "links": "from the left",
+        "rechts": "from the right",
+        "haaks": "perpendicular to the frame"
+      },
+      "down": "downward",
+      "up": "upward",
+      "buildingTab": "{{richting}} (c_pi = {{cpi}})",
+      "cpnet": "c_p,net {{zin}}",
+      "cfDirection": "c_f {{zin}}, {{richting}}",
+      "cfBoth": "c_f {{zin}}, both roof slopes",
+      "cfLeft": "c_f {{zin}}, left roof slope only",
+      "cfRight": "c_f {{zin}}, right roof slope only",
+      "friction": "friction",
+      "columns": "columns",
+      "frictionColumns": "friction + columns",
+      "horizontal": "{{delen}}, {{richting}}",
+      "buildingName": "Wind {{deel}}",
+      "canopyName": "Wind canopy roof {{deel}}"
+    },
+    "regionSource": "NEN-EN 1991-1-4/NA table NB.1"
   },
   "app": {
     "view": {
@@ -445,7 +491,33 @@
       "merge": "Merge",
       "repaired": "Model repaired",
       "repairAllTitle": "Apply all repairable findings — one step in the history",
-      "repairAll": "Repair all ({{n}})"
+      "repairAll": "Repair all ({{n}})",
+      "plateEdge": {
+        "openingOnPerimeterRoute": "the load is on the edge of an opening (`openingId`), but it is read here by a route that only knows the perimeter of the plate. Please report this: the address is deliberately rejected rather than silently placed on the perimeter.",
+        "nameAndIndex": "the load specifies both a named edge (`edge`) and an edge index (`edgeIndex`). Give only one: with two addresses it cannot be said which edge is meant and from which corner the positions are measured.",
+        "noEdge": "the load specifies no edge. Give `edgeIndex` (edge i runs from corner i to corner i+1) or, for an axis-aligned rectangle, `edge`.",
+        "plateTooFewCorners": "the plate has {{n}} corners; an edge only exists from three corners.",
+        "indexMissing": "edge index {{i}} does not exist: the plate has {{n}} edges (edgeIndex 0 to {{max}}).",
+        "diagonal": "edge {{rand}} (edgeIndex {{i}}, corner {{van}} → corner {{naar}}) does not run along the perimeter: the corners of this rectangle are not in perimeter order, so this pair of corners is a diagonal. Choose the edge with a named edge (`edge`) or redraw the plate in perimeter order.",
+        "unknownName": "\"{{edge}}\" is not a named edge. Allowed: {{lijst}}.",
+        "nameOnPolygon": "a named edge (\"{{naam}}\") only exists on an axis-aligned rectangle; this plate has {{n}} corners that do not form an axis-aligned rectangle and is analysed as a polygon. Choose the edge again with an edge index (`edgeIndex`: edge i runs from corner i to corner i+1).",
+        "openingAndName": "the load specifies both an opening (`openingId`) and a named edge (`edge`). An opening has no named edges; choose the edge with `edgeIndex` (edge j runs from opening corner j to corner j+1).",
+        "openingIdNotInteger": "`openingId` {{opening}} is not an integer; give the id of an opening of this plate.",
+        "plateHasNoOpenings": "the load is on opening {{opening}}, but this plate has no openings.",
+        "openingMissing": "opening {{opening}} does not exist on this plate. Present: {{lijst}}.",
+        "openingDuplicate": "opening {{opening}} occurs {{aantal}} times on this plate; the address is therefore ambiguous. Give each opening its own id.",
+        "openingTooFewCorners": "opening {{opening}} has {{n}} corners; an edge only exists from three corners.",
+        "openingNoEdge": "the load specifies opening {{opening}} but none of its edges. Give `edgeIndex` (edge j runs from opening corner j to corner j+1; 0 to {{max}}).",
+        "openingIndexMissing": "edge index {{i}} does not exist on opening {{opening}}: that opening has {{n}} edges (edgeIndex 0 to {{max}}).",
+        "openingEdgeZero": "edge {{rand}} of opening {{opening}} has a length of {{lengte}} mm and cannot carry a load."
+      },
+      "plateLoad": {
+        "edgeLoad": "Edge load",
+        "pointLoad": "Point load",
+        "plateMissing": "{{soort}} {{last}} is on plate {{plaat}}, but that plate does not exist.",
+        "edgeInvalid": "{{soort}} {{last}} on plate {{plaat}}: {{reden}}",
+        "pointNoPosition": "Point load {{last}} on plate {{plaat}} has no position along the edge. Enter the distance from the start corner."
+      }
     },
     "grab": {
       "move": "Move: ΔX = {{dx}} mm, ΔZ = {{dz}} mm",
@@ -626,7 +698,62 @@
     "creepDays": "d",
     "creepCement": "cement",
     "creepAnnexBFailedTitle": "Creep coefficient according to annex B not determined",
-    "creepAnnexBFailedBody": "Member {{staaf}}: {{reden}} This member is analysed without a creep coefficient."
+    "creepAnnexBFailedBody": "Member {{staaf}}: {{reden}} This member is analysed without a creep coefficient.",
+    "swayDerivation": {
+      "footLowestSupport": "lowest support, z = {{z}} mm",
+      "footLowestNode": "no supports in the model, so the lowest node, z = {{z}} mm",
+      "heightDerivation": "h = {{h}} m — from the base ({{voet}}) to the top of the structure (z = {{top}} mm). EN 1993-1-1 figure 5.2 measures h from the support level; EN 1992-1-1 §5.2(6) calls it the height of the building for the bracing structure.",
+      "membersFallback": "m = 1 (fallback) — this model contains no member steeper than {{graden}}° to the horizontal, so there is no column line to count. m = 1 gives α_m = 1.00: the largest value the formula can take, and therefore the safe fallback.",
+      "columnLine": "({{n}}) x = {{x}} mm, member {{staven}}",
+      "membersDerived_one": "m = {{count}} — {{count}} column line: {{lijst}}. A member counts as vertical from {{graden}}° to the horizontal; members that share a node together form one column, so a column through several storeys counts once.",
+      "membersDerived_other": "m = {{count}} — {{count}} column lines: {{lijst}}. A member counts as vertical from {{graden}}° to the horizontal; members that share a node together form one column, so a column through several storeys counts once.",
+      "membersNote50Percent": "NOTE on m: EN 1993-1-1 5.3.2(3)a only counts columns carrying at least 50 % of the average vertical column force. Those forces follow from the analysis and the analysis needs φ, so that criterion is not applied here — all column lines count. A lightly loaded post should be removed manually: smaller m gives larger α_m and thus larger φ, the safe side.",
+      "wallsNotCounted": "Shear walls do not count in m: a wall usually braces rather than being braced, and counting it would raise m and lower φ. If a wall does carry vertical load here, raise m manually.",
+      "base": {
+        "en1993": "φ₀ is the basic value: φ₀ = 1/200.",
+        "en1992": "θ₀ is the basic value. The Dutch national annex strikes out the recommended EN value 1/200 and prescribes 1/300.",
+        "en1995": "φ = 0.005 rad for h ≤ 5 m; this code has no separate basic value."
+      },
+      "article": {
+        "en1992Base": "EN 1992-1-1 §5.2(5) + NA",
+        "given": "value entered"
+      },
+      "en1995": {
+        "h": "the height of the structure or the length of the member, in m.",
+        "phiAbove5": "h > 5 m, so φ = 0.005·√(5/h) = 0.005·√(5/{{h}}).",
+        "phiUpTo5": "h ≤ 5 m, so φ = 0.005 rad. This code has no α_m and no lower limit on the height reduction."
+      },
+      "h": {
+        "en1992": "l is the height of the building; §5.2(6), case 'effect on the bracing system'.",
+        "en1993": "h is the height of the structure, in metres (figure 5.2)."
+      },
+      "alphaH": {
+        "upper": "α_h = 2/√h = 2/√{{h}} and is limited by the upper limit 1.0.",
+        "lower": "α_h = 2/√h = 2/√{{h}} and is limited by the lower limit 2/3.",
+        "within": "α_h = 2/√h = 2/√{{h}}, within 2/3 ≤ α_h ≤ 1.0."
+      },
+      "m": {
+        "en1992": "m is the number of vertical members contributing to the horizontal force on the bracing system.",
+        "en1993": "m is the number of columns in a row (only those with N_Ed ≥ 50 % of the average)."
+      },
+      "alphaM": "α_m = √(0.5·(1 + 1/m)) = √(0.5·(1 + 1/{{m}})).",
+      "product": "{{symbool}}₀ · α_h · α_m = {{a}} · {{b}} · {{c}}.",
+      "fixedExplain": "Fixed denominator from the project settings; the reduction factors α_h and α_m of the code are NOT applied. This is the basic value and therefore the safe upper bound.",
+      "warn": {
+        "notDerivable": "h and/or m cannot be derived from the model (no vertical member, or no height). Check them and enter them yourself if necessary.",
+        "noHeight": "The structure has no height, so α_h takes its upper limit 1.0. A sway imperfection on a flat model is a choice of the user, not a code requirement.",
+        "noNormApplies": "None of the three codes applies to this model (all members have a free or unknown material). The fixed denominator remains in force: φ = 1/{{noemer}}.",
+        "normWithoutMaterial": "{{norm}} is selected, but this model contains no material covered by that code (it does contain: {{wel}}).",
+        "governing": "Most unfavourable of {{lijst}}. Selected: {{gekozen}}."
+      },
+      "heading": {
+        "fixed": "Sway imperfection: fixed denominator from the project settings.",
+        "norm": "Sway imperfection according to {{norm}}."
+      },
+      "heightManual": "h was entered manually: {{h}} m.",
+      "membersManual": "m was entered manually: {{m}}.",
+      "directionBoth": "Direction: both. Each load combination is analysed with the sway imperfection in +x and in −x, as two variants with the direction in the name; the envelope and the code check take, per member, the more unfavourable of the two (EN 1993-1-1 5.3.2(2): the imperfection in the most unfavourable direction; 5.3.2(8): in all relevant directions, one at a time)."
+    }
   },
   "tree": {
     "runToSeeResults": "Run \"Solve\" to see results.",
@@ -711,7 +838,13 @@
     "envelopeLeafTitle": "Show envelope (all combinations)",
     "envelopeLeaf": "Envelope",
     "governingTitle": "Governing for at least 1 element",
-    "noBars": "No members in the model"
+    "noBars": "No members in the model",
+    "timberFinalStiffness": {
+      "notCalculated": "Final stiffness of timber not analysed",
+      "calculatedUls": "Final stiffness of timber analysed (ULS)",
+      "calculatedSls": "Final stiffness of timber analysed (SLS)"
+    },
+    "combinationNotUsed": "not used"
   },
   "resultsOverlay": {
     "deflectionScale": "Deflection scale: {{schaal}}×"
@@ -731,5 +864,10 @@
     "pointMoment": "moments",
     "thermal": "temperature loads",
     "edgeLoad": "edge loads"
+  },
+  "profileName": {
+    "weldedI": "{{voorvoegsel}}Welded I {{maten}}",
+    "tapered": "{{begin}} → {{eind}} (tapered)",
+    "invalidTaper": "{{begin}} → {{eind}} (invalid taper)"
   }
 }

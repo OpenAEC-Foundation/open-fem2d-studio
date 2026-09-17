@@ -13,6 +13,7 @@ import { STEEL_SECTION_DIMS, type SteelSectionDims } from "../steelSectionDims.g
 import { STEEL_SECTIONS } from "../steelSections.generated";
 import { profileLookupKey } from "../steelCheckBuilder";
 import type { Basisprofiel, MotorSoort } from "./types";
+import { vt, type VertaalbareTekst } from "../vertaalbareTekst";
 
 /** Reeksindeling op naamprefix, zoals het profielkeuzescherm hem kent. */
 export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) => boolean }> = [
@@ -47,6 +48,28 @@ export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) =
   { id: "L", label: "L gelijkbenig", match: (n) => hoeklijnBenen(n)?.gelijk === true },
   { id: "LO", label: "L ongelijkbenig", match: (n) => hoeklijnBenen(n)?.gelijk === false },
 ];
+
+/**
+ * De labels van de reeksen die een Nederlands woord dragen, vertaalbaar voor
+ * de interface (issue #33). `label` blijft Nederlands; de profielkiezer en
+ * de profieleditor tonen `reeksLabel`. Een reeks die hier niet staat heet in
+ * elke taal hetzelfde (IPE, HEA, UNP …).
+ */
+const REEKS_TEKST: Record<string, VertaalbareTekst> = {
+  DIE: vt("check:profilePicker.seriesLabel.old", "DIE (oud)", { reeks: "DIE" }),
+  DIL: vt("check:profilePicker.seriesLabel.old", "DIL (oud)", { reeks: "DIL" }),
+  DIN: vt("check:profilePicker.seriesLabel.old", "DIN (oud)", { reeks: "DIN" }),
+  INP: vt("check:profilePicker.seriesLabel.old", "INP (oud)", { reeks: "INP" }),
+  KOKER: vt("check:profilePicker.seriesLabel.hollowHotFinished", "Koker warmvervaardigd (SHS/RHS, EN 10210)"),
+  CHS: vt("check:profilePicker.seriesLabel.circularHotFinished", "Buis warmvervaardigd (CHS, EN 10210)"),
+  L: vt("check:profilePicker.seriesLabel.angleEqual", "L gelijkbenig"),
+  LO: vt("check:profilePicker.seriesLabel.angleUnequal", "L ongelijkbenig"),
+};
+
+/** Het label van een reeks voor de interface: vertaalbaar, of de naam zelf. */
+export function reeksLabel(r: { id: string; label: string }): string | VertaalbareTekst {
+  return REEKS_TEKST[r.id] ?? r.label;
+}
 
 /**
  * De twee beenlengten uit een hoeklijnsleutel ("L200X100X14"), of null als de

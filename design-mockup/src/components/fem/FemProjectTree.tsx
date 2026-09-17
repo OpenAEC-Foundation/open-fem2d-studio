@@ -13,7 +13,8 @@ import type { LoadCombination, Envelope } from "./solver/combinations";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
 // De doorsnedenaam van een staaf — één bron, dezelfde keuring als de
 // solver en de rekenkern; zie lib/verloopKeuze.
-import { doorsnedeNaam } from "../../lib/verloopKeuze";
+import { doorsnedeNaamVertaald } from "../../lib/verloopKeuze";
+import { vertaal } from "../../lib/vertaalbareTekst";
 import type { CombinatieAfwijking, CombinatieVervanging, GevalMelding } from "../../lib/combinatieBeheer";
 import type { DisplayFlags } from "./FemResultsOverlay";
 import { PLAAT_COMPONENTEN } from "./FemCanvas";
@@ -507,7 +508,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     // op een eigen regel. Zou hij onder "IPE 300" mee geteld worden, dan zou
     // deze lijst — de doorsnedelegenda van het model — twee wezenlijk
     // verschillende doorsneden als één tonen.
-    const prof = doorsnedeNaam(b) || "HEA160";
+    const prof = doorsnedeNaamVertaald(b, t) || "HEA160";
     if (!profileUse.has(prof)) profileUse.set(prof, []);
     profileUse.get(prof)!.push(b.id);
   }
@@ -641,7 +642,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                   title={m.tekst}
                   onClick={m.vervangAdvies ? () => onOpenCombinaties?.() : undefined}
                 >
-                  <span className="fem-tree-leaf-label">⚠ {m.tekst.split(". ")[0]}.</span>
+                  <span className="fem-tree-leaf-label">⚠ {m.kop ? vertaal(t, m.kop) : m.tekst.split(". ")[0]}.</span>
                 </div>
               ))}
               {loadCases.map(lc => {
@@ -772,7 +773,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
                         fontWeight: 600,
                       }}
                     >
-                      {overgeslagen ? overgeslagen.label : c.type === "uls" ? "U" : "S"}
+                      {overgeslagen ? vertaal(t, overgeslagen.labelTekst) : c.type === "uls" ? "U" : "S"}
                     </span>
                   </div>
                 );

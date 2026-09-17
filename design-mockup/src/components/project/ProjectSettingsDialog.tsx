@@ -555,7 +555,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                     onChange={(e) => updateUitgangspunt("windgebied", e.target.value as Windgebied)}
                   >
                     {(Object.keys(WINDGEBIEDEN) as Windgebied[]).map((g) => (
-                      <option key={g} value={g}>{WINDGEBIEDEN[g].omschrijving}</option>
+                      <option key={g} value={g}>{t(`wind.regionOption.${g}`)}</option>
                     ))}
                   </select>
                 </div>
@@ -566,7 +566,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                     onChange={(e) => updateUitgangspunt("terreincategorie", e.target.value as TerreinCategorie)}
                   >
                     {(Object.keys(TERREIN_CATEGORIEEN) as TerreinCategorie[]).map((c) => (
-                      <option key={c} value={c}>{TERREIN_CATEGORIEEN[c].omschrijving}</option>
+                      <option key={c} value={c}>{t(`wind.terrainOption.${c}`)}</option>
                     ))}
                   </select>
                 </div>
@@ -574,7 +574,7 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
               <p className="proj-uitleg">
                 {t("projectSettingsDialog.windExplainRegion", { gebied: uitgangspunten.windgebied ?? "II" })}{" "}
                 v<sub>b,0</sub> = {WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].vb0
-                  .toFixed(1).replace(".", ",")} m/s ({WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].bron}).{" "}
+                  .toFixed(1).replace(".", ",")} m/s ({t("wind.regionSource")}).{" "}
                 {t("projectSettingsDialog.windExplainTerrain")} z<sub>0</sub> ={" "}
                 {TERREIN_CATEGORIEEN[uitgangspunten.terreincategorie ?? "II"].z0
                   .toFixed(3).replace(".", ",")} m {t("projectSettingsDialog.windExplainFromTable")}{" "}

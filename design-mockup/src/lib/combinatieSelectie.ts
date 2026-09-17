@@ -122,13 +122,16 @@ import { materiaalVanStaaf } from "./variantInvoer";
 import { bepaalPlaatStijfheid } from "./plaatMateriaal";
 import { blijvendeBgtCombinaties } from "./blijvendeZakking";
 import { isOverwegendVerticaal } from "./steelCheckBuilder";
+import { vt, type VertaalbareTekst } from "./vertaalbareTekst";
 
 /** Eén combinatie die niet is doorgerekend, met de reden erbij. */
 export interface OvergeslagenCombinatie {
   id: number;
   naam: string;
-  /** Korte aanduiding, voor achter een regel in een lijst. */
+  /** Korte aanduiding, voor achter een regel in een lijst (Nederlands). */
   label: string;
+  /** Dezelfde aanduiding, vertaalbaar voor de interface (issue #33). */
+  labelTekst: VertaalbareTekst;
   /** De volledige uitleg — tooltip, rapportnoot, sidecar-waarschuwing. */
   reden: string;
 }
@@ -148,6 +151,9 @@ export interface CombinatieSelectie {
  * uitleg staat in `reden` (tooltip, combinatie-editor en rapport).
  */
 export const LABEL_ZUIVER_STAAL = "niet gebruikt";
+/** `LABEL_ZUIVER_STAAL` voor de interface; de projectboom vertaalt de sleutel. */
+export const LABEL_ZUIVER_STAAL_TEKST: VertaalbareTekst =
+  vt("common:tree.combinationNotUsed", LABEL_ZUIVER_STAAL);
 
 /**
  * De uitleg bij een overgeslagen combinatie. Noemt de norm-uitdrukking, wat
@@ -343,6 +349,7 @@ export function selecteerCombinaties(
         id: combo.id,
         naam: combo.name,
         label: LABEL_ZUIVER_STAAL,
+        labelTekst: LABEL_ZUIVER_STAAL_TEKST,
         reden,
       });
       redenPerId.set(combo.id, reden);

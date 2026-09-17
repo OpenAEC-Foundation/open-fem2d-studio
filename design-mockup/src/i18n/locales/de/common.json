@@ -188,7 +188,53 @@
     "btnClear": "Erzeugte Windlasten löschen",
     "btnGenerate": "Erzeugen",
     "beamType": "Stabtyp",
-    "beamTypeAuto": "Automatisch — {{role}}"
+    "beamTypeAuto": "Automatisch — {{role}}",
+    "schema": {
+      "sectionAria": "Schnitt durch den Rahmen, h = {{h}} m, d = {{d}} m",
+      "wallHeight": "Wand {{h}} m",
+      "beamTitle": "Stab {{id}} — {{rol}}",
+      "windPerpendicular": "Wind quer zum Rahmen (in die Ebene hinein)",
+      "allDirections": "Alle Windrichtungen (NEN-EN 1991-1-4 §7.3(3))",
+      "blockageAria": "Versperrung unter dem Dach: φ = {{phi}}",
+      "blockageEmpty": "φ = 0 — leer",
+      "planAria": "Grundriss, Gebäudelänge {{b}} m, Spannweite {{d}} m",
+      "innerFrameAt": "Innenrahmen im Abstand von {{afstand}} m zur Giebelwand",
+      "planDims": "b = {{b}} m · Abstand {{hoh}} m"
+    },
+    "regionOption": {
+      "I": "Zone I — Küstenstreifen und Wattenmeergebiet (v_b,0 = 29,5 m/s)",
+      "II": "Zone II — nordwestliches Binnenland (v_b,0 = 27,0 m/s)",
+      "III": "Zone III — südöstliches Binnenland (v_b,0 = 24,5 m/s)"
+    },
+    "terrainOption": {
+      "0": "0 — See, der offenen See ausgesetztes Küstengebiet (Lesehilfe NA: „Küste“)",
+      "I": "I — Seen, flaches Gelände ohne Hindernisse",
+      "II": "II — niedrige Vegetation, einzelne Hindernisse (Lesehilfe NA: „unbebaut“)",
+      "III": "III — Dörfer, Vorstadtgebiet, Wald (Lesehilfe NA: „bebaut“)",
+      "IV": "IV — städtisches Gebiet, mittlere Gebäudehöhe > 15 m"
+    },
+    "case": {
+      "dir": {
+        "links": "von links",
+        "rechts": "von rechts",
+        "haaks": "quer zum Rahmen"
+      },
+      "down": "abwärts",
+      "up": "aufwärts",
+      "buildingTab": "{{richting}} (c_pi = {{cpi}})",
+      "cpnet": "c_p,net {{zin}}",
+      "cfDirection": "c_f {{zin}}, {{richting}}",
+      "cfBoth": "c_f {{zin}}, beide Dachflächen",
+      "cfLeft": "c_f {{zin}}, nur linke Dachfläche",
+      "cfRight": "c_f {{zin}}, nur rechte Dachfläche",
+      "friction": "Reibung",
+      "columns": "Stützen",
+      "frictionColumns": "Reibung + Stützen",
+      "horizontal": "{{delen}}, {{richting}}",
+      "buildingName": "Wind {{deel}}",
+      "canopyName": "Wind freistehendes Dach {{deel}}"
+    },
+    "regionSource": "NEN-EN 1991-1-4/NA Tabelle NB.1"
   },
   "app": {
     "view": {
@@ -445,7 +491,33 @@
       "merge": "Zusammenführen",
       "repaired": "Modell repariert",
       "repairAllTitle": "Alle behebbaren Befunde ausführen — ein Schritt im Verlauf",
-      "repairAll": "Alle beheben ({{n}})"
+      "repairAll": "Alle beheben ({{n}})",
+      "plateEdge": {
+        "openingOnPerimeterRoute": "die Last liegt am Rand einer Öffnung (`openingId`), wird hier aber über einen Weg gelesen, der nur den Umfang der Platte kennt. Bitte melden Sie das: Die Adresse wird bewusst abgelehnt, statt stillschweigend auf den Umfang gelegt zu werden.",
+        "nameAndIndex": "die Last nennt sowohl einen benannten Rand (`edge`) als auch einen Randindex (`edgeIndex`). Geben Sie nur einen an: Bei zwei Adressen ist nicht zu sagen, welcher Rand gemeint ist und von welcher Ecke aus die Positionen zählen.",
+        "noEdge": "die Last nennt keinen Rand. Geben Sie `edgeIndex` an (Rand i verläuft von Ecke i zu Ecke i+1) oder, bei einem achsparallelen Rechteck, `edge`.",
+        "plateTooFewCorners": "die Platte hat {{n}} Ecken; einen Rand gibt es erst ab drei Ecken.",
+        "indexMissing": "Randindex {{i}} existiert nicht: Die Platte hat {{n}} Ränder (edgeIndex 0 bis {{max}}).",
+        "diagonal": "Rand {{rand}} (edgeIndex {{i}}, Ecke {{van}} → Ecke {{naar}}) verläuft nicht entlang des Umfangs: Die Ecken dieses Rechtecks stehen nicht in Umfangsreihenfolge, dieses Eckenpaar ist also eine Diagonale. Wählen Sie den Rand über einen benannten Rand (`edge`) oder zeichnen Sie die Platte in Umfangsreihenfolge neu.",
+        "unknownName": "\"{{edge}}\" ist kein benannter Rand. Zulässig: {{lijst}}.",
+        "nameOnPolygon": "ein benannter Rand (\"{{naam}}\") existiert nur bei einem achsparallelen Rechteck; diese Platte hat {{n}} Ecken, die kein achsparalleles Rechteck bilden, und wird als Polygon berechnet. Wählen Sie den Rand erneut über einen Randindex (`edgeIndex`: Rand i verläuft von Ecke i zu Ecke i+1).",
+        "openingAndName": "die Last nennt sowohl eine Öffnung (`openingId`) als auch einen benannten Rand (`edge`). Eine Öffnung hat keine benannten Ränder; wählen Sie den Rand mit `edgeIndex` (Rand j verläuft von Öffnungsecke j zu Ecke j+1).",
+        "openingIdNotInteger": "`openingId` {{opening}} ist keine ganze Zahl; geben Sie die ID einer Öffnung dieser Platte an.",
+        "plateHasNoOpenings": "die Last liegt auf Öffnung {{opening}}, aber diese Platte hat keine Öffnungen.",
+        "openingMissing": "Öffnung {{opening}} existiert auf dieser Platte nicht. Vorhanden: {{lijst}}.",
+        "openingDuplicate": "Öffnung {{opening}} kommt {{aantal}}-mal auf dieser Platte vor; die Adresse ist damit mehrdeutig. Geben Sie jeder Öffnung eine eigene ID.",
+        "openingTooFewCorners": "Öffnung {{opening}} hat {{n}} Ecken; einen Rand gibt es erst ab drei Ecken.",
+        "openingNoEdge": "die Last nennt Öffnung {{opening}}, aber keinen ihrer Ränder. Geben Sie `edgeIndex` an (Rand j verläuft von Öffnungsecke j zu Ecke j+1; 0 bis {{max}}).",
+        "openingIndexMissing": "Randindex {{i}} existiert an Öffnung {{opening}} nicht: Diese Öffnung hat {{n}} Ränder (edgeIndex 0 bis {{max}}).",
+        "openingEdgeZero": "Rand {{rand}} der Öffnung {{opening}} hat die Länge {{lengte}} mm und kann keine Last tragen."
+      },
+      "plateLoad": {
+        "edgeLoad": "Randlast",
+        "pointLoad": "Punktlast",
+        "plateMissing": "{{soort}} {{last}} liegt auf Platte {{plaat}}, aber diese Platte existiert nicht.",
+        "edgeInvalid": "{{soort}} {{last}} auf Platte {{plaat}}: {{reden}}",
+        "pointNoPosition": "Punktlast {{last}} auf Platte {{plaat}} hat keine Position entlang des Randes. Geben Sie den Abstand von der Anfangsecke an."
+      }
     },
     "grab": {
       "move": "Verschieben: ΔX = {{dx}} mm, ΔZ = {{dz}} mm",
@@ -626,7 +698,62 @@
     "creepDays": "d",
     "creepCement": "Zement",
     "creepAnnexBFailedTitle": "Kriechzahl nach Anhang B nicht bestimmt",
-    "creepAnnexBFailedBody": "Stab {{staaf}}: {{reden}} Dieser Stab wird ohne Kriechzahl berechnet."
+    "creepAnnexBFailedBody": "Stab {{staaf}}: {{reden}} Dieser Stab wird ohne Kriechzahl berechnet.",
+    "swayDerivation": {
+      "footLowestSupport": "tiefstes Auflager, z = {{z}} mm",
+      "footLowestNode": "keine Auflager im Modell, daher der tiefste Knoten, z = {{z}} mm",
+      "heightDerivation": "h = {{h}} m — vom Fußpunkt ({{voet}}) bis zur Oberkante des Tragwerks (z = {{top}} mm). EN 1993-1-1 Bild 5.2 misst h ab der Auflagerebene; EN 1992-1-1 §5.2(6) nennt sie für das aussteifende Tragwerk die Höhe des Gebäudes.",
+      "membersFallback": "m = 1 (Rückfallwert) — dieses Modell enthält keinen Stab, der steiler als {{graden}}° zur Horizontalen steht, es gibt also keine Stützenachse zu zählen. m = 1 ergibt α_m = 1,00: den größten Wert, den die Formel annehmen kann, und damit den sicheren Rückfallwert.",
+      "columnLine": "({{n}}) x = {{x}} mm, Stab {{staven}}",
+      "membersDerived_one": "m = {{count}} — {{count}} Stützenachse: {{lijst}}. Ein Stab gilt ab {{graden}}° zur Horizontalen als vertikal; Stäbe, die einen Knoten teilen, bilden zusammen eine Stütze, sodass eine Stütze über mehrere Geschosse einmal zählt.",
+      "membersDerived_other": "m = {{count}} — {{count}} Stützenachsen: {{lijst}}. Ein Stab gilt ab {{graden}}° zur Horizontalen als vertikal; Stäbe, die einen Knoten teilen, bilden zusammen eine Stütze, sodass eine Stütze über mehrere Geschosse einmal zählt.",
+      "membersNote50Percent": "ACHTUNG bei m: EN 1993-1-1 5.3.2(3)a zählt nur Stützen, die mindestens 50 % der mittleren vertikalen Stützenkraft tragen. Diese Kräfte ergeben sich aus der Berechnung, und die Berechnung braucht φ, daher ist dieses Kriterium hier nicht angewendet — alle Stützenachsen zählen. Eine gering belastete Stütze gehört von Hand heraus: kleineres m ergibt größeres α_m und damit größeres φ, die sichere Seite.",
+      "wallsNotCounted": "Wandscheiben zählen bei m nicht mit: Eine Scheibe steift meist aus, statt ausgesteift zu werden, und Mitzählen würde m erhöhen und φ senken. Trägt eine Wand hier doch vertikal mit, erhöhen Sie m von Hand.",
+      "base": {
+        "en1993": "φ₀ ist der Grundwert: φ₀ = 1/200.",
+        "en1992": "θ₀ ist der Grundwert. Der niederländische Nationale Anhang streicht den empfohlenen EN-Wert 1/200 und schreibt 1/300 vor.",
+        "en1995": "φ = 0,005 rad für h ≤ 5 m; diese Norm kennt keinen gesonderten Grundwert."
+      },
+      "article": {
+        "en1992Base": "EN 1992-1-1 §5.2(5) + NA",
+        "given": "eingegebener Wert"
+      },
+      "en1995": {
+        "h": "die Höhe des Tragwerks oder die Länge des Bauteils, in m.",
+        "phiAbove5": "h > 5 m, also φ = 0,005·√(5/h) = 0,005·√(5/{{h}}).",
+        "phiUpTo5": "h ≤ 5 m, also φ = 0,005 rad. Diese Norm kennt kein α_m und keine Untergrenze für die Höhenabminderung."
+      },
+      "h": {
+        "en1992": "l ist die Höhe des Gebäudes; §5.2(6), Fall 'Auswirkung auf das aussteifende System'.",
+        "en1993": "h ist die Höhe des Tragwerks, in Metern (Bild 5.2)."
+      },
+      "alphaH": {
+        "upper": "α_h = 2/√h = 2/√{{h}} und wird durch die Obergrenze 1,0 begrenzt.",
+        "lower": "α_h = 2/√h = 2/√{{h}} und wird durch die Untergrenze 2/3 begrenzt.",
+        "within": "α_h = 2/√h = 2/√{{h}}, innerhalb 2/3 ≤ α_h ≤ 1,0."
+      },
+      "m": {
+        "en1992": "m ist die Anzahl der vertikalen Bauteile, die zur Horizontalkraft auf das aussteifende System beitragen.",
+        "en1993": "m ist die Anzahl der Stützen in einer Reihe (nur die mit N_Ed ≥ 50 % des Mittelwerts)."
+      },
+      "alphaM": "α_m = √(0,5·(1 + 1/m)) = √(0,5·(1 + 1/{{m}})).",
+      "product": "{{symbool}}₀ · α_h · α_m = {{a}} · {{b}} · {{c}}.",
+      "fixedExplain": "Fester Nenner aus den Projekteinstellungen; die Abminderungsfaktoren α_h und α_m der Norm sind NICHT angewendet. Das ist der Grundwert und damit die sichere Obergrenze.",
+      "warn": {
+        "notDerivable": "h und/oder m lassen sich nicht aus dem Modell ableiten (kein vertikaler Stab oder keine Höhe). Prüfen Sie sie und geben Sie sie bei Bedarf selbst ein.",
+        "noHeight": "Das Tragwerk hat keine Höhe, daher nimmt α_h seine Obergrenze 1,0 an. Eine Schiefstellung an einem ebenen Modell ist eine Entscheidung des Anwenders und keine Normvorgabe.",
+        "noNormApplies": "Keine der drei Normen ist auf dieses Modell anwendbar (alle Stäbe haben einen freien oder unbekannten Werkstoff). Der feste Nenner bleibt gültig: φ = 1/{{noemer}}.",
+        "normWithoutMaterial": "{{norm}} ist gewählt, aber dieses Modell enthält keinen Werkstoff, der unter diese Norm fällt (wohl aber: {{wel}}).",
+        "governing": "Ungünstigste von {{lijst}}. Gewählt: {{gekozen}}."
+      },
+      "heading": {
+        "fixed": "Schiefstellung: fester Nenner aus den Projekteinstellungen.",
+        "norm": "Schiefstellung nach {{norm}}."
+      },
+      "heightManual": "h wurde von Hand eingegeben: {{h}} m.",
+      "membersManual": "m wurde von Hand eingegeben: {{m}}.",
+      "directionBoth": "Richtung: beide. Jede Lastkombination wird mit der Schiefstellung in +x und in −x gerechnet, als zwei Varianten mit der Richtung im Namen; Umhüllende und Nachweis nehmen je Stab die ungünstigere der beiden (EN 1993-1-1 5.3.2(2): die Imperfektion in der ungünstigsten Richtung; 5.3.2(8): in allen maßgebenden Richtungen, jeweils einzeln)."
+    }
   },
   "tree": {
     "runToSeeResults": "Führen Sie \"Berechnen\" aus, um Ergebnisse zu sehen.",
@@ -711,7 +838,13 @@
     "envelopeLeafTitle": "Umhüllende anzeigen (alle Kombinationen)",
     "envelopeLeaf": "Umhüllende",
     "governingTitle": "Maßgebend für mindestens 1 Element",
-    "noBars": "Keine Stäbe im Modell"
+    "noBars": "Keine Stäbe im Modell",
+    "timberFinalStiffness": {
+      "notCalculated": "Endsteifigkeit des Holzes nicht berechnet",
+      "calculatedUls": "Endsteifigkeit des Holzes berechnet (GZT)",
+      "calculatedSls": "Endsteifigkeit des Holzes berechnet (GZG)"
+    },
+    "combinationNotUsed": "nicht verwendet"
   },
   "resultsOverlay": {
     "deflectionScale": "Verformungsmaßstab: {{schaal}}×"
@@ -731,5 +864,10 @@
     "pointMoment": "Momente",
     "thermal": "Temperaturlasten",
     "edgeLoad": "Randlasten"
+  },
+  "profileName": {
+    "weldedI": "{{voorvoegsel}}Geschweißtes I {{maten}}",
+    "tapered": "{{begin}} → {{eind}} (gevoutet)",
+    "invalidTaper": "{{begin}} → {{eind}} (ungültige Voutung)"
   }
 }

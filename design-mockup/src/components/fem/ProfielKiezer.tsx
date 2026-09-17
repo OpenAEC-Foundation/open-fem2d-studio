@@ -57,7 +57,9 @@ import {
   eigenVerloopProfielen,
   keurEindProfiel,
   kiezerOpentEigenStap,
+  profielNaamTekst,
 } from "../../lib/verloopKeuze";
+import { vertaal, vertaalWaarde } from "../../lib/vertaalbareTekst";
 import { formatConcreteSection, parseConcreteSection } from "../../lib/betonCheckBuilder";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
@@ -69,7 +71,7 @@ import KorfVelden from "../beton/KorfVelden";
 import { haalMilieuklassen } from "../beton/betonKern";
 import {
   STANDAARD_KORF,
-  controleerKorf,
+  controleerKorfMelding,
   dekkingIsRondomGelijk,
   korfRij,
   korfSamenvatting,
@@ -115,6 +117,7 @@ import { useCltOpbouwen } from "../../lib/profieleditor/useCltOpbouwen";
 import { nieuwId } from "../../lib/profieleditor/id";
 import {
   REEKSEN,
+  reeksLabel,
   profielLabel,
   profielenVanReeks,
   reeksVanProfiel,
@@ -718,13 +721,13 @@ export default function ProfielKiezer({
    */
   const eindProfielGroepen = useMemo(() => {
     return STAAL_REEKSEN.map((r) => ({
-      label: r.label,
+      label: vertaalWaarde(t, reeksLabel(r)),
       profielen: profielenVanReeks(r.id).filter((naam) => {
         const d = STEEL_SECTION_DIMS[naam];
         return d?.kind === "ISection" && !((d.flensHelling ?? 0) > 0);
       }),
     })).filter((g) => g.profielen.length > 0);
-  }, []);
+  }, [t]);
 
   /** Het beginprofiel en het materiaal zoals ze nu in de dialoog staan. */
   const beginProfielNu = soort === "staal" ? staalProfiel : `${houtB}x${houtH}`;
@@ -782,10 +785,12 @@ export default function ProfielKiezer({
    * krijgt de gebruiker de reden hier te zien in plaats van bij het toetsen.
    * `null` = in orde.
    */
-  const betonKorfFout = useMemo(
-    () => (betonDoorsnedeGeldig ? controleerKorf(betonKorfGeheel) : null),
+  const betonKorfMelding = useMemo(
+    () => (betonDoorsnedeGeldig ? controleerKorfMelding(betonKorfGeheel) : null),
     [betonDoorsnedeGeldig, betonKorfGeheel],
   );
+  // Vertaald voor het scherm (issue #33); null blijft null.
+  const betonKorfFout = betonKorfMelding ? vertaal(t, betonKorfMelding) : null;
   // Een korf die niet past wordt niet toegepast: de rekenkern zou hem toch
   // weigeren, en dan komt de melding pas bij het toetsen — ver van de plaats
   // waar je hem kunt verhelpen.
@@ -920,7 +925,7 @@ export default function ProfielKiezer({
                 className={`pk-rij${reeks === r.id ? " actief" : ""}`}
                 onClick={() => { setReeks(r.id); setStaalProfiel(""); }}
               >
-                {r.label}
+                {vertaalWaarde(t, reeksLabel(r))}
               </button>
             ))}
           </div>
@@ -935,7 +940,7 @@ export default function ProfielKiezer({
                   onClick={() => setStaalProfiel(eigenVerloop.begin!)}
                   title={t("profilePicker.kinds.eigen.label")}
                 >
-                  {eigenNaamVan(eigenVerloop.begin)}
+                  {vertaalWaarde(t, profielNaamTekst(eigenNaamVan(eigenVerloop.begin) ?? ""))}
                 </button>
               )}
               {reeksProfielen.map((naam) => (
@@ -1002,7 +1007,7 @@ export default function ProfielKiezer({
                           gelaste tussendoorsnede (issue #31). */}
                       {eigenVerloop.eind && (
                         <optgroup label={t("profilePicker.kinds.eigen.label")}>
-                          <option value={eigenVerloop.eind}>{eigenNaamVan(eigenVerloop.eind)}</option>
+                          <option value={eigenVerloop.eind}>{vertaalWaarde(t, profielNaamTekst(eigenNaamVan(eigenVerloop.eind) ?? ""))}</option>
                         </optgroup>
                       )}
                       {eindProfielGroepen.map((g) => (
@@ -1631,7 +1636,7 @@ export default function ProfielKiezer({
                       className={`pk-rij${reeks === r.id ? " actief" : ""}`}
                       onClick={() => { setReeks(r.id); setOverigProfiel(""); }}
                     >
-                      {r.label}
+                      {vertaalWaarde(t, reeksLabel(r))}
                     </button>
                   ))}
                 </div>

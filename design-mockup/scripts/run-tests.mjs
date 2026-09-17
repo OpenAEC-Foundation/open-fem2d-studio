@@ -576,6 +576,10 @@ const ALLEEN_BRON = new Map([
     "legt vast dat de labels uit .ts-bestanden (femTypes, dekkingLagen, lib/profieleditor) i18n-sleutels zijn die in nl/en/de/fr bestaan en in en/de/fr geen Nederlands zijn; dekkingLagen, de profieleditor-bibliotheek en de locales zitten niet in de barrel, en de test rendert via i18next, dat in de sidecarbundel niet bestaat",
   ],
   [
+    "i18n-meldteksten",
+    "legt vast dat meldingen en labels uit .ts-bestanden (verlopend profiel, windgenerator, modelcontrole bij plaatlasten, eindstijfheid hout, combinatieselectie, profieleditor, korf- en zonecontrole, scheefstand) in de interface via i18n lopen en dat hun Nederlandse vertaling letterlijk de Nederlandse tekst van het .ts-bestand is (issue #33). Hij rendert via i18next en leest locales en .tsx-bronnen van schijf; i18next, de locales, de profieleditor-bibliotheek, de betonkorf en de windlabels zitten niet in de barrel. De Nederlandse meldingen die de sidecar zelf teruggeeft, bewaken de bestaande bundeltests",
+  ],
+  [
     "i18n-vaste-tekst",
     "scant de .tsx-bronbestanden met de TypeScript-parser op vaste Nederlandse teksten in JSX; hij importeert geen enkele bronmodule en rekent niets, dus de bundelstand heeft er niets in te toetsen (en de runner weigert terecht een test zonder ./src-import)",
   ],
@@ -586,6 +590,10 @@ const ALLEEN_BRON = new Map([
   [
     "wind-schema",
     "rendert de doorsnede- en plattegrondtekening van het windvenster met react-dom/server en leest de staven, pijlen en maten terug uit de SVG; tekenwerk, en React bestaat in de sidecarbundel niet",
+  ],
+  [
+    "wind-voorbeeld",
+    "legt vast dat het voorbeeld in het windvenster bij de invoer op het scherm hoort (issue #29): `lib/wind/windVoorbeeld` is presentatielogica van het venster en staat niet in de barrel, en de test leest daarnaast de aansluiting in WindGeneratorDialog.tsx en stores/windStore.ts van schijf. De generator zelf staat al tegen de bundel in `wind-generator` en `wind-vrijstaand-dak`",
   ],
   [
     "inp-flenshelling",

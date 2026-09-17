@@ -41,6 +41,7 @@ import { puntInPolygoon } from "../core/fem/PlaatMesher";
 import { bouwMultiInput } from "./modelNaarSolverInput";
 import { dubbelzinnigMateriaal, dubbelzinnigMateriaalTekst } from "./materiaalDubbelzinnig";
 import { keurPlaatMateriaal } from "./plaatMateriaal";
+import { vt, type VertaalbareTekst } from "./vertaalbareTekst";
 
 /**
  * Tekentolerantie in mm. Het model rekent in mm en de gebruiker tekent met
@@ -93,6 +94,11 @@ export interface Bevinding {
   ernst: "fout" | "waarschuwing";
   /** Nederlandse melding, altijd mét knoopnummers. */
   tekst: string;
+  /**
+   * Dezelfde melding, vertaalbaar voor het canvas (issue #33). Ontbreekt =
+   * alleen Nederlands; het canvas toont dan `tekst`.
+   */
+  tekstVertaalbaar?: VertaalbareTekst;
   /** Betrokken knopen — het canvas licht ze op. */
   nodeIds: number[];
   /** Betrokken staaf, waar van toepassing. */
@@ -194,11 +200,17 @@ export function zoekPlaatlastFouten(model: ControleModel): Bevinding[] {
     if (l.plateId === undefined) continue;
     if (l.type !== "edgeLoad" && l.type !== "pointForce") continue;
     const soortTekst = l.type === "edgeLoad" ? "Randlast" : "Puntlast";
+    const soort = l.type === "edgeLoad"
+      ? vt("common:canvas.modelCheck.plateLoad.edgeLoad", "Randlast")
+      : vt("common:canvas.modelCheck.plateLoad.pointLoad", "Puntlast");
     const plaat = (model.plates ?? []).find((p) => p.id === l.plateId);
     if (!plaat) {
       uit.push({
         soort: "plaatlast", ernst: "fout", nodeIds: [],
         tekst: `${soortTekst} ${l.id} staat op plaat ${l.plateId}, maar die plaat bestaat niet.`,
+        tekstVertaalbaar: vt("common:canvas.modelCheck.plateLoad.plateMissing",
+          `${soortTekst} ${l.id} staat op plaat ${l.plateId}, maar die plaat bestaat niet.`,
+          { soort, last: l.id, plaat: l.plateId }),
       });
       continue;
     }
@@ -210,6 +222,9 @@ export function zoekPlaatlastFouten(model: ControleModel): Bevinding[] {
       uit.push({
         soort: "plaatlast", ernst: "fout", nodeIds: [...plaat.nodeIds],
         tekst: `${soortTekst} ${l.id} op plaat ${plaat.id}: ${rand.reden}`,
+        tekstVertaalbaar: vt("common:canvas.modelCheck.plateLoad.edgeInvalid",
+          `${soortTekst} ${l.id} op plaat ${plaat.id}: ${rand.reden}`,
+          { soort, last: l.id, plaat: plaat.id, reden: rand.redenTekst }),
       });
       continue;
     }
@@ -219,6 +234,10 @@ export function zoekPlaatlastFouten(model: ControleModel): Bevinding[] {
         tekst:
           `Puntlast ${l.id} op plaat ${plaat.id} heeft geen positie langs de rand. ` +
           "Geef de afstand vanaf de beginhoek op.",
+        tekstVertaalbaar: vt("common:canvas.modelCheck.plateLoad.pointNoPosition",
+          `Puntlast ${l.id} op plaat ${plaat.id} heeft geen positie langs de rand. ` +
+          "Geef de afstand vanaf de beginhoek op.",
+          { last: l.id, plaat: plaat.id }),
       });
     }
   }
