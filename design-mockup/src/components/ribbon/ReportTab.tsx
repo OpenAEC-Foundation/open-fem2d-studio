@@ -79,7 +79,7 @@ interface ReportTabProps {
 }
 
 export default function ReportTab({ scheefstandToelichting, analyseToelichting, windToelichting }: ReportTabProps) {
-  const { t } = useTranslation("ribbon");
+  const { t, i18n } = useTranslation("ribbon");
 
   const pageSize = useReportStore((s) => s.pageSize);
   const orientation = useReportStore((s) => s.orientation);
@@ -203,6 +203,8 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting, 
       }
 
       const invoer = bouwRapportInvoer({
+        // De datum komt op papier in dezelfde taal als op het scherm (issue #20).
+        taal: i18n.language,
         project: {
           name: project.name,
           projectNumber: project.projectNumber,

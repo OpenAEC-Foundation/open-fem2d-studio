@@ -86,6 +86,7 @@ import type { ReportInput } from "./types/steel/ReportInput";
 import type { SpanningBeamCheckResult } from "./types/spanning/SpanningBeamCheckResult";
 import type { TimberBeamCheckResult } from "./types/timber/TimberBeamCheckResult";
 import { bijlageUitBestand } from "./normAanduidingen";
+import { rapportTaal } from "./rapportDatum";
 import type {
   BetonStaafDoorsnedeInvoer,
   StijfheidCombinatie,
@@ -126,6 +127,13 @@ export type KorvenUitModel = ReadonlyMap<number, ReinforcementCage>;
 /** Alles wat de uitdraai nodig heeft, uit de drie bronnen bij elkaar. */
 export interface RapportPdfBronnen {
   project: RapportProject;
+  /**
+   * De taal van de app (`i18n.language`). De PDF zet de datum op titelblad en
+   * paginakop voluit in die taal, zodat papier en live rapport dezelfde notatie
+   * dragen (issue #20). Weglaten = het veld gaat niet mee en de PDF schrijft
+   * Nederlands (`#[serde(default)]`).
+   */
+  taal?: string;
   /** De toetsresultaten uit `checkStore`, ongefilterd. */
   checkResults: MemberCheckResult[];
   /** Het spoor uit `betonStijfheidStore`; laat weg als er niets staat. */
@@ -389,6 +397,10 @@ export function bouwRapportInvoer(bron: RapportPdfBronnen): ReportInput {
   // hoort er niet te komen.
   const bijlage = bijlageUitBestand(bron.project.nationaleBijlage);
   if (bijlage !== null) invoer.bijlage = bijlage;
+  // Dezelfde herleiding naar één van de vier talen als het live rapport
+  // (`lib/rapportDatum`), zodat een "en-GB" of een onbekende taal op papier
+  // niet anders uitvalt dan op het scherm.
+  if (bron.taal !== undefined) invoer.taal = rapportTaal(bron.taal);
   // De optionele velden alleen MEESTUREN als er iets in zit. Ze hebben aan de
   // Rust-kant `#[serde(default)]`, dus een leeg veld en een ontbrekend veld
   // betekenen hetzelfde; weglaten houdt de aanroep leesbaar in de logboeken.

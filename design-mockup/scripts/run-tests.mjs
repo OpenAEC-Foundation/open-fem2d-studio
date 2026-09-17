@@ -588,6 +588,10 @@ const ALLEEN_BRON = new Map([
     "legt het overzicht \"Niet uitgevoerd\" onder het toetsingsoverzicht van het live rapport vast: `lib/nietUitgevoerd` (rapportagelogica van de frontend), een bronteksttoets op `CheckTableSection` en de vertalingen. Geen van die bestanden staat in de barrel; de PDF-kant met een echte uitkomst van de betonkern staat in report/tests/niet_uitgevoerd_pdf.rs",
   ],
   [
+    "rapport-datum",
+    "issue #20: de datum voluit en in de taal van de app op titelblad en paginakop van het live rapport. Test `lib/rapportDatum` en `lib/rapportPdfInvoer` (rapportagelogica van de frontend) plus een bronteksttoets op `ReportShell` en `sections/ProjectSection`, en leest de gedeelde proeftabel van report/tests/datum_kop_pdf.rs. Geen van die modules staat in de barrel; de PDF-kant staat in die Rust-test",
+  ],
+  [
     "staafnummer-hergebruik",
     "bewaakt dat niets wat aan een staafnummer hangt meeverhuist naar een nieuwe staaf met hetzelfde nummer: de rapportkeuze `verborgenToetsStaven` (`stores/reportStore`), de focus van het toetsingspaneel (een bronteksttoets op het effect in App.tsx) en de toetsstore `stores/checkStore` (zustand) met een nagebootste, vertraagde rekenkern. Geen van die modules staat in de barrel, en React-effecten bestaan in de sidecar niet",
   ],

@@ -87,6 +87,7 @@ fn produces_valid_pdf_header() {
         engineer: "Test Engineer".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-05-15".into(),
+        taal: Default::default(),
         steel_check_results: vec![
             dummy_beam(1, "HEB160", 0.42),
             dummy_beam(2, "HEB300", 0.87),

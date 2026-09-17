@@ -393,6 +393,7 @@ fn invoer(
         engineer: "Test Engineer".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-09-14".into(),
+        taal: Default::default(),
         steel_check_results: Vec::new(),
         timber_check_results: Vec::new(),
         clt_check_results: Vec::new(),

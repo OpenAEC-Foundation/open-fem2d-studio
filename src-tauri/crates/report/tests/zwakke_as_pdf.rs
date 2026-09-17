@@ -93,6 +93,7 @@ fn de_pdf_noemt_de_kniklengte_uit_het_vlak_met_haar_herkomst() {
         engineer: "Test Engineer".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-09-15".into(),
+        taal: Default::default(),
         steel_check_results: vec![resultaat],
         timber_check_results: vec![],
         clt_check_results: vec![],

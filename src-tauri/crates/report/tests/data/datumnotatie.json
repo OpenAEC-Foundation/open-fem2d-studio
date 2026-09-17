@@ -1,0 +1,310 @@
+{
+  "toelichting": "Issue #20: de rapportdatum voluit per taal. Gelezen door report/tests/datum_kop_pdf.rs (Rust, titelblad en paginakop van de PDF) en design-mockup/test-rapport-datum.mjs (live rapport). De notaties zijn die van Intl.DateTimeFormat met day numeric, month long, year numeric; een rij met voluit gelijk aan ruw is een invoer die woordelijk moet blijven.",
+  "rijen": [
+    {
+      "taal": "nl",
+      "ruw": "2026-01-01",
+      "voluit": "1 januari 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2024-02-29",
+      "voluit": "29 februari 2024"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-03-16",
+      "voluit": "16 maart 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-04-16",
+      "voluit": "16 april 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-05-16",
+      "voluit": "16 mei 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-06-16",
+      "voluit": "16 juni 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-07-16",
+      "voluit": "16 juli 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-08-16",
+      "voluit": "16 augustus 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-09-16",
+      "voluit": "16 september 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-10-16",
+      "voluit": "16 oktober 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-11-16",
+      "voluit": "16 november 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-12-16",
+      "voluit": "16 december 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-01-01",
+      "voluit": "January 1, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2024-02-29",
+      "voluit": "February 29, 2024"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-03-16",
+      "voluit": "March 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-04-16",
+      "voluit": "April 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-05-16",
+      "voluit": "May 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-06-16",
+      "voluit": "June 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-07-16",
+      "voluit": "July 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-08-16",
+      "voluit": "August 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-09-16",
+      "voluit": "September 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-10-16",
+      "voluit": "October 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-11-16",
+      "voluit": "November 16, 2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-12-16",
+      "voluit": "December 16, 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-01-01",
+      "voluit": "1. Januar 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2024-02-29",
+      "voluit": "29. Februar 2024"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-03-16",
+      "voluit": "16. März 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-04-16",
+      "voluit": "16. April 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-05-16",
+      "voluit": "16. Mai 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-06-16",
+      "voluit": "16. Juni 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-07-16",
+      "voluit": "16. Juli 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-08-16",
+      "voluit": "16. August 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-09-16",
+      "voluit": "16. September 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-10-16",
+      "voluit": "16. Oktober 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-11-16",
+      "voluit": "16. November 2026"
+    },
+    {
+      "taal": "de",
+      "ruw": "2026-12-16",
+      "voluit": "16. Dezember 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-01-01",
+      "voluit": "1 janvier 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2024-02-29",
+      "voluit": "29 février 2024"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-03-16",
+      "voluit": "16 mars 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-04-16",
+      "voluit": "16 avril 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-05-16",
+      "voluit": "16 mai 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-06-16",
+      "voluit": "16 juin 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-07-16",
+      "voluit": "16 juillet 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-08-16",
+      "voluit": "16 août 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-09-16",
+      "voluit": "16 septembre 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-10-16",
+      "voluit": "16 octobre 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-11-16",
+      "voluit": "16 novembre 2026"
+    },
+    {
+      "taal": "fr",
+      "ruw": "2026-12-16",
+      "voluit": "16 décembre 2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "",
+      "voluit": ""
+    },
+    {
+      "taal": "nl",
+      "ruw": "week 38",
+      "voluit": "week 38"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-02-29",
+      "voluit": "2026-02-29"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-09-31",
+      "voluit": "2026-09-31"
+    },
+    {
+      "taal": "nl",
+      "ruw": "16-09-2026",
+      "voluit": "16-09-2026"
+    },
+    {
+      "taal": "nl",
+      "ruw": "2026-09-16T10:00",
+      "voluit": "2026-09-16T10:00"
+    },
+    {
+      "taal": "en",
+      "ruw": "",
+      "voluit": ""
+    },
+    {
+      "taal": "en",
+      "ruw": "week 38",
+      "voluit": "week 38"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-02-29",
+      "voluit": "2026-02-29"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-09-31",
+      "voluit": "2026-09-31"
+    },
+    {
+      "taal": "en",
+      "ruw": "16-09-2026",
+      "voluit": "16-09-2026"
+    },
+    {
+      "taal": "en",
+      "ruw": "2026-09-16T10:00",
+      "voluit": "2026-09-16T10:00"
+    },
+    {
+      "taal": "nl",
+      "ruw": "0026-09-16",
+      "voluit": "0026-09-16"
+    }
+  ]
+}

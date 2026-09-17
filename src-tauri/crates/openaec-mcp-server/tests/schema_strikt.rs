@@ -930,3 +930,18 @@ async fn rapportschema_noemt_de_windomschrijving() {
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
+
+/// Het rapportschema noemt de taal van de datum (issue #20), met precies de
+/// vier codes die `report::RapportTaal` bij het lezen aanneemt.
+#[tokio::test]
+async fn rapportschema_noemt_de_taal_van_de_datum() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+    let rapport = tooldefinitie(&mut stdin, &mut reader, 42, "generate_steel_report_pdf").await;
+    let veld = &rapport["inputSchema"]["properties"]["taal"];
+    assert_eq!(veld["type"], "string", "taal ontbreekt in het schema van generate_steel_report_pdf");
+    let codes: Vec<&str> = report::RapportTaal::ALLE.iter().map(|t| t.code()).collect();
+    assert_eq!(veld["enum"], serde_json::json!(codes));
+    assert_eq!(veld["default"], report::RapportTaal::default().code());
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}

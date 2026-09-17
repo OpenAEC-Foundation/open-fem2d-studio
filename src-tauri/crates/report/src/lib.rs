@@ -78,6 +78,9 @@ pub mod betonhoofdstuk;
 pub mod betonkolom;
 pub mod betonspoor;
 pub mod betonzones;
+/// De rapportdatum voluit en taalafhankelijk, voor titelblad en paginakop
+/// (issue #20).
+pub mod datum;
 pub mod figuur;
 pub mod houtfiguren;
 pub mod houthoofdstuk;
@@ -99,6 +102,8 @@ use openaec_layout::{
 };
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+pub use datum::{datum_voluit, RapportTaal};
 
 use concrete_check::dekkingslijn::DekkingslijnAntwoord;
 use concrete_check::result::NietUitgevoerdeToets;
@@ -152,7 +157,18 @@ pub struct ReportInput {
     pub project_number: String,
     pub engineer: String,
     pub company: String,
+    /// De projectdatum zoals ingevuld, normaal `JJJJ-MM-DD`. Het rapport zet
+    /// hem op titelblad én paginakop voluit in [`Self::taal`] — zie
+    /// [`datum::datum_voluit`].
     pub date: String,
+    /// De taal waarin het rapport de datum noemt (issue #20): de taal van de
+    /// app, zodat het papier dezelfde notatie draagt als het live rapport.
+    ///
+    /// `#[serde(default)]` = Nederlands, de taal van de overige PDF-tekst; een
+    /// aanroep zonder dit veld blijft geldig. In TypeScript daarom optioneel.
+    #[serde(default)]
+    #[ts(as = "Option<RapportTaal>", optional)]
+    pub taal: RapportTaal,
     pub steel_check_results: Vec<BeamCheckResult>,
     /// Houttoetsingen (EN 1995-1-1). `#[serde(default)]` zodat bestaande
     /// aanroepen zonder dit veld geldig blijven; in TypeScript daarom
@@ -911,6 +927,7 @@ pub fn generate_report_pdf(input: ReportInput) -> Vec<u8> {
         OpenAecHeaderFooter {
             project: input.project_name.clone(),
             norms: norms.clone(),
+            datum: datum_voluit(&input.date, input.taal),
         },
     ));
     doc.add_page_template(template);
@@ -1335,12 +1352,14 @@ fn build_cover_page(input: &ReportInput, norm_regels: &[String]) -> RawPage {
     let value_x: Pt = Pt(left.0 + Mm(35.0).0 * 2.834_645_7);
     let mut y_mm = project_y_mm + OMSLAG_NA_PROJECT_MM;
 
+    // Dezelfde notatie als in de kop van elke pagina (issue #20).
+    let datum = datum_voluit(&input.date, input.taal);
     let mut rows: Vec<(&str, &str)> = vec![
         ("Project", input.project_name.as_str()),
         ("Number", input.project_number.as_str()),
         ("Engineer", input.engineer.as_str()),
         ("Company", input.company.as_str()),
-        ("Date", input.date.as_str()),
+        ("Date", datum.as_str()),
     ];
     for (i, designation) in full_norm_designations(input).iter().enumerate() {
         rows.push((if i == 0 { "Standard" } else { "" }, designation));
@@ -1379,6 +1398,8 @@ fn build_cover_page(input: &ReportInput, norm_regels: &[String]) -> RawPage {
 struct OpenAecHeaderFooter {
     project: String,
     norms: String,
+    /// De datum al voluit (zie [`datum_voluit`]); leeg = geen datum in de kop.
+    datum: String,
 }
 
 impl PageCallback for OpenAecHeaderFooter {
@@ -1431,11 +1452,16 @@ impl PageCallback for OpenAecHeaderFooter {
         let right: Pt = Pt(page_size.width.0 - Mm(20.0).0 * 2.834_645_7);
         dl.set_font("LiberationSans-Regular", Pt(8.5));
         dl.set_fill_color(C_MUTED);
-        dl.draw_text_right(
-            right,
-            baseline,
-            &format!("page {} of {}", page_num, total_pages),
-        );
+        // De datum staat vóór het paginanummer, in dezelfde notatie als op het
+        // titelblad (issue #20). Zonder datum alleen het paginanummer: een
+        // scheidingsteken met niets ervoor leest als een weggevallen gegeven.
+        let pagina = format!("page {} of {}", page_num, total_pages);
+        let rechts = if self.datum.is_empty() {
+            pagina
+        } else {
+            format!("{} · {}", self.datum, pagina)
+        };
+        dl.draw_text_right(right, baseline, &rechts);
 
         // Footer rule + text
         let footer_y: Pt = Pt(page_size.height.0 - Mm(13.0).0 * 2.834_645_7);

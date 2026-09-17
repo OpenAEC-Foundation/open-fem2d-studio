@@ -136,6 +136,7 @@ fn invoer(beton: Vec<ConcreteBeamCheckResult>) -> ReportInput {
         engineer: "Test Engineer".into(),
         company: "OpenAEC Foundation".into(),
         date: "2026-09-17".into(),
+        taal: Default::default(),
         steel_check_results: vec![staalstaaf(2)],
         timber_check_results: vec![],
         clt_check_results: vec![],
