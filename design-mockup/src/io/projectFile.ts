@@ -90,6 +90,11 @@ export const PROJECT_FILE_EXT = "ifcfem2d";
  *      `Plate.klimaatklasse` (1/2/3) van een houten plaat voor de plaattoets.
  *      Ontbreekt hij, dan toetst de app met klimaatklasse 1 en zegt dat;
  *      stijfheid en spanningen veranderen niet.
+ *      Issue #25 (september 2026, optioneel — geen versie-bump):
+ *      `Plate.wapening` van een betonplaat: de aanwezige wapening per
+ *      richting en zijde (Ø + h.o.h. of mm²/m, dekking), staalsoort en
+ *      milieuklasse. Ontbreekt zij, dan toetst de app zoals voorheen en meldt
+ *      dat de aanwezige wapening niet is ingevoerd.
  *      Eveneens optioneel binnen v2: `analysetype` (drie standen) en
  *      `betonSegmentLengteMm`. `nonlinearEnabled` BLIJFT geschreven worden en
  *      blijft leidend zolang `analysetype` ontbreekt — zie

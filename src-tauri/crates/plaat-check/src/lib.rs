@@ -24,7 +24,8 @@
 //! * **Kruislaaghout** — geweigerd: geen normgrondslag op schijf.
 //! * **Beton** — de benodigde wapening in het vlak volgens NEN-EN 1992-1-1
 //!   bijlage F en de betondrukdiagonaal (6.55)/(6.56), zie [`beton`]. De
-//!   aanwezige wapening wordt niet getoetst (de app kent haar nog niet).
+//!   aanwezige wapening wordt bij opgave vergeleken met die eis, met aanvullende
+//!   wanddetaillering en begrensde scheurcontroles (§9.6 en §7.3).
 //! * Elk ander materiaal wordt GEWEIGERD met reden: er komt geen UC uit die
 //!   als "voldoet" kan lezen.
 //!
@@ -42,8 +43,12 @@ pub mod result;
 pub mod staal;
 pub mod staal_plooi;
 mod verzamel;
+mod wand;
 
-pub use input::{PlaatCombinatie, PlaatElementSpanning, PlaatMateriaalSoort, PlateCheckInput};
+pub use input::{
+    PlaatCombinatie, PlaatElementSpanning, PlaatMateriaalSoort, PlaatWapeningInvoer,
+    PlaatWapeningLaag, PlaatWapeningRichting, PlateCheckInput,
+};
 pub use result::{
     PlaatCombinatieUitkomst, PlaatElementUitkomst, PlaatNietGetoetst, PlaatWapening,
     PlaatWapeningElement, PlateCheckResult,
@@ -108,11 +113,30 @@ pub fn check_plate(input: &PlateCheckInput) -> PlateCheckResult {
             }
         }
     }
+    if input.soort != PlaatMateriaalSoort::Beton
+        && (input.wapening_aanwezig.is_some() || !input.frequente_combinaties.is_empty())
+    {
+        return geweigerd(
+            input,
+            "aanwezige wapening en frequente BGT-combinaties horen alleen bij een betonplaat; bij \
+             dit materiaal worden zij geweigerd in plaats van stil genegeerd, en er is niet getoetst"
+                .to_string(),
+        );
+    }
     match input.soort {
         PlaatMateriaalSoort::Staal => staal::toets(input),
         PlaatMateriaalSoort::Hout => hout::toets(input),
         PlaatMateriaalSoort::Kruislaaghout => geweigerd(input, REDEN_KRUISLAAGHOUT.to_string()),
-        PlaatMateriaalSoort::Beton => beton::toets(input),
+        PlaatMateriaalSoort::Beton => {
+            if let Err(reden) = wand::valideer(input) {
+                return geweigerd(input, reden);
+            }
+            let mut resultaat = beton::toets(input);
+            if resultaat.geweigerd.is_none() && input.wapening_aanwezig.is_some() {
+                wand::vul_aan(input, &mut resultaat);
+            }
+            resultaat
+        }
         PlaatMateriaalSoort::Vrij => geweigerd(
             input,
             format!(

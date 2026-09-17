@@ -50,6 +50,8 @@ fn plaat(
             .into_iter()
             .map(|(id, _, elements)| PlaatCombinatie { combination_id: id, elements })
             .collect(),
+        wapening_aanwezig: None,
+        frequente_combinaties: vec![],
     }
 }
 

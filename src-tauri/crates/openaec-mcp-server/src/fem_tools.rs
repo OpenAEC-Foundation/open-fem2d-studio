@@ -1102,6 +1102,7 @@ fn schema_plates() -> Value {
                     "description": "Herkomst van `cltG12`, bijvoorbeeld \"ETA-00/0000, tabel 3\"; komt letterlijk in het rapport. VERPLICHT zodra `cltG12` is opgegeven - zonder bron wordt de plaat geweigerd." },
                 "cltG12Bovengrens": { "type": "boolean",
                     "description": "Alleen bij KRUISLAAGHOUT: `true` = bewust rekenen met de uitgesmeerde G_mean (Sum t*G_mean/Sum t) ZONDER reductie - een bovengrens, de schijf is in afschuiving te stijf; het rapport draagt een waarschuwing. Dit is de G12 van voor deze keuze, dus een model met `true` rekent bit-gelijk aan toen. Niet samen met `cltG12`." },
+                "wapening": crate::plate_tools::schema_wapening_aanwezig(),
                 "klimaatklasse": { "type": "integer", "enum": [1, 2, 3],
                     "description": "Alleen bij HOUT (massief of gelijmd gelamineerd): klimaatklasse volgens NEN-EN 1995-1-1 2.3.1.3 voor de plaattoets (k_mod, tabel 3.1). Ontbreekt = klimaatklasse 1, met een notitie in het toetsresultaat. Rekent niet mee in de stijfheid. Bij elk ander materiaal wordt het veld geweigerd." },
                 "plooi": crate::plate_tools::schema_plooi(true),

@@ -68,6 +68,11 @@ pub struct Ndp1992 {
     /// 1 − f_ck/250 zijn genomen." Gebruikt door de plaattoets voor beton
     /// (bijlage F).
     pub nu_accent_noemer: f64,
+    /// 9.6.2(1), 9.6.3(1): minimum wandwapening als fractie van A_c.
+    pub wand_rho_v_min: f64,
+    pub wand_rho_h_min: f64,
+    /// 9.6.2(1): maximum verticale wandwapening als fractie van A_c.
+    pub wand_rho_v_max: f64,
 }
 
 impl Ndp1992 {
@@ -105,6 +110,9 @@ pub const NDP_1992_NL: Ndp1992 = Ndp1992 {
     lambda_lim_is_eis: true,
     alpha_6_druk: 1.0,
     nu_accent_noemer: 250.0,
+    wand_rho_v_min: 0.0,
+    wand_rho_h_min: 0.0,
+    wand_rho_v_max: 0.04,
 };
 
 #[cfg(test)]
@@ -137,5 +145,6 @@ mod tests {
         assert!(n.lambda_lim_is_eis);
         assert_eq!(n.alpha_6_druk, 1.0);
         assert_eq!(n.nu_accent_noemer, 250.0);
+        assert_eq!((n.wand_rho_v_min, n.wand_rho_h_min, n.wand_rho_v_max), (0.0, 0.0, 0.04));
     }
 }

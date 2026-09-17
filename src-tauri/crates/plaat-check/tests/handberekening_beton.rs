@@ -30,6 +30,8 @@ fn plaat(klasse: &str, elementen: Vec<PlaatElementSpanning>) -> PlateCheckInput 
         load_duration_per_combination: vec![],
         notities: vec![],
         combinations: vec![PlaatCombinatie { combination_id: 3, elements: elementen }],
+        wapening_aanwezig: None,
+        frequente_combinaties: vec![],
     }
 }
 

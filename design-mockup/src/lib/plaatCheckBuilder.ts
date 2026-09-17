@@ -23,7 +23,7 @@
  * hoort niet door de brug te reizen om met een zin terug te komen.
  */
 import { withPlateDefaults, type Plate } from "../components/fem/femTypes";
-import type { LoadCombination } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, type LoadCombination } from "../components/fem/solver/combinations";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { PlateCheckInput } from "./types/plaat/PlateCheckInput";
 import type { PlaatMateriaalSoort as KernSoort } from "./types/plaat/PlaatMateriaalSoort";
@@ -126,17 +126,33 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
     const notities: string[] = [];
     let expectedElementIds: number[] | undefined;
     let dekkingFout: string | undefined;
+    /** De elementspanningen van één combinatie, of null zonder plaatspanningen. */
+    const spanningen = (c: LoadCombination): PlaatCombinatie | null => {
+      const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+      if (!pr || pr.elements.length === 0) return null;
+      return {
+        combination_id: c.id,
+        elements: pr.elements.map((el) => ({
+          element_id: el.elementId,
+          sigma_x_mpa: el.sigmaX,
+          sigma_y_mpa: el.sigmaY,
+          tau_xy_mpa: el.tauXY,
+        })),
+      };
+    };
     if (SOORT_MET_SPANNINGEN.has(soort)) {
       const zonder: string[] = [];
       for (const c of ugt) {
-        const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
-        if (!pr || pr.elements.length === 0) {
-          if (plaat.plooi) combinaties.push({ combination_id: c.id, elements: [] });
+        const comb = spanningen(c);
+        if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
+          // Bij aanwezige wandwapening moet een ontbrekende UGT-combinatie
+          // zichtbaar blijven voor de kern, ook als andere combinaties bestaan.
+          if (plaat.plooi || (soort === "Beton" && plaat.wapening)) combinaties.push({ combination_id: c.id, elements: [] });
           continue;
         }
         if (plaat.plooi) {
-          const ids = pr.expectedElementIds;
+          const ids = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id)?.expectedElementIds;
           if (!ids?.length || new Set(ids).size !== ids.length) {
             dekkingFout = "onafhankelijke volledige mesh-elementset ontbreekt; bereken opnieuw met de actuele solver";
           } else if (expectedElementIds && (expectedElementIds.length !== ids.length || expectedElementIds.some((id, i) => id !== ids[i]))) {
@@ -145,15 +161,7 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
             expectedElementIds = [...ids];
           }
         }
-        combinaties.push({
-          combination_id: c.id,
-          elements: pr.elements.map((el) => ({
-            element_id: el.elementId,
-            sigma_x_mpa: el.sigmaX,
-            sigma_y_mpa: el.sigmaY,
-            tau_xy_mpa: el.tauXY,
-          })),
-        });
+        combinaties.push(comb);
       }
       if (zonder.length > 0) {
         notities.push(
@@ -192,6 +200,19 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
           })()
         : {};
     const geometrieFout = plaatPlooiGeometrieFout(plaat, data.nodes) ?? dekkingFout;
+    // Beton met ingevoerde wapening (issue #25): de wapening ongewijzigd, en
+    // de spanningen van de FREQUENTE BGT-combinaties (6.15b) — daaronder laat
+    // de nationale bijlage bij 7.3.1(5) de scheurwijdte toetsen. Herkend op
+    // soort, zoals de betonbalkbouwer; een andere BGT-combinatie gaat niet mee.
+    // Zonder wapening gaat er niets extra mee: de invoer blijft zoals hij was.
+    const beton =
+      soort === "Beton" && plaat.wapening
+        ? {
+            wapening_aanwezig: plaat.wapening,
+            frequente_combinaties: combinatiesVanSoort(data.combinations, "6.15b")
+              .map((c) => spanningen(c) ?? { combination_id: c.id, elements: [] }),
+          }
+        : {};
     inputs.push({
       bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       plate_id: plaat.id,
@@ -209,6 +230,7 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
       thickness_mm: withPlateDefaults(plaat).thickness!,
       ...(notities.length > 0 ? { notities } : {}),
       combinations: combinaties,
+      ...beton,
     });
   }
   return { inputs, skipped };
