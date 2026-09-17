@@ -129,6 +129,7 @@ fn verzoek(kolom: ConcreteColumnInput, envelop: Vec<ForcePoint>) -> ConcreteColu
         column: kolom,
         forces_envelope: envelop,
         sls_quasi_permanent_envelope: vec![],
+        first_order_envelope: None,
         design_situation: Default::default(),
         steel_branch: Default::default(),
     }
@@ -158,6 +159,7 @@ fn staaf(kolom: Option<ConcreteColumnInput>, envelop: Vec<ForcePoint>) -> Concre
         structural_system: None,
         bar_spacing_mm: None,
         sls_quasi_permanent_envelope: vec![],
+        first_order_envelope: None,
         column: kolom,
         staafstand: None,
         staafstand_notities: None,
@@ -458,6 +460,115 @@ fn phi_ef_uit_de_quasi_blijvende_combinatie_handberekend() {
         tekst.contains("mag NIET"),
         "de derde voorwaarde van §5.8.4(4) is niet vervuld, en dat hoort er te staan: {tekst}"
     );
+}
+
+// ── Eerste-orde-momenten na een tweede-orde-berekening (issue #35) ─────────
+
+/// De UGT-omhullende zoals een P-Δ-berekening haar levert: dezelfde 600 kN
+/// druk, maar de momenten vergroot met N·δ — onder 46 (was 40), midden 24 (was
+/// 10), boven −14 (was −20). Het midden blijft kleiner dan het grootste eind,
+/// dus ook hier geen dwarsbelasting.
+fn ugt_tweede_orde() -> Vec<ForcePoint> {
+    ugt(46.0, 24.0, -14.0)
+}
+
+fn quasi_blijvend() -> Vec<ForcePoint> {
+    vec![
+        punt(9, 0.0, -350.0, 20.0),
+        punt(9, 1500.0, -350.0, 5.0),
+        punt(9, 3000.0, -350.0, -10.0),
+    ]
+}
+
+/// HANDBEREKENING — r_m, λ_lim en φ_ef uit de EERSTE-ORDE-momenten terwijl de
+/// UGT-omhullende tweede orde is (§5.8.3.1(1), (5.19)).
+///
+/// ```text
+///   eerste orde (snede x = 0): M₀₂ = 40, M₀₁ = −20, M₀Ed = 40, M₀Eqp = 20
+///     r_m   = −20/40 = −0,5;  C = 2,2
+///     φ_ef  = 2,0·20/40 = 1,0;  A = 1/1,2 = 0,8333333
+///     λ_lim = 20·0,8333333·1,1783571·2,2/√0,3333333 = 74,83572
+///   TEGENPROEF — de oude route, met de tweede-orde-momenten 46 en −14:
+///     r_m   = −14/46 = −0,3043478;  C = 2,0043478
+///     φ_ef  = 2,0·20/46 = 0,8695652;  A = 0,8518519
+///     λ_lim = 20·0,8518519·1,1783571·2,0043478/√0,3333333 = 69,69549
+/// ```
+#[test]
+fn na_tweede_orde_komen_r_m_en_phi_ef_uit_de_eerste_orde_handberekend() {
+    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    k.phi_inf_t0 = Some(2.0);
+
+    let mut nieuw = verzoek(k, ugt_tweede_orde());
+    nieuw.sls_quasi_permanent_envelope = quasi_blijvend();
+    nieuw.first_order_envelope = Some(ugt_geschoord());
+    let a = column_check(nieuw.clone()).unwrap();
+    assert_relative_eq!(a.phi_ef.unwrap(), 1.0, max_relative = 1e-12);
+    assert_relative_eq!(a.lambda_lim.unwrap(), 74.83572, max_relative = 1e-6);
+    let poort = toets(&a.checks, SLANKHEIDSGRENS);
+    assert_relative_eq!(var(poort, "C"), 2.2, max_relative = 1e-12);
+    assert_relative_eq!(var(poort, "A"), 1.0 / 1.2, max_relative = 1e-12);
+    // N_Ed blijft uit de gekozen berekening: n = 600/(90·20) = 1/3.
+    assert_relative_eq!(var(poort, "n"), 1.0 / 3.0, max_relative = 1e-12);
+    let tekst = poort.notes.join(" ");
+    assert!(tekst.contains("EERSTE-ORDE-MOMENTEN"), "het rapport hoort de herkomst te noemen: {tekst}");
+    assert!(tekst.contains("M₀Ed = 40,0 kNm"), "{tekst}");
+    assert!(tekst.contains("M_Ed = 46,0 kNm"), "{tekst}");
+    assert!(
+        toets(&a.checks, KRUIP).notes.join(" ").contains("EERSTE-ORDE-oplossing"),
+        "de kruiptoets hoort te zeggen dat (5.19) eerste-orde-momenten kreeg"
+    );
+
+    // TEGENPROEF: zonder eerste-orde-omhullende leest de toets de tweede-orde-
+    // momenten, en dat geeft een ander getal.
+    let mut oud = nieuw.clone();
+    oud.first_order_envelope = None;
+    let b = column_check(oud).unwrap();
+    assert_relative_eq!(b.phi_ef.unwrap(), 2.0 * 20.0 / 46.0, max_relative = 1e-12);
+    assert_relative_eq!(var(toets(&b.checks, SLANKHEIDSGRENS), "C"), 1.7 + 14.0 / 46.0, max_relative = 1e-12);
+    assert_relative_eq!(b.lambda_lim.unwrap(), 69.69549, max_relative = 1e-6);
+    assert!(!toets(&b.checks, SLANKHEIDSGRENS).notes.join(" ").contains("EERSTE-ORDE-MOMENTEN"));
+
+    // De volledige staaftoetsing loopt dezelfde rekengang.
+    let mut s = staaf(Some(nieuw.column), ugt_tweede_orde());
+    s.sls_quasi_permanent_envelope = quasi_blijvend();
+    s.first_order_envelope = Some(ugt_geschoord());
+    let r = check_concrete_beam(s);
+    let p = toets_van_staaf(&r, SLANKHEIDSGRENS);
+    assert_relative_eq!(p.value, 74.83572, max_relative = 1e-6);
+}
+
+/// Bij een eerste-orde-berekening is de eerste-orde-omhullende dezelfde lijst:
+/// meesturen of weglaten geeft hetzelfde getal.
+#[test]
+fn eerste_orde_omhullende_gelijk_aan_de_ugt_verandert_niets() {
+    let mut k = kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend);
+    k.phi_inf_t0 = Some(2.0);
+    let mut zonder = verzoek(k, ugt_geschoord());
+    zonder.sls_quasi_permanent_envelope = quasi_blijvend();
+    let mut met = zonder.clone();
+    met.first_order_envelope = Some(ugt_geschoord());
+    let a = column_check(zonder).unwrap();
+    let b = column_check(met).unwrap();
+    assert_eq!(a.lambda_lim, b.lambda_lim);
+    assert_eq!(a.phi_ef, b.phi_ef);
+}
+
+/// Staat de maatgevende combinatie NIET in de eerste-orde-omhullende, dan wordt
+/// er niet stil op de tweede-orde-momenten teruggevallen: §5.8 is dan niet
+/// uitgevoerd, met de reden.
+#[test]
+fn eerste_orde_omhullende_zonder_de_maatgevende_combinatie_weigert() {
+    let mut v = verzoek(
+        kolomgegevens(Schoring::Geschoord, Knikgeval::ScharnierendScharnierend),
+        ugt_tweede_orde(),
+    );
+    v.first_order_envelope = Some(vec![punt(2, 0.0, -600.0, 40.0), punt(2, 3000.0, -600.0, -20.0)]);
+    let a = column_check(v).unwrap();
+    assert!(a.lambda_lim.is_none());
+    let poort = toets(&a.checks, SLANKHEIDSGRENS);
+    assert_eq!(poort.status, CheckStatus::NotApplicable);
+    let tekst = poort.notes.join(" ");
+    assert!(tekst.contains("combinatie 1 niet"), "{tekst}");
 }
 
 /// φ(∞,t₀) WEL, maar geen quasi-blijvende omhullende: dan is (5.19) niet in te

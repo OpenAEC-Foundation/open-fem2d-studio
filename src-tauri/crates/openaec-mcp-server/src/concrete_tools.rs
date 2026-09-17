@@ -641,6 +641,25 @@ fn schema_quasi_blijvende_omhullende() -> Value {
     v
 }
 
+/// Schema van `first_order_envelope` — de eerste-orde-momenten voor §5.8.
+///
+/// EEN FUNCTIE, omdat twee tools het veld dragen (`check_concrete_beam` en
+/// `concrete_column_check`) en het dezelfde betekenis heeft.
+pub(crate) fn schema_eerste_orde_omhullende() -> Value {
+    let mut v = crate::schema_krachtenomhullende();
+    v["description"] = json!(
+        "UGT-krachtsverloop uit een EERSTE-ORDE-berekening van dezelfde combinaties als \
+         `forces_envelope`, alleen voor §5.8: r_m = M_01/M_02 (§5.8.3.1(1)) en M_0Ed van (5.19) \
+         zijn eerste-orde-momenten. Meesturen wanneer `forces_envelope` uit een tweede-orde- of \
+         fysisch niet-lineaire berekening komt; dan komen M_0Ed, M_01 en M_02 uit deze lijst \
+         (zelfde combination_id, dichtstbijzijnde position_mm) en blijven N_Ed, de maatgevende \
+         snede en alle doorsnedetoetsen uit `forces_envelope`. `sls_quasi_permanent_envelope` hoort \
+         dan ook eerste orde te zijn. Weglaten = `forces_envelope` is zelf eerste orde. Ontbreekt \
+         hier de maatgevende combinatie, dan is §5.8 niet uitgevoerd, met de reden."
+    );
+    v
+}
+
 /// Het schema van `ConcreteBeamCheckInput` — de betonstaaf zelf.
 ///
 /// EEN FUNCTIE EN GEEN TWEE INLINE BLOKKEN. Twee tools voeren dit type in:
@@ -687,6 +706,7 @@ fn schema_betonstaaf() -> Value {
             "bar_spacing_mm": { "type": "number", "exclusiveMinimum": 0,
                 "description": "Werkelijke hart-op-hartafstand van de trekstaven in mm, voor (7.11) en tabel 7.3N. Weglaten = de afstand wordt uit de korf afgeleid (zuivere meetkunde: een rij gelijkmatig verdeeld tussen de beugelbenen), en dat staat dan in de afleiding." },
             "sls_quasi_permanent_envelope": schema_quasi_blijvende_omhullende(),
+            "first_order_envelope": schema_eerste_orde_omhullende(),
             "column": schema_kolom()
         },
         "required": [
@@ -846,6 +866,7 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "De VRIJE lengte l tussen de eindaansluitingen, in m (§5.8.3.2(3)) - de lengte waarmee de l0-factor van figuur 5.7 wordt vermenigvuldigd." },
                     "forces_envelope": crate::schema_krachtenomhullende(),
                     "sls_quasi_permanent_envelope": schema_quasi_blijvende_omhullende(),
+                    "first_order_envelope": schema_eerste_orde_omhullende(),
                     "column": schema_kolom(),
                     "steel_branch": schema_steel_branch(),
                     "design_situation": schema_design_situation()

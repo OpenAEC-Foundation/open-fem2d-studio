@@ -199,6 +199,26 @@ bar_spacing_mm?: number,
  */
 sls_quasi_permanent_envelope: Array<ForcePoint>, 
 /**
+ * Het UGT-krachtsverloop uit een EERSTE-ORDE-berekening van dezelfde
+ * combinaties als `forces_envelope`, alleen voor §5.8.
+ *
+ * WAAROM EEN EIGEN LIJST. §5.8.3.1(1) definieert r_m = M₀₁/M₀₂ met de
+ * eerste-orde-eindmomenten, en (5.19) in §5.8.4(2) noemt M₀Ed "het
+ * eerste-orde-buigend moment". Komt `forces_envelope` uit een tweede-orde-
+ * of fysisch niet-lineaire berekening, dan zitten de tweede-orde-effecten
+ * al in die momenten, en dan verschuiven r_m (dus C en λ_lim) en φ_ef (dus
+ * A). Uit deze lijst komen dan M₀Ed, M₀₁ en M₀₂; de normaalkracht, de keuze
+ * van de maatgevende snede en alle doorsnedetoetsen blijven uit
+ * `forces_envelope`. `sls_quasi_permanent_envelope` hoort in dat geval ook
+ * eerste orde te zijn.
+ *
+ * `None` = `forces_envelope` is zelf eerste orde (of de aanroeper heeft
+ * niets anders); dan verandert er niets. Een lijst waarin de maatgevende
+ * combinatie ontbreekt, wordt niet stil vervangen: dan is §5.8 niet
+ * uitgevoerd, met de reden.
+ */
+first_order_envelope?: Array<ForcePoint>, 
+/**
  * De §5.8-gegevens: geschoord of ongeschoord, de kniklengte, de kruip en
  * de twee keuzen die §9.5 nodig heeft.
  *

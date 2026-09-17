@@ -62,4 +62,11 @@ forces_envelope: Array<ForcePoint>,
  * Krachtsverloop onder de QUASI-BLIJVENDE BGT-combinatie (NEN-EN 1990
  * uitdrukking (6.16)) — M₀Eqp uit (5.19). Leeg = niet meegestuurd.
  */
-sls_quasi_permanent_envelope: Array<ForcePoint>, design_situation: DesignSituation, steel_branch: SteelBranch, };
+sls_quasi_permanent_envelope: Array<ForcePoint>, 
+/**
+ * UGT-krachtsverloop uit een EERSTE-ORDE-berekening, voor M₀Ed, M₀₁ en
+ * M₀₂ (§5.8.3.1(1), (5.19)) wanneer `forces_envelope` tweede orde is.
+ * `None` = `forces_envelope` is eerste orde. Zie hetzelfde veld in
+ * `ConcreteBeamCheckInput`.
+ */
+first_order_envelope?: Array<ForcePoint>, design_situation: DesignSituation, steel_branch: SteelBranch, };

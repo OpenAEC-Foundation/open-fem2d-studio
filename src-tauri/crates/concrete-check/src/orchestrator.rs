@@ -2191,6 +2191,7 @@ pub fn check_concrete_beam(input: ConcreteBeamCheckInput) -> ConcreteBeamCheckRe
         input.length_m * 1000.0,
         &input.forces_envelope,
         &input.sls_quasi_permanent_envelope,
+        input.first_order_envelope.as_deref(),
     );
     let kolom_getoetst = kolom.slankheid.is_some();
     checks.extend(kolom.checks);

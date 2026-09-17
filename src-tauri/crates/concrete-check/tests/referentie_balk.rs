@@ -59,6 +59,7 @@ fn invoer(boven: u32, envelop: Vec<ForcePoint>) -> ConcreteBeamCheckInput {
         // blijft deze test precies de test die hij was.
         column: None,
         sls_quasi_permanent_envelope: vec![],
+        first_order_envelope: None,
         staafstand: None,
         staafstand_notities: None,
     }
