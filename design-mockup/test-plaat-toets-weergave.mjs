@@ -130,6 +130,8 @@ log("\n[c] rapportsectie");
   checkTrue("krachtregel zonder snedekrachten", !t.includes("kNm"), t);
   checkTrue("niet getoetst: plooi met reden", t.includes("NEN-EN 1993-1-5"), t);
   checkTrue("benodigde wapening in het rapport", t.includes("Benodigde wapening volgens bijlage F") && t.includes("600"), t);
+  checkTrue("rapport noemt relevante UGT en BGT", t.includes("relevante UGT- en BGT-combinaties"), t);
+  checkTrue("wapeningstoelichting verwijst naar de resultaten", t.includes("De toetsing van aanwezige wapening en eventuele beperkingen staan bij de toetsen en niet-getoetste onderdelen"), t);
 }
 
 log("\n[d] zonder platen");
@@ -168,6 +170,22 @@ log("\n[e] redenen voor niet getoetst: trek loodrecht op de vezel en kruislaagho
   const plat = (s) => s.replace(/\s+/g, " ");
   checkTrue("rapport: reden 6.1.3 woordelijk", t.includes(plat(trek90?.reden ?? "∅")), t.slice(0, 300));
   checkTrue("rapport: weigering kruislaaghout woordelijk", t.includes(plat(res[1]?.geweigerd ?? "∅")), t.slice(0, 300));
+}
+
+log("\n[f] dezelfde kernresultaten naar de PDF-export");
+{
+  const { bouwRapportInvoer } = await import("./src/lib/rapportPdfInvoer.ts");
+  const pdf = bouwRapportInvoer({
+    project: { name: "Plaatrapport", projectNumber: "P25", engineer: "Test", company: "Test", date: "2026-09-17" },
+    checkResults: [], plaatInvoer: invoer, plateResults: res,
+    plateSkipped: [{ plateId: 3, reason: "geen materiaal — test" }],
+  });
+  const wire = JSON.parse(JSON.stringify(pdf));
+  checkTrue("alle kernresultaten ongewijzigd naar PDF", JSON.stringify(wire.plate_results) === JSON.stringify(res));
+  checkTrue("alle invoer ongewijzigd naar PDF", JSON.stringify(wire.plate_inputs) === JSON.stringify(invoer));
+  checkTrue("houtreden op papier identiek aan het scherm", wire.plate_results[3].niet_getoetst.find((n) => n.id === "6.1.3_trek_loodrecht").reden === res[3].niet_getoetst.find((n) => n.id === "6.1.3_trek_loodrecht").reden);
+  checkTrue("CLT-weigering op papier identiek aan het scherm", wire.plate_results[1].geweigerd === res[1].geweigerd);
+  checkTrue("overgeslagen plaat blijft zichtbaar", wire.plate_skipped[0].reden === "geen materiaal — test");
 }
 
 log(`\n${passed} geslaagd, ${failed} mislukt`);

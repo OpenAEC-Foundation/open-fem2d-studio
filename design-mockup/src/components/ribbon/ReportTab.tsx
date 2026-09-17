@@ -16,12 +16,9 @@
  * opgesomd in `NIET_IN_PDF` in `lib/rapportPdfInvoer.ts`; daarvoor blijft het
  * live rapport de weg.
  *
- * DE DREMPEL ONDER DE KNOP KLOPT ALLEEN ZOLANG DIE VIJF MEEGAAN
- * ------------------------------------------------------------
- * De knop kijkt naar `checkResults.length`, en dat is de juiste maat zolang
- * `bouwRapportInvoer` elk soort resultaat in een eigen veld zet. Verdwijnt een
- * soort onderweg, dan is de knop actief maar het rapport leeg — en een leeg
- * rapport noemde vroeger een norm die nergens was toegepast.
+ * Ook plaatresultaten en overgeslagen platen maken een rapport mogelijk.
+ * `bouwRapportInvoer` draagt de oorspronkelijke plaatinvoer van dezelfde
+ * toetsronde mee; een model met alleen platen vraagt geen staaftoetsingen.
  *
  * DE DEKKINGSLIJNEN WORDEN HIER OPGEHAALD, OP DE KNOP
  * ---------------------------------------------------
@@ -89,6 +86,8 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting, 
 
   const project = useProjectInfo();
   const checkResults = useCheckStore((s) => s.results);
+  const plateResults = useCheckStore((s) => s.plateResults);
+  const plateSkipped = useCheckStore((s) => s.plateSkipped);
   // Het model waarmee de toetsing GEDRAAID heeft, niet het model zoals het nu
   // op het scherm staat. De doorsnedefiguur hoort de korf te tonen waarmee de
   // toetsingen in ditzelfde rapport zijn gerekend; wie na het toetsen een korf
@@ -135,7 +134,7 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting, 
       );
       return;
     }
-    if (checkResults.length === 0) {
+    if (checkResults.length === 0 && plateResults.length === 0 && plateSkipped.length === 0) {
       // Twee verschillende oorzaken, twee verschillende meldingen. Er is een
       // VERSCHIL tussen "er is nog niet getoetst" (druk op de knop) en "de
       // toetsronde is gedraaid maar de rekenkern gaf een fout" (daar helpt de
@@ -214,6 +213,9 @@ export default function ReportTab({ scheefstandToelichting, analyseToelichting, 
           nationaleBijlage: project.uitgangspunten?.nationaleBijlage,
         },
         checkResults,
+        plateResults,
+        plateSkipped,
+        plaatInvoer: lastRunInputs?.plaat,
         stijfheid: { segmentLengteMm, combinaties, overgeslagen, staafdoorsneden },
         // De EXACTE korf uit de staafeigenschappen, waar hij er is. Zonder deze
         // map valt `doorsnedeUitToets` terug op de samenvattingsregel van de

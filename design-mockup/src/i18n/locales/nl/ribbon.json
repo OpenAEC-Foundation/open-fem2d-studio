@@ -745,7 +745,7 @@
     "kruipInleiding": "Berekend uit RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} dagen en cementklasse {{cement}}: φ(∞,t₀) = {{phi}}. Met deze waarde rekenen de BGT-stijfheid en de kolomtoets van deze staaf, omdat er geen φ(∞,t₀) is opgegeven.",
     "kruipKetenKop": "Afleiding volgens bijlage B, stap voor stap:",
     "sectionPlateCheck": "Toetsing platen",
-    "plaatToetsNoot": "Per element van het rekenmesh getoetst met de elementgemiddelde spanningen in het vlak; per plaat de hoogste unity check over alle UGT-combinaties. Wat niet getoetst is, staat per plaat met de reden.",
+    "plaatToetsNoot": "Per element van het rekenmesh getoetst met de elementgemiddelde spanningen in het vlak; per plaat de hoogste unity check over de relevante UGT- en BGT-combinaties. Wat niet getoetst is, staat per plaat met de reden.",
     "plaatMateriaal": "Materiaal",
     "plaatNorm": "Norm",
     "plaatStatus": "Status",
@@ -755,7 +755,7 @@
     "plaatElementgemiddeld": "elementgemiddelde spanningen; het element staat in de toelichting",
     "plaatWapeningKop": "Benodigde wapening volgens bijlage F",
     "plaatRichting": "Richting",
-    "plaatWapeningNoot": "n_td = f'_td · t: de benodigde trekkracht in de wapening per meter wand, over beide zijden samen, in de horizontale (x) en verticale (z) modelrichting; A_s = n_td / f_yd. De aanwezige wapening is niet getoetst."
+    "plaatWapeningNoot": "n_td = f'_td · t: de benodigde trekkracht in de wapening per meter wand, over beide zijden samen, in de horizontale (x) en verticale (z) modelrichting; A_s = n_td / f_yd. De toetsing van aanwezige wapening en eventuele beperkingen staan bij de toetsen en niet-getoetste onderdelen."
   },
   "viewer": {
     "file": "Bestand",

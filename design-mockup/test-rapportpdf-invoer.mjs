@@ -742,5 +742,29 @@ log("\n[8] De gedeelde terugval krijgt aan beide kanten dezelfde invoer");
   checkWaar("een lege betoninvoer telt als niet meegestuurd", !("concrete_reinforcement_zones" in wit));
 }
 
+// Platen reizen onafhankelijk van staven mee, inclusief alle combinaties.
+{
+  const plaatInvoer = [{ plate_id: 41, soort: "Staal", materiaal: "S235", thickness_mm: 10,
+    combinations: [11, 22].map((combination_id) => ({ combination_id, elements: [
+      { element_id: 701, sigma_x_mpa: combination_id, sigma_y_mpa: 0, tau_xy_mpa: 0 },
+    ] })) }];
+  const plateResults = [{ plate_id: 41, governing_combination_id: 22, governing_element_id: 701,
+    combinaties: [{ combination_id: 11 }, { combination_id: 22 }],
+    niet_getoetst: [{ titel: "Plooi", reden: "Niet uitgevoerd" }] }];
+  const plateSkipped = [{ plateId: 42, reason: "Geen elementspanningen beschikbaar" }];
+  const pdf = bouwRapportInvoer({ project, checkResults: [], plaatInvoer, plateResults, plateSkipped });
+  checkGelijk("alle plaatinvoer en combinaties mee", pdf.plate_inputs, plaatInvoer);
+  checkGelijk("plaatresultaten inclusief grenzen ongewijzigd", pdf.plate_results, plateResults);
+  checkGelijk("overgeslagen plaat met letterlijke reden", pdf.plate_skipped,
+    [{ plate_id: 42, reden: plateSkipped[0].reason }]);
+  checkGelijk("plaatresultaten worden geen staven", pdf.steel_check_results, []);
+  for (const bron of [{}, { plaatInvoer: [], plateResults: [], plateSkipped: [] }]) {
+    const leeg = bouwRapportInvoer({ project, checkResults: [], ...bron });
+    for (const veld of ["plate_inputs", "plate_results", "plate_skipped"]) {
+      checkWaar(`lege plaatgegevens weggelaten: ${veld}`, !(veld in leeg));
+    }
+  }
+}
+
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);
 process.exit(failed === 0 ? 0 : 1);
