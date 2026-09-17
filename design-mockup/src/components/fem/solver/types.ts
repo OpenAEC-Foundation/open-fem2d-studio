@@ -727,9 +727,10 @@ export interface SolverResult {
   reactions: Map<number, NodalReaction>;
   elements: Map<number, ElementForces>;
   /**
-   * Largest |u_x| or |u_z| across all nodes (mm) — used to auto-scale
-   * on-screen deflection. Mét platen tellen ook de mesh-knopen van de
-   * platen mee (id ≥ 1000 in de core).
+   * Grootste verplaatsing (mm) als lengte √(ux² + uz²): in de knopen én
+   * langs de staven (stationsarrays `deflection`/`axialDisp`), zodat een
+   * ligger met alleen oplegknopen niet 0 meldt (issue #32). Mét platen tellen
+   * ook de meshknopen van de platen mee. Zie `grootsteVerplaatsing`.
    */
   maxDisplacement: number;
   /** Plaatspanningen per plaat — alleen aanwezig wanneer het model platen bevat. */

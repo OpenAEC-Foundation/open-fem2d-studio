@@ -168,6 +168,13 @@ const BUNDEL_TESTS = new Set([
   "hout-bgt-eindtoestand",
   "lastomschrijving",
   "leeg-geval",
+  // De grootste verplaatsing boven het canvas (issue #32): knopen én de
+  // veldkromme langs de staven, per geval, per combinatie en in de omhullende,
+  // tegen 5qL⁴/384EI. Praat alleen met `engine` en `combinations` — in de
+  // barrel. Hoort óók tegen de bundel: `check_fem_model` geeft
+  // `maxDisplacement` door, en een bundel die alleen knopen telt meldt daar
+  // weer 0 bij een doorbuigende ligger.
+  "max-verplaatsing",
   "n-teken",
   "omhullende",
   // Oude projectbestanden en de windgenerator: herkennen en vervangen van de

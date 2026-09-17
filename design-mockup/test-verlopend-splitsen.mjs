@@ -19,6 +19,12 @@
 //       de doorsnedefunctie waarmee de solver het verloop rekent.
 //   [8] Na het splitsen is de stalen staaf nog steeds te TOETSEN: beide delen
 //       komen in de toetsinvoer en de tussendoorsnede reist als geometrie mee.
+//   [9] De naam van de stalen tussendoorsnede is leesbaar (geen ruis van de
+//       drijvende komma), de platen blijven exact, twee verschillende
+//       doorsneden krijgen nooit dezelfde naam, en een oud project met de
+//       lange naam opent en bewaart nog (issue #31).
+//  [10] De profielkiezer opent een gesplitst deel in de staalstap, met begin-
+//       en eindprofiel (issue #31).
 //
 // ── WAAROM DE STAAF IN [3] KORT IS ──────────────────────────────────────────
 //
@@ -423,6 +429,96 @@ log("\n[8] Na het splitsen is een stalen staaf nog steeds te TOETSEN");
   rel("de breedte is 125 mm", flens?.b_mm ?? 0, 125, 1e-12);
   rel("de lijfdikte is 6,35 mm", lijf?.t_mm ?? 0, 6.35, 1e-12);
   rel("de flensdikte is 9,6 mm", flens?.t_mm ?? 0, 9.6, 1e-12);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+log("\n[9] De naam van de tussendoorsnede is leesbaar, de maten blijven exact (issue #31)");
+// ───────────────────────────────────────────────────────────────────────
+//
+// IPE 270 → IPE 500 halverwege: t_w = 6,6 + 0,5·(10,2 − 6,6), in drijvende
+// komma 8,399999999999999. `String(v)` zette dat letterlijk in de naam, en de
+// naam staat in het eigenschappenpaneel, de profielkiezer en het rapport. De
+// naam is ook de SLEUTEL (`EIGEN:<naam>`), dus afronden mag nooit twee
+// verschillende doorsneden dezelfde naam geven — dan zou de tweede de eerste
+// in de bibliotheek stil vervangen en verschuift de eerste staaf mee.
+{
+  const { gelasteIMatenVanEigen, matenOpPositie } = await import("./src/lib/sectionResolver.ts");
+  const { splitsVerlopendProfiel } = await import("./src/lib/verloopSplitsen.ts");
+  const { model: gm } = gesplitst(
+    uitkrager(5000, { material: "S235", profile: "IPE270", profileEnd: "IPE500" }), 0.5);
+  const [d1, d2] = gm.beams;
+  ok('de naam is "EIGEN:Gelast I 385×167,5×8,4×13,1"',
+    d1.profileEnd === "EIGEN:Gelast I 385×167,5×8,4×13,1", d1.profileEnd);
+  ok("beide delen dragen die naam", d2.profile === d1.profileEnd);
+  const vHeel = bepaalVerloop("S235", "IPE270", "IPE500");
+  const exact = matenOpPositie(vHeel.verloop, 0.5);
+  const bewaard = gelasteIMatenVanEigen(d1.profileEnd);
+  ok("de platen dragen de EXACTE maten, niet de afgeronde uit de naam",
+    bewaard && bewaard.tw === exact.tw && bewaard.tf === exact.tf && bewaard.b === exact.b &&
+      Math.abs(bewaard.h - exact.h) < 1e-12,
+    `t_w ${bewaard?.tw} (exact ${exact.tw})`);
+
+  // Twee splitsplaatsen die bij afronden dezelfde naam zouden krijgen.
+  const t2 = 0.5 + 1e-5;                    // h 385,0023 mm, t_w 8,400036 mm
+  const naam1 = splitsVerlopendProfiel("S235", "IPE270", "IPE500", 0.5);
+  const naam2 = splitsVerlopendProfiel("S235", "IPE270", "IPE500", t2);
+  ok("een andere doorsnede krijgt een andere naam, geen overschrijving", naam1 !== naam2, `${naam1} | ${naam2}`);
+  const na1 = gelasteIMatenVanEigen(naam1), na2 = gelasteIMatenVanEigen(naam2);
+  ok("de eerste doorsnede is onveranderd", na1?.tw === exact.tw && na1?.b === exact.b);
+  const exact2 = matenOpPositie(vHeel.verloop, t2);
+  ok("de tweede draagt haar eigen exacte maten", na2?.tw === exact2.tw && na2?.b === exact2.b);
+  ok("dezelfde splitsplaats opnieuw geeft dezelfde naam (één doorsnede)",
+    splitsVerlopendProfiel("S235", "IPE270", "IPE500", 0.5) === naam1 &&
+      splitsVerlopendProfiel("S235", "IPE270", "IPE500", t2) === naam2);
+  ok("de naam van IPE 300 → IPE 200 halverwege toont t_w = 6,35 (geen misleidende afronding)",
+    tussenProfielVoorSplitsing("S235", "IPE300", "IPE200", 0.5).tussenProfiel === "EIGEN:Gelast I 250×125×6,35×9,6");
+
+  // Een OUD project draagt nog de lange naam; die moet blijven openen en
+  // rekenen, en er mag niets hernoemd worden (de staaf verwijst ernaar).
+  // Nagebootst zoals App.tsx opent: de staaf uit het projectbestand, de
+  // meegereisde eigen doorsnede via `importeerEigenDoorsneden`.
+  const { importeer: importeerEigenDoorsneden, exporteer: exporteerEigenDoorsneden } =
+    await import("./src/lib/profieleditor/eigenDoorsnedenStore.ts");
+  const lang = "Gelast I 385×167,5×8,399999999999999×13,1";
+  const oud = { ...gelasteIDoorsnede(exact), naam: lang, id: "verloop-gelast-i-385-167-5-8-399999999999999-13-1" };
+  const oudeStaaf = { id: 1, from: 1, to: 2, material: "S235", profile: "IPE270", profileEnd: `EIGEN:${lang}` };
+  const terug = deserializeProject(serializeProject({ ...uitkrager(5000, {}), beams: [oudeStaaf] }));
+  importeerEigenDoorsneden([oud]);
+  ok("oud project: de staaf houdt de lange naam", terug.beams[0].profileEnd === `EIGEN:${lang}`);
+  ok("oud project: het verloop wordt nog herkend",
+    bepaalVerloop("S235", "IPE270", terug.beams[0].profileEnd).status === "verlopend");
+  ok("oud project: opslaan neemt de doorsnede met de lange naam weer mee",
+    exporteerEigenDoorsneden(terug.beams).some((d) => d.naam === lang));
+  ok("oud project: de nieuwe korte naam bestaat er naast, zonder de oude te vervangen",
+    eigenDoorsnedenStore.getState().items.some((d) => d.naam === lang) &&
+      eigenDoorsnedenStore.getState().items.some((d) => d.naam === "Gelast I 385×167,5×8,4×13,1"));
+}
+
+// ───────────────────────────────────────────────────────────────────────
+log("\n[10] De profielkiezer toont het verloop van een gesplitst deel (issue #31)");
+// ───────────────────────────────────────────────────────────────────────
+//
+// Deel 2 van een gesplitste stalen staaf begint met de eigen gelaste
+// tussendoorsnede. De kiezer opende die staaf in de stap "Eigen doorsnede",
+// waar geen verloop bestaat: de schakelaar en het eindprofiel ontbraken.
+{
+  const { kiezerOpentEigenStap, eigenVerloopProfielen } = await import("./src/lib/verloopKeuze.ts");
+  const { model: gm } = gesplitst(
+    uitkrager(5000, { material: "S235", profile: "IPE270", profileEnd: "IPE500" }), 0.5);
+  const [d1, d2] = gm.beams;
+  ok("deel 2 (eigen → IPE 500) opent NIET in de stap Eigen doorsnede", !kiezerOpentEigenStap(d2));
+  ok("een prismatische eigen doorsnede opent wel in die stap",
+    kiezerOpentEigenStap({ material: "S235", profile: d2.profile }));
+  const e1 = eigenVerloopProfielen(d1), e2 = eigenVerloopProfielen(d2);
+  ok("deel 1: het eindprofiel is de eigen tussendoorsnede", e1.begin === null && e1.eind === d1.profileEnd,
+    JSON.stringify(e1));
+  ok("deel 2: het beginprofiel is de eigen tussendoorsnede", e2.begin === d2.profile && e2.eind === null,
+    JSON.stringify(e2));
+  ok("de kiezer keurt het verloop van beide delen goed",
+    keurEindProfiel(d1.material, d1.profile, d1.profileEnd).status === "verlopend" &&
+      keurEindProfiel(d2.material, d2.profile, d2.profileEnd).status === "verlopend");
+  ok("een prismatische staaf heeft geen eigen verloopprofielen",
+    JSON.stringify(eigenVerloopProfielen({ material: "S235", profile: "IPE300" })) === '{"begin":null,"eind":null}');
 }
 
 log("");

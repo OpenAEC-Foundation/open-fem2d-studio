@@ -53,7 +53,11 @@ import {
   parseRechthoek,
   resolveSection,
 } from "../../lib/sectionResolver";
-import { keurEindProfiel } from "../../lib/verloopKeuze";
+import {
+  eigenVerloopProfielen,
+  keurEindProfiel,
+  kiezerOpentEigenStap,
+} from "../../lib/verloopKeuze";
 import { formatConcreteSection, parseConcreteSection } from "../../lib/betonCheckBuilder";
 import type { ConcreteSectionInput } from "../../lib/types/concrete/ConcreteSectionInput";
 import type { ConcreteShape } from "../../lib/types/concrete/ConcreteShape";
@@ -102,8 +106,9 @@ import type { CltLayerOrientation } from "../../lib/types/timber/CltLayerOrienta
 import type { CltLayup } from "../../lib/types/timber/CltLayup";
 import type { EigenDoorsnede } from "../../lib/profieleditor/types";
 import {
-  isEigenProfiel,
+  eigenNaamVan,
   profielnaamVan,
+  zoekEigenDoorsnede,
 } from "../../lib/profieleditor/eigenDoorsnedenStore";
 import { useEigenDoorsneden } from "../../lib/profieleditor/useEigenDoorsneden";
 import { useCltOpbouwen } from "../../lib/profieleditor/useCltOpbouwen";
@@ -314,8 +319,17 @@ export default function ProfielKiezer({
   const huidigIsHout =
     !huidigVrij && !huidigIsBeton && !!huidig?.material && (huidig.material in TIMBER_E_MEAN);
   const huidigIsClt = huidigIsHout && isCltProfiel(huidig?.profile);
+  // Een VERLOPENDE staaf met een eigen doorsnede aan het begin (het tweede
+  // deel van een gesplitste verlopende stalen staaf) opent in de staalstap:
+  // alleen daar staan de schakelaar en het eindprofiel (issue #31).
   const huidigIsEigen =
-    !huidigVrij && !huidigIsBeton && !huidigIsHout && isEigenProfiel(huidig?.profile);
+    !huidigVrij && !huidigIsBeton && !huidigIsHout && kiezerOpentEigenStap(huidig ?? {});
+  /**
+   * De eigen gelaste tussendoorsneden van een gesplitste verlopende staaf. Ze
+   * staan in geen catalogusreeks; zonder deze extra keuzen viel het begin of
+   * het eind van zo'n deel in de staalstap weg.
+   */
+  const eigenVerloop = eigenVerloopProfielen(huidig ?? {});
 
   // ── Wizardstate ──────────────────────────────────────────────────────────
   const [soort, setSoort] = useState<MateriaalSoort | null>(
@@ -686,7 +700,12 @@ export default function ProfielKiezer({
   const overigI = overigSectie?.Iy ?? (overigB * overigH ** 3) / 12;
 
   const houtGeldig = houtType === "clt" ? cltGeldig : houtB > 0 && houtH > 0;
-  const staalGeldig = !!staalProfiel && !!STEEL_SECTION_DIMS[staalProfiel];
+  // Naast de catalogus: de eigen tussendoorsnede waarmee deze staaf begint,
+  // zolang die in de bibliotheek staat (anders is hij niet te rekenen).
+  const staalGeldig =
+    !!staalProfiel &&
+    (!!STEEL_SECTION_DIMS[staalProfiel] ||
+      (staalProfiel === eigenVerloop.begin && !!zoekEigenDoorsnede(staalProfiel)));
 
   // ── Verlopend profiel: de keuzelijst, het gekozen eind en de keuring ─────
   /**
@@ -908,6 +927,17 @@ export default function ProfielKiezer({
           <div className="pk-kolom pk-kolom-maat">
             <div className="pk-kolom-kop">{t("profilePicker.profile")}</div>
             <div className="pk-scroll">
+              {/* Het beginprofiel van een gesplitst deel: een eigen gelaste
+                  tussendoorsnede die in geen reeks staat (issue #31). */}
+              {eigenVerloop.begin && (
+                <button
+                  className={`pk-rij pk-rij-eigen${staalProfiel === eigenVerloop.begin ? " actief" : ""}`}
+                  onClick={() => setStaalProfiel(eigenVerloop.begin!)}
+                  title={t("profilePicker.kinds.eigen.label")}
+                >
+                  {eigenNaamVan(eigenVerloop.begin)}
+                </button>
+              )}
               {reeksProfielen.map((naam) => (
                 <button
                   key={naam}
@@ -968,6 +998,13 @@ export default function ProfielKiezer({
                       onChange={(e) => setStaalProfielEind(e.target.value)}
                     >
                       <option value="">{t("profilePicker.chooseEndProfile")}</option>
+                      {/* Het eindprofiel van een gesplitst deel: de eigen
+                          gelaste tussendoorsnede (issue #31). */}
+                      {eigenVerloop.eind && (
+                        <optgroup label={t("profilePicker.kinds.eigen.label")}>
+                          <option value={eigenVerloop.eind}>{eigenNaamVan(eigenVerloop.eind)}</option>
+                        </optgroup>
+                      )}
                       {eindProfielGroepen.map((g) => (
                         <optgroup key={g.label} label={g.label}>
                           {g.profielen.map((naam) => (
