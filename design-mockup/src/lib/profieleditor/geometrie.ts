@@ -214,22 +214,26 @@ export function toegestanePlaatsen(basis: Basisprofiel): GatPlaats[] {
   }
 }
 
-export function plaatsLabel(plaats: GatPlaats, basis: Basisprofiel): string {
+/**
+ * Sleutel van een gatplaats, het laatste deel van de i18n-sleutels
+ * `check:profileEditor.holes.place.<sleutel>` en `…placeShort.<sleutel>`: een
+ * hoeklijn heeft benen, een koker wanden. Hier stond een Nederlandse tekst;
+ * deze bibliotheek laadt geen i18n, dus de component vertaalt.
+ */
+export function plaatsSleutel(plaats: GatPlaats, basis: Basisprofiel): string {
   const koker = isKoker(basis);
   const hoeklijn = basis.soort === "Angle";
   switch (plaats) {
     case "lijf":
-      if (hoeklijn) return "door het lange been";
-      return koker ? "door de linkerwand" : "door het lijf";
+      return hoeklijn ? "longLeg" : koker ? "leftWall" : "web";
     case "flensBoven":
-      return koker ? "door de bovenwand" : "door de bovenflens";
+      return koker ? "topWall" : "topFlange";
     case "flensOnder":
-      if (hoeklijn) return "door het korte been";
-      return koker ? "door de onderwand" : "door de onderflens";
+      return hoeklijn ? "shortLeg" : koker ? "bottomWall" : "bottomFlange";
     case "wand":
-      return "door de buiswand";
+      return "tubeWall";
     case "vlak":
-      return "langsgat in het doorsnedevlak";
+      return "section";
   }
 }
 

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { REEKSEN, basisprofielVan, profielLabel, profielenVanReeks, reeksVanProfiel } from "../../lib/profieleditor/catalogus";
 import {
   controleerGat,
-  isKoker,
+  plaatsSleutel,
   standaardGat,
   toegestanePlaatsen,
   vrijePlaatbereiken,
@@ -19,28 +19,6 @@ import type { Basisprofiel, DoorsnedeOntwerp, Gat, GatPlaats } from "../../lib/p
 import GetalVeld from "./GetalVeld";
 
 type GatOntwerp = Extract<DoorsnedeOntwerp, { soort: "gat" }>;
-
-/**
- * Sleutel van een gatplaats. Dezelfde indeling als `plaatsLabel` in
- * lib/profieleditor/geometrie.ts (die Nederlands blijft voor de kern en de
- * controles), maar vertaalbaar: een hoeklijn heeft benen, een koker wanden.
- */
-function plaatsSleutel(plaats: GatPlaats, basis: Basisprofiel): string {
-  const koker = isKoker(basis);
-  const hoeklijn = basis.soort === "Angle";
-  switch (plaats) {
-    case "lijf":
-      return hoeklijn ? "longLeg" : koker ? "leftWall" : "web";
-    case "flensBoven":
-      return koker ? "topWall" : "topFlange";
-    case "flensOnder":
-      return hoeklijn ? "shortLeg" : koker ? "bottomWall" : "bottomFlange";
-    case "wand":
-      return "tubeWall";
-    case "vlak":
-      return "section";
-  }
-}
 
 /** Volledige plaats, bv. "door het lijf" — voor de tooltip en de gatkaart. */
 function plaatsTekst(plaats: GatPlaats, basis: Basisprofiel): string {

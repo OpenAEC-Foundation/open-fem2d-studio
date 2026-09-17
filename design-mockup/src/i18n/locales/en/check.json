@@ -533,7 +533,17 @@
       "weldN": "Weld {{n}}",
       "deleteTitle": "Delete this weld",
       "typeTitle": "Double-sided: a fillet weld on both sides of the plate — two throat sections. Single-sided: one. Full penetration butt weld: NEN-EN 1993-1-8 4.7.1 gives the weld the resistance of the weakest connected part, so no separate weld check.",
-      "throatTitle": "Throat thickness of one weld. NEN-EN 1993-1-8 4.5.2(2): not less than 3 mm."
+      "throatTitle": "Throat thickness of one weld. NEN-EN 1993-1-8 4.5.2(2): not less than 3 mm.",
+      "kind": {
+        "HoeklasEnkel": "fillet weld, single-sided",
+        "HoeklasDubbel": "fillet weld, double-sided",
+        "StompVolledig": "butt weld, full penetration"
+      },
+      "kindShort": {
+        "HoeklasEnkel": "single",
+        "HoeklasDubbel": "double",
+        "StompVolledig": "butt"
+      }
     },
     "toolbar": {
       "ariaLabel": "Move, rotate and mirror",
@@ -556,6 +566,21 @@
       "applyRotateTitle": "Rotate by φ: {{om}}",
       "applyRotateInvalid": "First enter a non-zero angle",
       "applyRotate": "Rotate by φ"
+    },
+    "shapeKind": {
+      "Onbekend": "Unknown — the check refuses classification",
+      "GelasteIDubbelsymmetrisch": "Welded I, doubly symmetric (LTB allowed)",
+      "GelasteIMonosymmetrisch": "Welded I, monosymmetric (no LTB)",
+      "Koker": "Rectangular hollow section (no LTB)",
+      "RondeBuis": "Circular hollow section (no LTB)"
+    },
+    "snap": {
+      "hoek": "corner",
+      "midden": "midpoint",
+      "hart": "centre",
+      "zwaartepunt": "centroid",
+      "raster": "grid",
+      "vrij": "free"
     }
   },
   "block": {
@@ -904,6 +929,24 @@
         "uncracked": "uncracked",
         "referenceLegend": "E_c·I_c (reference value)"
       }
+    },
+    "layers": {
+      "moment": {
+        "label": "Moment coverage",
+        "hint": "§9.2.1.3, figure 9.2 — the required tensile force F_s (after the shift a_l) next to the resisting force F_Rs of the bars actually present, per side"
+      },
+      "dwarskracht": {
+        "label": "Shear coverage",
+        "hint": "§6.2 — |V_Ed| next to V_Rd per section, with the route that gave V_Rd; V_Rd,c and V_Rd,s are never added together"
+      },
+      "scheurwijdte": {
+        "label": "Crack width",
+        "hint": "§7.3.4 — w_k per section under the frequent SLS combination, next to w_max from table 7.1N; requested per section from the calculation engine and therefore off by default"
+      },
+      "uc": {
+        "label": "Unity checks",
+        "hint": "The governing unity check per section over the other three layers, as a colour bar — green ≤ 0.9, amber up to 1.0, red above"
+      }
     }
   },
   "profileThumbnail": {
@@ -951,7 +994,9 @@
       "copyHintAfter": ".",
       "beamCount": "{{aantal}}× member",
       "chooseProfile": "Choose section for {{aantal}} members…",
-      "chooseProfileTitle": "Assign one section and material to all selected members"
+      "chooseProfileTitle": "Assign one section and material to all selected members",
+      "ctrlKey": "Ctrl",
+      "deleteKey": "Delete"
     },
     "node": {
       "title": "Node {{id}}",

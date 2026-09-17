@@ -18,10 +18,11 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import i18next from "i18next";
 import { useTranslation } from "react-i18next";
 import { omhullende, type Omhullende } from "../../lib/profieleditor/geometrie";
 import {
-  VANG_NAAM,
+  VANG_SLEUTEL,
   dichtstbijzijndeSnap,
   snapPunten,
   type SnapPunt,
@@ -628,7 +629,7 @@ function VangstMerk({ vangst, x, y }: { vangst: Vangst; x: number; y: number }) 
       )}
       {vangst.soort !== "raster" && vangst.soort !== "vrij" && (
         <text x={x + r + 4} y={y - r - 2} className="pe-snap-tekst">
-          {VANG_NAAM[vangst.soort]}
+          {i18next.t(VANG_SLEUTEL[vangst.soort])}
         </text>
       )}
     </g>

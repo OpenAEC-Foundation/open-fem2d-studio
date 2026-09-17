@@ -533,7 +533,17 @@
       "weldN": "Naht {{n}}",
       "deleteTitle": "Diese Naht löschen",
       "typeTitle": "Beidseitig: auf beiden Seiten des Blechs eine Kehlnaht — zwei Kehlnahtquerschnitte. Einseitig: einer. Stumpfnaht voll durchgeschweißt: NEN-EN 1993-1-8 4.7.1 gibt der Naht die Tragfähigkeit des schwächsten verbundenen Bauteils, also kein eigener Nahtnachweis.",
-      "throatTitle": "Kehlnahtdicke einer Naht. NEN-EN 1993-1-8 4.5.2(2): nicht kleiner als 3 mm."
+      "throatTitle": "Kehlnahtdicke einer Naht. NEN-EN 1993-1-8 4.5.2(2): nicht kleiner als 3 mm.",
+      "kind": {
+        "HoeklasEnkel": "Kehlnaht, einseitig",
+        "HoeklasDubbel": "Kehlnaht, beidseitig",
+        "StompVolledig": "Stumpfnaht, voll durchgeschweißt"
+      },
+      "kindShort": {
+        "HoeklasEnkel": "einseitig",
+        "HoeklasDubbel": "beidseitig",
+        "StompVolledig": "Stumpfnaht"
+      }
     },
     "toolbar": {
       "ariaLabel": "Verschieben, drehen und spiegeln",
@@ -556,6 +566,21 @@
       "applyRotateTitle": "Um φ drehen: {{om}}",
       "applyRotateInvalid": "Geben Sie zuerst einen Winkel ungleich null ein",
       "applyRotate": "Um φ drehen"
+    },
+    "shapeKind": {
+      "Onbekend": "Unbekannt — der Nachweis verweigert die Klassifizierung",
+      "GelasteIDubbelsymmetrisch": "Geschweißtes I, doppeltsymmetrisch (Biegedrillknicken zulässig)",
+      "GelasteIMonosymmetrisch": "Geschweißtes I, einfachsymmetrisch (kein Biegedrillknicken)",
+      "Koker": "Rechteckhohlprofil (kein Biegedrillknicken)",
+      "RondeBuis": "Rundrohr (kein Biegedrillknicken)"
+    },
+    "snap": {
+      "hoek": "Eckpunkt",
+      "midden": "Mitte",
+      "hart": "Mittelpunkt",
+      "zwaartepunt": "Schwerpunkt",
+      "raster": "Raster",
+      "vrij": "frei"
     }
   },
   "block": {
@@ -904,6 +929,24 @@
         "uncracked": "ungerissen",
         "referenceLegend": "E_c·I_c (Vergleichswert)"
       }
+    },
+    "layers": {
+      "moment": {
+        "label": "Momentendeckung",
+        "hint": "§9.2.1.3, Bild 9.2 — die erforderliche Zugkraft F_s (nach dem Versatzmaß a_l) neben der aufnehmbaren Kraft F_Rs der tatsächlich vorhandenen Stäbe, je Seite"
+      },
+      "dwarskracht": {
+        "label": "Querkraftdeckung",
+        "hint": "§6.2 — |V_Ed| neben V_Rd je Schnitt, mit dem Weg, der V_Rd lieferte; V_Rd,c und V_Rd,s werden nirgends addiert"
+      },
+      "scheurwijdte": {
+        "label": "Rissbreite",
+        "hint": "§7.3.4 — w_k je Schnitt unter der häufigen GZG-Kombination, neben w_max aus Tabelle 7.1N; wird je Schnitt beim Rechenkern abgefragt und ist daher standardmäßig aus"
+      },
+      "uc": {
+        "label": "Ausnutzungsgrade",
+        "hint": "Der maßgebende Ausnutzungsgrad je Schnitt über die anderen drei Ebenen, als Farbbalken — grün ≤ 0,9, orange bis 1,0, rot darüber"
+      }
     }
   },
   "profileThumbnail": {
@@ -947,11 +990,13 @@
       "keyMove": "verschieben",
       "keyRotate": "drehen",
       "keyDelete": "löschen.",
-      "copyHintBefore": "kopiert diese Lasten; wechseln Sie den Lastfall und fügen Sie sie ein mit",
-      "copyHintAfter": ".",
+      "copyHintBefore": "kopiert diese Lasten; wechseln Sie den Lastfall und fügen Sie sie mit",
+      "copyHintAfter": " ein.",
       "beamCount": "{{aantal}}× Stab",
       "chooseProfile": "Profil für {{aantal}} Stäbe wählen…",
-      "chooseProfileTitle": "Allen ausgewählten Stäben ein Profil und einen Werkstoff zuweisen"
+      "chooseProfileTitle": "Allen ausgewählten Stäben ein Profil und einen Werkstoff zuweisen",
+      "ctrlKey": "Strg",
+      "deleteKey": "Entf"
     },
     "node": {
       "title": "Knoten {{id}}",

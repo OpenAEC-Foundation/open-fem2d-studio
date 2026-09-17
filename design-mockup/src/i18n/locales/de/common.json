@@ -457,7 +457,7 @@
       "editProperties": "Eigenschaften bearbeiten",
       "loadsSelected_one": "{{count}} Last ausgewählt",
       "loadsSelected_other": "{{count}} {{soort}} ausgewählt",
-      "loadsSelectedBody": "Strg+C kopiert sie; wechseln Sie den Lastfall und fügen Sie mit Strg+V ein.",
+      "loadsSelectedBody": "Strg+C kopiert sie; wechseln Sie den Lastfall und fügen Sie sie mit Strg+V ein.",
       "selectAllOfType": "Alle {{soort}} auswählen ({{n}})",
       "duplicate": "Duplizieren",
       "delete": "Löschen"
@@ -491,7 +491,9 @@
       "left": "linker Rand",
       "right": "rechter Rand",
       "numbered": "Rand {{rand}}",
-      "numberedOfOpening": "Rand {{rand}} der Öffnung {{opening}}"
+      "numberedOfOpening": "Rand {{rand}} der Öffnung {{opening}}",
+      "openingUnknownEdge": "Öffnung {{opening}} (Rand unbekannt)",
+      "unknown": "unbekannter Rand"
     },
     "dim": {
       "editXAxis": "Maß der X-Achse bearbeiten",
@@ -546,9 +548,9 @@
     "selfWeight": "Eigengewicht",
     "analysis": "Berechnung",
     "analysisType": {
-      "eersteOrde": "Th. I. Ordnung",
-      "tweedeOrdeGeometrisch": "Th. II. Ordnung (P-Δ)",
-      "tweedeOrdeFysisch": "Th. II. Ordnung + physikalisch"
+      "eersteOrde": "Theorie I. Ordnung",
+      "tweedeOrdeGeometrisch": "Theorie II. Ordnung (P-Δ)",
+      "tweedeOrdeFysisch": "Theorie II. Ordnung, physikalisch nichtlinear"
     },
     "analysisDescription": {
       "eersteOrde": "Theorie I. Ordnung, linear: jede Kombination ist die gewichtete Summe der Lastfälle.",
@@ -713,5 +715,21 @@
   },
   "resultsOverlay": {
     "deflectionScale": "Verformungsmaßstab: {{schaal}}×"
+  },
+  "beamLoadRole": {
+    "gevelLinks": "Fassade links",
+    "gevelRechts": "Fassade rechts",
+    "dakPlat": "Flachdach (≤ 5°)",
+    "dakHellend": "Geneigtes Dach (> 5°)",
+    "overstek": "Auskragung / Vordach",
+    "vloer": "Decke",
+    "binnen": "Innenstab (keine Windfläche)"
+  },
+  "loadKindPlural": {
+    "lineLoad": "Linienlasten",
+    "pointForce": "Punktlasten",
+    "pointMoment": "Momente",
+    "thermal": "Temperaturlasten",
+    "edgeLoad": "Randlasten"
   }
 }

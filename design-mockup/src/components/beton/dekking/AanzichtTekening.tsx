@@ -603,7 +603,7 @@ function LaanTekening({
   return (
     <g className="dek-laan">
       <text x={MARGE_LINKS} y={y0 + 9} fontSize="9" fill="var(--theme-text-secondary, #555)">
-        {`${laan.titel} — ${laan.benodigdLabel} / ${laan.aanwezigLabel} [${laan.eenheid}], max ${nl(max, max < 10 ? 3 : 0)}`}
+        {`${tLaan(laan.titel)} — ${laan.benodigdLabel} / ${laan.aanwezigLabel} [${laan.eenheid}], max ${nl(max, max < 10 ? 3 : 0)}`}
         {geenTrek ? `  ·  ${tLaan("concrete.elevation.noTension", { label: laan.benodigdLabel })}` : ""}
       </text>
       {laan.tweede && laan.tweede.punten.length > 1 && (

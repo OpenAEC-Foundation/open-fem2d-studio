@@ -61,7 +61,7 @@ import type {
 import {
   withPlateDefaults, PLATE_DEFAULTS,
   isAsgelijndeRechthoek, valideerPlaatPolygoon, berekenPlaatMeshSignatuur,
-  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD, bepaalPlaatlastRand, plaatRandLabel,
+  commitPlaatMeshCache, LOAD_SOORT_MEERVOUD, bepaalPlaatlastRand, plaatRandTekst,
   plaatRekentAlsRaster, effectiefPlaatMeshType, valideerPlaatOpeningen,
   plaatMeshSignatuurVan, type PlaatOpening, type PlaatMeshType,
 } from "./femTypes";
@@ -4890,7 +4890,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             const bron = loads.find(l => l.id === selection.id);
             if (!bron) return null;
             const ids = selecteerLastenVanZelfdeSoort(loads, selection.id);
-            const soort = LOAD_SOORT_MEERVOUD[bron.type];
+            const soort = i18next.t(LOAD_SOORT_MEERVOUD[bron.type]);
             return (
               <button onClick={() => {
                 setContextMenu(null);
@@ -5027,7 +5027,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         beamLenM={opStaaf || opPlaat ? lenM : undefined}
         defaultPosM={opStaaf || opPlaat ? (p.posFrac ?? 0) * lenM : undefined}
         positieLabel={opPlaat
-          ? tCommon("canvas.popover.positionAlongEdge", { rand: plaatRandLabel(p), plaat: p.plateId, lengte: lenM.toFixed(2) })
+          ? tCommon("canvas.popover.positionAlongEdge", { rand: plaatRandTekst(p, tCommon), plaat: p.plateId, lengte: lenM.toFixed(2) })
           : undefined}
         onSubmit={(fx, fz, posFrac) => cbs.onAddLoad(
           opPlaat

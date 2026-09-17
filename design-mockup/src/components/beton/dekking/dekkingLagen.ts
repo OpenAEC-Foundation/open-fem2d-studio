@@ -38,8 +38,12 @@ export type LaagId = "moment" | "dwarskracht" | "scheurwijdte" | "uc";
 
 export interface LaagInfo {
   id: LaagId;
+  /**
+   * i18n-sleutel (naamruimte check) van het label. Sleutels en geen tekst:
+   * dit bestand laadt geen i18n, de component vertaalt met `t(sleutel)`.
+   */
   label: string;
-  /** Tooltip; noemt het normartikel, want dat is wat de laag beweert. */
+  /** i18n-sleutel van de tooltip; die noemt het normartikel, want dat is wat de laag beweert. */
   hint: string;
   /** Kleurstip vóór het label, zelfde rol als in de resultaten-vinkjes. */
   swatch: string;
@@ -53,26 +57,26 @@ export interface LaagInfo {
 export const LAGEN: readonly LaagInfo[] = [
   {
     id: "moment",
-    label: "Momentendekking",
-    hint: "§9.2.1.3, figuur 9.2 — de benodigde trekkracht F_s (ná de verschuiving over a_l) naast de weerstandbiedende F_Rs van de staven die er werkelijk liggen, per zijde",
+    label: "check:concrete.layers.moment.label",
+    hint: "check:concrete.layers.moment.hint",
     swatch: "#2563eb",
   },
   {
     id: "dwarskracht",
-    label: "Dwarskrachtdekking",
-    hint: "§6.2 — |V_Ed| naast V_Rd per snede, met de route die V_Rd leverde; V_Rd,c en V_Rd,s worden nergens opgeteld",
+    label: "check:concrete.layers.dwarskracht.label",
+    hint: "check:concrete.layers.dwarskracht.hint",
     swatch: "#10b981",
   },
   {
     id: "scheurwijdte",
-    label: "Scheurwijdte",
-    hint: "§7.3.4 — w_k per snede onder de frequente BGT-combinatie, naast w_max van tabel 7.1N; wordt per snede bij de rekenkern opgevraagd en staat daarom standaard uit",
+    label: "check:concrete.layers.scheurwijdte.label",
+    hint: "check:concrete.layers.scheurwijdte.hint",
     swatch: "#8b5cf6",
   },
   {
     id: "uc",
-    label: "Unity checks",
-    hint: "De maatgevende unity check per snede over de andere drie lagen, als kleurbalk — groen ≤ 0,9, amber tot 1,0, rood daarboven",
+    label: "check:concrete.layers.uc.label",
+    hint: "check:concrete.layers.uc.hint",
     swatch: "#dc2626",
   },
 ] as const;
@@ -121,7 +125,10 @@ export interface LijnPunt {
 
 /** Eén te tekenen lijn, met alles wat de laan eromheen nodig heeft. */
 export interface Laan {
-  /** "Momentendekking onder", "Dwarskracht", … */
+  /**
+   * i18n-sleutel van de titel ("Momentendekking onder", "Dwarskrachtdekking",
+   * …); de tekening vertaalt hem. Geen tekst, want dit bestand laadt geen i18n.
+   */
   titel: string;
   /** "kN" of "mm". */
   eenheid: string;
@@ -181,7 +188,9 @@ function isSprong(a: LijnPunt, b: LijnPunt): boolean {
  */
 export function momentLaan(dekking: Momentdekking, kleur: string): Laan {
   return {
-    titel: `Momentendekking ${dekking.side === "Bottom" ? "onder" : "boven"}`,
+    titel: dekking.side === "Bottom"
+      ? "check:concrete.memberWindow.readMomentBottom"
+      : "check:concrete.memberWindow.readMomentTop",
     eenheid: "kN",
     benodigdLabel: "F_s",
     aanwezigLabel: "F_Rs",
@@ -215,7 +224,7 @@ export function dwarskrachtLaan(
   kleur: string,
 ): Laan {
   return {
-    titel: "Dwarskrachtdekking",
+    titel: "check:concrete.layers.dwarskracht.label",
     eenheid: "kN",
     benodigdLabel: "|V_Ed|",
     aanwezigLabel: "V_Rd",

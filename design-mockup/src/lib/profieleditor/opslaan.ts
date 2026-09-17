@@ -63,12 +63,18 @@ export function naarMotorSamenvatting(u: MotorUitvoer, o: DoorsnedeOntwerp): Mot
   };
 }
 
-export const VORM_LABEL: Record<CustomDoorsnedevorm, string> = {
-  Onbekend: "Onbekend — de toetsing weigert classificatie",
-  GelasteIDubbelsymmetrisch: "Gelast I, dubbelsymmetrisch (kip toegestaan)",
-  GelasteIMonosymmetrisch: "Gelast I, monosymmetrisch (geen kip)",
-  Koker: "Koker (geen kip)",
-  RondeBuis: "Ronde buis (geen kip)",
+/**
+ * i18n-sleutel (naamruimte check) van de vormaanduiding, voor de keuzelijst.
+ * Een sleutel en geen tekst: deze bibliotheek laadt geen i18n, de component
+ * vertaalt. De vertaling van `Onbekend` houdt " — " als scheiding, omdat de
+ * editor in de korte weergave alleen het deel vóór het streepje toont.
+ */
+export const VORM_SLEUTEL: Record<CustomDoorsnedevorm, string> = {
+  Onbekend: "check:profileEditor.shapeKind.Onbekend",
+  GelasteIDubbelsymmetrisch: "check:profileEditor.shapeKind.GelasteIDubbelsymmetrisch",
+  GelasteIMonosymmetrisch: "check:profileEditor.shapeKind.GelasteIMonosymmetrisch",
+  Koker: "check:profileEditor.shapeKind.Koker",
+  RondeBuis: "check:profileEditor.shapeKind.RondeBuis",
 };
 
 /**

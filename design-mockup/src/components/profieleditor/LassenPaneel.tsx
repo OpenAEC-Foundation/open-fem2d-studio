@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { nieuwId } from "../../lib/profieleditor/id";
 import {
-  LASSOORT_LABEL,
+  LASSOORT_SLEUTEL,
   lassenVan,
   mogelijkeNaden,
   voorgesteldeKeeldikte,
@@ -175,7 +175,7 @@ export default function LassenPaneel({ ontwerp, onWijzig, geselecteerd, onSelect
               >
                 {SOORTEN.map((s) => (
                   <option key={s} value={s}>
-                    {LASSOORT_LABEL[s]}
+                    {t(LASSOORT_SLEUTEL[s])}
                   </option>
                 ))}
               </select>
