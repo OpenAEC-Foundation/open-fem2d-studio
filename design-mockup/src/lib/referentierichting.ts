@@ -349,6 +349,13 @@ export interface Toetsdata {
   nodes: Node[];
   beams: Beam[];
   combinationResults: Map<number, SolverResult>;
+  /**
+   * De eerste-orde-oplossing per combinatie na een tweede-orde-rekengang
+   * (alleen de betonbouwer leest haar, voor §5.8). Draait mee met de staven,
+   * anders zouden M₀₁ en M₀₂ van een gespiegelde kolom van einde wisselen ten
+   * opzichte van de omhullende ernaast.
+   */
+  eersteOrdeResultaten?: Map<number, SolverResult>;
 }
 
 /**
@@ -366,14 +373,15 @@ export function toetsdataInReferentierichting<T extends Toetsdata>(data: T): T {
     if (referentieVanStaaf(b, data.nodes).gespiegeld) gespiegeld.add(b.id);
   }
   if (gespiegeld.size === 0) return data;
+  const spiegelMap = (m: Map<number, SolverResult>) =>
+    new Map([...m].map(([id, r]) => [id, resultaatInReferentierichting(r, gespiegeld)] as const));
   return {
     ...data,
     beams: data.beams.map((b) => staafInReferentierichting(b, data.nodes)),
-    combinationResults: new Map(
-      [...data.combinationResults].map(
-        ([id, r]) => [id, resultaatInReferentierichting(r, gespiegeld)] as const,
-      ),
-    ),
+    combinationResults: spiegelMap(data.combinationResults),
+    ...(data.eersteOrdeResultaten
+      ? { eersteOrdeResultaten: spiegelMap(data.eersteOrdeResultaten) }
+      : {}),
   };
 }
 

@@ -44,7 +44,13 @@ import type { GridSettings, Tool } from "./components/fem/femTypes";
 import { DEFAULT_GRID, nonlinearVoorBestand } from "./components/fem/femTypes";
 import type { SolverResult } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
-import { zetCombinatieResultaat, getSecondOrderInput, zetSolverLogOpvanger } from "./components/fem/solver/engine";
+import {
+  eersteOrdeCombinatieResultaat,
+  getSecondOrderInput,
+  zetCombinatieResultaat,
+  zetSolverLogOpvanger,
+} from "./components/fem/solver/engine";
+import { eersteOrdeResultatenVoorKolomtoets } from "./lib/eersteOrdeResultaten";
 import { maakSolverLogOpvanger } from "./stores/solverLogStore";
 import {
   combinatiesVanSoort,
@@ -1408,6 +1414,12 @@ function App() {
       // staaf met φ(∞,t₀) valt er niets te verhouden en wordt er niets extra
       // gerekend. De hout-eindtoestandvarianten horen niet bij 6.16b van beton.
       const metKruip = staven.some((s) => s.phiInfT0 !== undefined);
+      // De eerste-orde-oplossingen gaan in de cache van deze rekengang
+      // (`eersteOrdeCombinatieResultaat`): de kolomtoets (§5.8.3.1, (5.19);
+      // issue #35) leest daarna dezelfde oplossingen in plaats van ze opnieuw
+      // te rekenen. `input` is precies de invoer van die cache.
+      const losEersteOrde = (_input: MultiInput, c: Parameters<typeof eersteOrdeCombinatieResultaat>[1]) =>
+        eersteOrdeCombinatieResultaat(outputs.perCase, c) ?? null;
       const quasiBlijvend = metKruip
         ? eersteOrdeQuasiBlijvend(
             input,
@@ -1415,6 +1427,7 @@ function App() {
               zonderBgtEindtoestand(fem.actieveCombinaties.filter((c) => c.type === "sls")),
               "6.16b",
             ),
+            losEersteOrde,
           )
         : [];
       // Dezelfde lijst als het lineaire pad: een niet-doorgerekende combinatie
@@ -1438,7 +1451,7 @@ function App() {
         // de BGT-combinaties houden φ(∞,t₀) (7.4.3(5), veilige kant).
         const kruip519 =
           metKruip && grenstoestand === "DesignValues"
-            ? kruipInvoerVoorCombinatie(input, combo, quasiBlijvend, staven)
+            ? kruipInvoerVoorCombinatie(input, combo, quasiBlijvend, staven, losEersteOrde)
             : undefined;
         const uit = await losCombinatieFysischOp(input, combo, staven, {
           segmentLengteMm: fem.betonSegmentLengteMm,
@@ -1622,6 +1635,12 @@ function App() {
       // De invoer voor φ(∞,t₀) volgens bijlage B; de toetsingsstore rekent hem
       // per staaf uit met dezelfde functie als de BGT-stijfheidslus.
       kruipInvoer: fem.betonKruipInvoer,
+      // EN 1992-1-1 §5.8.3.1(1) en (5.19): r_m en φ_ef uit EERSTE-ORDE-momenten,
+      // ook na een tweede-orde- of fysisch niet-lineaire rekengang (issue #35).
+      // Bij eerste orde, of zonder kolom, `undefined` — dan verandert er niets.
+      eersteOrdeResultaten: eersteOrdeResultatenVoorKolomtoets(
+        perCase, fem.actieveCombinaties, fem.beams,
+      ),
     });
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 

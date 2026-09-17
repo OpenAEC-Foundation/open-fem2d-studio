@@ -424,6 +424,11 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
         // is de DERDE omhullende, alleen voor M₀Eqp in (5.19); zonder haar
         // blijft φ_ef onbekend en valt λ_lim terug op A = 0,7.
         "sls_quasi_permanent_envelope", "column",
+        // De eerste-orde-momenten voor §5.8 na een tweede-orde-berekening
+        // (r_m, M₀Ed van (5.19)); zonder dit veld weigert
+        // `additionalProperties: false` het en rekent een client na een
+        // P-Δ-berekening r_m en φ_ef met tweede-orde-momenten.
+        "first_order_envelope",
         // Noemt bij een staande staaf de zijden in wereldtermen; zonder dit
         // veld in het schema weigert `additionalProperties: false` het.
         "staafstand",
@@ -441,7 +446,7 @@ async fn schema_van_check_concrete_beam_is_volledig_en_strikt() {
     }
     assert_eq!(
         props.as_object().unwrap().len(),
-        23,
+        24,
         "het schema kent een veld dat ConcreteBeamCheckInput weigert"
     );
 

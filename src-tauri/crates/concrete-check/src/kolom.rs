@@ -296,6 +296,13 @@ pub struct ConcreteColumnCheckRequest {
     /// uitdrukking (6.16)) — M₀Eqp uit (5.19). Leeg = niet meegestuurd.
     #[serde(default)]
     pub sls_quasi_permanent_envelope: Vec<ForcePoint>,
+    /// UGT-krachtsverloop uit een EERSTE-ORDE-berekening, voor M₀Ed, M₀₁ en
+    /// M₀₂ (§5.8.3.1(1), (5.19)) wanneer `forces_envelope` tweede orde is.
+    /// `None` = `forces_envelope` is eerste orde. Zie hetzelfde veld in
+    /// `ConcreteBeamCheckInput`.
+    #[serde(default)]
+    #[ts(optional)]
+    pub first_order_envelope: Option<Vec<ForcePoint>>,
     #[serde(default)]
     pub design_situation: DesignSituation,
     #[serde(default)]
@@ -607,6 +614,7 @@ pub fn kolomtoetsen(
     lengte_mm: f64,
     ugt: &[ForcePoint],
     bgt_qp: &[ForcePoint],
+    eerste_orde: Option<&[ForcePoint]>,
 ) -> Kolomuitkomst {
     let artikel_poort = "art. 5.8.3.1(1) — NB: \"De waarde van λ_lim moet gelijk aan 20·A·B·C/√n \
                          zijn genomen\"";
@@ -749,8 +757,61 @@ pub fn kolomtoetsen(
         }
     }
 
+    // ── De eerste-orde-momenten ───────────────────────────────────────────
+    //
+    // §5.8.3.1(1) definieert r_m = M₀₁/M₀₂ met de EERSTE-ORDE-eindmomenten en
+    // (5.19) noemt M₀Ed het eerste-orde-buigend moment. Komt de UGT-omhullende
+    // uit een tweede-orde- of fysisch niet-lineaire berekening, dan levert de
+    // aanroeper de eerste-orde-oplossing van dezelfde combinaties apart mee.
+    // De maatgevende snede en N_Ed blijven uit de gekozen berekening (die
+    // bepalen de doorsnedetoetsen en n); alleen de MOMENTEN van §5.8.3.1 en
+    // (5.19) komen dan uit de eerste orde, op dezelfde combinatie en de
+    // dichtstbijzijnde plaats. Zonder die lijst is de UGT-omhullende zelf
+    // eerste orde en is `m0_punt` de maatgevende snede zelf.
+    let (m0_punt, momentlijst) = match eerste_orde {
+        None => (gov, ugt),
+        Some(lijst) => {
+            let punt = lijst
+                .iter()
+                .filter(|p| p.combination_id == gov.combination_id)
+                .min_by(|a, b| {
+                    (a.position_mm - gov.position_mm)
+                        .abs()
+                        .total_cmp(&(b.position_mm - gov.position_mm).abs())
+                })
+                .copied();
+            match punt {
+                Some(p) => (p, lijst),
+                None => {
+                    // Niet stil terugvallen op de tweede-orde-momenten: dat is
+                    // precies de fout die deze lijst moet voorkomen.
+                    return Kolomuitkomst {
+                        checks: vec![benoem(calc(
+                            SLANKHEIDSGRENS_ID,
+                            "Slankheidsgrens λ_lim — mogen de tweede-orde-effecten vervallen?",
+                            artikel_poort,
+                            state,
+                            CheckStatus::NotApplicable,
+                            vec![format!(
+                                "de eerste-orde-omhullende is meegegeven, maar daarin staat \
+                                 combinatie {} niet — de combinatie met de grootste normaaldruk. \
+                                 r_m = M₀₁/M₀₂ (§5.8.3.1(1)) en M₀Ed van (5.19) moeten \
+                                 eerste-orde-momenten zijn; de momenten van de tweede-orde-\
+                                 berekening worden daarvoor niet in de plaats gebruikt. Reken \
+                                 de eerste orde van deze combinatie mee.",
+                                gov.combination_id
+                            )],
+                        ))],
+                        slankheid: None,
+                        tweede_as: None,
+                    };
+                }
+            }
+        }
+    };
+
     // ── De eindmomenten en de dwarsbelastingvraag ─────────────────────────
-    let einden = eindmomenten(ugt, gov.combination_id, lengte_mm, |p| p.forces.my_ed);
+    let einden = eindmomenten(momentlijst, gov.combination_id, lengte_mm, |p| p.forces.my_ed);
     let (eindmomenten_knm, r_m_is_een) = match einden {
         Eindmomenten::Paar { m01, m02 } => (Some((m01, m02)), false),
         Eindmomenten::RmIsEen { .. } => (None, true),
@@ -774,7 +835,7 @@ pub fn kolomtoetsen(
     // maar die weigering zou hier de HELE §5.8-toets laten wegvallen — juist
     // bij de kolom waarvoor zij is bedoeld. φ_ef blijft in dat geval onbekend,
     // §5.8.3.1(1) staat A = 0,7 toe, en de kruiptoets zegt waarom.
-    let m0_eqp_knm = if gov.forces.my_ed.abs() > 1e-9 {
+    let m0_eqp_knm = if m0_punt.forces.my_ed.abs() > 1e-9 {
         bgt_qp
             .iter()
             .min_by(|a, b| {
@@ -799,7 +860,7 @@ pub fn kolomtoetsen(
         f_cd_mpa: mat.f_cd(),
         f_yd_mpa: mat.f_yd(),
         n_ed_kn: gov.forces.n_ed,
-        m0_ed_knm: Some(gov.forces.my_ed),
+        m0_ed_knm: Some(m0_punt.forces.my_ed),
         m0_eqp_knm,
         phi_inf_t0: k.phi_inf_t0,
         h_mm: Some(section.h_mm),
@@ -895,9 +956,23 @@ pub fn kolomtoetsen(
         gov.position_mm.round() as i64,
         gov.combination_id,
         nl(n_druk_kn, 1),
-        nl(gov.forces.my_ed, 1),
+        nl(m0_punt.forces.my_ed, 1),
         ugt.len()
     ));
+    if eerste_orde.is_some() {
+        poort.notes.push(format!(
+            "EERSTE-ORDE-MOMENTEN. De UGT-krachten van deze staaf komen uit een tweede-orde- of \
+             fysisch niet-lineaire berekening, maar §5.8.3.1(1) definieert r_m = M₀₁/M₀₂ met de \
+             eerste-orde-eindmomenten en (5.19) noemt M₀Ed het eerste-orde-moment. M₀Ed, M₀₁ en \
+             M₀₂ komen daarom uit de EERSTE-ORDE-oplossing van combinatie {} (x = {} mm): M₀Ed = \
+             {} kNm, tegenover M_Ed = {} kNm in de gekozen berekening op deze snede. N_Ed en de \
+             doorsnedetoetsen blijven uit de gekozen berekening.",
+            gov.combination_id,
+            m0_punt.position_mm.round() as i64,
+            nl(m0_punt.forces.my_ed, 1),
+            nl(gov.forces.my_ed, 1)
+        ));
+    }
     if slank.tweede_orde_verwaarloosbaar {
         poort.notes.push(format!(
             "λ = {} < λ_lim = {}: §5.8.3.1(1) staat toe de tweede-orde-effecten te verwaarlozen. \
@@ -1088,7 +1163,7 @@ pub fn kolomtoetsen(
                      die de poort maatgevend maakt.",
                     nl(phi, 2),
                     nl(m0_eqp_knm.unwrap_or(0.0), 1),
-                    nl(gov.forces.my_ed, 1),
+                    nl(m0_punt.forces.my_ed, 1),
                     nl(p, 2),
                     nl(slank.a, 3)
                 )),
@@ -1102,13 +1177,22 @@ pub fn kolomtoetsen(
                             .to_string(),
                     );
                     if let Some(t) =
-                        a_toelichting(slank.a_grondslag, m0_eqp_knm, Some(gov.forces.my_ed))
+                        a_toelichting(slank.a_grondslag, m0_eqp_knm, Some(m0_punt.forces.my_ed))
                     {
                         kruip.notes.push(t);
                     }
                 }
             }
         }
+    }
+    if eerste_orde.is_some() && slank.phi_ef.is_some() {
+        kruip.notes.push(
+            "M₀Ed en M₀Eqp in (5.19) komen hier uit de EERSTE-ORDE-oplossing van de combinaties, \
+             niet uit de tweede-orde- of fysisch niet-lineaire berekening waarop de doorsnede is \
+             getoetst: §5.8.4(2) vraagt eerste-orde-momenten. Met de tweede-orde-momenten zou de \
+             verhouding M₀Eqp/M₀Ed — en daarmee φ_ef en A — verschuiven."
+                .to_string(),
+        );
     }
     checks.push(benoem(kruip));
 
@@ -1267,6 +1351,7 @@ pub fn column_check(
         req.length_m * 1000.0,
         &req.forces_envelope,
         &req.sls_quasi_permanent_envelope,
+        req.first_order_envelope.as_deref(),
     );
 
     let z = uit.tweede_as.as_ref();

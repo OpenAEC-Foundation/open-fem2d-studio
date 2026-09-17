@@ -101,6 +101,7 @@ fn invoer(stand: Option<Staafstand>, m: f64) -> ConcreteBeamCheckInput {
         bar_spacing_mm: None,
         column: None,
         sls_quasi_permanent_envelope: vec![],
+        first_order_envelope: None,
         staafstand: stand,
         staafstand_notities: None,
     }

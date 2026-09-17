@@ -108,6 +108,7 @@ fn balk_zonder_beugels(beam_id: u32) -> ConcreteBeamCheckResult {
         bar_spacing_mm: None,
         column: None,
         sls_quasi_permanent_envelope: vec![],
+        first_order_envelope: None,
         staafstand: None,
         staafstand_notities: None,
     };
