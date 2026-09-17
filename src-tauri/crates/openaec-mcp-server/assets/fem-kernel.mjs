@@ -18625,6 +18625,8 @@ function genereerWindbelasting(model, inst) {
   };
 }
 var VRIJSTAAND_SLEUTEL_PREFIX = "luifel:";
+var HORIZONTAAL_SLEUTEL = /^luifel:horizontaal:(links|rechts)$/;
+var HORIZONTAAL_COMBINATIE_UITLEG = "Combinaties: wrijving en wind op de kolommen horen bij dezelfde wind als de druk op het dak (\xA77.3(7); \xA75.3(3): de krachten uit \xE9\xE9n windrichting samen). Elke gegenereerde combinatie met een dakgeval (c_p,net of c_f) neemt daarom het horizontale geval van dezelfde windrichting met dezelfde factor mee: bij c_f van een lessenaarsdak, dat een eigen richting heeft (figuur 7.16), alleen dat van die richting; bij een dakgeval voor alle richtingen (c_p,net, c_f van een zadel- of kieldak) een combinatie met dat van links en een met dat van rechts. Het horizontale geval leidt nooit alleen en komt nooit samen met dat van de andere richting in een combinatie.";
 var VRIJSTAAND_UITGANGSPUNT = "Wind op een vrijstaand dak (open overkapping) volgens NEN-EN 1991-1-4 \xA77.3: referentiehoogte z_e = h (\xA77.3(8)); nettodrukco\xEBffici\xEBnten c_p,net en globale krachtco\xEBffici\xEBnten c_f uit tabel 7.6 (lessenaarsdak) of 7.7 (zadel- of kieldak), lineair ge\xEFnterpoleerd tussen \u03C6 = 0 en \u03C6 = 1 (\xA77.3(3)); c_f aangrijpend zoals figuur 7.16/7.17 (\xA77.3(6)). Positief = netto neerwaarts.";
 function vrijstaandDakUitgangspunten(loadCases, loads) {
   const gevallen = loadCases.filter((c) => c.gegenereerd?.bron === "wind" && c.gegenereerd.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX));
@@ -18633,6 +18635,9 @@ function vrijstaandDakUitgangspunten(loadCases, loads) {
   for (const c of gevallen) {
     const teksten = [...new Set(loads.filter((l) => l.caseId === c.id && l.gegenereerdDoor === "wind" && (l.omschrijving ?? "").trim() !== "").map((l) => l.omschrijving.trim()))];
     regels.push(`${c.name}: ${teksten.length > 0 ? teksten.join("; ") : "geen lasten"}`);
+  }
+  if (gevallen.some((c) => HORIZONTAAL_SLEUTEL.test(c.gegenereerd.sleutel))) {
+    regels.push(HORIZONTAAL_COMBINATIE_UITLEG);
   }
   return regels.join("\n");
 }
@@ -19099,13 +19104,7 @@ function genereerVrijstaandDak(model, inst, geos, meldingen) {
       }
       perGeval.push({ sleutel, naam, regels });
     }
-    meldingen.push({
-      niveau: "waarschuwing",
-      tekst: `De horizontale gevallen (${[
-        ...cfr !== null ? ["wrijving"] : [],
-        ...kolommen.length > 0 ? ["kolommen"] : []
-      ].join(" en ")}) werken tegelijk met de c_f-gevallen van dezelfde windrichting, maar elke gegenereerde combinatie neemt \xE9\xE9n windgeval. Is de som maatgevend, maak dan zelf een combinatie met beide gevallen.`
-    });
+    meldingen.push({ niveau: "info", tekst: HORIZONTAAL_COMBINATIE_UITLEG });
   }
   if (cfr !== null) {
     const dakLengte_m = dak.reduce((som, g) => som + g.L_mm, 0) / 1e3;
@@ -19219,7 +19218,7 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
     const G2 = eigen.filter((c) => c.type === "dead").map((c) => c.id);
     const r = (x) => Math.round(x * 1e9) / 1e9;
     const bron = `\u03B3: NEN-EN 1990 ${f.bron}; ${psiBron(bijlage)}`;
-    for (const gv of windGevallen) {
+    for (const gv of windVarianten(windGevallen)) {
       const sets = [
         {
           naam: `UGT 6.10b \u2014 ${gv.naam} leidend`,
@@ -19275,7 +19274,8 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
               ...o.factoren
             ],
             windSleutel: gv.sleutel,
-            windFactor: s.wind
+            windFactor: s.wind,
+            ...gv.mee.length > 0 ? { windMeeSleutels: gv.mee } : {}
           });
         }
       }
@@ -19283,11 +19283,48 @@ function genereerWindCombinaties(loadCases, windGevallen, gevolgklasse = STANDAA
   }
   return combinaties;
 }
+function windVarianten(windGevallen) {
+  const horizontaal = /* @__PURE__ */ new Map();
+  for (const g of windGevallen) {
+    const m = HORIZONTAAL_SLEUTEL.exec(g.sleutel);
+    if (m) horizontaal.set(m[1], g);
+  }
+  if (horizontaal.size === 0) return windGevallen.map((g) => ({ sleutel: g.sleutel, naam: g.naam, mee: [] }));
+  const zadel = windGevallen.some((g) => /^luifel:cf:(max|min):beide$/.test(g.sleutel));
+  const NAAM_KOP = "Wind vrijstaand dak ";
+  const uit = [];
+  for (const g of windGevallen) {
+    if (HORIZONTAAL_SLEUTEL.test(g.sleutel)) continue;
+    if (!g.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX)) {
+      uit.push({ sleutel: g.sleutel, naam: g.naam, mee: [] });
+      continue;
+    }
+    const eigen = zadel ? null : /^luifel:cf:(?:max|min):(links|rechts)$/.exec(g.sleutel)?.[1] ?? null;
+    let ontbreekt = false;
+    for (const richting2 of eigen !== null ? [eigen] : ["links", "rechts"]) {
+      const h = horizontaal.get(richting2);
+      if (!h) {
+        ontbreekt = true;
+        continue;
+      }
+      const achter = `, van ${richting2}`;
+      let deel = h.naam.startsWith(NAAM_KOP) ? h.naam.slice(NAAM_KOP.length) : h.naam;
+      if (deel.endsWith(achter)) deel = deel.slice(0, -achter.length);
+      uit.push({
+        sleutel: g.sleutel,
+        naam: `${g.naam} + ${deel}${eigen === null ? achter : ""}`,
+        mee: [h.sleutel]
+      });
+    }
+    if (ontbreekt) uit.push({ sleutel: g.sleutel, naam: g.naam, mee: [] });
+  }
+  return uit;
+}
 function handtekeningVanGeneratie(gevallen, lasten, combinaties) {
   const r = (v) => Number(v.toPrecision(12)).toString();
   const g = gevallen.map((c2) => `${c2.sleutel}|${c2.naam}`).join(";");
   const l = lasten.map((x) => `${x.gevalSleutel}|${x.beamId}|${r(x.q)}|${x.startFrac !== void 0 ? r(x.startFrac) : "-"}|${x.endFrac !== void 0 ? r(x.endFrac) : "-"}${x.omschrijving !== void 0 ? `|${x.omschrijving}` : ""}${x.richting !== void 0 ? `|${x.richting}` : ""}`).join(";");
-  const c = combinaties.map((x) => `${x.naam}|${x.type}|${x.windSleutel}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p, q) => p[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`).join(";");
+  const c = combinaties.map((x) => `${x.naam}|${x.type}|${[x.windSleutel, ...x.windMeeSleutels ?? []].sort().join("+")}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p, q) => p[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`).join(";");
   return `G[${g}]L[${l}]C[${c}]`;
 }
 function handtekeningVanModel(loadCases, loads, combinaties) {
@@ -19310,12 +19347,16 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
     ...l.qDir === "x" ? { richting: "axiaal" } : {}
   }));
   const gCombi = combinaties.filter((c) => c.name.startsWith(WIND_COMBI_PREFIX)).map((c) => {
-    const windEntry = [...c.factors.entries()].find(([id]) => gegenereerdeIds.has(id));
+    const windEntries = [...c.factors.entries()].filter(([id]) => gegenereerdeIds.has(id));
+    const windEntry = windEntries[0];
     return {
       naam: c.name,
       type: c.type,
       windSleutel: windEntry ? sleutelVanId.get(windEntry[0]) ?? "?" : "",
-      windFactor: windEntry ? windEntry[1] : 0,
+      // Samengaande windgevallen hebben dezelfde factor; wijkt er een af,
+      // dan klopt de handtekening bewust niet (NaN).
+      windFactor: windEntry ? windEntries.every(([, f]) => f === windEntry[1]) ? windEntry[1] : Number.NaN : 0,
+      ...windEntries.length > 1 ? { windMeeSleutels: windEntries.slice(1).map(([id]) => sleutelVanId.get(id) ?? "?") } : {},
       factorenPerCaseId: [...c.factors.entries()].filter(([id]) => !gegenereerdeIds.has(id))
     };
   });
@@ -19436,7 +19477,12 @@ function windCombinatiesVoor(loadCases, gevolgklasse, bijlage = STANDAARD_BIJLAG
     name: g.naam,
     type: g.type,
     formula: g.formule,
-    factors: new Map([...g.factorenPerCaseId, [idVan.get(g.windSleutel), g.windFactor]])
+    factors: new Map([
+      ...g.factorenPerCaseId,
+      [idVan.get(g.windSleutel), g.windFactor],
+      // Vrijstaand dak: wrijving en kolomwind van dezelfde richting (issue #26).
+      ...(g.windMeeSleutels ?? []).map((s) => [idVan.get(s), g.windFactor])
+    ])
   }));
 }
 function synchroniseerWindCombinaties(staat) {
@@ -23942,6 +23988,7 @@ export {
   GEBRUIKSCATEGORIEEN,
   GESCHAKELD_BRON,
   GEVOLGKLASSEN,
+  HORIZONTAAL_COMBINATIE_UITLEG,
   KOLOM_BRON,
   K_CR_STANDAARD,
   K_DEF_TABEL_3_2,
@@ -24210,6 +24257,7 @@ export {
   wijzigBelastinggeval,
   wijzigCombinatie,
   windCombinatiesVoor,
+  windVarianten,
   withPlateDefaults,
   zeegNotities,
   zeegVoorToets,
