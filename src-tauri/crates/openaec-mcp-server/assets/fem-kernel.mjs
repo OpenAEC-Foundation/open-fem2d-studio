@@ -13399,14 +13399,12 @@ function toetsdataInReferentierichting(data) {
     if (referentieVanStaaf(b, data.nodes).gespiegeld) gespiegeld.add(b.id);
   }
   if (gespiegeld.size === 0) return data;
+  const spiegelMap = (m) => new Map([...m].map(([id, r]) => [id, resultaatInReferentierichting(r, gespiegeld)]));
   return {
     ...data,
     beams: data.beams.map((b) => staafInReferentierichting(b, data.nodes)),
-    combinationResults: new Map(
-      [...data.combinationResults].map(
-        ([id, r]) => [id, resultaatInReferentierichting(r, gespiegeld)]
-      )
-    )
+    combinationResults: spiegelMap(data.combinationResults),
+    ...data.eersteOrdeResultaten ? { eersteOrdeResultaten: spiegelMap(data.eersteOrdeResultaten) } : {}
   };
 }
 function zijdenInWereldtermen(staafstand) {
@@ -17747,9 +17745,18 @@ function solveCombinationFirstOrder(input, combo) {
     ` in combinatie "${combo.name}" (eerste orde)`
   );
 }
+function eersteOrdeCombinatieResultaat(perCase, combo) {
+  const so = getSecondOrderState(perCase);
+  if (!so) return void 0;
+  const sleutel = tweedeOrdeSleutel(combo);
+  if (so.eersteOrdeCache.has(sleutel)) return so.eersteOrdeCache.get(sleutel);
+  const uit = solveCombinationFirstOrder(so.input, combo);
+  so.eersteOrdeCache.set(sleutel, uit);
+  return uit;
+}
 function solveAllCasesNonlinear(input) {
   const { perCase } = solveAllCases(input);
-  const state = { input, cache: /* @__PURE__ */ new Map() };
+  const state = { input, cache: /* @__PURE__ */ new Map(), eersteOrdeCache: /* @__PURE__ */ new Map() };
   perCase[SECOND_ORDER_KEY] = state;
   return { perCase };
 }
@@ -24252,6 +24259,7 @@ export {
   doorsnedeVeldenVoorSolver,
   doorsnedeVoorSolver,
   dwingendeLijnenUitKnopen,
+  eersteOrdeCombinatieResultaat,
   effectiefPlaatMeshType,
   eigenGewichtLasten,
   eigenGewichtPerMeter,
