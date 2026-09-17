@@ -283,6 +283,13 @@ interface GelezenModel {
    */
   idTellersUitBestand: { belastinggeval?: number; combinatie?: number } | undefined;
   /**
+   * φ(∞,t₀) van het project (EN 1992-1-1 3.1.4) uit het projectbestand, of
+   * `null` = niet opgegeven of een los model. Alleen gelezen voor de
+   * BGT-eindtoestand van beton naast hout (`lib/houtEindstijfheid.ts`), zodat
+   * deze weg dezelfde stijfheid gebruikt als de app.
+   */
+  betonKruipcoefficientUitBestand: number | null;
+  /**
    * Wat er over de scheefstand te melden is: de afgeleide φ als een norm is
    * gekozen, en de waarschuwingen van die afleiding. Leeg bij de vaste noemer.
    */
@@ -478,6 +485,8 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
       bijlageRauwUitBestand: (bestand.projectInfo as { uitgangspunten?: { nationaleBijlage?: unknown } } | undefined)
         ?.uitgangspunten?.nationaleBijlage,
       idTellersUitBestand: bestand.idTellers,
+      betonKruipcoefficientUitBestand:
+        typeof bestand.betonKruipcoefficient === "number" ? bestand.betonKruipcoefficient : null,
     };
   }
 
@@ -536,6 +545,7 @@ function leesModel(payload: Record<string, unknown>): GelezenModel {
     gevolgklasseUitBestand: null,
     bijlageRauwUitBestand: undefined,
     idTellersUitBestand: undefined,
+    betonKruipcoefficientUitBestand: null,
     scheefstandMeldingen: scheef.meldingen,
     scheefstandKeuze: scheef.keuze,
   };
@@ -953,6 +963,9 @@ function rekenDoor(payload: Record<string, unknown>) {
     supports: gelezen.model.supports,
     plates: gelezen.model.plates,
     analysetype,
+    // φ(∞,t₀) van het project, zoals de app hem meegeeft: de BGT-eindtoestand
+    // (EN 1995-1-1 2.2.3(4)) rekent een betonstaaf daarmee met E_c,eff.
+    betonKruipcoefficient: gelezen.betonKruipcoefficientUitBestand,
   });
   const combinaties = metEindtoestandVarianten(
     combinatiesZonderEindtoestand, gelezen.model.loadCases, eindstijfheid, bijlage,

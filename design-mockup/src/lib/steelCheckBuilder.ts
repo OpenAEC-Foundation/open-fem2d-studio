@@ -21,7 +21,7 @@
 import type { Beam, BeamCheckConfig, LoadCase, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
-import { combinatiesVanSoort, soortVanCombinatie } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, soortVanCombinatie, zonderBgtEindtoestand } from "../components/fem/solver/combinations";
 import {
   STANDAARD_GEVOLGKLASSE, type CombinatieSoort, type Gevolgklasse,
 } from "../components/fem/solver/normcombinaties";
@@ -697,7 +697,10 @@ export function bepaalDoorbuigingsInvoer(
   >,
 ): DoorbuigingsInvoer {
   const cfg = beam.checkConfig ?? {};
-  const slsCombos = data.combinations.filter((c) => c.type === "sls");
+  // Zonder de BGT-eindtoestand van hout (EN 1995-1-1 2.2.3(4)): die variant is
+  // er alleen voor de houtdoorbuiging, en de staaltoets leest zoals voorheen
+  // de combinaties met de stijfheid direct na belasten.
+  const slsCombos = zonderBgtEindtoestand(data.combinations.filter((c) => c.type === "sls"));
 
   // Een expliciete klassekeuze van de gebruiker gaat vóór: wie bij een
   // verticale staaf tóch een vloer- of dakeis wil toetsen kan dat afdwingen.

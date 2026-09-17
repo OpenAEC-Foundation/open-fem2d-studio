@@ -284,7 +284,9 @@ export const useVariantStore = create<VariantState>((set, get) => ({
             schaalDoorbuiging(
               { ...bouw.inputs[0] },
               // w₁ mee, om dezelfde reden als bij staal.
-              ["deflection_inst_mm", "deflection_quasi_perm_mm", "deflection_permanent_mm"],
+              // w_qp,fin (2.2.3(4)) schaalt mee als hij er is; `schaalDoorbuiging`
+              // slaat een ontbrekend veld over.
+              ["deflection_inst_mm", "deflection_quasi_perm_mm", "deflection_quasi_perm_fin_mm", "deflection_permanent_mm"],
               keuze.huidig.iMm4,
               voorstel.iMm4,
             ),

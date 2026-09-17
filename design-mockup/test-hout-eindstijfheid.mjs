@@ -140,10 +140,12 @@ log("\n[1] De bepaling");
   ok("hout + staal, onbepaald (n = 1) → doorrekenen", u.status === "doorrekenen", u.reden);
   ok("graad 1", u.onbepaaldheid?.graad === 1);
   ok("k_def per houtstaaf: staaf 1 → 0,6, staaf 2 niet", u.kDefPerStaaf.get(1) === 0.6 && !u.kDefPerStaaf.has(2));
-  ok("twee meldingen: UGT doorgerekend en BGT niet",
+  // Sinds issue #23 is ook de BGT doorgerekend (2.2.3(4)); zie
+  // test-hout-bgt-eindtoestand.mjs.
+  ok("twee meldingen: UGT en BGT doorgerekend",
     u.meldingen.length === 2 &&
     u.meldingen[0].tekst.startsWith("Eindstijfheid hout doorgerekend (UGT).") &&
-    u.meldingen[1].tekst.startsWith("Eindstijfheid hout niet doorgerekend (BGT).") &&
+    u.meldingen[1].tekst.startsWith("Eindstijfheid hout doorgerekend (BGT).") &&
     u.meldingen.every((x) => x.caseId === null && x.niveau === "waarschuwing"));
   ok("de melding noemt 2.2.3(5), 2.10 en de delen", /2\.2\.3\(5\)/.test(u.meldingen[0].tekst) && /2\.10/.test(u.meldingen[0].tekst) && /staaf 1/.test(u.meldingen[0].tekst) && /staaf 2/.test(u.meldingen[0].tekst));
 
@@ -307,7 +309,7 @@ log("\n[8] De MCP-weg (sidecar `solve`)");
   const sleutel = String(1 + 100 * EINDTOESTAND_COMBO_OFFSET);
   ok("variant 1,2G+1,5Q ψ₂ = 1 in `combinations`", combos[sleutel] !== undefined, Object.keys(combos).join(","));
   const w = r.warnings ?? [];
-  ok("meldingen in `warnings`", w.some((x) => x.startsWith("Eindstijfheid hout doorgerekend (UGT).")) && w.some((x) => x.startsWith("Eindstijfheid hout niet doorgerekend (BGT).")), w.join(" | ").slice(0, 300));
+  ok("meldingen in `warnings`", w.some((x) => x.startsWith("Eindstijfheid hout doorgerekend (UGT).")) && w.some((x) => x.startsWith("Eindstijfheid hout doorgerekend (BGT).")), w.join(" | ").slice(0, 300));
 }
 
 log(`\n${passed} geslaagd, ${failed} mislukt`);

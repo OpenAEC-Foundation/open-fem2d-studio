@@ -1981,15 +1981,20 @@ export function useFemStore(opties?: {
   // niets verandert. Een gelijke uitkomst houdt daarom het vorige object.
   const eindstijfheidRef = useRef<{ sleutel: string; uitkomst: EindstijfheidUitkomst } | null>(null);
   const eindstijfheid = useMemo(() => {
-    const uitkomst = bepaalEindstijfheidHout({ nodes, beams, supports, plates, analysetype });
+    // De φ(∞,t₀) van het project gaat mee: de BGT-eindtoestand (EN 1995-1-1
+    // 2.2.3(4)) geeft een betonstaaf daarmee E_c,eff = E_cm/(1 + φ).
+    const uitkomst = bepaalEindstijfheidHout({
+      nodes, beams, supports, plates, analysetype, betonKruipcoefficient,
+    });
     const sleutel = JSON.stringify([
-      uitkomst.status, [...uitkomst.kDefPerStaaf.entries()], uitkomst.meldingen,
+      uitkomst.status, [...uitkomst.kDefPerStaaf.entries()], [...uitkomst.betonPhiPerStaaf.entries()],
+      uitkomst.meldingen,
     ]);
     const vorige = eindstijfheidRef.current;
     if (vorige && vorige.sleutel === sleutel) return vorige.uitkomst;
     eindstijfheidRef.current = { sleutel, uitkomst };
     return uitkomst;
-  }, [nodes, beams, supports, plates, analysetype]);
+  }, [nodes, beams, supports, plates, analysetype, betonKruipcoefficient]);
   const { actief: actieveCombinaties, overgeslagen: overgeslagenCombinaties } =
     useMemo(() => {
       const selectie = selecteerCombinaties(combinations, beams, plates, {

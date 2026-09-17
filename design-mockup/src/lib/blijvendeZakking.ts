@@ -94,6 +94,9 @@ export function blijvendeBgtCombinaties(
   if (blijvend.size === 0) return [];
   return combinations.filter((c) => {
     if (c.type !== "sls") return false;
+    // De BGT-eindtoestand van hout (EN 1995-1-1 2.2.3(4)) draagt dezelfde
+    // factoren, maar is met de eindstijfheid gerekend: w₁ is momentaan.
+    if (c.eindtoestand !== undefined) return false;
     const werkzaam = [...c.factors].filter(([, f]) => f !== 0);
     if (werkzaam.length !== blijvend.size) return false;
     return werkzaam.every(([id, f]) => blijvend.has(id) && f === 1);

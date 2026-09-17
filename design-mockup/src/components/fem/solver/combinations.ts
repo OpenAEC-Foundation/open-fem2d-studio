@@ -84,8 +84,34 @@ export interface LoadCombination {
    * `metEindtoestandVarianten` (lib/houtEindstijfheid.ts), alleen in een
    * statisch onbepaalde constructie met verschillend kruipgedrag. Wordt niet
    * opgeslagen, net als de scheefstandrichting.
+   *
+   * `bgt: true` = de BGT-EINDTOESTAND van een quasi-blijvende combinatie
+   * (6.16b): de langeduurvervorming van EN 1995-1-1 2.2.3(4), met per houtstaaf
+   * E_mean,fin = E_mean/(1 + k_def) (2.3.2.2(1), uitdrukking 2.7) en per
+   * betonstaaf met bekende φ(∞,t₀) E_c,eff = E_cm/(1 + φ) (EN 1992-1-1
+   * 7.4.3(5)). ψ₂ staat dan op 1: de ψ₂-factoren zitten al in de factoren van
+   * de combinatie. Een eigen stijfheidsset — niet die van de UGT-variant met
+   * ψ₂ = 1, want daarin houdt beton E_cm.
    */
-  eindtoestand?: { psi2: number };
+  eindtoestand?: { psi2: number; bgt?: true };
+}
+
+/**
+ * Is dit de BGT-eindtoestand van een quasi-blijvende combinatie (zie
+ * `LoadCombination.eindtoestand`)? Zo'n variant is ALLEEN voor de
+ * houtdoorbuiging bedoeld (w_qp,fin, 2.2.3(4)); de andere BGT-toetsen horen
+ * hem niet als gewone combinatie te lezen — de staal- en betontoets zouden
+ * hem anders als 6.16b meenemen, en de w₁-bepaling als "alleen blijvend".
+ */
+export function isBgtEindtoestand(c: Pick<LoadCombination, "eindtoestand">): boolean {
+  return c.eindtoestand?.bgt === true;
+}
+
+/** De combinaties zonder BGT-eindtoestandvarianten; zie `isBgtEindtoestand`. */
+export function zonderBgtEindtoestand<T extends Pick<LoadCombination, "eindtoestand">>(
+  combinaties: readonly T[],
+): T[] {
+  return combinaties.filter((c) => !isBgtEindtoestand(c));
 }
 
 /**
@@ -93,6 +119,17 @@ export interface LoadCombination {
  * id + EINDTOESTAND_COMBO_OFFSET · round(100·ψ₂). Zie `metEindtoestandVarianten`.
  */
 export const EINDTOESTAND_COMBO_OFFSET = 10_000_000;
+
+/**
+ * Het veelvoud van `EINDTOESTAND_COMBO_OFFSET` voor een BGT-eindtoestand:
+ * id + EINDTOESTAND_COMBO_OFFSET · 101. De UGT-varianten gebruiken 1…100
+ * (honderdsten ψ₂ ≤ 1), dus 101 botst daar niet mee, en het grootste id
+ * (≈ 1,01·10⁹ plus de scheefstandverschuiving) past in een u32 van de kern.
+ */
+export const BGT_EINDTOESTAND_VEELVOUD = 101;
+
+/** Sleutel van de gevallen van de BGT-eindtoestand in de perCase-Map. */
+export type EindtoestandSleutel = number | "bgt";
 
 const EINDTOESTAND_KEY = "__femEindtoestand";
 
@@ -104,19 +141,22 @@ const EINDTOESTAND_KEY = "__femEindtoestand";
  */
 export function zetEindtoestandGevallen(
   perCase: Map<number, SolverResult>,
-  psi2: number,
+  psi2: EindtoestandSleutel,
   gevallen: Map<number, SolverResult>,
 ): void {
-  const p = perCase as unknown as Record<string, Map<number, Map<number, SolverResult>> | undefined>;
+  const p = perCase as unknown as Record<string, Map<EindtoestandSleutel, Map<number, SolverResult>> | undefined>;
   (p[EINDTOESTAND_KEY] ??= new Map()).set(psi2, gevallen);
 }
 
-/** De gevallen van de eindtoestand voor ψ₂, of undefined als die niet is doorgerekend. */
+/**
+ * De gevallen van de eindtoestand voor ψ₂ (of `"bgt"` voor de BGT-eindtoestand),
+ * of undefined als die niet is doorgerekend.
+ */
 export function getEindtoestandGevallen(
   perCase: Map<number, SolverResult>,
-  psi2: number,
+  psi2: EindtoestandSleutel,
 ): Map<number, SolverResult> | undefined {
-  const p = perCase as unknown as Record<string, Map<number, Map<number, SolverResult>> | undefined>;
+  const p = perCase as unknown as Record<string, Map<EindtoestandSleutel, Map<number, SolverResult>> | undefined>;
   return p[EINDTOESTAND_KEY]?.get(psi2);
 }
 
@@ -322,11 +362,12 @@ export function combineResults(
   // doorgerekend. Ontbreken die, dan is dat een fout en geen terugval op de
   // gewone gevallen: dan zou de variant stil gelijk zijn aan de combinatie.
   if (combo.eindtoestand !== undefined) {
-    const fin = getEindtoestandGevallen(perCase, combo.eindtoestand.psi2);
+    const bgt = isBgtEindtoestand(combo);
+    const fin = getEindtoestandGevallen(perCase, bgt ? "bgt" : combo.eindtoestand.psi2);
     if (fin === undefined) {
       throw new Error(
         `Combinatie "${combo.name}" is een eindtoestandvariant (E_mean,fin, ` +
-          "NEN-EN 1995-1-1 2.3.2.2(2)), maar de eindtoestand is niet doorgerekend. " +
+          `NEN-EN 1995-1-1 ${bgt ? "2.3.2.2(1)" : "2.3.2.2(2)"}), maar de eindtoestand is niet doorgerekend. ` +
           "Er wordt niet stil met E_mean gerekend.",
       );
     }

@@ -56,7 +56,14 @@
 import type { Beam, BeamCheckConfig, LoadCase, Node, Support } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { LoadCombination } from "../components/fem/solver/combinations";
-import { combinatiesVanSoort, soortVanCombinatie } from "../components/fem/solver/combinations";
+import {
+  BGT_EINDTOESTAND_VEELVOUD,
+  combinatiesVanSoort,
+  EINDTOESTAND_COMBO_OFFSET,
+  isBgtEindtoestand,
+  soortVanCombinatie,
+  zonderBgtEindtoestand,
+} from "../components/fem/solver/combinations";
 import { belastingduurPerCombinatie, langsteKlasse } from "./belastingduur";
 import { blijvendeZakking } from "./blijvendeZakking";
 import type { TimberBeamCheckInput } from "./types/timber/TimberBeamCheckInput";
@@ -339,12 +346,112 @@ function grootsteZakking(
   return { ...max, alle };
 }
 
+// ── Langeduurzakking w_qp,fin (EN 1995-1-1 2.2.3(4)) ───────────────────────
+//
+// In een statisch onbepaalde constructie met delen van verschillend
+// kruipgedrag geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van 2.2.3(5)
+// niet (`lib/houtEindstijfheid.ts`). Elke quasi-blijvende BGT-combinatie heeft
+// dan een BGT-eindtoestand met E_mean,fin = E_mean/(1 + k_def) (2.3.2.2(1),
+// uitdrukking 2.7), en de kern rekent w_fin = w_inst + (w_qp,fin − w_qp).
+//
+// w_qp en w_qp,fin komen uit DEZELFDE combinatie: hun verschil is het kruipdeel
+// w₂ van die ene belasting. Heeft het model meer quasi-blijvende combinaties
+// (bijvoorbeeld de opstelling met alleen de blijvende belasting), dan is de
+// maatgevende die met de grootste |w_fin| — de veilige kant. De vereenvoudiging
+// koos w_qp als grootste |w_qp|; bij één kruipgedrag geven beide keuzen dezelfde
+// combinatie, want w_fin groeit daar met |w_qp|.
+
+/** Uitkomst van de w_qp,fin-bepaling. */
+interface Langeduurzakking {
+  /** w_qp en w_qp,fin in mm (teken behouden) uit dezelfde combinatie; null = vereenvoudiging. */
+  paar: { quasiMm: number; quasiFinMm: number } | null;
+  /** Notities; vervangen de w_qp-notitie als `paar` gevuld is. */
+  notes: string[];
+}
+
+function langeduurzakking(
+  beam: Beam,
+  combinations: readonly LoadCombination[],
+  slsQuasiLijst: readonly LoadCombination[],
+  results: Map<number, SolverResult>,
+  wInstMm: number,
+): Langeduurzakking {
+  const varianten = combinations.filter(isBgtEindtoestand);
+  if (varianten.length === 0) {
+    // Geen BGT-eindtoestand. Staan er wél UGT-eindtoestandvarianten, dan geldt
+    // 2.2.3(5) niet maar ontbreekt de quasi-blijvende combinatie om 2.2.3(4)
+    // te rekenen: dat hoort in het rapport. Anders is er niets te melden en
+    // blijft de invoer bit-identiek.
+    if (!combinations.some((c) => c.eindtoestand !== undefined)) return { paar: null, notes: [] };
+    return {
+      paar: null,
+      notes: [
+        "LET OP: deze staaf zit in een statisch onbepaalde constructie met delen van " +
+          "verschillend kruipgedrag, waarin de vereenvoudiging w_fin = w_inst + k_def·w_qp " +
+          "van EN 1995-1-1 2.2.3(5) niet geldt. De langeduurvervorming volgens 2.2.3(4) " +
+          "vraagt een quasi-blijvende BGT-combinatie (6.16b), en die kent dit model niet; " +
+          "w_fin en w_add volgen daarom de vereenvoudiging en kunnen te klein zijn.",
+      ],
+    };
+  }
+
+  const gemeten: { combo: LoadCombination; variant: LoadCombination; wq: number; wf: number; fin: number }[] = [];
+  for (const combo of slsQuasiLijst) {
+    const variant = varianten.find(
+      (v) => v.id === combo.id + EINDTOESTAND_COMBO_OFFSET * BGT_EINDTOESTAND_VEELVOUD,
+    );
+    const rq = results.get(combo.id);
+    const rv = variant ? results.get(variant.id) : undefined;
+    if (!variant || !rq || !rv || !rq.elements.has(beam.id) || !rv.elements.has(beam.id)) continue;
+    const wq = extractFieldDeflectionMm(beam, rq);
+    const wf = extractFieldDeflectionMm(beam, rv);
+    gemeten.push({ combo, variant, wq, wf, fin: wInstMm + (wf - wq) });
+  }
+  if (gemeten.length === 0) {
+    return {
+      paar: null,
+      notes: [
+        "LET OP: in deze constructie geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van " +
+          "EN 1995-1-1 2.2.3(5) niet, maar de quasi-blijvende combinatie in de eindtoestand " +
+          "(2.2.3(4)) levert voor deze staaf geen zakking — reken het model opnieuw door. " +
+          "w_fin en w_add volgen nu de vereenvoudiging en kunnen te klein zijn.",
+      ],
+    };
+  }
+  let m = gemeten[0];
+  for (const g of gemeten) if (Math.abs(g.fin) > Math.abs(m.fin)) m = g;
+  const mm = (x: number) => `${x.toFixed(2).replace(".", ",")} mm`;
+  return {
+    paar: { quasiMm: m.wq, quasiFinMm: m.wf },
+    notes: [
+      `w_qp = ${mm(m.wq)} is de zakking onder de quasi-blijvende BGT-combinatie "${m.combo.name}" ` +
+        `(${m.combo.formula}) met E_mean; w_qp,fin = ${mm(m.wf)} onder dezelfde combinatie in de ` +
+        `eindtoestand ("${m.variant.name}"), met E_mean,fin = E_mean/(1 + k_def) voor elke houtstaaf ` +
+        "(EN 1995-1-1 2.3.2.2(1), uitdrukking 2.7) en de langeduurstijfheid van de andere delen. " +
+        "De constructie is statisch onbepaald met delen van verschillend kruipgedrag, dus geldt " +
+        "2.2.3(4) en niet de vereenvoudiging van 2.2.3(5): het kruipdeel w₂ = w_qp,fin − w_qp = " +
+        `${mm(m.wf - m.wq)} is berekend, niet k_def·w_qp. ` +
+        (gemeten.length > 1
+          ? "Gemeten per quasi-blijvende combinatie (w_qp → w_qp,fin): " +
+            gemeten.map((g) => `"${g.combo.name}" ${mm(g.wq)} → ${mm(g.wf)}`).join("; ") +
+            "; maatgevend is de grootste |w_fin|."
+          : ""),
+    ],
+  };
+}
+
 /** Alle zakkingen van één houten of kruislaaghouten staaf, met hun herkomst. */
 export interface HoutDoorbuiging {
   /** w_inst onder de karakteristieke BGT-combinatie (mm, teken behouden). */
   instMm: number;
   /** w_qp onder de quasi-blijvende BGT-combinatie (mm). */
   quasiMm: number;
+  /**
+   * w_qp,fin onder dezelfde quasi-blijvende combinatie in de BGT-eindtoestand
+   * (mm, EN 1995-1-1 2.2.3(4)); `undefined` = de vereenvoudiging van 2.2.3(5)
+   * geldt, en dan gaat het veld niet naar de kern.
+   */
+  quasiFinMm?: number;
   /** w₁ onder de BGT-combinatie met alleen de blijvende belasting (mm). */
   permMm: number;
   /** `deflection_notes` voor de kern: referentielijn, w_inst, w_qp en w₁. */
@@ -366,7 +473,10 @@ export function houtDoorbuigingsInvoer(
     "nodes" | "beams" | "supports" | "combinations" | "combinationResults" | "loadCases"
   >,
 ): HoutDoorbuiging {
-  const slsCombos = data.combinations.filter((c) => c.type === "sls");
+  // Zonder de BGT-eindtoestand van hout (2.2.3(4)): die draagt het kenmerk van
+  // zijn quasi-blijvende combinatie en zou anders als w_inst of w_qp meetellen.
+  // `langeduurzakking` hieronder leest hem apart.
+  const slsCombos = zonderBgtEindtoestand(data.combinations.filter((c) => c.type === "sls"));
   // w_inst: de GROOTSTE zakking over alle karakteristieke combinaties (6.14b),
   // per staaf bepaald — er is er een per leidende veranderlijke last, en welke
   // maatgevend is hangt van de staaf af. Tot september 2026 was dit de eerste
@@ -431,6 +541,10 @@ export function houtDoorbuigingsInvoer(
     quasi ? data.combinationResults.get(quasi.combo.id) ?? null : null,
     wInstMm,
   );
+  // w_qp,fin (2.2.3(4)) als de vereenvoudiging van 2.2.3(5) niet geldt.
+  const langeduur = langeduurzakking(
+    beam, data.combinations, slsQuasiLijst, data.combinationResults, wInstMm,
+  );
   // w₁: de zakking onder ALLEEN de blijvende belasting, uit de BGT-combinatie
   // die uitsluitend de blijvende gevallen draagt. Zonder die combinatie 0 —
   // mét notitie, want dan is w_add de volledige zakking. Zie
@@ -448,7 +562,8 @@ export function houtDoorbuigingsInvoer(
 
   return {
     instMm: wInstMm,
-    quasiMm: wQuasi.mm,
+    quasiMm: langeduur.paar ? langeduur.paar.quasiMm : wQuasi.mm,
+    ...(langeduur.paar ? { quasiFinMm: langeduur.paar.quasiFinMm } : {}),
     permMm: wPerm.mm,
     notes: [
       ...deflectionNotesFor(beam, data.nodes, data.beams, data.supports),
@@ -462,7 +577,10 @@ export function houtDoorbuigingsInvoer(
         "legt de grens voor w₂ + w₃ bij vloeren op de FREQUENTE combinatie " +
         "(uitdrukking 6.15b); deze toets volgt EC5 en valt daarmee strenger uit " +
         "dan die NB-lezing.",
-      ...wQuasi.notes,
+      // Met w_qp,fin vervangt de herkomst daarvan die van w_qp: beide komen dan
+      // uit dezelfde combinatie, en de oude notitie noemt de vereenvoudiging.
+      ...(langeduur.paar ? [] : wQuasi.notes),
+      ...langeduur.notes,
       ...wPerm.notes,
     ],
   };
@@ -815,6 +933,12 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       // of de volle last mét notitie als die combinatie ontbreekt — zie
       // `quasiPermanentDeflection`.
       deflection_quasi_perm_mm: doorbuiging.quasiMm,
+      // w_qp,fin onder dezelfde combinatie met E_mean,fin (EN 1995-1-1 2.2.3(4)),
+      // alleen als de vereenvoudiging van 2.2.3(5) niet geldt. Weggelaten = de
+      // kern rekent zoals voorheen.
+      ...(doorbuiging.quasiFinMm !== undefined
+        ? { deflection_quasi_perm_fin_mm: doorbuiging.quasiFinMm }
+        : {}),
       // w₁ uit de BGT-combinatie met alleen de blijvende belasting, zodat
       // w_add = w_fin − w₁ werkelijk w₂ + w₃ is (NEN-EN 1990:2002/NB:2019
       // A1.4.3(2), figuur NB.1). Ontbreekt die combinatie, dan 0 — en dan

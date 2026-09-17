@@ -87,10 +87,31 @@
  * wat de norm vraagt. De combinatie met E_mean blijft er ook naast staan: dat
  * is de toestand direct na het aanbrengen van de last.
  *
+ * DE BRUIKBAARHEIDSGRENSTOESTAND (issue #23). 2.2.3(4) vraagt in zo'n
+ * constructie de langeduurvervorming onder de QUASI-BLIJVENDE combinatie met
+ * E_mean,fin = E_mean/(1 + k_def) (2.3.2.2(1), uitdrukking 2.7), en daarbij de
+ * ogenblikkelijke vervorming door het verschil tussen de karakteristieke en de
+ * quasi-blijvende combinatie. De vereenvoudiging w_fin = w_inst + k_def·w_qp
+ * van 2.2.3(5) mag dan niet. Elke quasi-blijvende BGT-combinatie (6.16b) krijgt
+ * daarom een BGT-EINDTOESTAND: dezelfde factoren, doorgerekend met
+ *  - per houtstaaf E_mean,fin = E_mean/(1 + k_def) (2.7) — gelijk aan (2.10)
+ *    met ψ₂ = 1, want de ψ₂-factoren zitten al in de combinatie;
+ *  - per verende aansluiting aan hout K/(1 + 2·k_def) (2.9 met 2.3.2.2(3));
+ *  - per betonstaaf met een OPGEGEVEN φ(∞,t₀) (staafwaarde in het §5.8-blok of
+ *    projectwaarde, `kruipcoefficient.ts`) E_c,eff = E_cm/(1 + φ) (EN 1992-1-1
+ *    7.4.3(5), uitdrukking 7.20): de langeduurstijfheid van beton zoals de app
+ *    die al kent. Een φ volgens bijlage B is pas in de toetsing bekend (een
+ *    aanroep van de kern ná de berekening); zo'n staaf houdt E_cm, met melding;
+ *  - staal ongewijzigd (kruipt niet).
+ * De houtbouwer (`houtDoorbuigingsInvoer`) leest per staaf w_qp en w_qp,fin
+ * uit dezelfde combinatie en haar eindtoestand, en de kern rekent
+ * w_fin = w_inst + (w_qp,fin − w_qp). De andere toetsen lezen deze variant niet
+ * (`zonderBgtEindtoestand`).
+ *
  * NIET DOORGEREKEND, WEL GEMELD:
- *  - de BGT-langeduurvervorming volgens 2.2.3(4) met (2.7). De doorbuigings-
- *    toets rekent per staaf w_fin = w_inst + k_def·w_qp, en dat is de
- *    vereenvoudiging van 2.2.3(5) die hier niet geldt;
+ *  - de doorbuigingstoets van staal- en betonstaven in zo'n constructie: die
+ *    delen krijgen in de eindtoestand meer kracht, maar hun toetsen lezen hun
+ *    eigen BGT-combinaties zoals voorheen;
  *  - tweede orde: daar schrijft 2.2.2(1)P, derde streepje, rekenwaarden voor
  *    "die niet zijn aangepast aan de belastingsduur" — E_mean,fin is dan niet
  *    de regel, en er komt geen variant;
@@ -113,8 +134,12 @@ import { PLATE_DEFAULTS } from "../components/fem/femTypes";
 import type { LoadCase } from "../components/fem/femTypes";
 import type { MultiInput, SolverResult } from "../components/fem/solver/types";
 import {
+  BGT_EINDTOESTAND_VEELVOUD,
   EINDTOESTAND_COMBO_OFFSET,
+  isBgtEindtoestand,
+  soortVanCombinatie,
   zetEindtoestandGevallen,
+  type EindtoestandSleutel,
   type LoadCombination,
 } from "../components/fem/solver/combinations";
 import { solveAllCases } from "../components/fem/solver/engine";
@@ -124,6 +149,7 @@ import type { GevalMelding } from "./combinatieBeheer";
 import { bepaalOnbepaaldheidVanModel, type OnbepaaldheidUitkomst } from "./statischeOnbepaaldheid";
 import { materiaalVanStaaf } from "./variantInvoer";
 import { plaatMateriaalSoort } from "./plaatMateriaal";
+import { kruipcoefficientVanStaaf } from "./kruipcoefficient";
 
 // ── k_def ─────────────────────────────────────────────────────────────────
 
@@ -256,6 +282,12 @@ export interface EindstijfheidUitkomst {
   onbepaaldheid: OnbepaaldheidUitkomst | null;
   /** k_def per houtstaaf — alleen gevuld bij "doorrekenen". */
   kDefPerStaaf: Map<number, number>;
+  /**
+   * φ(∞,t₀) per betonstaaf met een OPGEGEVEN waarde (staaf of project) — alleen
+   * gevuld bij "doorrekenen", en alleen gebruikt in de BGT-eindtoestand
+   * (E_c,eff = E_cm/(1 + φ), EN 1992-1-1 7.4.3(5)).
+   */
+  betonPhiPerStaaf: Map<number, number>;
   /** Voor de projectboom, het rapport en de MCP-antwoorden. */
   meldingen: GevalMelding[];
 }
@@ -266,10 +298,17 @@ export interface EindstijfheidModel {
   supports: Support[];
   plates?: Plate[];
   analysetype: Analysetype;
+  /**
+   * φ(∞,t₀) van het PROJECT (EN 1992-1-1 3.1.4), of null/weggelaten = niet
+   * opgegeven. Alleen voor de BGT-eindtoestand van betonstaven; een eigen
+   * waarde in het §5.8-blok van de staaf gaat voor (`kruipcoefficient.ts`).
+   */
+  betonKruipcoefficient?: number | null;
 }
 
 const NVT_LEEG: Omit<EindstijfheidUitkomst, "reden"> = {
-  status: "nvt", groepen: [], onbepaaldheid: null, kDefPerStaaf: new Map(), meldingen: [],
+  status: "nvt", groepen: [], onbepaaldheid: null, kDefPerStaaf: new Map(), betonPhiPerStaaf: new Map(),
+  meldingen: [],
 };
 
 /** De naam van de soort, als opsomming. */
@@ -351,6 +390,7 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
   if (model.analysetype !== "eersteOrde") {
     return {
       status: "alleenMelding", groepen: lijst, onbepaaldheid: onb, kDefPerStaaf: new Map(),
+      betonPhiPerStaaf: new Map(),
       reden: "tweede orde",
       meldingen: [{
         niveau: "waarschuwing", caseId: null,
@@ -359,7 +399,10 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
           "schrijft 2.2.2(1)P (derde streepje) rekenwaarden voor die niet zijn aangepast " +
           "aan de belastingsduur, en niet E_mean,fin; er is geen eindtoestandvariant " +
           "berekend. Beoordeel de krachtsverdeling in de eindtoestand apart, bijvoorbeeld " +
-          "met een eerste-orde-berekening.",
+          "met een eerste-orde-berekening. Ook de langeduurvervorming in de " +
+          "bruikbaarheidsgrenstoestand (2.2.3(4)) is niet berekend: de doorbuigingstoets " +
+          "van het hout gebruikt de vereenvoudiging w_fin = w_inst + k_def·w_qp van " +
+          "2.2.3(5), die hier niet geldt, en w_fin en w_add kunnen te klein zijn.",
       }],
     };
   }
@@ -369,6 +412,7 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
   if (zonderKdef.length > 0) {
     return {
       status: "alleenMelding", groepen: lijst, onbepaaldheid: onb, kDefPerStaaf: new Map(),
+      betonPhiPerStaaf: new Map(),
       reden: "k_def onbekend",
       meldingen: [{
         niveau: "waarschuwing", caseId: null,
@@ -378,12 +422,25 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
           "valt E_mean,fin = E_mean/(1 + ψ₂·k_def) (2.3.2.2(2)) niet te bepalen; er wordt " +
           "geen k_def aangenomen. De krachtsverdeling is alleen met E_mean berekend, en " +
           "welke kant de fout op gaat is niet te zeggen. Vul k_def in (kruislaaghout: " +
-          "ETA of productverklaring) of beoordeel de eindtoestand apart.",
+          "ETA of productverklaring) of beoordeel de eindtoestand apart. Ook de " +
+          "langeduurvervorming (2.2.3(4)) is niet berekend: de doorbuigingstoets gebruikt " +
+          "de vereenvoudiging van 2.2.3(5), en w_fin en w_add kunnen te klein zijn.",
       }],
     };
   }
 
   // ── Doorrekenen ─────────────────────────────────────────────────────────
+  // φ(∞,t₀) per betonstaaf voor de BGT-eindtoestand: staafwaarde, anders
+  // projectwaarde (`kruipcoefficientVanStaaf`, zonder de berekende waarde van
+  // bijlage B — die bestaat vóór de berekening nog niet).
+  const betonPhiPerStaaf = new Map<number, number>();
+  const betonZonderPhi: number[] = [];
+  for (const b of model.beams) {
+    if (kruipgedragVanStaaf(b).soort !== "beton") continue;
+    const phi = kruipcoefficientVanStaaf(b.checkConfig?.betonKolom?.phi_inf_t0, model.betonKruipcoefficient);
+    if (phi !== undefined && Number.isFinite(phi) && phi >= 0) betonPhiPerStaaf.set(b.id, phi);
+    else betonZonderPhi.push(b.id);
+  }
   const bijzonder: string[] = [];
   if (lijst.some((g) => g.sleutel === "beton")) {
     bijzonder.push(
@@ -394,13 +451,38 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
   if (lijst.some((g) => g.sleutel.startsWith("vrij:") || g.sleutel === "onbekend" || g.sleutel.startsWith("plaat-E:"))) {
     bijzonder.push("Vrij of niet herkend materiaal houdt zijn opgegeven E; zijn kruip is onbekend.");
   }
-  if (model.supports.some((s) => s.type === "zSpring" || s.type === "xSpring" || s.type === "rotSpring") ||
-      model.beams.some((b) => b.bedding && b.bedding.k > 0)) {
+  const metVeren =
+    model.supports.some((s) => s.type === "zSpring" || s.type === "xSpring" || s.type === "rotSpring") ||
+    model.beams.some((b) => b.bedding && b.bedding.k > 0);
+  if (metVeren) {
     bijzonder.push("Verende opleggingen en bedding houden hun stijfheid.");
   }
 
+  // De BGT-kanttekeningen: welke langeduurstijfheid elk deel krijgt.
+  const bgtBijzonder: string[] = [];
+  if (betonPhiPerStaaf.size > 0) {
+    bgtBijzonder.push(
+      `Betonstaaf ${[...betonPhiPerStaaf.entries()].map(([id, phi]) => `${id} (φ = ${nl(phi)})`).join(", ")} ` +
+        "krijgt E_c,eff = E_cm/(1 + φ(∞,t₀)) (EN 1992-1-1 7.4.3(5), uitdrukking 7.20), " +
+        "met de ongescheurde doorsnede.",
+    );
+  }
+  if (betonZonderPhi.length > 0) {
+    bgtBijzonder.push(
+      `Betonstaaf ${betonZonderPhi.join(", ")} houdt E_cm: voor die staaf is geen ` +
+        "φ(∞,t₀) opgegeven (niet in het §5.8-blok en niet als projectwaarde; een waarde " +
+        "volgens bijlage B wordt pas in de toetsing berekend). Zijn kruip ontbreekt dan " +
+        "in de eindtoestand, het beton trekt te veel kracht naar zich toe en de zakking " +
+        "van het hout kan te klein zijn. Geef φ(∞,t₀) op om dat te voorkomen.",
+    );
+  }
+  if (lijst.some((g) => g.sleutel.startsWith("vrij:") || g.sleutel === "onbekend" || g.sleutel.startsWith("plaat-E:"))) {
+    bgtBijzonder.push("Vrij of niet herkend materiaal houdt zijn opgegeven E; zijn kruip is onbekend.");
+  }
+  if (metVeren) bgtBijzonder.push("Verende opleggingen en bedding houden hun stijfheid.");
+
   return {
-    status: "doorrekenen", groepen: lijst, onbepaaldheid: onb, kDefPerStaaf,
+    status: "doorrekenen", groepen: lijst, onbepaaldheid: onb, kDefPerStaaf, betonPhiPerStaaf,
     reden: "doorrekenen",
     meldingen: [
       {
@@ -420,14 +502,23 @@ export function bepaalEindstijfheidHout(model: EindstijfheidModel): Eindstijfhei
       {
         niveau: "waarschuwing", caseId: null,
         tekst:
-          "Eindstijfheid hout niet doorgerekend (BGT). De doorbuigingstoets rekent per " +
-          "staaf w_fin = w_inst + k_def·w_qp, de vereenvoudiging van EN 1995-1-1 2.2.3(5). " +
-          "In deze constructie met verschillend kruipgedrag schrijft 2.2.3(4) de " +
-          "langeduurvervorming onder de quasi-blijvende combinatie voor met E_mean,fin = " +
-          "E_mean/(1 + k_def) (2.3.2.2(1), uitdrukking 2.7); die is niet berekend. De " +
-          "getoonde w_fin en w_add van de houtstaven én de zakkingen van de delen die de " +
-          "kracht overnemen kunnen daardoor te klein zijn. Beoordeel de doorbuiging in de " +
-          "eindtoestand apart.",
+          "Eindstijfheid hout doorgerekend (BGT). In deze constructie met verschillend " +
+          "kruipgedrag geldt de vereenvoudiging w_fin = w_inst + k_def·w_qp van EN 1995-1-1 " +
+          "2.2.3(5) niet; 2.2.3(4) schrijft de langeduurvervorming onder de quasi-blijvende " +
+          "combinatie voor met E_mean,fin = E_mean/(1 + k_def) (2.3.2.2(1), uitdrukking 2.7). " +
+          "Elke quasi-blijvende BGT-combinatie (6.16b) is daarom ook doorgerekend in de " +
+          "eindtoestand, met per houtstaaf E_mean,fin = E_mean/(1 + k_def) en per verende " +
+          "aansluiting aan hout K_fin = K/(1 + 2·k_def) (2.3.2.2(3)); staal houdt zijn E. " +
+          "Die varianten heten \"… (eindtoestand BGT)\". De doorbuigingstoets van elke " +
+          "houtstaaf rekent daarmee w_fin = w_inst + (w_qp,fin − w_qp) en w_add = w_fin − w₁ " +
+          "(w₂ + w₃, NEN-EN 1990 NB figuur NB.1), met w_qp en w_qp,fin uit dezelfde combinatie. " +
+          "Kent het model geen quasi-blijvende BGT-combinatie, dan valt die toets met een " +
+          "notitie terug op de vereenvoudiging." +
+          (bgtBijzonder.length > 0 ? ` ${bgtBijzonder.join(" ")}` : "") +
+          " Niet doorgerekend: de doorbuigingstoetsen van staal- en betonstaven lezen hun " +
+          "eigen BGT-combinaties met de stijfheid direct na belasten, terwijl die delen in " +
+          "de eindtoestand meer kracht krijgen; hun langeduurzakking kan daardoor te klein " +
+          "zijn. Beoordeel die apart.",
       },
     ],
   };
@@ -481,7 +572,9 @@ export function eindtoestandKandidaten(
 }
 
 /**
- * Elke UGT-combinatie met haar eindtoestandvarianten erachter. Bij een andere
+ * Elke UGT-combinatie met haar eindtoestandvarianten erachter, en elke
+ * quasi-blijvende BGT-combinatie (6.16b) met haar BGT-eindtoestand (2.2.3(4),
+ * id + EINDTOESTAND_COMBO_OFFSET · BGT_EINDTOESTAND_VEELVOUD). Bij een andere
  * status dan "doorrekenen" DEZELFDE lijst (dezelfde referentie).
  *
  * Het id van een variant is id + EINDTOESTAND_COMBO_OFFSET · round(100·ψ₂): uniek
@@ -498,7 +591,18 @@ export function metEindtoestandVarianten(
   const uit: LoadCombination[] = [];
   for (const c of combinaties) {
     uit.push(c);
-    if (c.type !== "uls" || c.eindtoestand !== undefined) continue;
+    if (c.eindtoestand !== undefined) continue;
+    if (c.type === "sls") {
+      if (soortVanCombinatie(c) !== "6.16b") continue;
+      uit.push({
+        ...c,
+        id: c.id + EINDTOESTAND_COMBO_OFFSET * BGT_EINDTOESTAND_VEELVOUD,
+        name: `${c.name} (eindtoestand BGT)`,
+        eindtoestand: { psi2: 1, bgt: true },
+      });
+      continue;
+    }
+    if (c.type !== "uls") continue;
     for (const psi2 of eindtoestandKandidaten(c, loadCases, bijlage)) {
       uit.push({
         ...c,
@@ -521,12 +625,23 @@ export function metEindtoestandVarianten(
  */
 export function eindstijfheidInvoer(
   input: MultiInput,
-  uitkomst: Pick<EindstijfheidUitkomst, "kDefPerStaaf">,
-  psi2: number,
+  uitkomst: Pick<EindstijfheidUitkomst, "kDefPerStaaf"> & Partial<Pick<EindstijfheidUitkomst, "betonPhiPerStaaf">>,
+  sleutel: EindtoestandSleutel,
 ): MultiInput {
+  // De BGT-eindtoestand (2.2.3(4)): hout met (2.7) = (2.10) met ψ₂ = 1, en
+  // beton met E_c,eff = E_cm/(1 + φ) (EN 1992-1-1 7.4.3(5)) waar φ bekend is.
+  const bgt = sleutel === "bgt";
+  const psi2 = bgt ? 1 : sleutel;
   return {
     ...input,
     beams: input.beams.map((b) => {
+      const phi = bgt ? uitkomst.betonPhiPerStaaf?.get(b.id) : undefined;
+      if (phi !== undefined) {
+        if (b.E === undefined) {
+          throw new Error(`Staaf ${b.id}: geen E in de solverinvoer; E_c,eff (EN 1992-1-1 7.4.3(5)) is niet te bepalen.`);
+        }
+        return { ...b, E: b.E / (1 + phi) };
+      }
       const kDef = uitkomst.kDefPerStaaf.get(b.id);
       if (kDef === undefined) return b;
       if (b.E === undefined) {
@@ -555,11 +670,12 @@ export function losEindtoestandOp(
   input: MultiInput,
   perCase: Map<number, SolverResult>,
   combinaties: readonly LoadCombination[],
-  uitkomst: Pick<EindstijfheidUitkomst, "kDefPerStaaf">,
+  uitkomst: Pick<EindstijfheidUitkomst, "kDefPerStaaf"> & Partial<Pick<EindstijfheidUitkomst, "betonPhiPerStaaf">>,
 ): void {
-  const psis = [...new Set(combinaties.flatMap((c) => (c.eindtoestand ? [c.eindtoestand.psi2] : [])))];
-  for (const psi2 of psis) {
-    const { perCase: fin } = solveAllCases(eindstijfheidInvoer(input, uitkomst, psi2));
-    zetEindtoestandGevallen(perCase, psi2, fin);
+  const sleutels = [...new Set(combinaties.flatMap((c): EindtoestandSleutel[] =>
+    c.eindtoestand ? [isBgtEindtoestand(c) ? "bgt" : c.eindtoestand.psi2] : []))];
+  for (const sleutel of sleutels) {
+    const { perCase: fin } = solveAllCases(eindstijfheidInvoer(input, uitkomst, sleutel));
+    zetEindtoestandGevallen(perCase, sleutel, fin);
   }
 }
