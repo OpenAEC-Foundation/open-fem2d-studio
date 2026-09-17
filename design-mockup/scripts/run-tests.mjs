@@ -580,6 +580,10 @@ const ALLEEN_BRON = new Map([
     "rendert de doorsnede- en plattegrondtekening van het windvenster met react-dom/server en leest de staven, pijlen en maten terug uit de SVG; tekenwerk, en React bestaat in de sidecarbundel niet",
   ],
   [
+    "wind-voorbeeld",
+    "legt vast dat het voorbeeld in het windvenster bij de invoer op het scherm hoort (issue #29): `lib/wind/windVoorbeeld` is presentatielogica van het venster en staat niet in de barrel, en de test leest daarnaast de aansluiting in WindGeneratorDialog.tsx en stores/windStore.ts van schijf. De generator zelf staat al tegen de bundel in `wind-generator` en `wind-vrijstaand-dak`",
+  ],
+  [
     "inp-flenshelling",
     "hetzelfde voor de I-profielen: de getekende INP-contour (14 %, tf op b/4 vanaf de tip) tegen de cataloguswaarde, en een IPE die evenwijdig blijft; tekenmeetkunde, niet in de barrel",
   ],

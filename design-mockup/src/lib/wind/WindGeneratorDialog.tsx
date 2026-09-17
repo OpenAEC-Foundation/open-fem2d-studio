@@ -77,14 +77,17 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
   const [gevalIndex, setGevalIndex] = useState(0);
 
   // Voorbeeld: puur rekenen, niets wegschrijven. Herrekent bij een wijziging
-  // in de instellingen of in de constructie.
-  const res = useMemo(
-    () => (open ? wind.voorbeeld() : null),
+  // in de instellingen of in de constructie. De instellingen `i` gaan
+  // expliciet mee, zodat voorbeeld, meldingen en de knop Genereren altijd bij
+  // de invoer op het scherm horen (issue #29).
+  const vb = useMemo(
+    () => (open ? wind.voorbeeld(i) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [open, i, wind.modelVersie],
   );
 
   if (!open) return null;
+  const res = vb?.resultaat ?? null;
   const s = res?.samenvatting ?? null;
   const geo = res?.geometrie ?? null;
   const gevallen = s?.perGeval ?? [];
@@ -93,8 +96,8 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
     ? (res?.gevallen.find((g) => g.sleutel === geval.sleutel)?.richting ?? null)
     : i.vorm === "vrijstaandDak" ? "alle"
       : (i.richtingLinks ? "links" : i.richtingRechts ? "rechts" : i.richtingHaaks ? "haaks" : null);
-  const fouten = res?.meldingen.filter((m) => m.niveau === "fout") ?? [];
-  const overige = res?.meldingen.filter((m) => m.niveau !== "fout") ?? [];
+  const fouten = vb?.fouten ?? [];
+  const overige = vb?.overige ?? [];
   const vrijstaand = i.vorm === "vrijstaandDak";
   const toonGevelhoogte = !vrijstaand && geo !== null && !geo.heeftGevels;
   const e_m = geo ? berekenE(i.gebouwlengte_m, geo.h_m) : undefined;
@@ -479,7 +482,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
           <div className="wgd-knoppen">
             <button className="wgd-btn" onClick={() => wind.wis()}>{t("wind.btnClear")}</button>
             <button className="wgd-btn" onClick={onClose}>{t("close")}</button>
-            <button className="wgd-btn primary" disabled={!res?.ok} onClick={() => { wind.genereer(); onClose(); }}>
+            <button className="wgd-btn primary" disabled={!vb?.kanGenereren} onClick={() => { wind.genereer(); onClose(); }}>
               {t("wind.btnGenerate")}
             </button>
           </div>

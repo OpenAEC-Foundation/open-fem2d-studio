@@ -37,6 +37,7 @@ import {
   handtekeningVanGeneratie, handtekeningVanModel,
   type WindGeneratieResultaat, type WindInstellingen,
 } from "../lib/wind/windGenerator";
+import { windVoorbeeld, type WindVoorbeeld } from "../lib/wind/windVoorbeeld";
 import type { TerreinCategorie, Windgebied } from "../lib/wind/windEurocode";
 
 const INSTELLINGEN_SLEUTEL = "windGenerator";
@@ -66,8 +67,13 @@ export interface WindGeneratorApi {
    * de constructie — ook wanneer de generator (nog) niet actief is.
    */
   modelVersie: number;
-  /** Draai de generator zonder iets weg te schrijven (voorbeeldweergave). */
-  voorbeeld: () => WindGeneratieResultaat;
+  /**
+   * Draai de generator zonder iets weg te schrijven (voorbeeldweergave), met
+   * de instellingen die het venster NU toont. Die gaan expliciet mee: een ref
+   * die pas na de render bijgewerkt wordt, liet het voorbeeld één wijziging
+   * achterlopen (issue #29).
+   */
+  voorbeeld: (instellingen: WindInstellingen) => WindVoorbeeld;
   /** Draai de generator én schrijf het resultaat weg; zet automatisch aan. */
   genereer: () => { resultaat: WindGeneratieResultaat; uitkomst: ToepasUitkomst };
   /** Verwijder alles wat de generator eerder heeft aangemaakt. */
@@ -243,7 +249,18 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
 
   // BEWUST zonder setState: het dialoogvenster roept dit tijdens de render
   // aan (useMemo), en state schrijven tijdens een render is in React verboden.
-  const voorbeeld = useCallback(() => draai(), [draai]);
+  // De instellingen komen als argument binnen en NIET uit `instRef`: dat wordt
+  // pas in een effect na de render bijgewerkt, en tijdens de render stond er
+  // dus nog de vorige invoer in (issue #29). `femRef` is hier wel actueel: het
+  // venster herrekent op `modelVersie`, en die wordt zelf in een effect
+  // opgehoogd — ná het effect dat `femRef` bijwerkt.
+  const voorbeeld = useCallback((inst: WindInstellingen) => {
+    const f = femRef.current;
+    return windVoorbeeld(
+      { nodes: f.nodes, beams: f.beams, loadCases: f.loadCases, gevolgklasse: f.gevolgklasse },
+      inst,
+    );
+  }, []);
 
   const genereer = useCallback(() => {
     const res = draai();
