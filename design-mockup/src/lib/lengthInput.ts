@@ -20,5 +20,9 @@ export function parseLength(text: string, storedUnit: LengthUnit = "mm"): number
 /** Geen afronding van opgeslagen maten bij openen en ongewijzigd bevestigen. */
 export function formatLength(value: number | null | undefined, storedUnit: LengthUnit = "mm"): string {
   if (value == null || !Number.isFinite(value)) return "";
-  return String(storedUnit === "m" ? metersToMm(value) : value);
+  if (storedUnit === "mm") return String(value);
+  // Verschuif de decimale exponent in plaats van binair te vermenigvuldigen:
+  // 1.001 m moet 1001 mm blijven, niet 1000.9999999999999 mm.
+  const [mantissa, exponent = "0"] = String(value).split("e");
+  return String(Number(`${mantissa}e${Number(exponent) + 3}`));
 }

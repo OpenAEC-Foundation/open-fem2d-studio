@@ -552,8 +552,8 @@
       "directionHorizontal": "Horizontaal (+X, wind)",
       "beginM": "Begin (mm)",
       "endM": "Einde (mm)",
-      "lineLoadHint": "Negatief = tegen +richting in (downward voor Z, links voor X). Begin/einde vanaf de startknoop; 0 t/mm {{lengte}} mm = volle lengte.",
-      "edgeLoadHint": "p werkt per meter randlengte. Negatief = tegen de +richting in (omlaag voor Z, links voor X). Begin/einde vanaf de beginhoek van de rand; 0 t/mm {{lengte}} mm = de volle rand.",
+      "lineLoadHint": "Negatief = tegen +richting in (downward voor Z, links voor X). Begin/einde vanaf de startknoop; 0 t/m {{lengte}} mm = volle lengte.",
+      "edgeLoadHint": "p werkt per meter randlengte. Negatief = tegen de +richting in (omlaag voor Z, links voor X). Begin/einde vanaf de beginhoek van de rand; 0 t/m {{lengte}} mm = de volle rand.",
       "invalidRange": "Ongeldig bereik: 0 ≤ begin < einde ≤ {{lengte}} mm",
       "invalidPosition": "Ongeldige positie: 0 ≤ positie ≤ {{lengte}} mm"
     },

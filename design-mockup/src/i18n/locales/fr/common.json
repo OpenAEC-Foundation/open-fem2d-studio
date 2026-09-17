@@ -553,7 +553,7 @@
       "beginM": "Début (mm)",
       "endM": "Fin (mm)",
       "lineLoadHint": "Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le nœud d'origine ; 0 à {{lengte}} mm = longueur totale.",
-      "edgeLoadHint": "p agit par mmètre de longueur de bord. Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le coin de départ du bord ; 0 à {{lengte}} mm = le bord entier.",
+      "edgeLoadHint": "p agit par mètre de longueur de bord. Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le coin de départ du bord ; 0 à {{lengte}} mm = le bord entier.",
       "invalidRange": "Plage non valide : 0 ≤ début < fin ≤ {{lengte}} mm",
       "invalidPosition": "Position non valide : 0 ≤ position ≤ {{lengte}} mm"
     },

@@ -38,8 +38,16 @@ for (const raw of ["", " ", "12mm", "1,2.3", "NaN", "Infinity", "--2", "2e3"]) {
 for (const [stored, unit, expected] of [
   [6, "m", "6000"], [3.00025, "m", "3000.25"],
   [0.3, "m", "300"], [300, "mm", "300"], [undefined, "m", ""],
+  [1.001, "m", "1001"], [1.0001, "m", "1000.1"],
+  [1e-7, "m", "0.0001"], [1.2345678901234567, "m", "1234.5678901234567"],
 ]) {
   assert.equal(formatLength(stored, unit), expected);
   if (stored !== undefined) assert.ok(Math.abs(parseLength(expected, unit) - stored) < 1e-12);
+}
+for (const language of ["nl", "fr"]) {
+  for (const namespace of ["common", "check"]) {
+    const text = readFileSync(new URL(`./src/i18n/locales/${language}/${namespace}.json`, import.meta.url), "utf8");
+    assert.doesNotMatch(text, /t\/mm\b|mmètre/, "Geen eenheidsvervanging in gewone woorden");
+  }
 }
 console.log("PASS: mm-labels in vier talen, komma/punt, ongeldige invoer en oude opslageenheden");
