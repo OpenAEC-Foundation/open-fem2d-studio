@@ -382,6 +382,56 @@ async fn de_drie_wegen_toetsen_dezelfde_houten_staaf_gelijk() {
     let _ = child.kill().await;
 }
 
+/// Issue #23: de langeduurzakking w_qp,fin (EN 1995-1-1 2.2.3(4)) reist langs
+/// alle drie de wegen mee, bij massief hout en bij kruislaaghout, en geeft
+/// langs elke weg dezelfde w_fin. De ligger heeft w_inst = w_qp = −24,5 mm;
+/// met w_qp,fin = −42,0 mm is w_fin = −24,5 + (−42,0 + 24,5) = −42,0 mm
+/// (de vereenvoudiging gaf −39,2).
+#[tokio::test]
+async fn de_drie_wegen_nemen_de_langeduurzakking_gelijk_mee() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+
+    let mut hout = invoer_ligger();
+    hout["deflection_quasi_perm_fin_mm"] = json!(-42.0);
+    let mut clt = invoer_clt();
+    clt["k_def"] = json!(0.8);
+    clt["k_def_bron"] = json!("testwaarde");
+    clt["deflection_inst_mm"] = json!(-2.0);
+    clt["deflection_quasi_perm_mm"] = json!(-1.5);
+    clt["deflection_quasi_perm_fin_mm"] = json!(-3.0);
+    for (i, (naam, tool, invoer)) in
+        [("hout", "check_timber_beams", hout), ("CLT", "check_clt_beams", clt)].into_iter().enumerate()
+    {
+        let tauri = if tool == "check_timber_beams" { weg_tauri_hout(&invoer) } else { weg_tauri_clt(&invoer) };
+        let brug = eerste(&weg_toetsbrug(tool, Some(json!([invoer]))));
+        let mcp = weg_mcp(&mut stdin, &mut reader, 60 + i as u32, tool, json!({ "inputs": [invoer] })).await;
+        let mcp = mcp["results"][0].clone();
+        eis_gelijk(&format!("{naam}: het Tauri-command"), &tauri, "de toetsbrug", &brug);
+        eis_gelijk(&format!("{naam}: het Tauri-command"), &tauri, "de MCP-server", &mcp);
+        let fin = mcp["checks"]
+            .as_array()
+            .expect("checks")
+            .iter()
+            .find(|c| c["id"] == "deflection_w_fin")
+            .unwrap_or_else(|| panic!("{naam}: geen w_fin"))
+            .clone();
+        let tekst = fin.to_string();
+        assert!(tekst.contains("w_{qp,fin,z}") && tekst.contains("2.2.3(4)"), "{naam}: {tekst}");
+        if naam == "hout" {
+            let ed = fin["kind"]["data"]["uc"]["ed"].as_f64()
+                .unwrap_or_else(|| panic!("hout: geen ed in {tekst}"));
+            assert!((ed - 42.0).abs() < 1e-9, "hout: w_fin {ed}");
+        } else {
+            // −2,0 + (−3,0 + 1,5) = −3,5 mm.
+            let ed = fin["kind"]["data"]["uc"]["ed"].as_f64()
+                .unwrap_or_else(|| panic!("CLT: geen ed in {tekst}"));
+            assert!((ed - 3.5).abs() < 1e-9, "CLT: w_fin {ed}");
+        }
+    }
+
+    let _ = child.kill().await;
+}
+
 /// Dezelfde CLT-plaat, drie wegen, één antwoord — inclusief de toets per lamel
 /// en de uitgewerkte opbouw.
 #[tokio::test]

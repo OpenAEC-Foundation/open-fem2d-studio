@@ -476,10 +476,14 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
     //     ze wegblijven), dus de staaf wordt geweigerd met de reden — dezelfde
     //     vorm als een onbekende sterkteklasse hieronder. Vóór de
     //     verloopafslag, zodat een verlopende staaf dezelfde keuring krijgt.
+    // Een aangeleverde langeduurzakking w_qp,fin (2.2.3(4)) krijgt dezelfde
+    // behandeling: een niet-eindig getal is geen zakking.
     if let Err(reden) = nen_en_1995_1_1::deflection::keur_noemers(
         input.deflection_limit_fin,
         input.deflection_limit_add,
-    ) {
+    )
+    .and_then(|_| nen_en_1995_1_1::deflection::keur_langeduurzakking(input.deflection_quasi_perm_fin_mm))
+    {
         return TimberBeamCheckResult {
             beam_id: input.beam_id,
             section_name: format!("{} x {}", input.width_mm, input.height_mm),
@@ -599,9 +603,13 @@ pub fn check_timber_beam(input: TimberBeamCheckInput) -> TimberBeamCheckResult {
     // 7. Doorbuiging §7.2 met kruip. Hangt niet van k_mod af (wel van k_def),
     //    en wordt dus één keer getoetst.
     let kdef = k_def(mat.timber_type, input.service_class);
-    let (mut fin, add) = deflection::check_deflection_pair(
+    // Met een aangeleverde w_qp,fin volgens 2.2.3(4) (delen met verschillend
+    // kruipgedrag), anders de vereenvoudiging van 2.2.3(5) — bit-identiek aan
+    // de rekengang van vóór dat veld.
+    let (mut fin, add) = deflection::check_deflection_pair_met_langeduur(
         input.deflection_inst_mm,
         input.deflection_quasi_perm_mm,
+        input.deflection_quasi_perm_fin_mm,
         input.deflection_permanent_mm,
         kdef,
         input.length_m * 1e3,

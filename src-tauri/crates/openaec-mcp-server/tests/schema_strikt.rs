@@ -812,14 +812,24 @@ async fn schema_van_de_houttools_is_strikt_op_elk_niveau() {
     assert!(staaf["properties"]["bijlage"].is_object(), "bijlage ontbreekt");
     assert_eq!(
         staaf["properties"].as_object().unwrap().len(),
-        30,
-        "het schema van de houten staaf hoort precies de 30 velden van TimberBeamCheckInput te kennen 
-         (25 + load_duration_per_combination + staaf_notities + width_end_mm + height_end_mm + bijlage)"
+        31,
+        "het schema van de houten staaf hoort precies de 31 velden van TimberBeamCheckInput te kennen 
+         (25 + load_duration_per_combination + staaf_notities + width_end_mm + height_end_mm + bijlage
+         + deflection_quasi_perm_fin_mm)"
+    );
+    // Issue #23: de langeduurzakking van 2.2.3(4) is voor een client op te geven.
+    assert!(
+        staaf["properties"]["deflection_quasi_perm_fin_mm"].is_object(),
+        "deflection_quasi_perm_fin_mm ontbreekt"
     );
 
     let clt = tooldefinitie(&mut stdin, &mut reader, 31, "check_clt_beams").await;
     let cstaaf = &clt["inputSchema"]["properties"]["inputs"]["items"];
     assert_eq!(cstaaf["additionalProperties"], false, "CLT-staaf");
+    assert!(
+        cstaaf["properties"]["deflection_quasi_perm_fin_mm"].is_object(),
+        "CLT: deflection_quasi_perm_fin_mm ontbreekt"
+    );
     assert_eq!(cstaaf["properties"]["layup"]["additionalProperties"], false, "opbouw");
     assert_eq!(
         cstaaf["properties"]["layup"]["properties"]["layers"]["items"]["additionalProperties"],

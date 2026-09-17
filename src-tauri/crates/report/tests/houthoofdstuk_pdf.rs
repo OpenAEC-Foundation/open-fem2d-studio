@@ -157,6 +157,7 @@ fn cltstaaf() -> CltBeamCheckResult {
         deflection_limit_fin: 250.0,
         deflection_limit_add: 333.0,
         deflection_notes: vec![],
+        deflection_quasi_perm_fin_mm: None,
     })
 }
 
@@ -201,6 +202,7 @@ fn geweigerde_cltstaaf() -> CltBeamCheckResult {
         deflection_limit_fin: 250.0,
         deflection_limit_add: 333.0,
         deflection_notes: vec![],
+        deflection_quasi_perm_fin_mm: None,
     });
     assert!(r.checks.is_empty(), "deze proefstaaf hoort geweigerd te worden");
     r
