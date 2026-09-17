@@ -8,8 +8,8 @@
 //! zelf uit die tabelwaarden narekend.
 
 use concrete_check::segments::{
-    segment_layout, segment_stiffness, SegmentForces, SegmentRunStatus, SegmentStatus,
-    SegmentStiffnessRequest, DEFAULT_MAX_SEGMENTS,
+    segment_layout, segment_stiffness, Kruip519Invoer, QuasiBlijvendMoment, SegmentForces,
+    SegmentRunStatus, SegmentStatus, SegmentStiffnessRequest, DEFAULT_MAX_SEGMENTS,
 };
 use nen_en_1992_1_1::{
     concrete_class_by_name, ConcreteSectionInput, LoadDuration, NonlinearBasis, RebarRow,
@@ -53,6 +53,7 @@ fn verzoek(length_m: f64, cage: ReinforcementCage) -> SegmentStiffnessRequest {
         max_segments: DEFAULT_MAX_SEGMENTS,
         limit_state: NonlinearBasis::DesignValues,
         phi_ef: 0.0,
+        kruip_5_19: None,
         segment_forces: vec![],
         previous_ei_knm2: vec![],
         relaxation: 1.0,
@@ -609,4 +610,102 @@ fn ongeldige_instellingen_leveren_een_fout() {
         println!("{naam}: {e}");
         assert!(!e.is_empty());
     }
+}
+
+// ── Issue #24: φ_ef uit (5.19) in de UGT ────────────────────────────────────
+
+fn kruip(m0_ed: f64, qp: &[(&str, f64)]) -> Kruip519Invoer {
+    Kruip519Invoer {
+        phi_inf_t0: 2.0,
+        ugt_combinatie: "UGT 6.10b".into(),
+        m0_ed_knm: m0_ed,
+        x_mm: 2000.0,
+        quasi_blijvend: qp
+            .iter()
+            .map(|(n, m)| QuasiBlijvendMoment { combinatie: (*n).into(), m0_eqp_knm: *m })
+            .collect(),
+    }
+}
+
+/// Handberekening (5.19): φ(∞,t₀) = 2,0, M₀Ed = 87,75 kNm, M₀Eqp = 51,75 kNm
+/// → 51,75/87,75 = 0,589744 → φ_ef = 1,179487. De kern rekent daarmee het
+/// diagram op (5.8.6(4)) en zet de afleiding in het antwoord en in `notes`.
+/// En de stijfheid moet dezelfde zijn als met die φ_ef rechtstreeks opgegeven.
+#[test]
+fn phi_ef_uit_5_19_handberekend_en_gelijk_aan_de_vaste_waarde() {
+    let mut v = verzoek(4.0, korf_asym());
+    v.kruip_5_19 = Some(kruip(87.75, &[("BGT quasi-blijvend 6.16b", 51.75)]));
+    v.segment_forces = krachten(0.0, &[60.0; 10]);
+    let r = segment_stiffness(v).unwrap();
+    let a = r.kruip_5_19.as_ref().expect("afleiding in het antwoord");
+    assert!((a.verhouding.unwrap() - 51.75 / 87.75).abs() < 1e-12);
+    assert!((r.phi_ef - 2.0 * 51.75 / 87.75).abs() < 1e-12);
+    assert!((r.phi_ef - 1.179_487_179_5).abs() < 1e-9);
+    assert!(!a.bovengrens_gehouden);
+    assert!(r.notes.iter().any(|n| n == &a.toelichting), "{:?}", r.notes);
+    assert!(a.toelichting.contains("51,75") && a.toelichting.contains("87,75"), "{}", a.toelichting);
+    assert!(a.toelichting.contains("x = 2000 mm"), "{}", a.toelichting);
+
+    let mut vast = verzoek(4.0, korf_asym());
+    vast.phi_ef = 2.0 * 51.75 / 87.75;
+    vast.segment_forces = krachten(0.0, &[60.0; 10]);
+    let vast = segment_stiffness(vast).unwrap();
+    assert!(vast.kruip_5_19.is_none());
+    assert_eq!(r.segments[0].ei_knm2, vast.segments[0].ei_knm2);
+}
+
+/// Meerdere quasi-blijvende combinaties: de grootste φ_ef telt en wordt genoemd.
+/// Een tegengesteld teken of M₀Ed ≈ 0 houdt de bovengrens, met de reden.
+#[test]
+fn phi_ef_uit_5_19_grenzen_en_meerdere_quasi_blijvende_combinaties() {
+    let a = concrete_check::segments::kruip_5_19(&kruip(
+        80.0,
+        &[("qp 1", 20.0), ("qp 2", 40.0), ("qp 3", 30.0)],
+    ))
+    .unwrap();
+    assert_eq!(a.quasi_combinatie.as_deref(), Some("qp 2"));
+    assert!((a.phi_ef - 1.0).abs() < 1e-12);
+    assert!(a.toelichting.contains("Van de 3 quasi-blijvende combinaties"), "{}", a.toelichting);
+
+    // Tegengesteld teken: de bovengrens wint dan van elke kleinere verhouding.
+    let t = concrete_check::segments::kruip_5_19(&kruip(80.0, &[("qp", -20.0)])).unwrap();
+    assert!(t.bovengrens_gehouden && t.phi_ef == 2.0 && t.verhouding.is_none());
+    assert!(t.toelichting.contains("tegengesteld teken"), "{}", t.toelichting);
+
+    let nul = concrete_check::segments::kruip_5_19(&kruip(0.0, &[("qp", 20.0)])).unwrap();
+    assert!(nul.bovengrens_gehouden && nul.phi_ef == 2.0);
+    assert!(nul.toelichting.contains("onbepaald"), "{}", nul.toelichting);
+
+    let groter = concrete_check::segments::kruip_5_19(&kruip(20.0, &[("qp", 30.0)])).unwrap();
+    assert!(groter.bovengrens_gehouden && groter.phi_ef == 2.0);
+    assert!(groter.toelichting.contains("GUNSTIGE kant"), "{}", groter.toelichting);
+
+    // M₀Eqp = 0: (5.19) geeft φ_ef = 0, en dat is een uitkomst, geen bovengrens.
+    let geen = concrete_check::segments::kruip_5_19(&kruip(80.0, &[("qp", 0.0)])).unwrap();
+    assert!(!geen.bovengrens_gehouden && geen.phi_ef == 0.0);
+
+    let leeg = concrete_check::segments::kruip_5_19(&kruip(80.0, &[])).unwrap();
+    assert!(leeg.bovengrens_gehouden && leeg.phi_ef == 2.0 && leeg.quasi_combinatie.is_none());
+}
+
+/// (5.19) hoort alleen bij de UGT; twee bronnen voor één φ_ef worden geweigerd.
+#[test]
+fn phi_ef_uit_5_19_wordt_in_de_bgt_en_naast_een_vaste_phi_ef_geweigerd() {
+    let mut bgt = verzoek(4.0, korf_asym());
+    bgt.limit_state = NonlinearBasis::MeanValues;
+    bgt.kruip_5_19 = Some(kruip(80.0, &[("qp", 40.0)]));
+    let e = segment_stiffness(bgt).unwrap_err();
+    assert!(e.contains("7.4.3(5)"), "{e}");
+
+    let mut dubbel = verzoek(4.0, korf_asym());
+    dubbel.phi_ef = 2.0;
+    dubbel.kruip_5_19 = Some(kruip(80.0, &[("qp", 40.0)]));
+    let e = segment_stiffness(dubbel).unwrap_err();
+    assert!(e.contains("twee bronnen"), "{e}");
+
+    let mut negatief = verzoek(4.0, korf_asym());
+    let mut k = kruip(80.0, &[("qp", 40.0)]);
+    k.phi_inf_t0 = -1.0;
+    negatief.kruip_5_19 = Some(k);
+    assert!(segment_stiffness(negatief).is_err());
 }
