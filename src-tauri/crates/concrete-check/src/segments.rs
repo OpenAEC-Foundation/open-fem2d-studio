@@ -97,7 +97,18 @@
 //! antwoord draagt `phi_ef`, `creep_neglected` en een `creep_note` die het
 //! met zoveel woorden zegt, inclusief de vermelding dat de uitkomst voor
 //! blijvend belaste kolommen aan de onveilige kant is. Geen stilzwijgende nul.
+//!
+//! In de UGT kan de aanroeper in plaats van een vaste φ_ef het blok
+//! [`Kruip519Invoer`] meesturen (issue #24). De kern bepaalt φ_ef dan zelf uit
+//! (5.19) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed, met de eerste-orde-momenten op de doorsnede
+//! van het grootste |M₀Ed| (5.8.4(3)), begrensd tussen 0 en φ(∞,t₀) volgens
+//! [`nen_en_1992_1_1::kolom::phi_ef_5_19_begrensd`], en zet de afleiding in
+//! `kruip_5_19` en `notes`. De BGT-combinaties (karakteristiek, frequent,
+//! quasi-blijvend) houden φ(∞,t₀): 7.4.3(5) vraagt daar
+//! E_c,eff = E_cm/(1 + φ(∞,t₀)), en in de quasi-blijvende combinatie is de
+//! verhouding bovendien per definitie 1.
 
+use nen_en_1992_1_1::kolom::{phi_ef_5_19_begrensd, PhiEf519};
 use nen_en_1992_1_1::mnkappa::DEFAULT_N_STRIPS;
 use nen_en_1992_1_1::{
     concrete_class_by_name, ei_secant, reinforcement_grade_by_name, ConcreteSectionInput,
@@ -136,6 +147,11 @@ fn default_n_strips() -> u32 {
     DEFAULT_N_STRIPS as u32
 }
 
+/// Getal met een decimale komma, zoals de rest van het rapport het toont.
+fn nl(v: f64, cijfers: usize) -> String {
+    format!("{v:.cijfers$}").replace('.', ",")
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Invoer
 // ───────────────────────────────────────────────────────────────────────────
@@ -152,6 +168,163 @@ pub struct SegmentForces {
     pub n_ed_kn: f64,
     /// Buigend moment in kNm om de sterke as; positief = trek onderin.
     pub m_ed_knm: f64,
+}
+
+/// M₀Eqp van één quasi-blijvende combinatie (6.16b), eerste orde, op de
+/// doorsnede van [`Kruip519Invoer::x_mm`].
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct QuasiBlijvendMoment {
+    /// Naam van de quasi-blijvende combinatie, voor het rapport.
+    pub combinatie: String,
+    /// Eerste-orde-moment in kNm, zelfde tekenconventie als M₀Ed.
+    pub m0_eqp_knm: f64,
+}
+
+/// De gegevens om φ_ef van één staaf in één UGT-combinatie uit (5.19) te
+/// bepalen: φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed (EN 1992-1-1 5.8.4(2)).
+///
+/// DE DOORSNEDE. 5.8.4(3): varieert de verhouding langs het element, dan mag
+/// zij "voor de doorsnede met het maximale moment" worden berekend. De
+/// aanroeper kiest die doorsnede: de plaats van het grootste |M₀Ed| langs de
+/// staaf in de EERSTE-ORDE-oplossing van deze UGT-combinatie, en leest M₀Eqp op
+/// dezelfde plaats uit de eerste-orde-oplossing van elke quasi-blijvende
+/// combinatie.
+///
+/// MEERDERE QUASI-BLIJVENDE COMBINATIES. De kern neemt de grootste φ_ef die
+/// daaruit volgt (de laagste stijfheid, de ongunstige kant) en noemt welke.
+///
+/// ALLEEN IN DE UGT. 7.4.3(5) vraagt in de BGT de volle φ(∞,t₀); een verzoek
+/// met `limit_state = MeanValues` én dit blok wordt geweigerd.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct Kruip519Invoer {
+    /// De eindwaarde van de kruipcoëfficiënt φ(∞,t₀) van de staaf (3.1.4).
+    pub phi_inf_t0: f64,
+    /// Naam van de UGT-combinatie, voor het rapport.
+    pub ugt_combinatie: String,
+    /// Het grootste |M₀Ed| langs de staaf, MET teken, in kNm (eerste orde).
+    pub m0_ed_knm: f64,
+    /// Waar dat moment zit, mm vanaf de beginknoop.
+    pub x_mm: f64,
+    /// M₀Eqp op dezelfde doorsnede per quasi-blijvende combinatie. Leeg = er
+    /// is geen quasi-blijvende combinatie; dan geldt de bovengrens φ(∞,t₀).
+    pub quasi_blijvend: Vec<QuasiBlijvendMoment>,
+}
+
+/// Hoe φ_ef uit (5.19) is bepaald — de afleiding voor het rapport.
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
+pub struct Kruip519Afleiding {
+    pub phi_inf_t0: f64,
+    pub ugt_combinatie: String,
+    /// M₀Ed op de gekozen doorsnede, kNm.
+    pub m0_ed_knm: f64,
+    /// De gekozen doorsnede, mm vanaf de beginknoop.
+    pub x_mm: f64,
+    /// De quasi-blijvende combinatie die φ_ef bepaalde; `None` als er geen was.
+    pub quasi_combinatie: Option<String>,
+    /// M₀Eqp van die combinatie op dezelfde doorsnede, kNm.
+    pub m0_eqp_knm: Option<f64>,
+    /// |M₀Eqp|/|M₀Ed| als (5.19) is ingevuld; `None` bij de bovengrens.
+    pub verhouding: Option<f64>,
+    /// De φ_ef waarmee het spanning-rekdiagram is opgerekt (5.8.6(4)).
+    pub phi_ef: f64,
+    /// Is de bovengrens φ(∞,t₀) gehouden?
+    pub bovengrens_gehouden: bool,
+    /// De uitgeschreven afleiding, woordelijk voor het rapport.
+    pub toelichting: String,
+}
+
+/// Bepaal φ_ef uit [`Kruip519Invoer`] met de regel van
+/// [`nen_en_1992_1_1::kolom::phi_ef_5_19_begrensd`] — dezelfde als de
+/// slankheidspoort van §5.8.3.1.
+pub fn kruip_5_19(k: &Kruip519Invoer) -> Result<Kruip519Afleiding, String> {
+    if !k.x_mm.is_finite() {
+        return Err(format!("kruip_5_19.x_mm moet een eindig getal zijn, kreeg {}", k.x_mm));
+    }
+    let kop = format!(
+        "φ_ef volgens (5.19) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed (5.8.4(2)) voor UGT-combinatie \"{}\": \
+         φ(∞,t₀) = {}; doorsnede x = {} mm, de plaats van het grootste |M₀Ed| langs de staaf in \
+         de eerste-orde-oplossing (5.8.4(3)); M₀Ed = {} kNm.",
+        k.ugt_combinatie,
+        nl(k.phi_inf_t0, 3),
+        nl(k.x_mm, 0),
+        nl(k.m0_ed_knm, 2),
+    );
+    if k.quasi_blijvend.is_empty() {
+        // Toch door de regel: die weigert een negatieve φ(∞,t₀).
+        phi_ef_5_19_begrensd(k.phi_inf_t0, 0.0, 1.0)?;
+        return Ok(Kruip519Afleiding {
+            phi_inf_t0: k.phi_inf_t0,
+            ugt_combinatie: k.ugt_combinatie.clone(),
+            m0_ed_knm: k.m0_ed_knm,
+            x_mm: k.x_mm,
+            quasi_combinatie: None,
+            m0_eqp_knm: None,
+            verhouding: None,
+            phi_ef: k.phi_inf_t0,
+            bovengrens_gehouden: true,
+            toelichting: format!(
+                "{kop} Er is geen quasi-blijvende combinatie (6.16b), dus M₀Eqp is onbekend. De \
+                 bovengrens φ_ef = φ(∞,t₀) = {} is gehouden: de laagste stijfheid en daarmee de \
+                 ongunstige kant.",
+                nl(k.phi_inf_t0, 3)
+            ),
+        });
+    }
+    // De grootste φ_ef over alle quasi-blijvende combinaties; bij gelijke
+    // waarden de eerste, zodat de keuze niet van afronding afhangt.
+    let mut beste: Option<(&QuasiBlijvendMoment, PhiEf519)> = None;
+    for q in &k.quasi_blijvend {
+        let uit = phi_ef_5_19_begrensd(k.phi_inf_t0, q.m0_eqp_knm, k.m0_ed_knm)?;
+        if beste.as_ref().is_none_or(|(_, b)| uit.phi_ef > b.phi_ef) {
+            beste = Some((q, uit));
+        }
+    }
+    let (q, uit) = beste.expect("de lijst is niet leeg");
+    let keuze = if k.quasi_blijvend.len() > 1 {
+        format!(
+            " Van de {} quasi-blijvende combinaties geeft \"{}\" de grootste φ_ef en is \
+             aangehouden (de laagste stijfheid, de ongunstige kant).",
+            k.quasi_blijvend.len(),
+            q.combinatie
+        )
+    } else {
+        String::new()
+    };
+    let rekenregel = match (&uit.reden, uit.verhouding) {
+        (Some(reden), _) => reden.clone(),
+        (None, Some(r)) => format!(
+            "φ_ef = {}·|{}|/|{}| = {}·{} = {}.",
+            nl(k.phi_inf_t0, 3),
+            nl(q.m0_eqp_knm, 2),
+            nl(k.m0_ed_knm, 2),
+            nl(k.phi_inf_t0, 3),
+            nl(r, 4),
+            nl(uit.phi_ef, 3)
+        ),
+        (None, None) => unreachable!("phi_ef_5_19_begrensd geeft een reden of een verhouding"),
+    };
+    Ok(Kruip519Afleiding {
+        phi_inf_t0: k.phi_inf_t0,
+        ugt_combinatie: k.ugt_combinatie.clone(),
+        m0_ed_knm: k.m0_ed_knm,
+        x_mm: k.x_mm,
+        quasi_combinatie: Some(q.combinatie.clone()),
+        m0_eqp_knm: Some(q.m0_eqp_knm),
+        verhouding: uit.verhouding,
+        phi_ef: uit.phi_ef,
+        bovengrens_gehouden: uit.bovengrens_gehouden,
+        toelichting: format!(
+            "{kop} M₀Eqp = {} kNm uit quasi-blijvende combinatie \"{}\" op dezelfde doorsnede. \
+             {rekenregel}{keuze}",
+            nl(q.m0_eqp_knm, 2),
+            q.combinatie
+        ),
+    })
 }
 
 /// Eén stateloos verzoek om de segmentstijfheden van één betonstaaf.
@@ -208,8 +381,18 @@ pub struct SegmentStiffnessRequest {
 
     /// Effectieve kruipcoëfficiënt volgens 5.8.4, verwerkt volgens 5.8.6(4).
     /// Besluit B1 zet hem op 0; het antwoord meldt dat met zoveel woorden.
+    ///
+    /// Moet 0 blijven wanneer [`Self::kruip_5_19`] is meegestuurd: dan bepaalt
+    /// de kern φ_ef zelf, en twee bronnen voor één getal worden geweigerd.
     #[serde(default)]
     pub phi_ef: f64,
+
+    /// φ_ef uit (5.19) met de werkelijke verhouding M₀Eqp/M₀Ed in plaats van
+    /// een vaste waarde — alleen in de UGT (`DesignValues`). Weggelaten = de
+    /// vaste `phi_ef` hierboven, zoals vóór issue #24.
+    #[serde(default)]
+    #[ts(optional)]
+    pub kruip_5_19: Option<Kruip519Invoer>,
 
     /// De krachten per segment uit de vorige raamwerkronde, in de volgorde van
     /// de segmentindeling. **Leeg = ronde 0**: dan komt alleen de indeling
@@ -390,6 +573,11 @@ pub struct SegmentStiffnessResponse {
     pub phi_ef: f64,
     /// Staat φ_ef op nul?
     pub creep_neglected: bool,
+    /// De afleiding van φ_ef uit (5.19) als het verzoek `kruip_5_19` droeg;
+    /// `None` = er is met de vaste `phi_ef` van het verzoek gerekend.
+    /// `serde(default)`: een opgeslagen spoor van vóór dit veld blijft leesbaar.
+    #[serde(default)]
+    pub kruip_5_19: Option<Kruip519Afleiding>,
     /// De verplichte vermelding uit besluit B1 — altijd gevuld, ook als er
     /// mét kruip is gerekend.
     pub creep_note: String,
@@ -537,6 +725,26 @@ pub fn segment_stiffness(
     if !(req.phi_ef.is_finite() && req.phi_ef >= 0.0) {
         return Err(format!("φ_ef moet nul of positief zijn, kreeg {}", req.phi_ef));
     }
+    // ── φ_ef: vast, of uit (5.19) ─────────────────────────────────────────
+    let kruip_afleiding = match &req.kruip_5_19 {
+        None => None,
+        Some(k) => {
+            if req.limit_state != NonlinearBasis::DesignValues {
+                return Err(
+                    "kruip_5_19 hoort alleen bij de UGT (limit_state = DesignValues). In de BGT                      vraagt 7.4.3(5) E_c,eff = E_cm/(1 + φ(∞,t₀)) met de volle kruipcoëfficiënt;                      stuur daar φ(∞,t₀) als phi_ef."
+                        .to_string(),
+                );
+            }
+            if req.phi_ef != 0.0 {
+                return Err(format!(
+                    "phi_ef = {} én kruip_5_19 zijn meegestuurd: twee bronnen voor één φ_ef. Laat                      phi_ef weg (0) wanneer de kern φ_ef uit (5.19) bepaalt.",
+                    req.phi_ef
+                ));
+            }
+            Some(kruip_5_19(k)?)
+        }
+    };
+    let phi_ef = kruip_afleiding.as_ref().map_or(req.phi_ef, |a| a.phi_ef);
     if !(req.relaxation.is_finite() && req.relaxation > 0.0 && req.relaxation <= 1.0) {
         return Err(format!(
             "relaxation moet in (0, 1] liggen, kreeg {}; 1,0 = geen relaxatie",
@@ -577,7 +785,7 @@ pub fn segment_stiffness(
         req.design_situation,
         req.steel_branch,
         req.limit_state,
-        req.phi_ef,
+        phi_ef,
     );
     let curve = mat
         .nonlinear
@@ -744,7 +952,10 @@ pub fn segment_stiffness(
         req.target_segment_length_mm
     ));
     notes.push(format!("Grenstoestand: {}.", req.limit_state.label()));
-    notes.push(creep_note(req.phi_ef));
+    notes.push(creep_note(phi_ef));
+    if let Some(a) = &kruip_afleiding {
+        notes.push(a.toelichting.clone());
+    }
 
     let converged_op_maat = has_forces
         && has_previous
@@ -808,9 +1019,10 @@ pub fn segment_stiffness(
         limit_state_label: req.limit_state.label().to_string(),
         load_duration: req.load_duration,
         beta: req.load_duration.beta(),
-        phi_ef: req.phi_ef,
-        creep_neglected: req.phi_ef == 0.0,
-        creep_note: creep_note(req.phi_ef),
+        phi_ef,
+        creep_neglected: phi_ef == 0.0,
+        kruip_5_19: kruip_afleiding,
+        creep_note: creep_note(phi_ef),
         f_c_mpa: curve.f_c,
         e_c_mpa: curve.e_c,
         f_ctm_mpa: curve.f_ctm,

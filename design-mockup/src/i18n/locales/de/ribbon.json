@@ -485,6 +485,7 @@
     "eisRelaxatie": "Unterrelaxation ω / Untergrenze EI",
     "eisGeklemd": "{{n}} Segment(e) an dieser Untergrenze geklemmt; ein geklemmter Wert ist eine numerische Untergrenze und kein Rechenergebnis.",
     "eisKruip": "Kriechen",
+    "eisKruip519": "GZT: φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed je Stab (5.8.4(2) (5.19)), Momente nach Theorie I. Ordnung im Querschnitt mit dem größten |M₀Ed| (5.8.4(3)); die Herleitung steht beim Stab.",
     "eisBeta": "Belastungsdauer β (7.19)",
     "eisZonderKruipKop": "OHNE KRIECHEN GERECHNET — Stab/Stäbe {{ids}}: es ist keine Kriechzahl φ(∞,t₀) angegeben (Abs. 3.1.4), also φ_ef = 0.",
     "eisZonderKruipUitleg": "Abs. 5.8.6(4) erlaubt, das Kriechen zu berücksichtigen, indem alle Dehnungswerte der Spannungs-Dehnungs-Linie mit (1 + φ_ef) multipliziert werden; für die Anfangssteigung entspricht das dem effektiven Elastizitätsmodul E_c,eff = E_cm/(1 + φ) nach (7.20). Ohne diese Abminderung ist die Biegesteifigkeit zu hoch: die berechnete Durchbiegung ist ZU KLEIN, und in einem statisch unbestimmten Tragwerk ziehen die zu steifen Betonstäbe außerdem zu viel Moment an. Beides liegt auf der unsicheren Seite. Geben Sie φ(∞,t₀) an oder lassen Sie ihn nach Anhang B aus der relativen Luftfeuchte, dem Betonalter t₀ bei Belastungsbeginn und der Zementklasse berechnen (h₀ folgt aus dem Querschnitt).",

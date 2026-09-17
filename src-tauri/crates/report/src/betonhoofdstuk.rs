@@ -549,11 +549,30 @@ fn extend_met_combinatie(
             ),
         },
     ]);
+    // φ_ef kan sinds issue #24 per staaf verschillen: in de UGT bepaalt de kern
+    // hem per staaf uit (5.19) met de werkelijke verhouding M₀Eqp/M₀Ed. Dan
+    // staat hij hier per staaf; de afleiding staat bij de staaf zelf (notes).
+    let phi_tekst = match eerste {
+        None => "—".to_string(),
+        Some(e) if c.staven.iter().any(|r| r.phi_ef != e.phi_ef) => c
+            .staven
+            .iter()
+            .map(|r| format!("{} (staaf {})", nl(r.phi_ef, 2), r.beam_id))
+            .collect::<Vec<_>>()
+            .join("; "),
+        Some(e) => nl(e.phi_ef, 2),
+    };
+    let phi_519 = if c.staven.iter().any(|r| r.kruip_5_19.is_some()) {
+        " — UGT: φ_ef = φ(∞,t0)·M0Eqp/M0Ed per staaf (5.8.4(2) (5.19)), eerste-orde-momenten op          de doorsnede met het grootste |M0Ed| (5.8.4(3)); de afleiding staat bij de staaf."
+    } else {
+        ""
+    };
     rijen.push(vec![
         "Kruip".into(),
         format!(
-            "φ_ef = {} — {}",
-            eerste.map(|r| nl(r.phi_ef, 2)).unwrap_or_else(|| "—".into()),
+            "φ_ef = {}{} — {}",
+            phi_tekst,
+            phi_519,
             // DE VERPLICHTE VERMELDING. Woordelijk uit het kernantwoord; niet
             // herformuleren, niet vertalen, niet inkorten.
             eerste.map(|r| r.creep_note.clone()).unwrap_or_else(|| "—".into()),

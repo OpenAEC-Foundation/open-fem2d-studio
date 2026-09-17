@@ -52,6 +52,7 @@ import type {
 } from "../components/fem/solver/types";
 import { DEFAULT_E } from "../components/fem/solver/types";
 import {
+  solveCombinationFirstOrder,
   solveCombinationSecondOrder,
   type SecondOrderCombo,
 } from "../components/fem/solver/engine";
@@ -69,6 +70,7 @@ import type { ConcreteSectionInput } from "./types/concrete/ConcreteSectionInput
 import type { SegmentForces } from "./types/concrete/SegmentForces";
 import type { SegmentStiffnessRequest } from "./types/concrete/SegmentStiffnessRequest";
 import type { SegmentStiffnessResponse } from "./types/concrete/SegmentStiffnessResponse";
+import type { Kruip519Invoer } from "./types/concrete/Kruip519Invoer";
 import {
   BETON_PROFIEL_VOORBEELDEN,
   DEFAULT_N_STRIPS,
@@ -485,6 +487,16 @@ export interface FysischOpties {
    * bijlage, zoals `#[serde(default)]` aan de Rust-kant.
    */
   bijlage?: NationaleBijlageCode;
+  /**
+   * Per staaf-id de eerste-orde-momenten waarmee de KERN φ_ef uit (5.19)
+   * bepaalt — alleen in de UGT (`grenstoestand = "DesignValues"`) en alleen
+   * voor staven mét φ(∞,t₀). Bouw hem met `kruipInvoerVoorCombinatie`.
+   *
+   * Weggelaten = φ_ef = φ(∞,t₀), de bovengrens van (5.19) (de oude stand, aan
+   * de ongunstige kant). Meegegeven bij een BGT-grenstoestand is een fout:
+   * 7.4.3(5) vraagt daar de volle φ(∞,t₀), en de kern weigert het ook.
+   */
+  kruip519?: ReadonlyMap<number, Kruip519Invoer>;
   /** Aanroep van de rekenkern; standaard `roepKern` uit checkStore. */
   roep?: RoepKern;
   /**
@@ -496,7 +508,8 @@ export interface FysischOpties {
   losOp?: (input: MultiInput, combo: SecondOrderCombo) => SolverResult | null;
 }
 
-interface Ingevuld extends Required<Omit<FysischOpties, "losOp" | "roep">> {
+interface Ingevuld extends Required<Omit<FysischOpties, "losOp" | "roep" | "kruip519">> {
+  kruip519: ReadonlyMap<number, Kruip519Invoer> | undefined;
   roep: RoepKern;
   losOp: (input: MultiInput, combo: SecondOrderCombo) => SolverResult | null;
 }
@@ -513,6 +526,7 @@ function vulAan(o: FysischOpties | undefined): Ingevuld {
     belastingduur: o?.belastingduur ?? "ShortTerm",
     maxSegmenten: o?.maxSegmenten ?? MAX_SEGMENTEN,
     bijlage: o?.bijlage ?? STANDAARD_BIJLAGE,
+    kruip519: o?.kruip519,
     roep: o?.roep ?? standaardRoep,
     losOp: o?.losOp ?? solveCombinationSecondOrder,
   };
@@ -569,6 +583,12 @@ function bouwVerzoek(
   krachten: SegmentForces[],
   vorigeEi: number[],
 ): SegmentStiffnessRequest {
+  // (5.19) met de werkelijke verhouding: alleen in de UGT en alleen voor een
+  // staaf met φ(∞,t₀). Zie `kruipInvoerVoorCombinatie`.
+  const kruip =
+    opties.grenstoestand === "DesignValues" && staaf.phiInfT0 !== undefined
+      ? opties.kruip519?.get(staaf.beamId)
+      : undefined;
   return {
     bijlage: opties.bijlage,
     beam_id: staaf.beamId,
@@ -587,20 +607,21 @@ function bouwVerzoek(
     // op E_c,eff = E_cm/(1 + φ_ef) — precies de effectieve elasticiteitsmodulus
     // die 7.4.3(5) met (7.20) voor de BGT voorschrijft.
     //
-    // WAT HIER WORDT INGEVULD is φ(∞,t₀) zelf, dus (5.19) met M₀Eqp/M₀Ed = 1.
-    // In de quasi-blijvende combinatie IS dat de verhouding: de belasting van
-    // die combinatie is de quasi-blijvende belasting, dus M₀Eqp = M₀Ed en
-    // φ_ef = φ(∞,t₀) — zo staat het ook in 7.4.3(5), dat de volle
-    // kruipcoëfficiënt vraagt en geen verhouding kent.
+    // IN DE BGT (alle drie de combinaties) gaat φ(∞,t₀) zelf de kern in, dus
+    // (5.19) met M₀Eqp/M₀Ed = 1. 7.4.3(5) vraagt daar de volle
+    // kruipcoëfficiënt, E_c,eff = E_cm/(1 + φ(∞,t₀)), en kent geen verhouding;
+    // in de quasi-blijvende combinatie is de verhouding bovendien per definitie
+    // 1. Voor de karakteristieke en de frequente combinatie is het de veilige
+    // kant (besluit bij issue #24).
     //
-    // In een andere combinatie is M₀Eqp/M₀Ed kleiner dan 1 en is φ(∞,t₀) de
-    // BOVENGRENS van (5.19). Die bovengrens geeft de laagste EI en dus de
-    // grootste zakking en het grootste tweede-orde-moment: de ongunstige kant.
-    // De werkelijke verhouding invullen vraagt per staaf het eerste-orde-moment
-    // van twee combinaties naast elkaar; dat doet de KOLOMTOETS al, met
-    // `phi_ef_5_19` in de kern (nen-en-1992-1-1/src/kolom.rs), en die weg wordt
-    // hier niet nagebouwd.
-    phi_ef: staaf.phiInfT0 ?? opties.phiEf,
+    // IN DE UGT bepaalt de KERN φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed uit de meegestuurde
+    // eerste-orde-momenten (`kruip_5_19`), met dezelfde begrensde regel als de
+    // kolomtoets (`phi_ef_5_19_begrensd` in nen-en-1992-1-1/src/kolom.rs).
+    // `phi_ef` blijft dan 0: twee bronnen voor één getal weigert de kern.
+    // Zonder die momenten blijft het φ(∞,t₀), de bovengrens van (5.19): de
+    // laagste EI en dus de ongunstige kant.
+    phi_ef: kruip ? 0 : (staaf.phiInfT0 ?? opties.phiEf),
+    ...(kruip ? { kruip_5_19: kruip } : {}),
     segment_forces: krachten,
     previous_ei_knm2: vorigeEi,
     relaxation: opties.relaxatie,
@@ -741,6 +762,152 @@ function eiUitAntwoord(a: SegmentStiffnessResponse): number[] {
   });
 }
 
+// ── (5.19): de eerste-orde-momenten per staaf ──────────────────────────────
+
+/**
+ * Het moment (N·mm) op plaats `x` (mm) langs een staaf, lineair geïnterpoleerd
+ * tussen de stations. Valt `x` binnen de tolerantie op een station, dan dat
+ * station zelf — bij dezelfde invoer delen alle combinaties dezelfde stations.
+ */
+export function momentOpX(el: ElementForces, x: number): number {
+  const xs = el.stations_mm;
+  const ms = el.bendingMoment;
+  if (xs.length === 0) {
+    // Zonder stations alleen de eindmomenten; lineair ertussen.
+    const L = el.L_mm > 0 ? el.L_mm : 1;
+    const t = Math.min(1, Math.max(0, x / L));
+    return el.M_start + t * (el.M_end - el.M_start);
+  }
+  const EPS = 1e-6;
+  for (let i = 0; i < xs.length; i++) if (Math.abs(xs[i] - x) <= EPS) return ms[i];
+  if (x <= xs[0]) return ms[0];
+  if (x >= xs[xs.length - 1]) return ms[ms.length - 1];
+  for (let i = 1; i < xs.length; i++) {
+    if (x < xs[i]) {
+      const t = (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
+      return ms[i - 1] + t * (ms[i] - ms[i - 1]);
+    }
+  }
+  return ms[ms.length - 1];
+}
+
+/**
+ * De plaats en de waarde (N·mm, met teken) van het grootste |M| langs de staaf.
+ * Bij gelijke |M| telt de eerste plaats vanaf de beginknoop, zodat de keuze niet
+ * van afronding afhangt.
+ */
+export function grootsteMoment(el: ElementForces): { xMm: number; mNmm: number } {
+  const kandidaten: [number, number][] =
+    el.stations_mm.length > 0
+      ? el.stations_mm.map((xi, i) => [xi, el.bendingMoment[i]])
+      : [[0, el.M_start], [el.L_mm, el.M_end]];
+  let [x, m] = kandidaten[0];
+  for (const [xi, mi] of kandidaten) {
+    if (Math.abs(mi) > Math.abs(m)) {
+      x = xi;
+      m = mi;
+    }
+  }
+  return { xMm: x, mNmm: m };
+}
+
+/** Eén quasi-blijvende combinatie met haar eerste-orde-oplossing. */
+export interface QuasiBlijvendResultaat {
+  combo: SecondOrderCombo;
+  /** `null` = de combinatie activeert geen last; dan is M₀Eqp overal 0. */
+  resultaat: SolverResult | null;
+}
+
+/**
+ * De eerste-orde-oplossing van elke quasi-blijvende combinatie (6.16b). Eén
+ * keer per rekengang: M₀Eqp hangt niet van de UGT-combinatie af.
+ */
+export function eersteOrdeQuasiBlijvend(
+  input: MultiInput,
+  quasiBlijvend: readonly SecondOrderCombo[],
+  losOp: (input: MultiInput, combo: SecondOrderCombo) => SolverResult | null =
+    solveCombinationFirstOrder,
+): QuasiBlijvendResultaat[] {
+  return quasiBlijvend.map((combo) => ({ combo, resultaat: losOp(input, combo) }));
+}
+
+/**
+ * De invoer van (5.19) per staaf voor ÉÉN UGT-combinatie — issue #24.
+ *
+ * EN 1992-1-1 5.8.4(2): φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed, met M₀Eqp en M₀Ed de
+ * EERSTE-ORDE-momenten in de quasi-blijvende combinatie en in de
+ * rekencombinatie. De vaste bovengrens φ(∞,t₀) (verhouding 1) gaf in de UGT
+ * een lagere stijfheid dan de norm vraagt.
+ *
+ * DE DOORSNEDE — 5.8.4(3): "Indien M₀Eqp/M₀Ed in een element of constructie
+ * varieert, mag de verhouding zijn berekend voor de doorsnede met het maximale
+ * moment". Genomen: de plaats van het grootste |M₀Ed| langs de staaf in de
+ * eerste-orde-oplossing van DEZE UGT-combinatie, en M₀Eqp op dezelfde plaats
+ * uit de eerste-orde-oplossing van elke quasi-blijvende combinatie.
+ *
+ * DE EERSTE ORDE. Beide oplossingen komen uit `solveCombinationFirstOrder`:
+ * hetzelfde model, geometrisch lineair, met de elastische staaf-EI en zonder
+ * segmentstijfheden. Pas daarna draait de fysisch niet-lineaire lus.
+ *
+ * WAT DE KERN ERMEE DOET (`kruip_5_19` in concrete-check/src/segments.rs):
+ * begrenst φ_ef tussen 0 en φ(∞,t₀); M₀Ed ≈ 0, een tegengesteld teken of
+ * |M₀Eqp| > |M₀Ed| houdt φ(∞,t₀) met een notitie; bij meerdere quasi-blijvende
+ * combinaties telt de grootste φ_ef en noemt de kern welke.
+ *
+ * Alleen staven MET φ(∞,t₀) krijgen een regel: zonder kruipcoëfficiënt valt er
+ * niets te verhouden, en die staven meldt de lus al (`zonderKruipcoefficient`).
+ * Een UGT-combinatie zonder lasten levert een lege Map; de lus meldt dan
+ * `zonderLasten`.
+ *
+ * `momentTeken` speelt geen rol: M₀Eqp en M₀Ed worden in dezelfde lokale assen
+ * gelezen, dus hun onderlinge teken en hun verhouding blijven gelijk.
+ */
+export function kruipInvoerVoorCombinatie(
+  input: MultiInput,
+  ugt: SecondOrderCombo,
+  quasiBlijvend: readonly QuasiBlijvendResultaat[],
+  staven: readonly BetonSegmentStaaf[],
+  losOp: (input: MultiInput, combo: SecondOrderCombo) => SolverResult | null =
+    solveCombinationFirstOrder,
+): Map<number, Kruip519Invoer> {
+  const uit = new Map<number, Kruip519Invoer>();
+  const metKruip = staven.filter((s) => s.phiInfT0 !== undefined);
+  if (metKruip.length === 0) return uit;
+  const eersteOrde = losOp(input, ugt);
+  if (!eersteOrde) return uit;
+  for (const staaf of metKruip) {
+    const el = eersteOrde.elements.get(staaf.beamId);
+    if (!el) {
+      throw new Error(
+        `Staaf ${staaf.beamId}: de eerste-orde-oplossing van combinatie "${ugt.name}" kent ` +
+          `deze staaf niet, dus M₀Ed van (5.19) is niet te bepalen.`,
+      );
+    }
+    const { xMm, mNmm } = grootsteMoment(el);
+    uit.set(staaf.beamId, {
+      phi_inf_t0: staaf.phiInfT0!,
+      ugt_combinatie: ugt.name,
+      m0_ed_knm: mNmm / 1e6,
+      x_mm: xMm,
+      quasi_blijvend: quasiBlijvend.map(({ combo, resultaat }) => {
+        // Een quasi-blijvende combinatie zonder enige last: M₀Eqp is dan
+        // werkelijk nul, niet onbekend.
+        if (!resultaat) return { combinatie: combo.name, m0_eqp_knm: 0 };
+        const q = resultaat.elements.get(staaf.beamId);
+        if (!q) {
+          throw new Error(
+            `Staaf ${staaf.beamId}: de eerste-orde-oplossing van de quasi-blijvende ` +
+              `combinatie "${combo.name}" kent deze staaf niet, dus M₀Eqp van (5.19) is ` +
+              `niet te bepalen.`,
+          );
+        }
+        return { combinatie: combo.name, m0_eqp_knm: momentOpX(q, xMm) / 1e6 };
+      }),
+    });
+  }
+  return uit;
+}
+
 // ── De lus ─────────────────────────────────────────────────────────────────
 
 /**
@@ -758,6 +925,13 @@ export async function losCombinatieFysischOp(
   opties?: FysischOpties,
 ): Promise<FysischUitkomst> {
   const o = vulAan(opties);
+  if (o.kruip519 && o.kruip519.size > 0 && o.grenstoestand !== "DesignValues") {
+    throw new Error(
+      `Combinatie "${combo.name}": de verhouding M₀Eqp/M₀Ed van (5.19) is meegegeven bij een ` +
+        `BGT-berekening. In de BGT vraagt 7.4.3(5) de volle φ(∞,t₀); de verhouding hoort ` +
+        `alleen bij de UGT.`,
+    );
+  }
   const geschiedenis: RondeVerslag[] = [];
   // Wie mist er een kruipcoëfficiënt? Eén keer bepaald en in elke uitkomst
   // meegegeven — ook in de uitkomst zonder lasten, zodat het antwoord nooit

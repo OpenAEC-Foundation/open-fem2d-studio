@@ -31,6 +31,7 @@ use nen_en_1992_1_1::kolom::{
     kruip_verwaarloosbaar_5_8_4_4, l0_ondergrens_8_11_mm, opgesloten_staven_9_5_3,
     l0_geschoord_5_15, l0_ongeschoord_5_16, l0_uit_knikbelasting_5_17, lambda_lim_5_13n,
     min_diameter_dwarswapening_9_5_3_mm, niet_getoetste_9_5_eisen, omega, phi_ef_5_19,
+    phi_ef_5_19_begrensd,
     s_cl_tmax_9_5_3_mm, slankheid_5_14, traagheidsstraal_rechthoek_mm, Beugelzone, Cgrondslag,
     Knikgeval, Kniklengtebepaling, KolomInvoer, KolomdetailleringInvoer, Overlappingssituatie,
     Schoring, ScltmaxTak,
@@ -1445,4 +1446,35 @@ fn kolomslankheid_met_kruipcoefficient_zonder_m0eqp_neemt_de_bovengrens() {
     assert!(tekst.contains("M₀Eqp uit de quasi-blijvende BGT-combinatie ontbreekt"), "{tekst}");
     let abc = kolom_deelstappen(&k).into_iter().find(|s| s.id == "abc").unwrap();
     assert!(abc.notes.iter().any(|n| n.contains("groter dan 2,14")), "{:?}", abc.notes);
+}
+
+/// De begrensde regel van (5.19) die de slankheidspoort en de fysisch
+/// niet-lineaire segmentstijfheid delen (issue #24).
+///
+/// Handberekening: φ(∞,t₀) = 2,5, M₀Eqp = 40, M₀Ed = 65 → 1,5384615, gelijk aan
+/// de onbegrensde (5.19). Daarbuiten: M₀Ed ≈ 0, een tegengesteld teken en
+/// |M₀Eqp| > |M₀Ed| houden φ(∞,t₀), elk met een eigen reden.
+#[test]
+fn phi_ef_5_19_begrensd_handberekening_en_grenzen() {
+    let gewoon = phi_ef_5_19_begrensd(2.5, 40.0, 65.0).unwrap();
+    assert_relative_eq!(gewoon.phi_ef, phi_ef_5_19(2.5, 40.0, 65.0).unwrap(), max_relative = 1e-15);
+    assert_relative_eq!(gewoon.verhouding.unwrap(), 40.0 / 65.0, max_relative = 1e-15);
+    assert!(!gewoon.bovengrens_gehouden && gewoon.reden.is_none());
+    // Beide negatief (steunpuntsmoment in beide combinaties): gewoon (5.19).
+    let neg = phi_ef_5_19_begrensd(2.5, -40.0, -65.0).unwrap();
+    assert_relative_eq!(neg.phi_ef, gewoon.phi_ef, max_relative = 1e-15);
+
+    let nul = phi_ef_5_19_begrensd(2.5, 40.0, 0.0).unwrap();
+    assert!(nul.bovengrens_gehouden && nul.phi_ef == 2.5 && nul.reden.unwrap().contains("onbepaald"));
+    let teken = phi_ef_5_19_begrensd(2.5, -40.0, 65.0).unwrap();
+    assert!(teken.bovengrens_gehouden && teken.phi_ef == 2.5);
+    assert!(teken.reden.unwrap().contains("tegengesteld teken"));
+    let groter = phi_ef_5_19_begrensd(2.5, 80.0, 65.0).unwrap();
+    assert!(groter.bovengrens_gehouden && groter.phi_ef == 2.5);
+    assert!(groter.reden.unwrap().contains("GUNSTIGE kant"));
+    let geen = phi_ef_5_19_begrensd(2.5, 0.0, 65.0).unwrap();
+    assert!(!geen.bovengrens_gehouden && geen.phi_ef == 0.0);
+
+    assert!(phi_ef_5_19_begrensd(-0.1, 40.0, 65.0).is_err());
+    assert!(phi_ef_5_19_begrensd(2.5, f64::NAN, 65.0).is_err());
 }

@@ -46,7 +46,12 @@ import type { SolverResult } from "./components/fem/solver/types";
 import { solveAllCases, solveAllCasesNonlinear } from "./components/fem/solver/solver";
 import { zetCombinatieResultaat, getSecondOrderInput, zetSolverLogOpvanger } from "./components/fem/solver/engine";
 import { maakSolverLogOpvanger } from "./stores/solverLogStore";
-import { combineResults, computeEnvelope } from "./components/fem/solver/combinations";
+import {
+  combinatiesVanSoort,
+  combineResults,
+  computeEnvelope,
+  zonderBgtEindtoestand,
+} from "./components/fem/solver/combinations";
 import {
   analyseToelichting as maakAnalyseToelichting,
   bepaalAlphaCr,
@@ -58,6 +63,8 @@ import type { MultiInput } from "./components/fem/solver/types";
 import {
   belastingduurVanCombinatie,
   betonStavenUitModel,
+  eersteOrdeQuasiBlijvend,
+  kruipInvoerVoorCombinatie,
   losCombinatieFysischOp,
   schatVrijheidsgraden,
   segmentWaarschuwing,
@@ -1392,6 +1399,23 @@ function App() {
     // de staaf noemen en niet de combinatie.
     const zonderKruip = new Set<number>();
     try {
+      // ── (5.19): EERST de eerste orde ─────────────────────────────────────
+      // EN 1992-1-1 5.8.4(2) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed met EERSTE-ORDE-momenten
+      // (issue #24). De quasi-blijvende combinaties (6.16b) worden hier één
+      // keer lineair opgelost; per UGT-combinatie volgt hieronder haar eigen
+      // eerste-orde-oplossing, en pas dán de fysisch niet-lineaire lus. Zonder
+      // staaf met φ(∞,t₀) valt er niets te verhouden en wordt er niets extra
+      // gerekend. De hout-eindtoestandvarianten horen niet bij 6.16b van beton.
+      const metKruip = staven.some((s) => s.phiInfT0 !== undefined);
+      const quasiBlijvend = metKruip
+        ? eersteOrdeQuasiBlijvend(
+            input,
+            combinatiesVanSoort(
+              zonderBgtEindtoestand(fem.actieveCombinaties.filter((c) => c.type === "sls")),
+              "6.16b",
+            ),
+          )
+        : [];
       // Dezelfde lijst als het lineaire pad: een niet-doorgerekende combinatie
       // hoort ook geen fysisch niet-lineaire ronde te krijgen. In een model
       // met beton valt er trouwens niets weg — de selectie grijpt alleen bij
@@ -1409,10 +1433,17 @@ function App() {
         // "één enkele kortdurende belasting", ook in de quasi-blijvende
         // combinatie; dat gaf een te hoge stijfheid en een te kleine zakking.
         const duur = belastingduurVanCombinatie(combo);
+        // Alleen de UGT krijgt de werkelijke verhouding M₀Eqp/M₀Ed; alle drie
+        // de BGT-combinaties houden φ(∞,t₀) (7.4.3(5), veilige kant).
+        const kruip519 =
+          metKruip && grenstoestand === "DesignValues"
+            ? kruipInvoerVoorCombinatie(input, combo, quasiBlijvend, staven)
+            : undefined;
         const uit = await losCombinatieFysischOp(input, combo, staven, {
           segmentLengteMm: fem.betonSegmentLengteMm,
           grenstoestand,
           belastingduur: duur.duur,
+          kruip519,
           // De bijlage van het project gaat de kromme van 5.8.6(3) in (normnaad).
           bijlage: bijlageVanProject(fem.nationaleBijlage),
         });

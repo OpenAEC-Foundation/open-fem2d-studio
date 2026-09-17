@@ -18,6 +18,16 @@
 //   [6] Zonder opgegeven φ is de uitkomst niet stil: de lus noemt de staven,
 //       de kern zet zijn vermelding met "ONVEILIGE KANT" in elk antwoord.
 //   [7] De doorvoer in App.tsx blijft staan (bronteksttoets).
+//   [8] UGT: φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed (5.19) per staaf in plaats van de
+//       bovengrens φ(∞,t₀) — issue #24. Handberekening van φ_ef, E_c,eff, de
+//       stijfheid en de zakking hieronder bij blok [8].
+//
+// WAT ER DOOR ISSUE #24 AAN DEZE TEST VERANDERDE. Geen enkele bestaande
+// verwachting: blok [3]–[6] roepen de lus aan zonder `kruip519`, en dan gaat
+// φ(∞,t₀) zelf de kern in, net als vóór #24. In de BGT ([3], [3b], [4], [6]) is
+// dat ook de bedoeling (7.4.3(5)); in [5] is het de bovengrens van (5.19) en
+// daarmee de vergelijkingsstand van blok [8]. De getallen van [3]–[6] zijn dus
+// bit-identiek gebleven.
 //
 // ── DE HANDBEREKENING ──────────────────────────────────────────────────────
 //
@@ -85,8 +95,13 @@ const TOETSBRUG = join(
   process.platform === "win32" ? "toetsbrug.exe" : "toetsbrug",
 );
 
-const { losCombinatieFysischOp, betonStavenUitModel, belastingduurVanCombinatie } =
-  await import("./src/lib/betonStijfheid.ts");
+const {
+  losCombinatieFysischOp,
+  betonStavenUitModel,
+  belastingduurVanCombinatie,
+  eersteOrdeQuasiBlijvend,
+  kruipInvoerVoorCombinatie,
+} = await import("./src/lib/betonStijfheid.ts");
 
 let passed = 0, failed = 0, overgeslagen = 0;
 const log = (s = "") => process.stdout.write(s + "\n");
@@ -400,6 +415,138 @@ if (!existsSync(TOETSBRUG)) {
     // waren onafhankelijk en zijn het nog.
     checkWaar("β = 0,5 geldt ook zonder kruipcoëfficiënt", a.beta === 0.5);
   }
+
+  // ── [8] UGT: de werkelijke verhouding M₀Eqp/M₀Ed — issue #24 ────────────
+  //
+  // DE HANDBEREKENING. Dezelfde balk, L = 6 m, vrij opgelegd, met twee
+  // belastinggevallen: G = 10 kN/m en Q = 5 kN/m, ψ₂ = 0,3.
+  //
+  //   quasi-blijvend (6.16b):  q = G + 0,3·Q       = 11,5 kN/m
+  //       M₀Eqp = q·L²/8 = 11,5·36/8              = 51,75 kNm
+  //   UGT (6.10b):             q = 1,2·G + 1,5·Q   = 19,5 kN/m
+  //       M₀Ed  = q·L²/8 = 19,5·36/8              = 87,75 kNm
+  //   Beide in het midden, x = 3000 mm: de doorsnede met het maximale moment
+  //   (5.8.4(3)); vrij opgelegd hangt het eerste-orde-moment niet van EI af.
+  //
+  //   φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed = 2,0·51,75/87,75 = 2,0·0,58974 = 1,17949  (5.19)
+  //
+  // E_c,eff. De UGT-kromme is (3.14) met f_cd = 20 N/mm² en E_cd = E_cm/1,2 =
+  // 27 500 N/mm² (5.8.6(3)); haar beginhelling is k·f_cd/ε_c1 = 1,05·E_cd. Kruip
+  // rekt alle rekwaarden met (1 + φ_ef) op (5.8.6(4)), dus
+  //   E_c,eff = 1,05·E_cd/(1 + φ_ef)
+  //     met φ_ef = 1,17949:  28 875/2,17949 = 13 248,5 N/mm²
+  //     met φ(∞,t₀) = 2,0:   28 875/3,0     =  9 625,0 N/mm²
+  //
+  // DE STIJFHEID. 5.8.6(5) laat de betontrek weg, dus de doorsnede in het midden
+  // is volledig gescheurd; met lineair-elastisch beton op E_c,eff geeft de
+  // staat-II-doorsnede van blok [3]:
+  //   φ_ef = 1,17949: α_e = 15,10, x = 132,7 mm, EI_II = 15 882 kNm²
+  //   φ    = 2,0:     α_e = 20,78, x = 149,4 mm, EI_II = 14 881 kNm²
+  //   verhouding 15 882/14 881 = 1,0673
+  // De kern rekent met de gebogen kromme (3.14) en integreert over de stroken;
+  // haar SECANS-EI ligt daardoor onder de lineair-elastische hand (gemeten
+  // 15 355 en 14 412 kNm², 3,3 % en 3,2 % lager). Die afwijking is voor beide φ
+  // nagenoeg gelijk, dus de VERHOUDING klopt veel strakker (gemeten 1,0654,
+  // 0,2 % onder de hand).
+  //
+  // DE ZAKKING. Wordt de ligger overal in ongeveer dezelfde verhouding stijver,
+  // dan schaalt δ met 1/EI: gemeten δ(½L) = 21,36 mm met φ_ef tegen 22,76 mm
+  // met de bovengrens, verhouding 1,0656.
+  log("\n  [8] UGT: φ_ef uit (5.19) met M₀Eqp/M₀Ed in plaats van φ(∞,t₀) — issue #24");
+  {
+    const G = 10, Qv = 5, PSI2 = 0.3;
+    const invoerGQ = {
+      nodes: [{ id: 1, x: 0, z: 0 }, { id: 2, x: L, z: 0 }],
+      beams: [{ id: 1, from: 1, to: 2, E: E_CM, A: A_C, I: I_C }],
+      supports: [{ nodeId: 1, type: "pinned" }, { nodeId: 2, type: "zRoller" }],
+      loads: [{ beamId: 1, q: -G, caseId: 1 }, { beamId: 1, q: -Qv, caseId: 2 }],
+      pointLoads: [], beamPointLoads: [], thermalLoads: [], edgeLoads: [],
+      cases: [{ id: 1, name: "G" }, { id: 2, name: "Q" }],
+    };
+    const QP = { id: 11, name: "BGT quasi-blijvend 6.16b", type: "sls", factors: new Map([[1, 1], [2, PSI2]]) };
+    const UGT = { id: 12, name: "UGT 6.10b", type: "uls", factors: new Map([[1, 1.2], [2, 1.5]]) };
+
+    const m0EqpHand = ((G + PSI2 * Qv) * (L / 1000) ** 2) / 8;          // 51,75 kNm
+    const m0EdHand = ((1.2 * G + 1.5 * Qv) * (L / 1000) ** 2) / 8;      // 87,75 kNm
+    const phiEfHand = PHI * (m0EqpHand / m0EdHand);                       // 1,17949
+    const E_CD = E_CM / 1.2;
+    const ecEffHand = (1.05 * E_CD) / (1 + phiEfHand);                    // 13 248,5 N/mm²
+    const ecEffBoven = (1.05 * E_CD) / (1 + PHI);                         //  9 625,0 N/mm²
+    const eiII = (ec) => (ec * staatII(E_S / ec).i) / 1e9;
+    log(`      HAND: M₀Eqp = ${m0EqpHand.toFixed(2)} kNm, M₀Ed = ${m0EdHand.toFixed(2)} kNm, φ_ef = ${phiEfHand.toFixed(5)}`);
+    log(`      HAND: E_c,eff = ${ecEffHand.toFixed(1)} N/mm² (φ_ef) tegen ${ecEffBoven.toFixed(1)} N/mm² (φ(∞,t₀))`);
+    log(`      HAND: EI_II = ${eiII(ecEffHand).toFixed(0)} kNm² tegen ${eiII(ecEffBoven).toFixed(0)} kNm²`);
+
+    // De eerste orde, zoals App.tsx hem opbouwt.
+    const qp = eersteOrdeQuasiBlijvend(invoerGQ, [QP]);
+    const kruip = kruipInvoerVoorCombinatie(invoerGQ, UGT, qp, [staaf(1, L, PHI)]);
+    const k1 = kruip.get(1);
+    check("M₀Ed uit de eerste-orde-oplossing van de UGT-combinatie", Math.abs(k1.m0_ed_knm), m0EdHand, 1e-9);
+    check("de doorsnede met het maximale |M₀Ed| ligt in het midden", k1.x_mm, L / 2, 1e-12);
+    check("M₀Eqp op dezelfde doorsnede uit de quasi-blijvende combinatie",
+      Math.abs(k1.quasi_blijvend[0].m0_eqp_knm), m0EqpHand, 1e-9);
+    checkWaar("M₀Eqp en M₀Ed hebben hetzelfde teken", k1.quasi_blijvend[0].m0_eqp_knm * k1.m0_ed_knm > 0);
+    checkWaar("een staaf zonder φ(∞,t₀) krijgt geen (5.19)-invoer",
+      kruipInvoerVoorCombinatie(invoerGQ, UGT, qp, [staaf(1, L)]).size === 0);
+
+    const met = await losCombinatieFysischOp(invoerGQ, UGT, [staaf(1, L, PHI)], {
+      roep: echteKern, grenstoestand: "DesignValues", belastingduur: "ShortTerm", kruip519: kruip,
+    });
+    const boven = await losCombinatieFysischOp(invoerGQ, UGT, [staaf(1, L, PHI)], {
+      roep: echteKern, grenstoestand: "DesignValues", belastingduur: "ShortTerm",
+    });
+    const aMet = met.laatsteRonde.get(1);
+    const aBoven = boven.laatsteRonde.get(1);
+    check("φ_ef van de kern tegen de hand", aMet.phi_ef, phiEfHand, 1e-9);
+    check("verhouding M₀Eqp/M₀Ed in de afleiding", aMet.kruip_5_19.verhouding, m0EqpHand / m0EdHand, 1e-9);
+    checkWaar("de afleiding noemt geen bovengrens", aMet.kruip_5_19.bovengrens_gehouden === false);
+    checkWaar("de afleiding staat woordelijk in de meldingen van de kern (rapport)",
+      aMet.notes.includes(aMet.kruip_5_19.toelichting), aMet.kruip_5_19.toelichting.slice(0, 120));
+    checkWaar("de kruipvermelding noemt de gebruikte φ_ef", aMet.creep_note.includes(String(aMet.phi_ef)));
+    checkWaar("ook ronde 0 (de indeling) rekende al met dezelfde φ_ef",
+      met.indeling.get(1).phi_ef === aMet.phi_ef);
+    checkWaar("zonder (5.19)-invoer blijft het de bovengrens φ(∞,t₀)",
+      aBoven.phi_ef === PHI && aBoven.kruip_5_19 === null);
+
+    const iMid = Math.floor(aMet.segments.length / 2);
+    const eiMet = aMet.segments[iMid].ei_knm2;
+    const eiBoven = aBoven.segments[iMid].ei_knm2;
+    const dMetGQ = bijX(met.resultaat.elements.get(1), "deflection", L / 2);
+    const dBovenGQ = bijX(boven.resultaat.elements.get(1), "deflection", L / 2);
+    log(`      KERN: EI midden ${eiMet.toFixed(0)} kNm² (φ_ef) tegen ${eiBoven.toFixed(0)} kNm² (φ(∞,t₀)); ` +
+      `δ(½L) ${dMetGQ.toFixed(3)} mm tegen ${dBovenGQ.toFixed(3)} mm`);
+    // 5 %: de secans van de gebogen kromme (3.14) tegen lineair-elastisch
+    // beton; de kern moet ONDER de hand liggen, niet erboven.
+    check("EI midden (φ_ef) tegen de lineair-elastische staat II", eiMet, eiII(ecEffHand), 0.05);
+    checkWaar("de secans-EI van de kern ligt onder de lineair-elastische hand",
+      eiMet < eiII(ecEffHand) && eiBoven < eiII(ecEffBoven));
+    check("verhouding EI(φ_ef)/EI(φ(∞,t₀)) tegen de hand", eiMet / eiBoven, eiII(ecEffHand) / eiII(ecEffBoven), 0.005);
+    checkWaar("met de werkelijke verhouding is de UGT-ligger STIJVER", eiMet > eiBoven);
+    check("verhouding van de zakkingen δ(φ(∞,t₀))/δ(φ_ef) tegen die van EI",
+      dBovenGQ / dMetGQ, eiII(ecEffHand) / eiII(ecEffBoven), 0.01);
+
+    // De BGT houdt φ(∞,t₀): de lus weigert de verhouding daar, en de kern ook.
+    let weigertLus = false;
+    try {
+      await losCombinatieFysischOp(invoerGQ, QP, [staaf(1, L, PHI)], {
+        roep: echteKern, grenstoestand: "MeanValues", belastingduur: "Sustained", kruip519: kruip,
+      });
+    } catch (e) {
+      weigertLus = /7\.4\.3\(5\)/.test(String(e));
+    }
+    checkWaar("de lus weigert (5.19) in de BGT — 7.4.3(5)", weigertLus);
+    let weigertKern = false;
+    try {
+      await echteKern("concrete_segment_stiffness", {
+        beam_id: 1,
+        section: staaf(1, L).doorsnede, concrete_class: "C30/37", reinforcement_grade: "B500B",
+        cage: KORF, length_m: L / 1000, limit_state: "MeanValues", kruip_5_19: k1,
+      });
+    } catch (e) {
+      weigertKern = /7\.4\.3\(5\)/.test(String(e));
+    }
+    checkWaar("de kern weigert (5.19) in de BGT — 7.4.3(5)", weigertKern);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -417,6 +564,10 @@ log("\n[7] De doorvoer in App.tsx (bronteksttoets)");
     /belastingduur:\s*duur\.duur/.test(app));
   checkWaar("App.tsx geeft de projectkruipcoëfficiënt aan de staven mee",
     /standaardPhiInfT0:\s*fem\.betonKruipcoefficient/.test(app));
+  checkWaar("App.tsx lost de quasi-blijvende combinaties eerst eerste orde op (5.19)",
+    /eersteOrdeQuasiBlijvend\(/.test(app) && /"6\.16b"/.test(app));
+  checkWaar("App.tsx geeft de (5.19)-invoer alleen in de UGT aan de lus mee",
+    /grenstoestand === "DesignValues"\s*\?\s*kruipInvoerVoorCombinatie\(/.test(app) && /kruip519,/.test(app));
   checkWaar("App.tsx meldt het wanneer er zonder kruip is gerekend",
     /zonderKruip\.size > 0/.test(app) && /i18next\.t\("common:app\.creep\.title"\)/.test(app) &&
       // De meldtekst loopt via i18n: de bron noemt de sleutel, de

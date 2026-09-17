@@ -837,6 +837,120 @@ pub fn phi_ef_5_19(phi_inf_t0: f64, m0_eqp_knm: f64, m0_ed_knm: f64) -> Result<f
     Ok(phi_inf_t0 * (m0_eqp_knm / m0_ed_knm).abs())
 }
 
+/// Onder deze |M₀Ed| (kNm) heet het eerste-orde-moment in de UGT "nul": de
+/// verhouding M₀Eqp/M₀Ed van (5.19) is dan onbepaald. 10⁻⁶ kNm is 1 N·mm —
+/// ruim boven de afrondingsruis van een superpositie, ruim onder elk moment
+/// dat constructief iets betekent. Een keuze, geen normwaarde.
+pub const M0_ED_NUL_KNM: f64 = 1.0e-6;
+
+/// De uitkomst van [`phi_ef_5_19_begrensd`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhiEf519 {
+    /// De effectieve kruipcoëfficiënt waarmee gerekend wordt.
+    pub phi_ef: f64,
+    /// |M₀Eqp|/|M₀Ed| als (5.19) werkelijk is ingevuld; `None` als de
+    /// bovengrens φ(∞,t₀) is gehouden.
+    pub verhouding: Option<f64>,
+    /// Is de bovengrens φ(∞,t₀) gehouden in plaats van de verhouding?
+    pub bovengrens_gehouden: bool,
+    /// Waarom de bovengrens gehouden is; `None` als (5.19) gewoon is ingevuld.
+    pub reden: Option<String>,
+}
+
+/// (5.19) met de grenzen die in deze applicatie voor φ_ef gelden:
+/// 0 ≤ φ_ef ≤ φ(∞,t₀).
+///
+/// Eén regel voor twee plaatsen — de fysisch niet-lineaire segmentstijfheid
+/// (`concrete-check::segments`) en de slankheidspoort van §5.8.3.1
+/// (`kolomslankheid`) — zodat beide dezelfde φ_ef uit dezelfde momenten halen.
+///
+/// WAT DE NORM ZEGT. 5.8.4(2): φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed, met de EERSTE-ORDE-
+/// momenten in de quasi-blijvende combinatie en in de rekencombinatie. De
+/// bedoeling staat er letterlijk bij: φ_ef geeft "bij gebruik in combinatie met
+/// de rekenwaarde van de belasting een kruipvervorming (kromming) die
+/// overeenkomt met de quasi-blijvende belasting".
+///
+/// DE GRENZEN — keuzes van dit project, niet uit de norm:
+///
+/// * |M₀Ed| ≤ [`M0_ED_NUL_KNM`] — de verhouding is onbepaald. φ(∞,t₀) wordt
+///   gehouden: dat is de grootste φ_ef die (5.19) bij |M₀Eqp| ≤ |M₀Ed| kan
+///   geven, dus de laagste stijfheid en de ongunstige kant.
+/// * M₀Eqp en M₀Ed met TEGENGESTELD teken — de quasi-blijvende belasting
+///   kromt de doorsnede de andere kant op dan de rekenbelasting. (5.19) met
+///   een absolute waarde zou een kruipkromming in de verkeerde richting als
+///   gunstig of ongunstig meetellen zonder dat iemand het ziet; de verhouding
+///   met teken zou φ_ef negatief maken, en een negatieve kruip bestaat niet
+///   (3.1.4). φ(∞,t₀) wordt gehouden, met een toelichting.
+/// * |M₀Eqp| > |M₀Ed| — begrensd op φ(∞,t₀), met een toelichting. Let wel:
+///   (5.19) zelf kent die grens niet; het is een projectbesluit (issue #24:
+///   begrensd tussen 0 en φ(∞,t₀)). Hier ligt die grens aan de GUNSTIGE
+///   kant — de onbegrensde verhouding gaf een hogere φ_ef en dus een lagere
+///   stijfheid — en daarom zegt de toelichting dat met zoveel woorden.
+///
+/// `Err` alleen voor invoer die geen getal is of een negatieve φ(∞,t₀).
+pub fn phi_ef_5_19_begrensd(
+    phi_inf_t0: f64,
+    m0_eqp_knm: f64,
+    m0_ed_knm: f64,
+) -> Result<PhiEf519, String> {
+    if !(phi_inf_t0.is_finite() && phi_inf_t0 >= 0.0) {
+        return Err(format!(
+            "(5.19): φ(∞,t₀) moet een getal van nul of meer zijn, kreeg {phi_inf_t0}"
+        ));
+    }
+    if !(m0_eqp_knm.is_finite() && m0_ed_knm.is_finite()) {
+        return Err(format!(
+            "(5.19): M₀Eqp = {m0_eqp_knm} en M₀Ed = {m0_ed_knm} moeten allebei eindige getallen zijn"
+        ));
+    }
+    let bovengrens = |reden: String| PhiEf519 {
+        phi_ef: phi_inf_t0,
+        verhouding: None,
+        bovengrens_gehouden: true,
+        reden: Some(reden),
+    };
+    if m0_ed_knm.abs() <= M0_ED_NUL_KNM {
+        return Ok(bovengrens(format!(
+            "M₀Ed = {} kNm is nul, dus de verhouding M₀Eqp/M₀Ed van (5.19) is onbepaald. De \
+             bovengrens φ_ef = φ(∞,t₀) = {} is gehouden: de laagste stijfheid en daarmee de \
+             ongunstige kant.",
+            nl(m0_ed_knm, 3),
+            nl(phi_inf_t0, 3)
+        )));
+    }
+    if m0_eqp_knm * m0_ed_knm < 0.0 {
+        return Ok(bovengrens(format!(
+            "M₀Eqp = {} kNm en M₀Ed = {} kNm hebben een tegengesteld teken: de quasi-blijvende \
+             belasting buigt deze doorsnede de andere kant op dan de rekenbelasting. Een \
+             negatieve φ_ef bestaat niet (3.1.4), en de verhouding zonder teken zou een \
+             kruipkromming in de verkeerde richting meetellen. De bovengrens φ_ef = φ(∞,t₀) = {} \
+             is gehouden.",
+            nl(m0_eqp_knm, 2),
+            nl(m0_ed_knm, 2),
+            nl(phi_inf_t0, 3)
+        )));
+    }
+    let r = m0_eqp_knm.abs() / m0_ed_knm.abs();
+    if r > 1.0 {
+        return Ok(bovengrens(format!(
+            "|M₀Eqp| = {} kNm is groter dan |M₀Ed| = {} kNm (verhouding {}). φ_ef is begrensd op \
+             φ(∞,t₀) = {}. (5.19) zelf kent die grens niet: onbegrensd kwam φ_ef hoger en de \
+             stijfheid lager uit, dus deze begrenzing ligt aan de GUNSTIGE kant. Ga na of deze \
+             rekencombinatie hier maatgevend is.",
+            nl(m0_eqp_knm.abs(), 2),
+            nl(m0_ed_knm.abs(), 2),
+            nl(r, 3),
+            nl(phi_inf_t0, 3)
+        )));
+    }
+    Ok(PhiEf519 {
+        phi_ef: phi_inf_t0 * r,
+        verhouding: Some(r),
+        bovengrens_gehouden: false,
+        reden: None,
+    })
+}
+
 /// Het antwoord op §5.8.4(4): mag φ_ef = 0 worden aangehouden?
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/concrete/")]
@@ -1169,8 +1283,19 @@ pub fn kolomslankheid(inv: &KolomInvoer) -> Result<Kolomslankheid, String> {
     let w = omega(inv.a_s_mm2, inv.f_yd_mpa, inv.a_c_mm2, inv.f_cd_mpa)?;
 
     // ── φ_ef ──────────────────────────────────────────────────────────────
+    // Dezelfde begrensde regel als de fysisch niet-lineaire segmentstijfheid
+    // (`phi_ef_5_19_begrensd`): M₀Ed ≈ 0, een tegengesteld teken of
+    // |M₀Eqp| > |M₀Ed| houden φ(∞,t₀), met de reden als kanttekening. De
+    // doorsnede blijft die van DEZE poort (§5.8.4(3): de doorsnede met het
+    // maximale moment — hier de maatgevende UGT-snede van de kolom).
     let phi_ef = match (inv.phi_inf_t0, inv.m0_eqp_knm, inv.m0_ed_knm) {
-        (Some(p), Some(eqp), Some(ed)) => Some(phi_ef_5_19(p, eqp, ed)?),
+        (Some(p), Some(eqp), Some(ed)) => {
+            let uit = phi_ef_5_19_begrensd(p, eqp, ed)?;
+            if let Some(reden) = uit.reden {
+                kanttekeningen.push(format!("φ_ef (5.19): {reden}"));
+            }
+            Some(uit.phi_ef)
+        }
         // Zonder φ(∞,t₀), M₀Eqp of M₀Ed is (5.19) niet in te vullen. Wat dat
         // voor A betekent, staat bij A hieronder.
         _ => None,

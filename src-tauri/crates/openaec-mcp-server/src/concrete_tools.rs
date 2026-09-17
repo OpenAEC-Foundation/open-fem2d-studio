@@ -773,6 +773,35 @@ pub fn tool_definitions() -> Vec<Value> {
                         "description": "Grenstoestand. \"DesignValues\" = UGT volgens 5.8.6(3): (3.14) met f_cd en E_cd = E_cm/1,2, betontrek verwaarloosd (5.8.6(5)). \"MeanValues\" = BGT volgens 3.1.5/7.4.3: (3.14) met f_cm en E_cm, met de tension stiffening van (7.18)/(7.19). De gebruikte variant staat per segment in het antwoord en is nooit impliciet." },
                     "phi_ef": { "type": "number", "minimum": 0, "default": 0,
                         "description": "Effectieve kruipcoefficient volgens 5.8.4, verwerkt volgens 5.8.6(4) (alle rekwaarden maal (1 + phi_ef)). Default 0: er wordt dan ZONDER kruip gerekend, en het antwoord meldt dat met zoveel woorden, inclusief dat de uitkomst voor blijvend belaste kolommen aan de onveilige kant is." },
+                    "kruip_5_19": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "description": "Alleen in de UGT (limit_state = DesignValues), en dan phi_ef weglaten: de kern bepaalt phi_ef zelf uit (5.19) phi_ef = phi(inf,t0)*M0Eqp/M0Ed (5.8.4(2)), met de EERSTE-ORDE-momenten op de doorsnede van het grootste |M0Ed| langs de staaf (5.8.4(3)). Begrensd tussen 0 en phi(inf,t0): M0Ed ~ 0, een tegengesteld teken van M0Eqp of |M0Eqp| > |M0Ed| houdt phi(inf,t0), met de reden in het antwoord. Bij meerdere quasi-blijvende combinaties telt de grootste phi_ef (de ongunstige kant). Weggelaten = de vaste phi_ef. In de BGT geweigerd: 7.4.3(5) vraagt daar de volle phi(inf,t0). De afleiding komt terug in `kruip_5_19` en `notes`.",
+                        "properties": {
+                            "phi_inf_t0": { "type": "number", "minimum": 0,
+                                "description": "Eindwaarde van de kruipcoefficient phi(inf,t0) van de staaf (3.1.4)." },
+                            "ugt_combinatie": { "type": "string",
+                                "description": "Naam van de UGT-combinatie, voor het rapport." },
+                            "m0_ed_knm": { "type": "number",
+                                "description": "Het grootste |M0Ed| langs de staaf, MET teken, kNm, uit de eerste-orde-oplossing van deze UGT-combinatie." },
+                            "x_mm": { "type": "number",
+                                "description": "Plaats van dat moment, mm vanaf de beginknoop." },
+                            "quasi_blijvend": {
+                                "type": "array",
+                                "description": "M0Eqp op dezelfde doorsnede per quasi-blijvende combinatie (6.16b), eerste orde. Leeg = geen quasi-blijvende combinatie; dan geldt phi(inf,t0).",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "properties": {
+                                        "combinatie": { "type": "string" },
+                                        "m0_eqp_knm": { "type": "number" }
+                                    },
+                                    "required": ["combinatie", "m0_eqp_knm"]
+                                }
+                            }
+                        },
+                        "required": ["phi_inf_t0", "ugt_combinatie", "m0_ed_knm", "x_mm", "quasi_blijvend"]
+                    },
                     "segment_forces": schema_segmentkrachten(),
                     "previous_ei_knm2": {
                         "type": "array",
@@ -1045,6 +1074,7 @@ mod tests {
             "max_segments",
             "limit_state",
             "phi_ef",
+            "kruip_5_19",
             "segment_forces",
             "previous_ei_knm2",
             "relaxation",

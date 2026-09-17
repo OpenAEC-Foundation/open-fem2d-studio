@@ -485,6 +485,7 @@
     "eisRelaxatie": "Sous-relaxation ω / borne inférieure EI",
     "eisGeklemd": "{{n}} segment(s) bloqué(s) à cette borne inférieure ; une valeur bloquée est une borne numérique et non un résultat de calcul.",
     "eisKruip": "Fluage",
+    "eisKruip519": "ELU : φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed par barre (5.8.4(2) (5.19)), moments du premier ordre dans la section du plus grand |M₀Ed| (5.8.4(3)) ; la dérivation figure avec la barre.",
     "eisBeta": "Durée de chargement β (7.19)",
     "eisZonderKruipKop": "CALCULÉ SANS FLUAGE — barre(s) {{ids}} : aucun coefficient de fluage φ(∞,t₀) n'a été donné (art. 3.1.4), donc φ_ef = 0.",
     "eisZonderKruipUitleg": "L'art. 5.8.6(4) permet de tenir compte du fluage en multipliant toutes les valeurs de déformation du diagramme contrainte-déformation par (1 + φ_ef) ; pour la pente initiale, cela revient au module d'élasticité effectif E_c,eff = E_cm/(1 + φ) de (7.20). Sans cette réduction, la rigidité en flexion est trop élevée : la flèche calculée est TROP FAIBLE, et dans une structure hyperstatique les barres en béton trop rigides attirent en outre trop de moment. Les deux sont du côté de l'insécurité. Renseignez φ(∞,t₀), ou faites-le calculer selon l'annexe B à partir de l'humidité relative, de l'âge t₀ au chargement et de la classe de ciment (h₀ découle de la section).",

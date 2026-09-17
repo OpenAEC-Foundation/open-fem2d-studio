@@ -2601,6 +2601,55 @@ export function solveCombinationSecondOrder(
 }
 
 /**
+ * Los één combinatie EERSTE ORDE op: dezelfde gefactoreerde lasten samen het
+ * model in als `solveCombinationSecondOrder`, maar geometrisch lineair.
+ *
+ * Waarvoor: EN 1992-1-1 5.8.4(2) (5.19) φ_ef = φ(∞,t₀)·M₀Eqp/M₀Ed vraagt de
+ * EERSTE-ORDE-momenten van de quasi-blijvende en van de rekencombinatie (issue
+ * #24). De fysisch niet-lineaire lus rekent zelf tweede orde; dit levert de
+ * momenten waarmee zij φ_ef per staaf bepaalt. Het model is de invoer zoals
+ * hij is — zonder segmentstijfheden, dus met de elastische staaf-EI.
+ *
+ * Retourneert null wanneer de combinatie geen enkele last activeert.
+ */
+export function solveCombinationFirstOrder(
+  input: MultiInput,
+  combo: SecondOrderCombo,
+): SolverResult | null {
+  // Zelfde scheefstandregel als het tweede-ordepad: de richting van DEZE variant.
+  const invoer: MultiInput =
+    input.scheefstand && combo.scheefstandRichting !== undefined &&
+    combo.scheefstandRichting !== input.scheefstand.richting
+      ? { ...input, scheefstand: { ...input.scheefstand, richting: combo.scheefstandRichting } }
+      : input;
+  const { mesh, nodeIdMap, beamIdMap, plateInfo, beamSegments, segmentUitvoer, randKoppelingen } = buildMesh(
+    invoer,
+    (caseId) => combo.factors.get(caseId ?? -1) ?? 0,
+  );
+  if (!meshHeeftLasten(mesh)) return null;
+  const heeftPlaten = plateInfo.length > 0;
+  let engineResult;
+  try {
+    engineResult = solveNonlinear(mesh, {
+      analysisType: heeftPlaten ? "mixed_beam_plate" : "frame",
+      geometricNonlinear: false,
+      randKoppelingen,
+      onLog: logMet(combo.name),
+    });
+  } catch (e) {
+    throw metKnoopnummer(e, nodeIdMap, plateInfo);
+  }
+  const nodeIndex = heeftPlaten ? buildNodeIdToIndex(mesh, "mixed_beam_plate") : undefined;
+  return eisEindigeUitkomst(
+    convertResult(
+      mesh, engineResult, nodeIdMap, beamIdMap, invoer.supports,
+      heeftPlaten ? plateInfo : undefined, nodeIndex, beamSegments, segmentUitvoer,
+    ),
+    ` in combinatie "${combo.name}" (eerste orde)`,
+  );
+}
+
+/**
  * Multi-geval-solve met 2e-orde (P-Δ) ingeschakeld.
  *
  * BEWUSTE KEUZE: de per-GEVAL-resultaten blijven 1e-orde — een los
