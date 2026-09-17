@@ -204,6 +204,8 @@ export function useWindGenerator(fem: FemStore): WindGeneratorApi {
       factors: new Map<number, number>([
         ...c.factorenPerCaseId,
         [idVan.get(c.windSleutel)!, c.windFactor],
+        // Vrijstaand dak: wrijving en kolomwind van dezelfde richting (issue #26).
+        ...(c.windMeeSleutels ?? []).map((s) => [idVan.get(s)!, c.windFactor] as [number, number]),
       ]),
     }));
 

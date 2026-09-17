@@ -55,6 +55,24 @@
 //   Σ F_x = 2,417037 kN ⇒ Σ reacties horizontaal = −2,417037 kN
 //   verticaal: wrijving op de twee hellingen heft elkaar op ⇒ Σ = 0
 //
+// HANDBEREKENING C — combinatie van carport L (issue #26): wind van links,
+// c_f neerwaarts (φ = 0,5, α = 10° ⇒ c_f = +0,5), zeer ruw, kolommen
+// rechthoekig 200 × 300 mm; UGT 6.10b zonder Q: 1,35·G + 1,5·W (G zonder
+// lasten). Horizontaal, karakteristiek (+ = naar rechts):
+//   dak c_f: F = q_p·c_f·breedte·L = 0,58359·0,5·2,5·5,077133 = 3,70372 kN
+//     loodrecht op het naar rechts aflopende dak, neerwaarts ⇒
+//     F_x = −F·sin 10° = −0,643143 kN
+//   wrijving: 0,116718 kN/m langs L, F_x = 0,116718·L·cos 10° = 0,583592 kN
+//   kolom 1 (0 … 3,00 m): q_p(3,00; III) = q_p(z_min = 5 m) = 0,58359;
+//     q = 0,58359·1,83677·0,200 = 0,214384 kN/m ⇒ 0,643153 kN
+//   kolom 2 (0 … 3,00 − 0,881635 = 2,118365 m): zelfde q_p ⇒ 0,454144 kN
+//   Σ F_x = −0,643143 + 0,583592 + 0,643153 + 0,454144 = 1,037746 kN
+//   UGT: 1,5·1,037746 = 1,556618 kN ⇒ Σ reacties horizontaal = −1,556618 kN
+//   (dat dak- en kolomterm 1 bijna hetzelfde getal geven is toeval:
+//   0,5·2,5·5,077133·sin 10° ≈ 1,83677·0,2·3,00)
+//   Alleen het dak (vóór issue #26): 1,5·−0,643143 = −0,964715 kN aan
+//   belasting ⇒ reactie +0,964715 kN — naar de verkeerde kant.
+//
 // Draaien met: npx tsx test-wind-vrijstaand-uitbreiding.mjs
 
 import { createHash } from "node:crypto";
@@ -68,6 +86,7 @@ const {
   cf0Rechthoekig, FIGUUR_723_CF0, CF0_SCHERPHOEKIG,
 } = await import("./src/lib/wind/windEurocode.ts");
 const { solveAllCases } = await import("./src/components/fem/solver/engine.ts");
+const { windCombinatiesVoor, verouderdeWindCombinaties } = await import("./src/lib/combinatieBeheer.ts");
 
 let passed = 0, failed = 0;
 const log = (s) => process.stdout.write(s + "\n");
@@ -209,8 +228,10 @@ log("\n[3] Wrijving — handberekening W (lessenaarsdak)");
     res.meldingen.some((m) => m.niveau === "waarschuwing" && m.tekst.includes("uit het vlak") && m.tekst.includes("langsverband")));
   checkTrue("melding: §7.5(3)-uitsluiting niet toegepast, met reden",
     res.meldingen.some((m) => m.tekst.includes("§7.5(3)") && m.tekst.includes("dikte van het dak")));
-  checkTrue("melding: niet tegelijk in de gegenereerde combinaties",
-    res.meldingen.some((m) => m.tekst.includes("neemt één windgeval")));
+  // Tot issue #26 een waarschuwing dat elke combinatie maar één windgeval
+  // nam; nu neemt de combinatiebouw ze samen (zie [7]) en zegt de melding hoe.
+  checkTrue("melding: horizontaal geval gaat mee met de dakgevallen van dezelfde richting",
+    res.meldingen.some((m) => m.niveau === "info" && m.tekst.includes("neemt daarom het horizontale geval van dezelfde")));
   checkTrue("'Niet gegenereerd' noemt wrijving niet meer",
     !res.meldingen.some((m) => m.tekst.startsWith("Niet gegenereerd") && m.tekst.includes("wrijvingskracht")));
 
@@ -349,6 +370,128 @@ log("\n[6] Evenwicht H — echte solver, horizontaal geval van links");
   const F_lang = 0.02 * berekenStuwdruk("II", "II", 2.5 + 4 * Math.tan(15 * graad)).qp_kNm2 * 2 * 2 * Math.hypot(4, riseZ / 1000) * 20;
   check("wrijving uit het vlak: 0,02·q_p·2·8,282·20 = 5,24245 kN", F_lang, 5.24245, 0.01);
   checkTrue("… staat met dat getal in de melding", res.meldingen.some((m) => m.tekst.includes("= 5,242 kN")));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[7] Combinaties: wrijving en kolomwind samen met de dakgevallen van dezelfde richting (issue #26)");
+{
+  const gev = [{ id: 1, name: "Eigen gewicht", type: "dead" }, { id: 2, name: "Q dak", type: "live", categorie: "H" }];
+  const HOR = /^luifel:horizontaal:(links|rechts)$/;
+  /** Per combinatie de windsleutels, gesorteerd. */
+  const windVan = (c) => [c.windSleutel, ...(c.windMeeSleutels ?? [])];
+  /** De windrichting van een dakgeval, of null als het voor alle richtingen geldt. */
+  const controleer = (label, res, dakRichting) => {
+    checkTrue(`${label}: generatie geslaagd`, res.ok, fouten(res));
+    const dakCombi = res.combinaties.filter((c) => !HOR.test(c.windSleutel));
+    checkExact(`${label}: geen combinatie waarin het horizontale geval leidt`, dakCombi.length, res.combinaties.length);
+    let fout = 0, links = 0, rechts = 0;
+    for (const c of res.combinaties) {
+      const w = windVan(c);
+      const hor = w.filter((k) => HOR.test(k));
+      const dak = w.filter((k) => !HOR.test(k));
+      const eigen = dakRichting(c.windSleutel);
+      const ok = dak.length === 1 && hor.length === 1 && new Set(w).size === w.length
+        && (eigen === null || hor[0] === `luifel:horizontaal:${eigen}`)
+        && c.naam.includes(`van ${hor[0].endsWith("links") ? "links" : "rechts"}`)
+        && !c.naam.includes(`van ${hor[0].endsWith("links") ? "rechts" : "links"}`);
+      if (!ok) { fout++; if (fout <= 3) log(`    ${c.naam}: ${w.join(" + ")}`); }
+      if (hor[0]?.endsWith("links")) links++; else rechts++;
+    }
+    checkExact(`${label}: elke combinatie = één dakgeval + het horizontale geval van dezelfde richting, niet van de andere`, fout, 0);
+    checkExact(`${label}: evenveel combinaties van links als van rechts`, links, rechts);
+    return dakCombi;
+  };
+
+  // Lessenaarsdak: c_f heeft een richting, c_p,net niet.
+  const instC = { ...instL, combinatiesGenereren: true, wrijving: "zeerRuw", kolomDoorsnede: "rechthoekig", kolomBreedte_mm: 200, kolomDiepte_mm: 300 };
+  const res = genereerWindbelasting({ nodes: nodesL, beams: beamsL, loadCases: gev }, instC);
+  const richtingL = (k) => /^luifel:cf:(?:max|min):(links|rechts)$/.exec(k)?.[1] ?? null;
+  controleer("lessenaar", res, richtingL);
+  const zonder = genereerWindbelasting({ nodes: nodesL, beams: beamsL, loadCases: gev }, { ...instL, combinatiesGenereren: true });
+  const perGeval = zonder.combinaties.length / zonder.gevallen.length;
+  checkTrue("zonder wrijving: evenveel combinaties per geval", Number.isInteger(perGeval) && perGeval > 0, `${perGeval}`);
+  // c_p,net max/min × links/rechts + c_f max/min × links/rechts (elk één) = 8 varianten.
+  checkExact("lessenaar: 8 windvarianten × de combinaties per geval", res.combinaties.length, 8 * perGeval);
+  checkTrue("c_f van links nooit met het horizontale geval van rechts",
+    !res.combinaties.some((c) => c.windSleutel.endsWith("cf:max:links") && windVan(c).includes("luifel:horizontaal:rechts")));
+  checkTrue("c_p,net neerwaarts komt met links én met rechts",
+    ["links", "rechts"].every((r) => res.combinaties.some((c) => c.windSleutel === "luifel:cpnet:max" && windVan(c).includes(`luifel:horizontaal:${r}`))));
+  checkTrue("naam met een eigen richting",
+    res.combinaties.filter((c) => c.windSleutel === "luifel:cf:max:links")[0].naam
+      .endsWith("UGT 6.10b — Wind vrijstaand dak c_f neerwaarts, van links + wrijving + kolommen leidend"));
+  checkTrue("naam voor alle richtingen noemt de richting",
+    res.combinaties.some((c) => c.naam.includes("Wind vrijstaand dak c_p,net opwaarts + wrijving + kolommen, van rechts leidend")));
+
+  // De weg van de app: gevallen met id's, combinaties uit alleen de gevallen
+  // (windCombinatiesVoor), handtekening model = generatie, niet verouderd.
+  const idVan = new Map(res.gevallen.map((g, k) => [g.sleutel, 100 + k]));
+  const cases = [...gev, ...res.gevallen.map((g) => ({ id: idVan.get(g.sleutel), name: g.naam, type: "wind", gegenereerd: { bron: "wind", sleutel: g.sleutel } }))];
+  const afgeleid = windCombinatiesVoor(cases, "CC2");
+  checkExact("windCombinatiesVoor: zelfde aantal", afgeleid.length, res.combinaties.length);
+  const eerste = afgeleid.find((c) => c.name.includes("c_f neerwaarts, van links + wrijving") && c.type === "uls" && !c.name.includes("gunstig"));
+  checkExact("factor c_f van links = 1,5", eerste.factors.get(idVan.get("luifel:cf:max:links")), 1.5);
+  checkExact("factor horizontaal van links = 1,5", eerste.factors.get(idVan.get("luifel:horizontaal:links")), 1.5);
+  checkTrue("geen factor op horizontaal van rechts", !eerste.factors.has(idVan.get("luifel:horizontaal:rechts")));
+  const combis = afgeleid.map((c, k) => ({ id: 500 + k, ...c }));
+  const loads = res.lasten.map((l, k) => ({
+    id: k + 1, type: "lineLoad", caseId: idVan.get(l.gevalSleutel), beamId: l.beamId, q: l.q,
+    qDir: l.richting === "axiaal" ? "x" : "z", qCoord: "local", startFrac: l.startFrac, endFrac: l.endFrac,
+    omschrijving: l.omschrijving, gegenereerdDoor: "wind",
+  }));
+  checkTrue("handtekening model = generatie (geen onnodige herberekening)",
+    handtekeningVanModel(cases, loads, combis) === handtekeningVanGeneratie(res.gevallen, res.lasten, res.combinaties));
+  const zonderHor = combis.map((c) => ({ ...c, factors: new Map([...c.factors].filter(([id]) => id !== idVan.get("luifel:horizontaal:links") && id !== idVan.get("luifel:horizontaal:rechts"))) }));
+  checkTrue("… en een combinatie zonder het horizontale geval is een andere handtekening",
+    handtekeningVanModel(cases, loads, zonderHor) !== handtekeningVanGeneratie(res.gevallen, res.lasten, res.combinaties));
+  checkExact("verouderdeWindCombinaties: de gegenereerde set is actueel", verouderdeWindCombinaties({ loadCases: cases, combinations: combis, gevolgklasse: "CC2" }), null);
+  checkTrue("verouderdeWindCombinaties: de oude set (zonder horizontaal) is verouderd",
+    verouderdeWindCombinaties({ loadCases: cases, combinations: zonderHor, gevolgklasse: "CC2" }) !== null);
+
+  const tekst = vrijstaandDakUitgangspunten(cases, loads);
+  checkTrue("uitgangspunten (rapport en PDF) leggen de combinatiekeuze uit",
+    tekst.split("\n").at(-1).startsWith("Combinaties: wrijving en wind op de kolommen") && tekst.includes("§5.3(3)"));
+
+  // Handberekening C met de echte solver: superpositie van de gevallen met de
+  // factoren van de combinatie.
+  const E = 210000, A = 3880, I = 16700000;
+  const { perCase } = solveAllCases({
+    nodes: nodesL,
+    beams: beamsL.map((b) => ({ ...b, E, A, I })),
+    supports: [{ nodeId: 1, type: "fixed" }, { nodeId: 2, type: "fixed" }],
+    loads: loads.map((l) => ({ beamId: l.beamId, q: l.q, qDir: l.qDir, qCoord: "local", caseId: l.caseId, startFrac: l.startFrac, endFrac: l.endFrac })),
+    cases: res.gevallen.map((g) => ({ id: idVan.get(g.sleutel), name: g.naam })),
+  });
+  const fxVan = (factors) => som([...factors].map(([id, f]) => {
+    const r = perCase.get(id);
+    return r ? f * som([1, 2].map((n) => r.reactions.get(n)?.fx ?? 0)) / 1000 : 0;
+  }));
+  const qp = berekenStuwdruk("II", "III", 3).qp_kNm2;
+  const sin10 = Math.sin(10 * graad), L = 5000 / Math.cos(10 * graad) / 1000;
+  const col = qp * cf0Rechthoekig(1.5) * 0.2;
+  const hand = -qp * 0.5 * 2.5 * L * sin10 + 0.04 * qp * 2 * 2.5 * 5 + col * 3 + col * (3 - riseL / 1000);
+  check("handberekening Σ F_x karakteristiek = 1,037746 kN", hand, 1.037746, 0.001);
+  check("UGT 6.10b c_f ↓ van links + wrijving + kolommen: Σ R_x = −1,5·1,037746 = −1,556618 kN", fxVan(eerste.factors), -1.556618, 0.01);
+  check("  = −1,5·hand", fxVan(eerste.factors), -1.5 * hand, 0.05);
+  const alleenDak = new Map([...eerste.factors].filter(([id]) => id !== idVan.get("luifel:horizontaal:links")));
+  check("zonder het horizontale geval (vóór issue #26) was het +0,964715 kN", fxVan(alleenDak), 0.964715, 0.01);
+
+  // Zadeldak: c_f geldt voor alle richtingen; `links`/`rechts` in de sleutel is het dakvlak.
+  const resZ = genereerWindbelasting({ nodes: nodesZ, beams: beamsZ, loadCases: gev },
+    { ...instZ, combinatiesGenereren: true, wrijving: "ruw", kolomDoorsnede: "scherphoekig", kolomBreedte_mm: 200 });
+  controleer("zadel", resZ, () => null);
+  const zonderZ = genereerWindbelasting({ nodes: nodesZ, beams: beamsZ, loadCases: gev }, { ...instZ, combinatiesGenereren: true });
+  const perGevalZ = zonderZ.combinaties.length / zonderZ.gevallen.length;
+  checkExact("zadel: 8 dakgevallen × 2 richtingen × de combinaties per geval", resZ.combinaties.length, 16 * perGevalZ);
+  checkTrue("zadel: c_f alleen linkerdakvlak met wind van links én van rechts",
+    ["links", "rechts"].every((r) => resZ.combinaties.some((c) => c.windSleutel === "luifel:cf:max:links" && windVan(c).includes(`luifel:horizontaal:${r}`))));
+
+  // Alleen kolomwind (geen wrijving): zelfde koppeling.
+  const kolomAlleen = genereerWindbelasting({ nodes: nodesL, beams: beamsL, loadCases: gev },
+    { ...instL, combinatiesGenereren: true, kolomDoorsnede: "scherphoekig", kolomBreedte_mm: 200 });
+  controleer("alleen kolommen", kolomAlleen, richtingL);
+
+  // Zonder horizontale gevallen: combinaties precies als voorheen (één windgeval, geen extra veld).
+  checkTrue("zonder wrijving/kolommen: geen windMeeSleutels", zonder.combinaties.every((c) => !("windMeeSleutels" in c)));
 }
 
 log(`\n${passed} geslaagd, ${failed} mislukt`);

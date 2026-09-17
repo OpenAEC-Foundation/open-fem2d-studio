@@ -431,7 +431,12 @@ export function windCombinatiesVoor(
     name: g.naam,
     type: g.type,
     formula: g.formule,
-    factors: new Map<number, number>([...g.factorenPerCaseId, [idVan.get(g.windSleutel)!, g.windFactor]]),
+    factors: new Map<number, number>([
+      ...g.factorenPerCaseId,
+      [idVan.get(g.windSleutel)!, g.windFactor],
+      // Vrijstaand dak: wrijving en kolomwind van dezelfde richting (issue #26).
+      ...(g.windMeeSleutels ?? []).map((s) => [idVan.get(s)!, g.windFactor] as [number, number]),
+    ]),
   }));
 }
 

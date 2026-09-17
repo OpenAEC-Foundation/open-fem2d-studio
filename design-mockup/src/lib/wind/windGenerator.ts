@@ -230,6 +230,14 @@ export interface GegenereerdeCombinatie {
   /** Sleutel van het gegenereerde windgeval waar deze combinatie bij hoort. */
   windSleutel: string;
   windFactor: number;
+  /**
+   * Vrijstaand dak: de windgevallen die met `windSleutel` samen de wind uit
+   * één richting vormen (wrijving en kolomwind, §7.3(7), §5.3(3)) en daarom
+   * met dezelfde factor meedoen. Ontbreekt bij een gebouw en bij een dak
+   * zonder horizontale gevallen, zodat die uitvoer ongewijzigd blijft. Zie
+   * `windVarianten`.
+   */
+  windMeeSleutels?: string[];
 }
 
 export interface VlakRegel {
@@ -880,6 +888,23 @@ export function genereerWindbelasting(
 /** Sleutelvoorvoegsel van de gevallen van een vrijstaand dak. */
 export const VRIJSTAAND_SLEUTEL_PREFIX = "luifel:";
 
+/** Sleutel van het horizontale geval (wrijving en kolomwind) van één richting. */
+const HORIZONTAAL_SLEUTEL = /^luifel:horizontaal:(links|rechts)$/;
+
+/**
+ * Hoe de horizontale gevallen in de combinaties komen: melding van de
+ * generator én regel in de uitgangspunten van rapport en PDF.
+ */
+export const HORIZONTAAL_COMBINATIE_UITLEG =
+  "Combinaties: wrijving en wind op de kolommen horen bij dezelfde wind als de druk op het dak " +
+  "(§7.3(7); §5.3(3): de krachten uit één windrichting samen). Elke gegenereerde combinatie " +
+  "met een dakgeval (c_p,net of c_f) neemt daarom het horizontale geval van dezelfde " +
+  "windrichting met dezelfde factor mee: bij c_f van een lessenaarsdak, dat een eigen " +
+  "richting heeft (figuur 7.16), alleen dat van die richting; bij een dakgeval voor alle " +
+  "richtingen (c_p,net, c_f van een zadel- of kieldak) een combinatie met dat van links en " +
+  "een met dat van rechts. Het horizontale geval leidt nooit alleen en komt nooit samen met " +
+  "dat van de andere richting in een combinatie.";
+
 /**
  * Kop van de uitgangspunten voor het rapport: wat er bij een vrijstaand dak
  * is aangehouden. De getallen per geval staan in de omschrijving van de
@@ -912,6 +937,12 @@ export function vrijstaandDakUitgangspunten(
       .filter((l) => l.caseId === c.id && l.gegenereerdDoor === "wind" && (l.omschrijving ?? "").trim() !== "")
       .map((l) => l.omschrijving!.trim()))];
     regels.push(`${c.name}: ${teksten.length > 0 ? teksten.join("; ") : "geen lasten"}`);
+  }
+  // Issue #26: zonder deze regel leest het rapport de wrijving en de
+  // kolomwind als een los geval, terwijl de combinaties ze samen met de
+  // dakgevallen van dezelfde richting nemen.
+  if (gevallen.some((c) => HORIZONTAAL_SLEUTEL.test(c.gegenereerd!.sleutel))) {
+    regels.push(HORIZONTAAL_COMBINATIE_UITLEG);
   }
   return regels.join("\n");
 }
@@ -950,7 +981,8 @@ export function vrijstaandDakUitgangspunten(
  *  4. Horizontaal, van links en van rechts — op verzoek: de wrijving langs het
  *     dak (§7.3(7), §7.5, tabel 7.10) en de wind op de kolommen (§7.6/§7.7),
  *     samen in één geval per richting omdat ze bij dezelfde wind tegelijk
- *     werken.
+ *     werken. De combinaties nemen dat geval samen met de dakgevallen van
+ *     dezelfde richting (`windVarianten`).
  *
  * WAT NIET
  *  Geen c_pi (een netto coëfficiënt omvat boven- en onderkant, §7.3(3)); geen
@@ -1435,8 +1467,10 @@ function genereerVrijstaandDak(
   // de grootte in een melding.
   //
   // WAAROM ÉÉN GEVAL PER RICHTING: wrijving en kolomlast horen bij dezelfde
-  // wind en werken dus tegelijk. Als twee losse gevallen zou elke
-  // gegenereerde combinatie er maar één van nemen.
+  // wind en werken dus tegelijk. Dat geval leidt nooit alleen: de
+  // combinatiebouw neemt het samen met elk dakgeval van dezelfde richting
+  // (`windVarianten`, issue #26). Als eigen geval blijft het zichtbaar in de
+  // lastentabel en de tekening, met zijn eigen afleiding.
   const cfr = ruwheid === "geen" ? null : TABEL_710_CFR[ruwheid];
   const kolommen = kolomVorm === "geen"
     ? []
@@ -1521,14 +1555,7 @@ function genereerVrijstaandDak(
       }
       perGeval.push({ sleutel, naam, regels });
     }
-    meldingen.push({
-      niveau: "waarschuwing",
-      tekst: `De horizontale gevallen (${[
-        ...(cfr !== null ? ["wrijving"] : []), ...(kolommen.length > 0 ? ["kolommen"] : []),
-      ].join(" en ")}) werken tegelijk met de c_f-gevallen van dezelfde windrichting, maar elke ` +
-        "gegenereerde combinatie neemt één windgeval. Is de som maatgevend, maak dan zelf een " +
-        "combinatie met beide gevallen.",
-    });
+    meldingen.push({ niveau: "info", tekst: HORIZONTAAL_COMBINATIE_UITLEG });
   }
   if (cfr !== null) {
     // De werkelijke dakvlaklengte langs de staven; bij een vlak dak is dat d.
@@ -1709,7 +1736,7 @@ export function genereerWindCombinaties(
     const r = (x: number) => Math.round(x * 1e9) / 1e9;
     const bron = `γ: NEN-EN 1990 ${f.bron}; ${psiBron(bijlage)}`;
 
-    for (const gv of windGevallen) {
+    for (const gv of windVarianten(windGevallen)) {
       // Wind leidt in elke combinatie van zijn eigen geval. Begeleidend telt
       // wind met ψ₀,W = 0 (NB.2) en dus niet; ook sneeuw begeleidt met
       // ψ₀,S = ψ₂,S = 0. Om dezelfde reden is er geen 6.10a per windgeval
@@ -1768,12 +1795,84 @@ export function genereerWindCombinaties(
             ],
             windSleutel: gv.sleutel,
             windFactor: s.wind,
+            ...(gv.mee.length > 0 ? { windMeeSleutels: gv.mee } : {}),
           });
         }
       }
     }
   }
   return combinaties;
+}
+
+/**
+ * De windbelastingen waarvan de combinatiebouw er per combinatie één laat
+ * leiden. Bij een gebouw: elk gegenereerd geval op zich, zoals altijd.
+ *
+ * VRIJSTAAND DAK MET WRIJVING OF KOLOMWIND (issue #26). De wrijving (§7.3(7),
+ * §7.5) en de wind op de kolommen (§7.6/§7.7) van één richting staan samen in
+ * één horizontaal geval per richting. Ze werken tegelijk met de druk op het
+ * dak bij diezelfde wind (§5.3(3): de krachten uit één windrichting samen).
+ * Het horizontale geval gaat daarom mee in elke variant met een dakgeval van
+ * dezelfde richting, en leidt nooit alleen — anders ontbrak in die combinatie
+ * de dakdruk van diezelfde wind:
+ *  - c_f van een lessenaarsdak heeft een richting (aangrijpingspunt op d/4
+ *    van de loefrand, figuur 7.16; sleutel `cf:max|min:links|rechts`): alleen
+ *    het horizontale geval van die richting;
+ *  - c_p,net, en c_f van een zadel- of kieldak, gelden voor alle richtingen
+ *    (§7.3(3)): een variant met het geval van links en een met dat van
+ *    rechts. Bij het zadeldak betekenen `links`/`rechts` in de sleutel het
+ *    dakvlak, niet de wind; het zadeldak is te herkennen aan het geval
+ *    `cf:…:beide`, dat alleen tabel 7.7 kent.
+ *
+ * WAAROM IN DE COMBINATIEBOUW EN NIET IN DE GEVALLEN. De lasten van de
+ * dakgevallen blijven bit-identiek, het horizontale geval houdt zijn eigen
+ * afleiding in lastentabel en tekening, er ontstaan geen dubbele gevallen
+ * voor links en rechts, en de combinaties blijven af te leiden uit alleen de
+ * sleutels en namen van de gevallen (`windCombinatiesVoor` houdt ze daarmee bij
+ * na een nieuw belastinggeval). Zonder horizontaal geval is de uitkomst precies
+ * die van vóór issue #26. Dubbeltelling kan niet: elke variant bevat hooguit
+ * één horizontaal geval, en dat één keer.
+ */
+export function windVarianten(
+  windGevallen: readonly { sleutel: string; naam: string }[],
+): { sleutel: string; naam: string; mee: string[] }[] {
+  const horizontaal = new Map<string, { sleutel: string; naam: string }>();
+  for (const g of windGevallen) {
+    const m = HORIZONTAAL_SLEUTEL.exec(g.sleutel);
+    if (m) horizontaal.set(m[1], g);
+  }
+  if (horizontaal.size === 0) return windGevallen.map((g) => ({ sleutel: g.sleutel, naam: g.naam, mee: [] }));
+  const zadel = windGevallen.some((g) => /^luifel:cf:(max|min):beide$/.test(g.sleutel));
+  const NAAM_KOP = "Wind vrijstaand dak ";
+  const uit: { sleutel: string; naam: string; mee: string[] }[] = [];
+  for (const g of windGevallen) {
+    if (HORIZONTAAL_SLEUTEL.test(g.sleutel)) continue;
+    if (!g.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX)) {
+      uit.push({ sleutel: g.sleutel, naam: g.naam, mee: [] });
+      continue;
+    }
+    const eigen = zadel ? null : (/^luifel:cf:(?:max|min):(links|rechts)$/.exec(g.sleutel)?.[1] ?? null);
+    let ontbreekt = false;
+    for (const richting of eigen !== null ? [eigen] : ["links", "rechts"]) {
+      const h = horizontaal.get(richting);
+      if (!h) { ontbreekt = true; continue; }
+      // "Wind vrijstaand dak wrijving + kolommen, van links" ⇒ "wrijving + kolommen";
+      // de richting komt achteraan als het dakgeval hem nog niet noemt.
+      const achter = `, van ${richting}`;
+      let deel = h.naam.startsWith(NAAM_KOP) ? h.naam.slice(NAAM_KOP.length) : h.naam;
+      if (deel.endsWith(achter)) deel = deel.slice(0, -achter.length);
+      uit.push({
+        sleutel: g.sleutel,
+        naam: `${g.naam} + ${deel}${eigen === null ? achter : ""}`,
+        mee: [h.sleutel],
+      });
+    }
+    // Het horizontale geval van een richting ontbreekt in het model (met de
+    // hand verwijderd): dan het dakgeval eenmaal zonder, zoals vóór issue #26,
+    // in plaats van het stil weg te laten.
+    if (ontbreekt) uit.push({ sleutel: g.sleutel, naam: g.naam, mee: [] });
+  }
+  return uit;
 }
 
 // ── Handtekening voor idempotentie ───────────────────────────────────────
@@ -1787,7 +1886,7 @@ export function genereerWindCombinaties(
 export function handtekeningVanGeneratie(
   gevallen: { sleutel: string; naam: string }[],
   lasten: GegenereerdeLast[],
-  combinaties: { naam: string; type: string; windSleutel: string; windFactor: number; factorenPerCaseId: [number, number][] }[],
+  combinaties: { naam: string; type: string; windSleutel: string; windFactor: number; windMeeSleutels?: string[]; factorenPerCaseId: [number, number][] }[],
 ): string {
   const r = (v: number) => Number(v.toPrecision(12)).toString();
   const g = gevallen.map((c) => `${c.sleutel}|${c.naam}`).join(";");
@@ -1798,7 +1897,9 @@ export function handtekeningVanGeneratie(
     .map((x) => `${x.gevalSleutel}|${x.beamId}|${r(x.q)}|${x.startFrac !== undefined ? r(x.startFrac) : "-"}|${x.endFrac !== undefined ? r(x.endFrac) : "-"}${x.omschrijving !== undefined ? `|${x.omschrijving}` : ""}${x.richting !== undefined ? `|${x.richting}` : ""}`)
     .join(";");
   const c = combinaties
-    .map((x) => `${x.naam}|${x.type}|${x.windSleutel}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p, q) => p[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`)
+    // Samengaande windgevallen (issue #26) gesorteerd achter elkaar; met één
+    // windgeval staat er alleen die sleutel, zoals vóór die uitbreiding.
+    .map((x) => `${x.naam}|${x.type}|${[x.windSleutel, ...(x.windMeeSleutels ?? [])].sort().join("+")}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p, q) => p[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`)
     .join(";");
   return `G[${g}]L[${l}]C[${c}]`;
 }
@@ -1835,11 +1936,16 @@ export function handtekeningVanModel(
   const gCombi = combinaties
     .filter((c) => c.name.startsWith(WIND_COMBI_PREFIX))
     .map((c) => {
-      const windEntry = [...c.factors.entries()].find(([id]) => gegenereerdeIds.has(id));
+      const windEntries = [...c.factors.entries()].filter(([id]) => gegenereerdeIds.has(id));
+      const windEntry = windEntries[0];
       return {
         naam: c.name, type: c.type,
         windSleutel: windEntry ? (sleutelVanId.get(windEntry[0]) ?? "?") : "",
-        windFactor: windEntry ? windEntry[1] : 0,
+        // Samengaande windgevallen hebben dezelfde factor; wijkt er een af,
+        // dan klopt de handtekening bewust niet (NaN).
+        windFactor: windEntry ? (windEntries.every(([, f]) => f === windEntry[1]) ? windEntry[1] : Number.NaN) : 0,
+        ...(windEntries.length > 1
+          ? { windMeeSleutels: windEntries.slice(1).map(([id]) => sleutelVanId.get(id) ?? "?") } : {}),
         factorenPerCaseId: [...c.factors.entries()]
           .filter(([id]) => !gegenereerdeIds.has(id)) as [number, number][],
       };
