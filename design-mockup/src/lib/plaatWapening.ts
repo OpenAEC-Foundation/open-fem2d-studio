@@ -20,7 +20,7 @@ export const PLAAT_MILIEUKLASSEN = [
   "XF1", "XF2", "XF3", "XF4", "XA1", "XA2", "XA3",
 ] as const;
 
-const WAPENING_VELDEN = ["staalsoort", "horizontaal", "verticaal", "milieuklasse"];
+const WAPENING_VELDEN = ["staalsoort", "horizontaal", "verticaal", "milieuklasse", "f_ct_eff_mpa", "langdurend", "hoge_aanhechting"];
 const RICHTING_VELDEN = ["zijde_1", "zijde_2"];
 const LAAG_VELDEN = ["diameter_mm", "hoh_mm", "as_mm2_per_m", "dekking_mm"];
 
@@ -60,10 +60,14 @@ function keurLaag(laag: unknown, pad: string, fouten: string[]) {
 }
 
 /** De vormcontrole op `Plate.wapening`; levert de fouten (leeg = goed). */
-export function keurPlaatWapening(w: unknown, pad: string): string[] {
+export function keurPlaatWapening(w: unknown, pad: string, dikte?: number): string[] {
   const fouten: string[] = [];
   if (!isObject(w)) return [`${pad}: object verwacht.`];
   onbekend(w, WAPENING_VELDEN, pad, fouten);
+  if (w.f_ct_eff_mpa !== undefined && !positief(w.f_ct_eff_mpa)) fouten.push(`${pad}.f_ct_eff_mpa: positief eindig getal verwacht.`);
+  for (const veld of ["langdurend", "hoge_aanhechting"]) {
+    if (w[veld] !== undefined && typeof w[veld] !== "boolean") fouten.push(`${pad}.${veld}: true of false verwacht.`);
+  }
   if (typeof w.staalsoort !== "string" || !(PLAAT_STAALSOORTEN as readonly string[]).includes(w.staalsoort)) {
     fouten.push(`${pad}.staalsoort: ${PLAAT_STAALSOORTEN.join(", ")} verwacht.`);
   }
@@ -81,6 +85,24 @@ export function keurPlaatWapening(w: unknown, pad: string): string[] {
     for (const zijde of RICHTING_VELDEN) {
       if (r[zijde] !== undefined) keurLaag(r[zijde], `${rp}.${zijde}`, fouten);
     }
+  }
+  if (fouten.length === 0) {
+    const invoer = w as unknown as PlaatWapeningInvoer;
+    const dieptes = [0, 0];
+    for (const [i, zijde] of (["zijde_1", "zijde_2"] as const).entries()) {
+      const h = invoer.horizontaal[zijde], v = invoer.verticaal[zijde];
+      for (const laag of [h, v]) {
+        if (!laag) continue;
+        if (laag.diameter_mm !== undefined && laag.hoh_mm! <= laag.diameter_mm) fouten.push(`${pad}.${zijde}: h.o.h. moet groter zijn dan Ø.`);
+        const diepte = laag.dekking_mm + (laag.diameter_mm ?? 0);
+        dieptes[i] = Math.max(dieptes[i], diepte);
+        if (dikte !== undefined && diepte >= dikte) fouten.push(`${pad}.${zijde}: laag past niet binnen de wanddikte.`);
+      }
+      if (h?.diameter_mm !== undefined && v?.diameter_mm !== undefined &&
+          h.dekking_mm + h.diameter_mm > v.dekking_mm + 1e-9 &&
+          v.dekking_mm + v.diameter_mm > h.dekking_mm + 1e-9) fouten.push(`${pad}.${zijde}: kruisende staven overlappen in de dikterichting.`);
+    }
+    if (dikte !== undefined && dieptes[0] + dieptes[1] >= dikte) fouten.push(`${pad}: lagen aan beide zijden passen niet in de wanddikte.`);
   }
   return fouten;
 }

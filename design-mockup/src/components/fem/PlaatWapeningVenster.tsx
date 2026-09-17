@@ -13,7 +13,8 @@ import type { Plate } from "./femTypes";
 import type { PlaatWapeningInvoer } from "../../lib/types/plaat/PlaatWapeningInvoer";
 import type { PlaatWapeningLaag } from "../../lib/types/plaat/PlaatWapeningLaag";
 import type { PlaatWapeningRichting } from "../../lib/types/plaat/PlaatWapeningRichting";
-import { legePlaatWapening, PLAAT_MILIEUKLASSEN, PLAAT_STAALSOORTEN } from "../../lib/plaatWapening";
+import { keurPlaatWapening, legePlaatWapening, PLAAT_MILIEUKLASSEN, PLAAT_STAALSOORTEN } from "../../lib/plaatWapening";
+import { withPlateDefaults } from "./femTypes";
 
 type Richting = "horizontaal" | "verticaal";
 type Zijde = "zijde_1" | "zijde_2";
@@ -34,7 +35,7 @@ function Getal({ waarde, onWijzig, titel }: { waarde?: number; onWijzig: (v?: nu
       type="number"
       className="fem-prop-input"
       min="0"
-      step="1"
+      step="any"
       title={titel}
       value={waarde ?? ""}
       onChange={(e) => {
@@ -52,6 +53,7 @@ export function PlaatWapeningVenster({ plate, updatePlate }: {
   const { t } = useTranslation("check");
   const w = plate.wapening;
   const zet = (nieuw: PlaatWapeningInvoer | undefined) => updatePlate?.(plate.id, { wapening: nieuw });
+  const fouten = w ? keurPlaatWapening(w, "wapening", withPlateDefaults(plate).thickness) : [];
 
   const zetLaag = (richting: Richting, zijde: Zijde, laag: PlaatWapeningLaag | undefined) => {
     if (!w) return;
@@ -150,11 +152,35 @@ export function PlaatWapeningVenster({ plate, updatePlate }: {
               {PLAAT_MILIEUKLASSEN.map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
           </Regel>
+          <Regel label={t("props.plate.wapening.fct")}>
+            <Getal waarde={w.f_ct_eff_mpa} titel={t("props.plate.wapening.fctHint")} onWijzig={(waarde) => {
+              const nieuw = { ...w };
+              if (waarde === undefined) delete nieuw.f_ct_eff_mpa;
+              else nieuw.f_ct_eff_mpa = waarde;
+              zet(nieuw);
+            }} />
+          </Regel>
+          {(["langdurend", "hoge_aanhechting"] as const).map((veld) => (
+            <Regel key={veld} label={t(`props.plate.wapening.${veld}`)}>
+              <select className="fem-prop-select" value={w[veld] === undefined ? "" : String(w[veld])} onChange={(e) => {
+                const nieuw = { ...w };
+                if (e.target.value === "") delete nieuw[veld];
+                else nieuw[veld] = e.target.value === "true";
+                zet(nieuw);
+              }}>
+                <option value="">{t("props.plate.wapening.geenKlasse")}</option>
+                <option value="true">{t(`props.plate.wapening.${veld}Ja`)}</option>
+                <option value="false">{t(`props.plate.wapening.${veld}Nee`)}</option>
+              </select>
+            </Regel>
+          ))}
+          <div className="fem-prop-hint">{t("props.plate.wapening.scheurGrens")}</div>
           {laagInvoer("horizontaal", "zijde_1")}
           {laagInvoer("horizontaal", "zijde_2")}
           {laagInvoer("verticaal", "zijde_1")}
           {laagInvoer("verticaal", "zijde_2")}
           <div className="fem-prop-hint">{t("props.plate.wapening.hint")}</div>
+          {fouten.map((fout) => <div key={fout} role="alert" className="fem-prop-hint">{fout}</div>)}
         </>
       )}
     </>

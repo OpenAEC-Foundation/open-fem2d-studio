@@ -8,6 +8,8 @@
  * Met alleen mm²/m zijn de eisen aan diameter en staafafstand (9.6.1(3),
  * 9.6.2(3), 9.6.3(2)) en (7.11) niet te toetsen; dat staat dan met reden in
  * het resultaat.
+ * Zonder diameter ontbreekt tevens het staafzwaartepunt voor momentevenwicht
+ * over de wanddikte: een positieve UGT-trekkracht wordt dan niet getoetst.
  */
 export type PlaatWapeningLaag = { diameter_mm?: number, hoh_mm?: number, as_mm2_per_m?: number, 
 /**

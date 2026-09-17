@@ -141,6 +141,9 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
         const comb = spanningen(c);
         if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
+          // Bij aanwezige wandwapening moet een ontbrekende UGT-combinatie
+          // zichtbaar blijven voor de kern, ook als andere combinaties bestaan.
+          if (soort === "Beton" && plaat.wapening) combinaties.push({ combination_id: c.id, elements: [] });
           continue;
         }
         combinaties.push(comb);
@@ -191,8 +194,7 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
         ? {
             wapening_aanwezig: plaat.wapening,
             frequente_combinaties: combinatiesVanSoort(data.combinations, "6.15b")
-              .map(spanningen)
-              .filter((c): c is PlaatCombinatie => c !== null),
+              .map((c) => spanningen(c) ?? { combination_id: c.id, elements: [] }),
           }
         : {};
     inputs.push({

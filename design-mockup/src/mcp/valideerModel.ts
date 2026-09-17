@@ -50,6 +50,7 @@
  */
 import {
   GEBRUIKSCATEGORIEEN,
+  PLATE_DEFAULTS,
   plaatMeshSignatuurVan,
   plaatRekentAlsRaster,
   valideerPlaatOpeningen,
@@ -966,7 +967,7 @@ export function controleerVelden(rauw: unknown): string[] {
             "in plaats van stil genegeerd.",
         );
       } else {
-        fouten.push(...keurPlaatWapening(p.wapening, `${pad}.wapening`));
+        fouten.push(...keurPlaatWapening(p.wapening, `${pad}.wapening`, typeof p.thickness === "number" ? p.thickness : PLATE_DEFAULTS.thickness));
       }
     }
     // Hoofdrichting in graden; elke eindige hoek mag, ook negatief of > 360.

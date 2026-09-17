@@ -124,6 +124,8 @@ pub struct PlateCheckInput {
 /// Met alleen mm²/m zijn de eisen aan diameter en staafafstand (9.6.1(3),
 /// 9.6.2(3), 9.6.3(2)) en (7.11) niet te toetsen; dat staat dan met reden in
 /// het resultaat.
+/// Zonder diameter ontbreekt tevens het staafzwaartepunt voor momentevenwicht
+/// over de wanddikte: een positieve UGT-trekkracht wordt dan niet getoetst.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, TS)]
 #[serde(deny_unknown_fields)]
 #[ts(export, export_to = "../../../../design-mockup/src/lib/types/plaat/")]
@@ -171,4 +173,17 @@ pub struct PlaatWapeningInvoer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub milieuklasse: Option<ExposureClass>,
+    /// Treksterkte op het verwachte scheurtijdstip (7.3.2), N/mm².
+    /// Geen automatische aanname van ouderdom of f_ctm.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub f_ct_eff_mpa: Option<f64>,
+    /// Belastingsduur voor (7.9): true = langdurend, false = kortdurend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub langdurend: Option<bool>,
+    /// Aanhechting voor (7.11): true = hoog, false = glad.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub hoge_aanhechting: Option<bool>,
 }

@@ -362,6 +362,7 @@ const BUNDEL_TESTS = new Set([
  * vergeten regel.
  */
 const ALLEEN_BRON = new Map([
+  ["plaat-wapening", "UI-rendering, projectroundtrip, MCP-poort en betonwandbouwer"],
   ["pendelstaaf", "raakt kerninterne klassen (Assembler, Matrix)"],
   ["plaat-dkt", "raakt kerninterne klassen (Mesh, PlateRegion, DKT)"],
   ["plaat-ids", "raakt kerninterne klassen (Mesh, PlateRegion)"],
