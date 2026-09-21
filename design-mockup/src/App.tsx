@@ -434,6 +434,12 @@ function App() {
     () => vrijstaandDakUitgangspunten(fem.loadCases, fem.loads),
     [fem.loadCases, fem.loads]);
 
+  // Result display toggles — lifted so both the FemCanvas HUD and the
+  // FemProjectTree "Resultaten" tab can mutate the same flags. Hier, vóór
+  // `reportData`: de constructieschets van het rapport volgt de laag
+  // "Kipsteunen" (issue #40).
+  const [displayFlags, setDisplayFlags] = useState<DisplayFlags>(DEFAULT_DISPLAY_FLAGS);
+
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
   // vensters. useMemo op veld-identiteiten: alleen echte mutaties leveren
@@ -473,12 +479,14 @@ function App() {
     // Het analysetype en α_cr: welke berekening er is gedaan en of de norm
     // die toestaat (5.2.1(3)). Ook een uitgangspunt, om dezelfde reden.
     analyseToelichting: analyseTekst,
+    // De laag "Kipsteunen" van het tekenvlak: aan = ook in de constructieschets.
+    kipsteunenTonen: displayFlags.kipsteunen !== false,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
     fem.combinatiesVoorRapport, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
-    scheefstandTekst, analyseTekst,
+    scheefstandTekst, analyseTekst, displayFlags.kipsteunen,
   ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
@@ -1078,9 +1086,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.loads, fem.plates, fem.rekenInstellingenVersie]);
 
-  // Result display toggles — lifted so both the FemCanvas HUD and the
-  // FemProjectTree "Resultaten" tab can mutate the same flags.
-  const [displayFlags, setDisplayFlags] = useState<DisplayFlags>(DEFAULT_DISPLAY_FLAGS);
+  // (De weergavevinkjes `displayFlags` staan hoger, vóór `reportData`.)
   // Results-tab active flag — toggled door de Resultaten-tab onderaan.
   // Wanneer true: alle krachten-overlays aan (M+V+N+vervorming+reacties).
   // Wordt uit-gezet zodra de gebruiker op Model of een LC-tab klikt.

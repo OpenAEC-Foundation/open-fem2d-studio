@@ -665,6 +665,10 @@ const ALLEEN_BRON = new Map([
     "kipsteunen-tekenvlak",
     "issue #40: houdt de kipsteunen die het tekenvlak toont (`lib/kipsteunBeeld.ts`, buiten de barrel — het is een weergavemodule) tegen de `lateral_bracing`, de `ltb_segment_length_m` en de `staafeinden` die de staal- en de houtbouwer in de toetsinvoer zetten, en in het slotblok tegen de L_st en de l_ef die de echte EN 1993- en EN 1995-kern via de toetsbrug (apart proces) rapporteren. De gedeelde afleiding `lib/kipsteunen.ts` zit via de bouwers wél in de bundel; dat de bundelinvoer er niet door verandert, bewaken de bestaande bundeltests van de bouwers",
   ],
+  [
+    "kipsteunen-ui",
+    "issue #40: het echte tekenvlak (FemCanvas), de weergavelijst en de constructieschets van het rapport in een lokale headless browser — symbolen aan de goede zijde en op de goede plaats, de maatketting in mm bij selectie en hover, de schakelaar, de zoomgrenzen en het rapport. React, SVG-meetkunde en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

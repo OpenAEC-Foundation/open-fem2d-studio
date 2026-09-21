@@ -540,6 +540,7 @@
     "scopeLabel": "Combination",
     "scopeEnvelope": "Envelope (all combinations)",
     "schemaLegend": "Node numbers black, member numbers grey in parentheses; dimensions in m, loads characteristic per load case (G/Q/S/W).",
+    "schemaLegendKipsteunen": "Lateral restraints as used by the checks: a small triangle on the restrained flange (for an upright member the top flange is the left side), an open diamond for a restraint from the timber restraint spacing, a fork where the member end is taken as a fork support.",
     "envelopeBandNote": "Envelope: per member the band between minimum and maximum over all combinations.",
     "envelopeReactionsTitle": "Envelope (min/max over all combinations)",
     "reactionSignNote": "Sign convention: Fx positive to the right, Fz positive upwards (reaction on the structure).",

@@ -224,3 +224,12 @@ export function kipsteunenVanStaaf(
   uit.steunen.sort((a, b) => a.xMm - b.xMm);
   return uit;
 }
+
+/**
+ * Een veldlengte voor op de tekening: hele millimeters, zonder eenheid (die
+ * staat in het bijschrift van de ketting). Derdepunten op 8 m geven 2666,67 mm;
+ * op een maatlijn hoort 2667 — de toets rekent met de onafgeronde waarde.
+ */
+export function kipveldLabelMm(lengteMm: number): string {
+  return String(Math.round(lengteMm));
+}

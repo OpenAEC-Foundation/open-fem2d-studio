@@ -50,7 +50,13 @@ export interface Punt {
 }
 
 /** Een kipsteun met zijn plaats in het model (mm, wereldcoördinaten). */
-export interface KipsteunOpTekening extends Kipsteun, Punt {}
+export interface KipsteunOpTekening extends Kipsteun, Punt {
+  /**
+   * De MODELstaaf waarop de steun ligt. Bij een doorgaande lijn is dat een van
+   * de delen; een klik op het symbool selecteert dan het deel dat eronder ligt.
+   */
+  staafId: number;
+}
 
 /** De kipsteunen van één GETOETSTE staaf (een losse staaf of een doorgaande lijn). */
 export interface KipsteunBeeld {
@@ -77,6 +83,8 @@ export interface KipsteunBeeld {
    * tekening houdt voor hout dezelfde beoordeling aan.
    */
   einden: Staafeinden;
+  /** De modelstaaf aan het begin en aan het eind (bij een lijn: het buitenste deel). */
+  eindStaafIds: { begin: number; eind: number };
   steunen: KipsteunOpTekening[];
   kettingen: Kipveldketting[];
 }
@@ -139,11 +147,37 @@ export function kipsteunBeelden(model: KipsteunModel): KipsteunBeeld[] {
       staafstand: referentieVanStaaf(beam, data.nodes).staafstand,
       boven: { x: -dz, z: dx },
       einden: bepaalStaafeinden(beam, data.nodes, model.beams, model.supports, new Set(delen), model.plates),
+      eindStaafIds: { begin: beam.id, eind: beam.id },
       steunen: [],
       kettingen: [],
     };
     const kip = kipsteunenVanStaaf(beam.checkConfig, lengteMm, soort);
-    beeld.steunen = kip.steunen.map((s) => ({ ...s, ...puntOpStaaf(beeld, s.xMm) }));
+    const delenMetKnopen = delen
+      .map((id) => model.beams.find((m) => m.id === id))
+      .map((m) => (m ? { id: m.id, a: knoop.get(m.from), b: knoop.get(m.to) } : null))
+      .filter((d): d is { id: number; a: Node; b: Node } => !!d && !!d.a && !!d.b);
+    // Het deel waar een punt op ligt: daar is de som van de afstanden tot de
+    // twee knopen gelijk aan de deellengte, en elders groter.
+    const deelOp = (p: Punt): number => {
+      let staafId = beam.id;
+      let beste = Infinity;
+      for (const d of delenMetKnopen) {
+        const over =
+          Math.hypot(p.x - d.a.x, p.z - d.a.z) + Math.hypot(p.x - d.b.x, p.z - d.b.z) -
+          Math.hypot(d.b.x - d.a.x, d.b.z - d.a.z);
+        if (over < beste - 1e-6) { beste = over; staafId = d.id; }
+      }
+      return staafId;
+    };
+    // Net binnen het eind, zodat de tussenknoop van een lijn niet meedingt.
+    beeld.eindStaafIds = {
+      begin: deelOp(puntOpStaaf(beeld, lengteMm * 1e-6)),
+      eind: deelOp(puntOpStaaf(beeld, lengteMm * (1 - 1e-6))),
+    };
+    beeld.steunen = kip.steunen.map((s) => {
+      const p = puntOpStaaf(beeld, s.xMm);
+      return { ...s, ...p, staafId: deelOp(p) };
+    });
     beeld.kettingen = kip.kettingen;
     uit.push(beeld);
   }

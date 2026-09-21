@@ -108,6 +108,14 @@ export interface ReportData {
    * tekstblok (basisaudit nr 27). Leeg = niet gerekend.
    */
   analyseToelichting: string;
+  /**
+   * Staat de laag "Kipsteunen" van het tekenvlak aan? Dan tekent de
+   * constructieschets ze ook (issue #40): het rapport hoort de aanname te
+   * tonen die de gebruiker op zijn scherm heeft gecontroleerd, en wie de laag
+   * uitzet, wil ze ook niet op papier. Ontbreekt het veld (een snapshot uit een
+   * ouder hoofdvenster), dan geldt de standaard van de laag: aan.
+   */
+  kipsteunenTonen?: boolean;
 }
 
 export const EMPTY_REPORT_DATA: ReportData = {

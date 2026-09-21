@@ -281,6 +281,9 @@ log("\n[6] Doorgaande lijn: een gesplitste staaf tekent als de ene staaf die de 
   ok("lengte = de hele lijn, 6000 mm", Math.abs(beeld.lengteMm - 6000) < 1e-9 && inputs[0].length_m === 6);
   ok("getekende fracties = lateral_bracing van de lijn", j(fractiesVanBeeld(beeld)) === j(inputs[0].lateral_bracing),
     j(inputs[0].lateral_bracing));
+  ok("elke steun weet op welk deel hij ligt, en de einden ook",
+    j(beeld.steunen.map((s) => s.staafId)) === j([1, 2]) && j(beeld.eindStaafIds) === j({ begin: 1, eind: 2 }),
+    `${j(beeld.steunen.map((s) => s.staafId))} ${j(beeld.eindStaafIds)}`);
   ok("steunen op x = 1000 en x = 5000", gelijk(beeld.steunen.map((s) => s.x), [1000, 5000], 1e-6), j(beeld.steunen.map((s) => s.x)));
   ok("de tussenknoop (x = 2000) is geen veldgrens: 1000 · 4000 · 1000",
     gelijk(beeld.kettingen.find((k) => k.zijde === "boven").lengtesMm, [1000, 4000, 1000], 1e-6));

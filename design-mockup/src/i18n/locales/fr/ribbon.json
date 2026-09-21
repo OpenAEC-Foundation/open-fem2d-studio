@@ -540,6 +540,7 @@
     "scopeLabel": "Combinaison",
     "scopeEnvelope": "Enveloppe (toutes les combinaisons)",
     "schemaLegend": "Numéros de nœuds en noir, numéros de barres en gris entre parenthèses ; cotes en m, charges caractéristiques par cas de charge (G/Q/S/W).",
+    "schemaLegendKipsteunen": "Maintiens latéraux tels que retenus par la vérification : un petit triangle sur la semelle maintenue (pour une barre verticale, la semelle supérieure est le côté gauche), un losange ouvert pour un maintien issu de l'entraxe des maintiens du bois, une fourche là où l'extrémité est considérée comme appui à fourche.",
     "envelopeBandNote": "Enveloppe : par barre, la bande entre le minimum et le maximum sur toutes les combinaisons.",
     "envelopeReactionsTitle": "Enveloppe (min/max sur toutes les combinaisons)",
     "reactionSignNote": "Convention de signe : Fx positif vers la droite, Fz positif vers le haut (réaction sur la structure).",
