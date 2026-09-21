@@ -63,7 +63,11 @@ mkdirSync(uitMap, { recursive: true });
 const uit = join(uitMap, `${NAAM}-${doel}${exe}`);
 
 if (doel === "universal-apple-darwin") {
-  const delen = ["aarch64-apple-darwin", "x86_64-apple-darwin"].map((t) => bouw(t, true));
+  // Tauri compileert een universele app per architectuur en zoekt de binary dan
+  // onder elke losse triple; de bundler wil daarna de samengevoegde. Alle drie.
+  const triples = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
+  const delen = triples.map((t) => bouw(t, true));
+  triples.forEach((t, n) => copyFileSync(delen[n], join(uitMap, `${NAAM}-${t}`)));
   draai("lipo", ["-create", "-output", uit, ...delen]);
 } else {
   copyFileSync(bouw(doel, Boolean(expliciet)), uit);
