@@ -35,7 +35,7 @@ import {
   type MemberCheckResult,
 } from "../../../lib/checkTypes";
 import { nietUitgevoerdOverzicht, nietUitgevoerdToetsen } from "../../../lib/nietUitgevoerd";
-import { maatgevendVanStaaf } from "../../../lib/maatgevend";
+import { isAfgeleideCombinatie, maatgevendVanStaaf } from "../../../lib/maatgevend";
 import { useReportData } from "../ReportDataContext";
 import { useRapportProjectInfo } from "../useProjectInfo";
 import {
@@ -79,10 +79,14 @@ function MaatgevendeHerkomst({ result, namen }: {
   const delen: string[] = [];
   if (m.combinatieId !== null) {
     const naam = namen.get(m.combinatieId);
+    // Een afgeleide combinatie (scheefstand, eindtoestand) heeft een verschoven
+    // id dat de gebruiker niet kent: dan alleen de naam.
     delen.push(
-      naam
-        ? t("report.maatgevendCombinatieMetNaam", "comb. {{id}} ({{naam}})", { id: m.combinatieId, naam })
-        : t("report.maatgevendCombinatie", "comb. {{id}}", { id: m.combinatieId }),
+      naam && isAfgeleideCombinatie(m.combinatieId)
+        ? t("report.maatgevendCombinatieNaam", "comb. {{naam}}", { naam })
+        : naam
+          ? t("report.maatgevendCombinatieMetNaam", "comb. {{id}} ({{naam}})", { id: m.combinatieId, naam })
+          : t("report.maatgevendCombinatie", "comb. {{id}}", { id: m.combinatieId }),
     );
   }
   if (m.positieMm !== null) {

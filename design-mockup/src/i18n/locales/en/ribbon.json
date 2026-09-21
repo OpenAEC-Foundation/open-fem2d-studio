@@ -350,6 +350,7 @@
     "detailleringseis": "detailing requirement",
     "maatgevendCombinatie": "comb. {{id}}",
     "maatgevendCombinatieMetNaam": "comb. {{id}} ({{naam}})",
+    "maatgevendCombinatieNaam": "comb. {{naam}}",
     "maatgevendPositie": "x = {{x}} mm",
     "maatgevendGeen": "no check with a unity check",
     "maatgevendToelichting": "For each member the governing check is listed with the combination and the position x along the member (mm from the start) at which the kernel evaluated it. Where no combination or position is shown, the kernel does not provide one for that check (for instance for deflection). Checks with status n/a or without a unity check do not count as governing.",

@@ -25,6 +25,7 @@
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
+  isAfgeleideCombinatie,
   sorteerRegels,
   ucBalk,
   type MaatgevendOverzicht,
@@ -89,9 +90,11 @@ export function herkomstTekst(regel: ToetsRegel, namen: CombinatieNamen | undefi
   if (regel.combinatieId !== null) {
     const naam = namen?.get(regel.combinatieId);
     delen.push(
-      naam
-        ? t("maatgevend.combinatieMetNaam", { id: regel.combinatieId, naam })
-        : t("maatgevend.combinatie", { id: regel.combinatieId }),
+      naam && isAfgeleideCombinatie(regel.combinatieId)
+        ? t("maatgevend.combinatieNaam", { naam })
+        : naam
+          ? t("maatgevend.combinatieMetNaam", { id: regel.combinatieId, naam })
+          : t("maatgevend.combinatie", { id: regel.combinatieId }),
     );
   }
   if (regel.elementId !== null) delen.push(t("maatgevend.element", { id: regel.elementId }));

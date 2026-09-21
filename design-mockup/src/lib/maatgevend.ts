@@ -42,6 +42,18 @@ import { checkSoort } from "./checkTypes";
 import type { CheckStatus } from "./types/steel/CheckStatus";
 import type { NamedCheck } from "./types/steel/NamedCheck";
 import type { PlateCheckResult } from "./types/plaat/PlateCheckResult";
+import { SCHEEFSTAND_COMBO_OFFSET } from "../components/fem/solver/combinations";
+
+/**
+ * Is dit het id van een AFGELEIDE combinatie — de tegengestelde
+ * scheefstandrichting of een eindtoestandvariant (hout, ψ₂)? Die krijgen een
+ * verschoven id (`SCHEEFSTAND_COMBO_OFFSET` en hoger) dat de gebruiker nergens
+ * heeft ingevoerd; "comb. 1000000003" zegt hem niets. Is de NAAM bekend, dan
+ * toont de weergave alleen die. De combinatie zelf blijft wat de kern opgaf.
+ */
+export function isAfgeleideCombinatie(id: number): boolean {
+  return id >= SCHEEFSTAND_COMBO_OFFSET;
+}
 
 /** Uit welke kern een overzicht komt; de plaattoets is een zesde soort. */
 export type MaatgevendSoort = CheckSoort | "plaat";

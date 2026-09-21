@@ -48,7 +48,7 @@ const TOETSBRUG = join(
 );
 
 const {
-  maatgevendVanStaaf, maatgevendVanPlaat, modelMaatgevend, sorteerRegels, ucKlasse, ucBalk,
+  maatgevendVanStaaf, maatgevendVanPlaat, modelMaatgevend, sorteerRegels, ucKlasse, ucBalk, isAfgeleideCombinatie,
 } = await import("./src/lib/maatgevend.ts");
 const { puntOpStaaf } = await import("./src/stores/maatgevendMarkeringStore.ts");
 
@@ -353,6 +353,17 @@ log("\n[10] paneel, plaatkaart, rapport en vertalingen");
   const zonderHtml = renderToStaticMarkup(React.createElement(MaatgevendRegel, { overzicht: zonder, namen, onToon: () => {} }));
   check("zonder combinatie: geen knop, geen 'comb.', geen 'x ='",
     !zonderHtml.includes("<button") && !tekst(zonderHtml).includes("comb.") && !tekst(zonderHtml).includes("x ="), tekst(zonderHtml));
+  // Een afgeleide combinatie (tegengestelde scheefstand, eindtoestandvariant van
+  // hout) draagt een verschoven id dat de gebruiker nergens invoerde.
+  check("afgeleide combinatie herkend aan het verschoven id", !isAfgeleideCombinatie(24) && isAfgeleideCombinatie(1_000_003) && isAfgeleideCombinatie(1_000_000_003));
+  const eind = maatgevendVanStaaf(hout(4, [toets("buiging", 0.39, { comb: 1_000_000_003, x: 5000, titel: "Buiging" })], "buiging"));
+  const eindRegel = tekst(renderToStaticMarkup(React.createElement(MaatgevendRegel, {
+    overzicht: eind, namen: new Map([[1_000_000_003, "UGT 6.10b (eindtoestand)"]]), onToon: () => {},
+  })));
+  check("afgeleide combinatie met naam: alleen de naam, niet het verschoven id",
+    eindRegel.includes("comb. UGT 6.10b (eindtoestand)") && !eindRegel.includes("1000000003") && !eindRegel.includes("1.000.000.003"), eindRegel);
+  check("de combinatie zelf blijft wat de kern opgaf (voor de klik naar het tekenvlak)", eind.maatgevend.combinatieId === 1_000_000_003);
+
   const lijst = tekst(renderToStaticMarkup(React.createElement(ToetsLijst, { overzicht: o, volgorde: "uc", onVolgorde: () => {}, namen })));
   check("lijst: de n.v.t.-toets staat erin met reden en 'telt niet mee als maatgevend'",
     lijst.includes("Druk") && lijst.includes("Geen drukkracht.") && lijst.includes("telt niet mee als maatgevend"), lijst);
@@ -374,7 +385,7 @@ log("\n[10] paneel, plaatkaart, rapport en vertalingen");
   const sleutels = (o, voor = "") => Object.entries(o).flatMap(([k, v]) =>
     v && typeof v === "object" ? sleutels(v, `${voor}${k}.`) : [`${voor}${k}`]);
   const nlCheck = sleutels(JSON.parse(bron("src/i18n/locales/nl/check.json")).maatgevend).sort().join(",");
-  const RAPPORT = ["maatgevendCombinatie", "maatgevendCombinatieMetNaam", "maatgevendPositie", "maatgevendGeen", "maatgevendToelichting"];
+  const RAPPORT = ["maatgevendCombinatie", "maatgevendCombinatieMetNaam", "maatgevendCombinatieNaam", "maatgevendPositie", "maatgevendGeen", "maatgevendToelichting"];
   for (const taal of ["nl", "en", "de", "fr"]) {
     const c = JSON.parse(bron(`src/i18n/locales/${taal}/check.json`)).maatgevend;
     check(`${taal}: check.maatgevend heeft dezelfde sleutels als nl`, c && sleutels(c).sort().join(",") === nlCheck);

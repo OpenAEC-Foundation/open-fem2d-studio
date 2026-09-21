@@ -350,6 +350,7 @@
     "detailleringseis": "disposition constructive",
     "maatgevendCombinatie": "comb. {{id}}",
     "maatgevendCombinatieMetNaam": "comb. {{id}} ({{naam}})",
+    "maatgevendCombinatieNaam": "comb. {{naam}}",
     "maatgevendPositie": "x = {{x}} mm",
     "maatgevendGeen": "aucune vérification avec taux de travail",
     "maatgevendToelichting": "Pour chaque barre, la vérification déterminante est donnée avec la combinaison et la position x le long de la barre (mm depuis l'origine) où le noyau de calcul l'a effectuée. Si aucune combinaison ou position n'est indiquée, le noyau n'en fournit pas pour cette vérification (par exemple pour la flèche). Les vérifications au statut s.o. ou sans taux de travail ne comptent pas comme déterminantes.",

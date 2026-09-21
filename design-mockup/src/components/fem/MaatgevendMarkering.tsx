@@ -13,6 +13,7 @@
  */
 import { useTranslation } from "react-i18next";
 import { useCheckStore } from "../../stores/checkStore";
+import { isAfgeleideCombinatie } from "../../lib/maatgevend";
 import { puntOpStaaf, useMaatgevendMarkeringStore } from "../../stores/maatgevendMarkeringStore";
 
 interface Props {
@@ -30,10 +31,13 @@ export default function MaatgevendMarkering({ nodes, beams, worldToScreen, activ
   const punt = puntOpStaaf(beams.find((b) => b.id === m.beamId), nodes, m.positieMm);
   if (!punt) return null;
   const p = worldToScreen(punt.x, punt.z);
-  const tekst = t("maatgevend.markering", {
-    x: m.positieMm.toLocaleString("nl-NL", { maximumFractionDigits: 0 }),
-    combinatie: m.combinatieId,
-  });
+  const x = m.positieMm.toLocaleString("nl-NL", { maximumFractionDigits: 0 });
+  // Een afgeleide combinatie (scheefstand, eindtoestand) heeft een verschoven id
+  // dat de gebruiker niet kent; dan alleen de maat. Het tekenvlak toont de
+  // combinatie zelf al.
+  const tekst = isAfgeleideCombinatie(m.combinatieId)
+    ? t("maatgevend.markeringZonderCombinatie", { x })
+    : t("maatgevend.markering", { x, combinatie: m.combinatieId });
   const breedte = tekst.length * 6.4 + 14;
   return (
     <g className="fem-maatgevend-markering" pointerEvents="none">
