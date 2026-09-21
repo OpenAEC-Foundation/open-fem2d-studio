@@ -661,6 +661,10 @@ const ALLEEN_BRON = new Map([
     "tekenrichting",
     "stuurt dezelfde constructie in beide tekenrichtingen door de hele toetsketen en eist gelijke uitkomsten plus de handberekening: de grens `lib/referentierichting.ts`, de invoerbouwers voor staal en beton, de dekkingslijnbouwer, en de toetsbrug als apart proces voor de echte EN 1992- en EN 1993-kern. De toetsbrug hoort niet in de sidecarbundel, en de betonbouwer met zijn korven staat buiten de barrel; tegen de bundel zou de test juist de kernen overslaan die de wereldtermen in de afleiding zetten",
   ],
+  [
+    "kipsteunen-tekenvlak",
+    "issue #40: houdt de kipsteunen die het tekenvlak toont (`lib/kipsteunBeeld.ts`, buiten de barrel — het is een weergavemodule) tegen de `lateral_bracing`, de `ltb_segment_length_m` en de `staafeinden` die de staal- en de houtbouwer in de toetsinvoer zetten, en in het slotblok tegen de L_st en de l_ef die de echte EN 1993- en EN 1995-kern via de toetsbrug (apart proces) rapporteren. De gedeelde afleiding `lib/kipsteunen.ts` zit via de bouwers wél in de bundel; dat de bundelinvoer er niet door verandert, bewaken de bestaande bundeltests van de bouwers",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────
