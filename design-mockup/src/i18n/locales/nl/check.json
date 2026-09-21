@@ -1428,5 +1428,43 @@
     "krachtregel": "Combinatie {{combinatie}} — elementgemiddelde spanningen in het vlak; het element staat in de toelichting",
     "overgeslagenTitel": "Overgeslagen platen",
     "wapening": "Benodigde wapening (bijlage F): x tot {{x}} kN/m (element {{ex}}), z tot {{z}} kN/m (element {{ez}}) — zie toetsen en niet-getoetste onderdelen voor de aanwezige wapening"
+  },
+  "maatgevend": {
+    "label": "maatgevend",
+    "geen": "Geen toets met een unity check — er is niets maatgevend",
+    "combinatie": "comb. {{id}}",
+    "combinatieMetNaam": "comb. {{id}} ({{naam}})",
+    "combinatieNaam": "comb. {{naam}}",
+    "positie": "x = {{x}} mm",
+    "element": "element {{id}}",
+    "toonOpTekenvlak": "Toon op het tekenvlak: deze combinatie, met de positie gemarkeerd",
+    "markering": "maatgevend: x = {{x}} mm, comb. {{combinatie}}",
+    "markeringZonderCombinatie": "maatgevend: x = {{x}} mm",
+    "lijstTitel": "Alle toetsen",
+    "volgorde": "Volgorde",
+    "volgordeUc": "unity check, hoog naar laag",
+    "volgordeNorm": "normvolgorde",
+    "nvt": "n.v.t. / niet getoetst",
+    "geenUc": "geen unity check",
+    "teltNietMee": "telt niet mee als maatgevend",
+    "nietMeeVoet_one": "{{count}} toets zonder unity check (n.v.t. of niet getoetst) telt niet mee als maatgevend; de reden staat erbij.",
+    "nietMeeVoet_other": "{{count}} toetsen zonder unity check (n.v.t. of niet getoetst) tellen niet mee als maatgevend; de reden staat erbij.",
+    "modelTitel": "Maatgevend in het model",
+    "naarOnderdeel": "Ga naar {{onderdeel}}",
+    "zonderMaatgevend_one": "{{count}} onderdeel heeft geen toets met een unity check en doet hier niet mee.",
+    "zonderMaatgevend_other": "{{count}} onderdelen hebben geen toets met een unity check en doen hier niet mee.",
+    "klasse": {
+      "goed": "voldoet",
+      "letop": "let op, boven 0,90",
+      "overschreden": "overschreden"
+    },
+    "soort": {
+      "staal": "Staal",
+      "hout": "Hout",
+      "clt": "Kruislaaghout",
+      "beton": "Beton",
+      "spanning": "Vrij materiaal",
+      "plaat": "Platen"
+    }
   }
 }

@@ -37,6 +37,7 @@ import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } fr
 import BarPropertiesDialog from "./BarPropertiesDialog";
 import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
+import MaatgevendMarkering from "./MaatgevendMarkering";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 
 // Doorsnedenaam en begin-/eindmaten van een verlopende staaf: dezelfde
@@ -4394,6 +4395,16 @@ export default function FemCanvas(props: FemCanvasProps) {
               );
             })}
           </g>
+        )}
+        {/* De maatgevende positie die het toetsingspaneel aanwijst (issue #41):
+            alleen bij de combinatie waarbij zij hoort. */}
+        {showLoads && perCase && !solverBusy && !solveError && (
+          <MaatgevendMarkering
+            nodes={nodes}
+            beams={beams}
+            worldToScreen={worldToScreen}
+            activeCombinationId={activeCombinationId}
+          />
         )}
         {/* Plaattoets: per plaat de maatgevende UC in het zwaartepunt van de
             getoetste elementen (bovenop, net als de staafbadges). */}

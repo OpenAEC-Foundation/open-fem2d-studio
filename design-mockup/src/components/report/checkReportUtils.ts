@@ -646,6 +646,14 @@ export const CHECK_REPORT_CSS = `
 
 .rpt-gov-formula .katex { font-size: 1.05em; }
 
+/* Combinatie en positie van de maatgevende toets (issue #41). */
+.rpt-gov-herkomst {
+  font-size: calc(var(--rpt-basis) * 0.8);
+  color: #444;
+  margin-top: 0.5mm;
+  font-variant-numeric: tabular-nums;
+}
+
 .rpt-status-na { color: #555; }
 
 .rpt-check-basis { margin-top: 3mm; }

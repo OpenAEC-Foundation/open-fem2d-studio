@@ -438,3 +438,317 @@
 .cp-export-btn:disabled { opacity: .55; cursor: default; }
 .cp-provenance { padding: 6px 12px; font-size: 11px; color: var(--theme-text-muted); }
 .properties-check-toggle { display: flex; justify-content: space-between; width: 100%; margin-bottom: 8px; }
+
+/* ── Wat maatgevend is (issue #41) ───────────────────────────────────────
+   Het onderscheid hangt nooit alleen aan kleur: de maatgevende toets draagt
+   het woord "maatgevend", elke UC-klasse een eigen teken (✓ ! ✗) en een
+   overschrijding een gearceerd balkje. De kleuren zijn de drie die het
+   paneel al gebruikt (.cp-uc-ok / -warn / -fail). */
+
+.cp-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.cp-maatgevend-label {
+  display: inline-block;
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--theme-accent);
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--theme-accent);
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+/* De samenvattingsregel onder de kop van een kaart. */
+.cp-maatgevend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 14px 6px 36px;
+  border: none;
+  border-top: 1px solid var(--theme-border);
+  background: none;
+  color: var(--theme-text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+}
+
+.cp-maatgevend .cp-maatgevend-label { margin-left: 0; }
+.cp-maatgevend-knop { cursor: pointer; }
+.cp-maatgevend-knop:hover { background: var(--theme-hover, rgba(0, 0, 0, 0.04)); }
+.cp-maatgevend-knop:focus-visible,
+.cp-model-top:focus-visible,
+.cp-model-soort:focus-visible,
+.cp-toetsregel-toon:focus-visible,
+.cp-volgorde-knop:focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: -2px;
+}
+
+.cp-maatgevend-leeg { color: var(--theme-text-muted); font-style: italic; }
+.cp-maatgevend-tekst { flex: 1 1 auto; min-width: 0; }
+.cp-maatgevend-titel { font-weight: 600; }
+.cp-maatgevend-artikel { color: var(--theme-text-muted); }
+.cp-maatgevend-herkomst {
+  color: var(--theme-text-muted);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+}
+.cp-maatgevend-pijl { flex: 0 0 auto; color: var(--theme-accent); font-size: 14px; line-height: 1; }
+
+/* Het balkje: spoor 0–1,5 met een streepje op UC = 1,0. */
+.cp-ucbalk {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 84px;
+  height: 8px;
+  border: 1px solid var(--theme-border);
+  border-radius: 2px;
+  background: var(--theme-hover, rgba(0, 0, 0, 0.05));
+  overflow: visible;
+}
+
+.cp-ucbalk-vulling {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 1px;
+}
+
+.cp-ucbalk-goed .cp-ucbalk-vulling { background: #16a34a; }
+.cp-ucbalk-letop .cp-ucbalk-vulling { background: var(--theme-accent); }
+/* Overschreden: gearceerd, zodat het ook zonder kleur anders is. */
+.cp-ucbalk-overschreden .cp-ucbalk-vulling {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--theme-danger-color, #dc2626) 0 4px,
+    rgba(220, 38, 38, 0.45) 4px 7px
+  );
+}
+
+.cp-ucbalk-grens {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 0;
+  border-left: 1.5px solid var(--theme-text);
+}
+
+.cp-ucbalk-afgekapt {
+  position: absolute;
+  right: -9px;
+  top: -6px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  color: var(--theme-danger-color, #dc2626);
+}
+
+.cp-ucwaarde {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: right;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cp-ucwaarde-goed { color: #16a34a; }
+.cp-ucwaarde-letop { color: var(--theme-accent); }
+.cp-ucwaarde-overschreden { color: var(--theme-danger-color, #dc2626); }
+
+/* De lijst van alle toetsen in een opengeklapte kaart. */
+.cp-toetslijst {
+  margin: 10px 0 4px;
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  background: var(--theme-surface);
+}
+
+.cp-toetslijst-kop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--theme-border);
+  font-size: 11.5px;
+}
+
+.cp-toetslijst-titel { flex: 1 1 auto; font-weight: 600; }
+.cp-toetslijst-volgorde { display: inline-flex; align-items: center; gap: 4px; }
+.cp-toetslijst-volgorde-label { color: var(--theme-text-muted); }
+
+.cp-volgorde-knop {
+  padding: 2px 8px;
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  background: none;
+  color: var(--theme-text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.cp-volgorde-knop.actief {
+  border-color: var(--theme-accent);
+  color: var(--theme-text);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.cp-toetslijst-regels { list-style: none; margin: 0; padding: 0; }
+
+.cp-toetsregel {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--theme-border);
+  border-left: 3px solid transparent;
+  font-size: 11.5px;
+}
+
+.cp-toetsregel:last-child { border-bottom: none; }
+
+.cp-toetsregel-maatgevend {
+  border-left-color: var(--theme-accent);
+  background: var(--theme-accent-soft, rgba(217, 119, 6, 0.08));
+}
+
+.cp-toetsregel-maatgevend .cp-toetsregel-naam { font-weight: 700; }
+.cp-toetsregel-nietmee { color: var(--theme-text-muted); }
+
+.cp-toetsregel-hoofd { display: flex; align-items: center; gap: 8px; }
+.cp-toetsregel-naam { flex: 1 1 auto; min-width: 0; }
+.cp-toetsregel-artikel { color: var(--theme-text-muted); font-weight: 400; }
+.cp-toetsregel-geenuc { flex: 0 0 auto; font-style: italic; text-align: right; }
+
+.cp-toetsregel-herkomst {
+  margin-top: 1px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10.5px;
+  color: var(--theme-text-muted);
+}
+
+.cp-toetsregel-toon {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  background: none;
+  color: var(--theme-accent);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.cp-toetsregel-toon:hover { border-color: var(--theme-accent); }
+
+.cp-toetsregel-redenen {
+  margin: 3px 0 1px;
+  padding-left: 16px;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.cp-toetslijst-voet {
+  padding: 5px 10px;
+  border-top: 1px solid var(--theme-border);
+  font-size: 11px;
+  color: var(--theme-text-muted);
+}
+
+.check-block-maatgevend { border-left-width: 5px; }
+
+/* Het maatgevende onderdeel van het hele model, bovenaan het paneel. */
+.cp-model {
+  margin: 0 0 12px;
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  background: var(--theme-surface);
+  overflow: hidden;
+}
+
+.cp-model-titel {
+  padding: 6px 12px 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--theme-text-muted);
+}
+
+.cp-model-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 12px 8px;
+  border: none;
+  background: none;
+  color: var(--theme-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cp-model-top:hover,
+.cp-model-soort:hover { background: var(--theme-hover, rgba(0, 0, 0, 0.04)); }
+
+.cp-model-object {
+  flex: 0 0 auto;
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight: 700;
+}
+
+.cp-model-soorten {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--theme-border);
+}
+
+.cp-model-soort {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 12px;
+  border: none;
+  background: none;
+  color: var(--theme-text);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cp-model-soort-naam { flex: 0 0 96px; color: var(--theme-text-muted); }
+.cp-model-soort-object { flex: 0 0 72px; font-family: ui-monospace, Consolas, monospace; }
+.cp-model-soort-toets { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cp-model-voet {
+  padding: 5px 12px;
+  border-top: 1px solid var(--theme-border);
+  font-size: 11px;
+  color: var(--theme-text-muted);
+}

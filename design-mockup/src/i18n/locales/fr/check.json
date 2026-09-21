@@ -1428,5 +1428,43 @@
     "krachtregel": "Combinaison {{combinatie}} — contraintes moyennes par élément dans le plan ; l'élément figure dans les remarques",
     "overgeslagenTitel": "Plaques ignorées",
     "wapening": "Armatures nécessaires (annexe F) : x jusqu'à {{x}} kN/m (élément {{ex}}), z jusqu'à {{z}} kN/m (élément {{ez}}) — pour les armatures en place, voir les vérifications et les points non vérifiés"
+  },
+  "maatgevend": {
+    "label": "déterminant",
+    "geen": "Aucune vérification avec taux de travail — rien n'est déterminant",
+    "combinatie": "comb. {{id}}",
+    "combinatieMetNaam": "comb. {{id}} ({{naam}})",
+    "combinatieNaam": "comb. {{naam}}",
+    "positie": "x = {{x}} mm",
+    "element": "élément {{id}}",
+    "toonOpTekenvlak": "Afficher sur le plan : cette combinaison, avec la position marquée",
+    "markering": "déterminant : x = {{x}} mm, comb. {{combinatie}}",
+    "markeringZonderCombinatie": "déterminant : x = {{x}} mm",
+    "lijstTitel": "Toutes les vérifications",
+    "volgorde": "Ordre",
+    "volgordeUc": "taux de travail, décroissant",
+    "volgordeNorm": "ordre de la norme",
+    "nvt": "s.o. / non vérifié",
+    "geenUc": "pas de taux de travail",
+    "teltNietMee": "ne compte pas comme déterminant",
+    "nietMeeVoet_one": "{{count}} vérification sans taux de travail (s.o. ou non vérifiée) ne compte pas comme déterminante ; la raison est indiquée.",
+    "nietMeeVoet_other": "{{count}} vérifications sans taux de travail (s.o. ou non vérifiées) ne comptent pas comme déterminantes ; la raison est indiquée.",
+    "modelTitel": "Déterminant dans le modèle",
+    "naarOnderdeel": "Aller à {{onderdeel}}",
+    "zonderMaatgevend_one": "{{count}} élément n'a aucune vérification avec taux de travail et n'est pas pris en compte ici.",
+    "zonderMaatgevend_other": "{{count}} éléments n'ont aucune vérification avec taux de travail et ne sont pas pris en compte ici.",
+    "klasse": {
+      "goed": "vérifié",
+      "letop": "attention, au-dessus de 0,90",
+      "overschreden": "dépassé"
+    },
+    "soort": {
+      "staal": "Acier",
+      "hout": "Bois",
+      "clt": "Bois lamellé-croisé",
+      "beton": "Béton",
+      "spanning": "Matériau libre",
+      "plaat": "Plaques"
+    }
   }
 }

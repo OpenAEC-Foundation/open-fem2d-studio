@@ -1428,5 +1428,43 @@
     "krachtregel": "Combination {{combinatie}} — element-averaged in-plane stresses; the element is named in the notes",
     "overgeslagenTitel": "Skipped plates",
     "wapening": "Required reinforcement (annex F): x up to {{x}} kN/m (element {{ex}}), z up to {{z}} kN/m (element {{ez}}) — see checks and unchecked items for the provided reinforcement"
+  },
+  "maatgevend": {
+    "label": "governing",
+    "geen": "No check with a unity check — nothing is governing",
+    "combinatie": "comb. {{id}}",
+    "combinatieMetNaam": "comb. {{id}} ({{naam}})",
+    "combinatieNaam": "comb. {{naam}}",
+    "positie": "x = {{x}} mm",
+    "element": "element {{id}}",
+    "toonOpTekenvlak": "Show on the canvas: this combination, with the position marked",
+    "markering": "governing: x = {{x}} mm, comb. {{combinatie}}",
+    "markeringZonderCombinatie": "governing: x = {{x}} mm",
+    "lijstTitel": "All checks",
+    "volgorde": "Order",
+    "volgordeUc": "unity check, high to low",
+    "volgordeNorm": "code order",
+    "nvt": "n/a / not checked",
+    "geenUc": "no unity check",
+    "teltNietMee": "does not count as governing",
+    "nietMeeVoet_one": "{{count}} check without a unity check (n/a or not checked) does not count as governing; the reason is shown.",
+    "nietMeeVoet_other": "{{count}} checks without a unity check (n/a or not checked) do not count as governing; the reason is shown.",
+    "modelTitel": "Governing in the model",
+    "naarOnderdeel": "Go to {{onderdeel}}",
+    "zonderMaatgevend_one": "{{count}} item has no check with a unity check and is not included here.",
+    "zonderMaatgevend_other": "{{count}} items have no check with a unity check and are not included here.",
+    "klasse": {
+      "goed": "satisfied",
+      "letop": "attention, above 0.90",
+      "overschreden": "exceeded"
+    },
+    "soort": {
+      "staal": "Steel",
+      "hout": "Timber",
+      "clt": "Cross-laminated timber",
+      "beton": "Concrete",
+      "spanning": "Free material",
+      "plaat": "Plates"
+    }
   }
 }
