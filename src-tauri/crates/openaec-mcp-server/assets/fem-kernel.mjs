@@ -14013,6 +14013,83 @@ function alphaCrStaafNotitie(stabiliteit, nEdMinKn, kniklengteYOpgegeven) {
   return `EERSTE ORDE MET \u03B1_cr = ${nl4(laagste.alphaCr ?? NaN)} (combinatie "${laagste.naam}") < ${ALPHA_CR_GRENS_EERSTE_ORDE}: deze staaf staat onder druk en de kniklengte in het vlak valt terug op de systeemlengte. NEN-EN 1993-1-1 5.2.2(7)b staat die terugval alleen toe bij krachten uit een tweede-orde-berekening met imperfecties, en 5.2.1(3) staat eerste orde bij \u03B1_cr < 10 niet toe. De knikweerstand om de y-as hieronder is daarom NIET normconform bepaald: kies tweede orde (P-\u0394) met scheefstand, of geef L_cr,y uit de zijdelingse knikvorm op (5.2.2(8)).`;
 }
 
+// src/lib/kniklengte.ts
+var TOLERANTIE_STEUNPAAR_MM = 1;
+
+// src/lib/kipsteunen.ts
+function sanitizeRestraintFractions(fractions) {
+  if (!Array.isArray(fractions)) return [];
+  return [...new Set(fractions.filter((f) => Number.isFinite(f) && f > 0 && f < 1))].sort((a, b) => a - b);
+}
+var MIN_VELDFRACTIE = 1e-3;
+function kipveldGrenzenMm(lengthMm, fracties) {
+  const tolMm = Math.max(MIN_VELDFRACTIE * Math.abs(lengthMm), 1e-9);
+  const ruw = [
+    0,
+    ...fracties.filter((f) => Number.isFinite(f) && f > MIN_VELDFRACTIE && f < 1 - MIN_VELDFRACTIE).map((f) => f * lengthMm),
+    lengthMm
+  ].sort((a, b) => a - b);
+  const grenzen = [];
+  for (const g of ruw) {
+    if (grenzen.length === 0 || Math.abs(g - grenzen[grenzen.length - 1]) >= tolMm) grenzen.push(g);
+  }
+  return grenzen.length >= 2 ? grenzen : [0, Math.max(lengthMm, 1e-9)];
+}
+function ketting(zijde, grenzenMm) {
+  return {
+    zijde,
+    grenzenMm,
+    lengtesMm: grenzenMm.slice(1).map((g, i) => g - grenzenMm[i])
+  };
+}
+function kipsteunenVanStaaf(cfg, lengthMm, soort) {
+  const boven = sanitizeRestraintFractions(cfg?.lateralRestraints);
+  const onder = sanitizeRestraintFractions(cfg?.lateralRestraintsBottom);
+  const afstandM = Number.isFinite(cfg?.ltbSupportSpacing_m) && cfg?.ltbSupportSpacing_m > 0 ? cfg?.ltbSupportSpacing_m : 0;
+  const uit = {
+    lateral_bracing: { top_flange_positions: boven, bottom_flange_positions: onder },
+    ltb_segment_length_m: afstandM,
+    steunen: [],
+    kettingen: []
+  };
+  if (!(Number.isFinite(lengthMm) && lengthMm > 0)) return uit;
+  const onderGebruikt = onder.map(() => false);
+  for (const f of boven) {
+    const j = onder.findIndex(
+      (g, i) => !onderGebruikt[i] && Math.abs(f - g) * lengthMm <= TOLERANTIE_STEUNPAAR_MM
+    );
+    if (j >= 0) onderGebruikt[j] = true;
+    uit.steunen.push({ fractie: f, xMm: f * lengthMm, flens: j >= 0 ? "beide" : "boven", herkomst: "positie" });
+  }
+  onder.forEach((f, i) => {
+    if (!onderGebruikt[i]) uit.steunen.push({ fractie: f, xMm: f * lengthMm, flens: "onder", herkomst: "positie" });
+  });
+  if (soort === "staal") {
+    const gBoven = kipveldGrenzenMm(lengthMm, boven);
+    const gOnder = kipveldGrenzenMm(lengthMm, onder);
+    const gelijk2 = gBoven.length === gOnder.length && gBoven.every((g, i) => Math.abs(g - gOnder[i]) <= TOLERANTIE_STEUNPAAR_MM);
+    if (gelijk2) uit.kettingen.push(ketting("beide", gBoven));
+    else uit.kettingen.push(ketting("boven", gBoven), ketting("onder", gOnder));
+  } else {
+    const afstandMm = afstandM * 1e3;
+    const fracties = [];
+    if (afstandMm > 0) {
+      for (let k = 1; k * afstandMm < lengthMm * (1 - MIN_VELDFRACTIE); k++) {
+        fracties.push(k * afstandMm / lengthMm);
+      }
+    }
+    for (const f of fracties) {
+      uit.steunen.push({ fractie: f, xMm: f * lengthMm, flens: "gedrukt", herkomst: "afstand" });
+    }
+    uit.kettingen.push({
+      ...ketting("kip", kipveldGrenzenMm(lengthMm, fracties)),
+      toetsLengteMm: afstandMm > 0 ? afstandMm : lengthMm
+    });
+  }
+  uit.steunen.sort((a, b) => a.xMm - b.xMm);
+  return uit;
+}
+
 // src/lib/steelCheckBuilder.ts
 function mapDeflectionClass(cls) {
   switch (cls) {
@@ -14030,10 +14107,6 @@ function mapDeflectionClass(cls) {
     default:
       return "Floor";
   }
-}
-function sanitizeRestraintFractions(fractions) {
-  if (!Array.isArray(fractions)) return [];
-  return [...new Set(fractions.filter((f) => Number.isFinite(f) && f > 0 && f < 1))].sort((a, b) => a - b);
 }
 var STEEL_GRADES = ["S235", "S275", "S355", "S420", "S460"];
 function isSteelProfile(profileName) {
@@ -14531,10 +14604,9 @@ function buildSteelCheckInputs(ruweData) {
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1e3,
       forces_envelope: forcesEnvelope,
-      lateral_bracing: {
-        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
-        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom)
-      },
+      // Dezelfde afleiding als het tekenvlak toont (`lib/kipsteunen.ts`): wat
+      // hier de kern in gaat, staat als symbool op de staaf.
+      lateral_bracing: kipsteunenVanStaaf(cfg, lengthMm, "staal").lateral_bracing,
       // Bij een staande staaf noemt de kern de boven- en onderflens in
       // wereldtermen (links en rechts); weglaten betekent liggend.
       ...referentieVanStaaf(beam, data.nodes).staafstand === "Staand" ? { staafstand: "Staand" } : {},
@@ -14938,6 +15010,7 @@ function buildTimberCheckInputs(ruweData) {
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
     const doorbuiging = houtDoorbuigingsInvoer(beam, data);
     const cfg = beam.checkConfig ?? {};
+    const kip = kipsteunenVanStaaf(cfg, lengthMm, "hout");
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
     const kCr = kCrUitConfig(cfg);
     if ("fout" in kCr) {
@@ -15011,10 +15084,7 @@ function buildTimberCheckInputs(ruweData) {
       // Zijdelingse steunen per rand — ALLEEN voor de kniklengte om z. Dezelfde
       // twee lijsten als bij staal (boven = bovenrand, onder = onderrand). De
       // kipsteunafstand hieronder blijft er uitdrukkelijk los van.
-      lateral_bracing: {
-        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
-        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom)
-      },
+      lateral_bracing: kip.lateral_bracing,
       // Kipsteunafstand voor tabel 6.1; 0 → staaflengte.
       //
       // Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt
@@ -15040,7 +15110,10 @@ function buildTimberCheckInputs(ruweData) {
       // het andere (leeg, 0, negatief, NaN) wordt 0 en dan neemt de kern de
       // staaflengte — de veilige kant, want de volle lengte geeft de laagste
       // σ_m,crit.
-      ltb_segment_length_m: Number.isFinite(cfg.ltbSupportSpacing_m) && cfg.ltbSupportSpacing_m > 0 ? cfg.ltbSupportSpacing_m : 0,
+      //
+      // De waarde komt uit `lib/kipsteunen.ts`, dezelfde afleiding als het
+      // tekenvlak toont (issue #40).
+      ltb_segment_length_m: kip.ltb_segment_length_m,
       ltb_load_case: "UniformLoad",
       // Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a): aan de
       // drukzijde l_ef + 2h, aan de trekzijde l_ef − 0,5h. Leeg = zwaartepunt,
