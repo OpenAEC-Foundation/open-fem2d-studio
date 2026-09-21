@@ -616,22 +616,31 @@ function App() {
   const confirmUnsavedAction = useCallback(async (): Promise<boolean> => {
     if (!isDirtyRef.current) return true;
     if (isTauriApp()) {
-      const { ask, confirm } = await import("@tauri-apps/plugin-dialog");
-      const wantsSave = await ask(t("unsaved.askSave"), {
-        title: t("unsaved.title"),
-        kind: "warning",
-        okLabel: t("unsaved.saveBtn"),
-        cancelLabel: t("unsaved.dontSaveBtn"),
-      });
-      if (wantsSave) return handleSaveProject();
-      // "Niet opslaan" → één extra bevestiging zodat Esc of een misklik geen
-      // werk weggooit.
-      return confirm(t("unsaved.confirmDiscard"), {
-        title: t("unsaved.title"),
-        kind: "warning",
-        okLabel: t("unsaved.proceedBtn"),
-        cancelLabel: t("unsaved.cancelBtn"),
-      });
+      // Faalt de native dialoog (bv. een JS-plugin die een commando aanroept
+      // dat de Rust-plugin niet kent), dan mag dat de gebruiker niet in de app
+      // opsluiten: zonder vangnet breekt onCloseRequested af vóór destroy() en
+      // doet het kruisje niets. Dan vragen we het met de webview-dialoog.
+      try {
+        const { ask, confirm } = await import("@tauri-apps/plugin-dialog");
+        const wantsSave = await ask(t("unsaved.askSave"), {
+          title: t("unsaved.title"),
+          kind: "warning",
+          okLabel: t("unsaved.saveBtn"),
+          cancelLabel: t("unsaved.dontSaveBtn"),
+        });
+        if (wantsSave) return handleSaveProject();
+        // "Niet opslaan" → één extra bevestiging zodat Esc of een misklik geen
+        // werk weggooit.
+        return await confirm(t("unsaved.confirmDiscard"), {
+          title: t("unsaved.title"),
+          kind: "warning",
+          okLabel: t("unsaved.proceedBtn"),
+          cancelLabel: t("unsaved.cancelBtn"),
+        });
+      } catch (error) {
+        console.error("native dialoog voor niet-opgeslagen werk faalde", error);
+        return window.confirm(t("unsaved.confirmDiscard"));
+      }
     }
     // Browser-fallback: window.confirm kent maar twee knoppen.
     return window.confirm(t("unsaved.confirmDiscard"));

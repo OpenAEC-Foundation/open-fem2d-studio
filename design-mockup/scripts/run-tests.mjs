@@ -368,6 +368,7 @@ const ALLEEN_BRON = new Map([
   ["beton-bediening-ui", "React-interactie voor wapeningsselectie, sleepvoorbeelden en doorsnedebediening in Chromium; geen sidecarcode."],
   ["reken-ui", "React-interactie voor resultaatselectie, meldingen en het toetsingspaneel; geen sidecarcode."],
   ["rekengang-generatie", "Asynchrone rekenregie van de app met afgeschermde React- en native IO-grenzen; niet beschikbaar in de sidecarbundel."],
+  ["tauri-plugin-versies", "Vergelijkt package-lock.json met Cargo.lock en leest App.tsx; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["window-controls", "Echte React-titelbalk en native IPC-grens in Chromium, met de Tauri-windowcapability; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["beton-ui", "Echte React-interactie, async-resultaatverversing en containerlayout in Chromium; geen solverwijziging."],
   ["plaat-wapening-ui", "React/CSS-browsertests voor bereikbare wandwapeningsvelden, veldvalidatie en responsieve indeling."],
