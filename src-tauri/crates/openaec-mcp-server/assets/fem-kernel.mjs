@@ -21553,7 +21553,7 @@ function deserializeProject(text) {
 }
 
 // package.json
-var version = "0.3.12";
+var version = "0.3.15";
 
 // src/mcp/fouten.ts
 var AFBEELDINGEN = [
