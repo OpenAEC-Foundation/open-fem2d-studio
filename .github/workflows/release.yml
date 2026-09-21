@@ -109,12 +109,19 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      # De MCP-server gaat als losse binary mee in de installer (externalBin in
+      # src-tauri/tauri.bundel.conf.json). Tauri eist dat hij vóór de build klaarstaat
+      # als binaries/openaec-mcp-server-<triple>; op macOS voegt het script de twee
+      # architecturen samen met lipo.
+      - name: Build MCP-server (meegeleverd in de installer)
+        run: node scripts/mcp-sidecar.mjs --target ${{ matrix.rust-target }}
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: --target ${{ matrix.rust-target }} --bundles ${{ matrix.bundles }}
+          args: --target ${{ matrix.rust-target }} --bundles ${{ matrix.bundles }} --config src-tauri/tauri.bundel.conf.json
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

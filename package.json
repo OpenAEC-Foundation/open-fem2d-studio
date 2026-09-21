@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "mcp:sidecar": "node scripts/mcp-sidecar.mjs",
+    "tauri:build": "node scripts/mcp-sidecar.mjs && tauri build --config src-tauri/tauri.bundel.conf.json"
   },
   "dependencies": {
     "@openaec/design-tokens": "file:vendor/openaec-style-book/packages/tokens",

@@ -6,34 +6,64 @@ Claude Code, etc.). It speaks JSON-RPC 2.0 over stdio and wraps the same
 Rust crates the Tauri desktop app uses, so a tool call from Claude returns
 byte-identical results to clicking through the UI.
 
-The tools, in five groups (the exact roster is pinned by
+The 41 tools, in seven groups (the exact roster is pinned by
 `tests/stdio_roundtrip.rs` and `tests/drie_wegen_kruistabel.rs`):
 
 | group | tools |
 |---|---|
 | steel — EN 1993-1-1 | `list_steel_profiles`, `list_steel_grades`, `check_steel_beam`, `compute_section_properties` |
-| timber — EN 1995-1-1 | `list_timber_grades`, `check_timber_beams`, `list_clt_presets`, `check_clt_beams` |
-| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `check_concrete_beam`, `concrete_mn_kappa`, `concrete_segment_stiffness`, `concrete_dekkingslijn`, `concrete_effective_flange_width`, `list_exposure_classes`, `concrete_cover_check` |
+| timber and CLT — EN 1995-1-1 | `list_timber_grades`, `check_timber_beams`, `list_clt_presets`, `check_clt_beams` |
+| concrete — EN 1992-1-1 | `list_concrete_classes`, `list_reinforcement_grades`, `list_exposure_classes`, `check_concrete_beam`, `concrete_column_check`, `concrete_mn_kappa`, `concrete_segment_stiffness`, `concrete_dekkingslijn`, `concrete_effective_flange_width`, `concrete_cover_check`, `concrete_creep_coefficient` |
+| plates (wall plates loaded in their plane) | `check_plates` |
 | 2D FEM solver | `fem_solver_status`, `validate_fem_model`, `load_fem_project`, `solve_fem_model`, `check_fem_model` |
 | reporting | `generate_steel_report_pdf` |
+| driving the running app | fifteen `gui_*` tools, see the last section |
 
 `generate_steel_report_pdf` sits in its own group on purpose: the name is
 historical, but the report carries steel, timber, cross-laminated timber,
-concrete and the norm-independent stress check. Filing it under steel would
-suggest it only renders EN 1993-1-1.
+concrete, plates and the norm-independent stress check. Filing it under steel
+would suggest it only renders EN 1993-1-1.
+
+**Belastingen.** Er is geen losse tool "last toevoegen": lasten horen bij het
+model. `solve_fem_model` en `check_fem_model` nemen `loadCases`, `loads` en
+(optioneel) `combinations` mee in het verzoek; `gui_build_model` bouwt ze in de
+draaiende app op. Een last erbij betekent het model opnieuw sturen.
 
 **De drie wegen.** Elke rekenkern in dit project hoort langs drie wegen
 bereikbaar te zijn: een Tauri-command (de desktop-app), een opdracht in
-`crates/toetsbrug` (de dev-server) en deze MCP-server. Voor beton bestonden
-alleen de eerste twee; sinds september 2026 is de derde er ook.
-`tests/drie_wegen_beton.rs` stuurt dezelfde JSON door alle drie de wegen en
-eist dat de antwoorden veld voor veld gelijk zijn. Voor staal bestaat zo'n
-vergelijking nog niet.
+`crates/toetsbrug` (de dev-server) en deze MCP-server.
+`tests/drie_wegen_kruistabel.rs` bewaakt dat geen kern een weg mist; de
+`tests/drie_wegen_*.rs` sturen per kern (beton, hout, kolom, dekking,
+dekkingslijn, kruip, plaat, nationale bijlage, …) dezelfde JSON door alle drie
+de wegen en eisen dat de antwoorden veld voor veld gelijk zijn. Voor staal
+bestaat zo'n vergelijking nog niet.
 
-Not exposed: timber (EN 1995), cross-laminated timber, the free stress check,
-fillet welds — die zijn wel via de Tauri-commands en de toetsbrug bereikbaar.
+Not exposed: the free stress check (von Mises against an allowable stress) and
+fillet welds — both are reachable through the Tauri commands and the toetsbrug.
 
-## Build
+## Get the binary
+
+**With the installer (from version 0.3.15).** The desktop installers ship the
+server next to the app, so no Rust toolchain is needed:
+
+| platform | path |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Open FEM2D Studio\openaec-mcp-server.exe` |
+| macOS | `/Applications/Open FEM2D Studio.app/Contents/MacOS/openaec-mcp-server` |
+| Linux (.deb) | `/usr/bin/openaec-mcp-server` |
+
+It is wired in through `bundle.externalBin` in `src-tauri/tauri.bundel.conf.json`,
+which only the release build passes (`npm run tauri:build`, and the release
+workflow). `scripts/mcp-sidecar.mjs` builds the server first and puts it in
+`src-tauri/binaries/` under the target triple Tauri asks for; `tauri dev` and
+`cargo check` do not need it.
+
+The check tools run entirely inside the binary. The **FEM tools**
+(`solve_fem_model`, `check_fem_model`, …) run the solver bundle in a Node
+sidecar and need **Node ≥ 20** on the PATH; `fem_solver_status` says whether
+that chain is complete, and the other tools keep working without it.
+
+## Build from source
 
 The server lives in the same Cargo workspace as the rest of OpenAEC.
 
@@ -60,7 +90,7 @@ Add an entry to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "openaec-fem": {
-      "command": "C:\\Users\\you\\path\\to\\target\\release\\openaec-mcp-server.exe"
+      "command": "C:\\Users\\you\\AppData\\Local\\Open FEM2D Studio\\openaec-mcp-server.exe"
     }
   }
 }
@@ -71,8 +101,12 @@ The config file lives at:
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Restart Claude Desktop after editing. All fourteen tools should appear in
-the tools picker.
+Restart Claude Desktop after editing. All 41 tools should appear in the tools
+picker. For Claude Code:
+
+```bash
+claude mcp add openaec-fem -- "C:\Users\you\AppData\Local\Open FEM2D Studio\openaec-mcp-server.exe"
+```
 
 To raise the log level (logs go to **stderr** so they never collide with
 JSON-RPC traffic on stdout), set the env var `OPENAEC_MCP_LOG=debug`:
@@ -293,11 +327,19 @@ and takes one beam, exactly like `check_steel_beam`; the other two ways take a
 list. Input and output types are identical (`ConcreteBeamCheckInput` /
 `ConcreteBeamCheckResult`, `MnKappaRequest` / `MnKappaResponse`).
 
-Scope today: a rectangular section `b × h` with a cage (cover, stirrup, one top
-row and one bottom row), checked for bending with the rectangular stress block
-(§3.1.7(3)) and for bending **with axial force** through the M-N-κ relation,
-including the minimum eccentricity of §6.1(4). **Not** included: shear, torsion,
-crack width, deflection, second-order effects.
+Scope today: a rectangular, T- or L-section with a cage that may vary along the
+member (`reinforcement_zones`). `check_concrete_beam` runs fifteen checks:
+bending with the rectangular stress block (§3.1.7(3)), bending **with axial
+force** through the M-N-κ relation including the minimum eccentricity of
+§6.1(4), shear (§6.2), minimum reinforcement and crack width (§7.3.2, §7.3.4)
+under the frequent combination, the span/depth ratio (§7.4.2) and nine
+detailing rules (§9.2.1, §9.2.2, §8.2). A check whose input is missing comes
+back `NotApplicable` with the reason; it is never silently dropped. Next to it:
+`concrete_column_check` (§5.8 slenderness gate and column detailing),
+`concrete_cover_check` (§4.4.1 with the national annex),
+`concrete_creep_coefficient` (annex B) and `concrete_segment_stiffness` (secant
+stiffness for the physically non-linear second-order analysis). **Not**
+included: torsion and punching.
 
 ### `list_concrete_classes` / `list_reinforcement_grades`
 
@@ -484,24 +526,17 @@ silently. The steel and concrete check tools run entirely in Rust, so
 
 ## Known limitations
 
-- **`check_fem_model` checks steel only.** The solve covers every beam —
-  `resolveSection` knows concrete (E_cm on an uncracked rectangular section) and
-  timber, so those beams do carry their share of the force distribution. The
-  *check* afterwards is `steel_check::check_all_beams` and nothing else.
-  Every requested beam therefore ends up in `results` or in `skipped_beams`
-  with a reason, never in neither: concrete beams point to
-  `check_concrete_beam`, timber beams to `check_timber_beams` /
-  `check_clt_beams`, and anything else that was not recognised as steel says
-  so. Always read `skipped_beams`, and never read `governing` as a verdict on a
-  mixed model.
-- **Concrete cages are not part of the model.** The `.ifcfem2d` model shape this
-  server accepts has no cage fields in `checkConfig` (the sidecar's field gate
-  rejects unknown ones), so a project saved with reinforcement cages is refused
-  by `validate_fem_model` / `solve_fem_model` / `check_fem_model` on those
-  fields. Feed the cage to `check_concrete_beam` directly instead.
-- **Concrete scope**: rectangular sections with one top and one bottom
-  reinforcement row; bending and bending-with-axial-force only. No shear, no
-  torsion, no crack width, no deflection, no second-order effects.
+- **`check_fem_model` does not check concrete members.** Steel lands in
+  `results`, timber in `timber_results`, cross-laminated timber in
+  `clt_results` and wall plates in `plate_results`. A concrete member is solved
+  with the rest of the model but comes back in `skipped_beams` with a pointer
+  to `check_concrete_beam`. Every requested member is in exactly one of those
+  lists, never in none: always read `skipped_beams`, `skipped_plates` and the
+  `FOUT:` lines in `warnings`, and never read `governing` as a verdict on a
+  model with concrete in it.
+- **Plates**: what the membrane model cannot support is reported as not checked
+  with a reason (`niet_getoetst`), not left out — tension perpendicular to the
+  grain, cross-laminated timber as a plate, buckling without `plooi` input.
 - **CHS section properties**: `compute_section_properties` returns the
   catalogue values for CHS profiles because no `chs_section_props` analytical
   helper exists in the `section-properties` crate yet.
@@ -519,9 +554,11 @@ silently. The steel and concrete check tools run entirely in Rust, so
 
 ## Roadmap
 
-- **Timber (EN 1995) and CLT** as their own tools, the same way concrete was
-  added: `timber_check` is already a crate and already reachable through the
-  Tauri command and the toetsbrug, so the MCP way is the missing third.
+- ~~**Timber (EN 1995) and CLT** as their own tools.~~ Done:
+  `check_timber_beams`, `check_clt_beams` and both inside `check_fem_model`.
+- **Concrete inside `check_fem_model`**, so a mixed model gets one verdict.
+- **The free stress check and fillet welds** as tools — the two engines that
+  still miss the third way.
 - **A three-ways test for steel**, in the shape of `tests/drie_wegen_beton.rs`.
   Steel is the oldest engine here and the only one without that comparison.
 - ~~**A concrete PDF report tool**, next to `generate_steel_report_pdf`.~~
@@ -531,7 +568,7 @@ silently. The steel and concrete check tools run entirely in Rust, so
 
 ## GUI tools: driving the running desktop app (`gui_*`)
 
-Fourteen tools operate the **running** Open FEM2D Studio desktop app through
+Fifteen tools operate the **running** Open FEM2D Studio desktop app through
 its control channel. They are not engine calls and are therefore outside the
 three-ways rule — they *are* the way to the GUI.
 

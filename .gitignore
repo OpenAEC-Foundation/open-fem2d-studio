@@ -22,3 +22,6 @@ PROMPTS.md
 # blijven ze gewoon staan; wat de repo van die berekeningen nodig heeft, staat
 # als platte tekst een map hoger.
 /verificatie calculations/original/
+
+# Meegeleverde MCP-server voor de installer (scripts/mcp-sidecar.mjs bouwt hem)
+src-tauri/binaries/

@@ -111,8 +111,12 @@ npm --prefix design-mockup install           # de frontend
 
 # vanuit de root:
 npm run tauri:dev     # desktop-app in ontwikkelstand (devserver op poort 1440)
-npm run tauri:build   # installer; bouwt de frontend in design-mockup/ zelf
+npm run tauri:build   # installer; bouwt de frontend, de solverbundel en de MCP-server zelf
 ```
+
+De installer levert de MCP-server mee als `openaec-mcp-server` naast de app (`scripts/mcp-sidecar.mjs`,
+`src-tauri/tauri.bundel.conf.json`); koppelen aan een MCP-client staat in
+[`src-tauri/crates/openaec-mcp-server/README.md`](src-tauri/crates/openaec-mcp-server/README.md).
 
 Voor de browserstand en de testbatterij zijn de release-binaries nodig:
 
