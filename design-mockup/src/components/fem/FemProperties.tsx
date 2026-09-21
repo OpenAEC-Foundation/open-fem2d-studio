@@ -12,6 +12,9 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
+import { parseLength, formatLength, mmToMeters } from "../../lib/lengthInput";
+import LengthInput from "../LengthInput";
+import { CONCRETE_E_CM, resolveSection } from "../../lib/sectionResolver";
 import {
   HERKOMST_KIPSTEUNEN,
   HERKOMST_OPGEGEVEN,
@@ -32,6 +35,7 @@ import {
 // rapport, zodat het paneel geen eigen oordeel velt over wat een geldig
 // materiaal is.
 import { bepaalPlaatStijfheid, plaatMateriaalSoort } from "../../lib/plaatMateriaal";
+import { parsePlooiLengthMm } from "../../lib/plaatPlooi";
 import { CLT_VOORINSTELLINGEN } from "../../lib/cltVoorinstellingen.generated";
 import type { SolverResult } from "./solver/types";
 import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
@@ -56,6 +60,7 @@ import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./Profie
 // solver en de rekenkern gebruiken; zie lib/verloopKeuze.
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import AansluitingKeuze from "./AansluitingKeuze";
+import { PlaatWapeningVenster } from "./PlaatWapeningVenster";
 
 interface SectionProps {
   title: string;
@@ -450,7 +455,8 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   const material = beam.material ?? "S235";
   const profile = beam.profile ?? "HEA160";
   const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(material);
-  const isBeton = matchSupportedConcreteClass(material) !== null;
+  const betonklasse = matchSupportedConcreteClass(material);
+  const isBeton = betonklasse !== null;
   // Staalsterkte volgt uit de naam (S235 → 235); voor hout tonen we geen
   // verzonnen getallen — de rekenwaarden komen uit de toetsing zelf.
   const fyStaal = /^S(\d+)$/.exec(material)?.[1];
@@ -576,7 +582,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
       .map((s) => parseFloat(s.replace(",", ".")))
       .filter((v) => Number.isFinite(v) && v > 0 && v < 1)
       .sort((a, b) => a - b);
-  const systeemlengteM = (L / 1000).toFixed(2);
+  const systeemlengteMm = formatLength(L);
   // Wat de kern gaat gebruiken als het veld leeg blijft (zie lib/kniklengte.ts).
   const voorspeldY = voorspelKniklengte(undefined, L);
   const voorspeldZ = voorspelKniklengte(undefined, L, {
@@ -638,44 +644,38 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               test-zwakke-as.mjs tegen de kern houdt. Om z kan dat de afstand
               tussen kipsteunen aan boven- én onderflens zijn; een lege doos
               zou die afleiding verzwijgen. */}
-          <Section title={t("cfg.bucklingTitle")}>
+          {!isBeton && <Section title={t("cfg.bucklingTitle")}>
             <Row label={t("cfg.bucklingInPlane")}>
-              <input
-                type="number" className="fem-prop-input" step="0.1" min="0"
-                placeholder={(voorspeldY.lCrMm / 1000).toFixed(2)}
-                value={cfg.bucklingLengthY_m ?? ""}
-                onChange={(e) => setCfg({
-                  bucklingLengthY_m: e.target.value === "" ? undefined : Number(e.target.value),
-                })}
+              <LengthInput className="fem-prop-input" positive storedUnit="m"
+                placeholder={formatLength(voorspeldY.lCrMm)}
+                value={cfg.bucklingLengthY_m}
+                onChange={v => setCfg({ bucklingLengthY_m: v })}
               />
             </Row>
             <div className="fem-prop-hint">
               {t("cfg.bucklingEmptyIs", {
-                waarde: (voorspeldY.lCrMm / 1000).toFixed(2).replace(".", ","),
+                waarde: formatLength(voorspeldY.lCrMm),
                 herkomst: herkomstTekst(voorspeldY),
               })}
             </div>
             <Row label={t("cfg.bucklingOutOfPlane")}>
-              <input
-                type="number" className="fem-prop-input" step="0.1" min="0"
-                placeholder={(voorspeldZ.lCrMm / 1000).toFixed(2)}
-                value={cfg.bucklingLengthZ_m ?? ""}
-                onChange={(e) => setCfg({
-                  bucklingLengthZ_m: e.target.value === "" ? undefined : Number(e.target.value),
-                })}
+              <LengthInput className="fem-prop-input" positive storedUnit="m"
+                placeholder={formatLength(voorspeldZ.lCrMm)}
+                value={cfg.bucklingLengthZ_m}
+                onChange={v => setCfg({ bucklingLengthZ_m: v })}
               />
             </Row>
             <div className="fem-prop-hint">
               {t("cfg.bucklingEmptyIs", {
-                waarde: (voorspeldZ.lCrMm / 1000).toFixed(2).replace(".", ","),
+                waarde: formatLength(voorspeldZ.lCrMm),
                 herkomst: herkomstTekst(voorspeldZ),
               })}{" "}
               {t("cfg.bucklingOutOfPlaneHint")}
               {isHout && " " + t("props.beam.timberLcrzHint")}
             </div>
-          </Section>
+          </Section>}
 
-          {(
+          {!isBeton && (
             <>
               {/* Sinds september 2026 ook voor hout: de kern leidt L_cr,z af
                   uit plaatsen waar boven- én onderrand gesteund zijn. Voor de
@@ -727,7 +727,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                     {huidig.length > 0 && L > 0 && (
                       <div className="fem-prop-hint">
                         {t("props.beam.bracingPositions", {
-                          posities: huidig.map((f) => ((f * L) / 1000).toFixed(2).replace(".", ",")).join(" · "),
+                          posities: huidig.map((f) => formatLength(f * L)).join(" · "),
                         })}
                       </div>
                     )}
@@ -760,17 +760,14 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
           {isHout && (
             <Section title={t("props.beam.ltbTitle")}>
               <Row label={t("props.beam.ltbSpacing")}>
-                <input
-                  type="number" className="fem-prop-input" step="0.1" min="0"
-                  placeholder={systeemlengteM}
-                  value={cfg.ltbSupportSpacing_m ?? ""}
-                  onChange={(e) => setCfg({
-                    ltbSupportSpacing_m: e.target.value === "" ? undefined : Number(e.target.value),
-                  })}
+                <LengthInput className="fem-prop-input" positive storedUnit="m"
+                  placeholder={systeemlengteMm}
+                  value={cfg.ltbSupportSpacing_m}
+                  onChange={v => setCfg({ ltbSupportSpacing_m: v })}
                 />
               </Row>
               <div className="fem-prop-hint">
-                {t("props.beam.ltbSpacingHint", { lengte: systeemlengteM })}
+                {t("props.beam.ltbSpacingHint", { lengte: systeemlengteMm })}
               </div>
               {/* Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a).
                   Leeg/zwaartepunt = geen correctie; de drukzijde (dak of vloer
@@ -1067,7 +1064,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             <Row label={t("props.beam.standard")}><code>EN 338 / EN 1995-1-1</code></Row>
           ) : (
             <>
-              <Row label="E"><code>210000 N/mm²</code></Row>
+              <Row label="E"><code>{betonklasse ? CONCRETE_E_CM[betonklasse] : resolveSection(material, profile).E} N/mm²</code></Row>
               {fyStaal && <Row label="fy"><code>{fyStaal} N/mm²</code></Row>}
             </>
           )}
@@ -1267,7 +1264,7 @@ function LoadProperties({
   // Plaatlast (randlast of puntlast op een plaatrand): de rand zoals de
   // rekenkern hem leest (`bepaalPlaatlastRand`, van de beginhoek af — ook op
   // de rand van een opening), zodat de
-  // begin-/eind-/positie-invoer in m langs dezelfde as telt als de berekening.
+  // begin-/eind-/positie-invoer in mm langs dezelfde as telt als de berekening.
   // Een ongeldig adres geeft randLen 0; de modelcontrole meldt dat apart.
   const plaat = load.plateId !== undefined ? (plates ?? []).find(p => p.id === load.plateId) : undefined;
   let randLen = 0;
@@ -1282,34 +1279,34 @@ function LoadProperties({
   /** Lengte (mm) van de as waarlangs fracties tellen: de staaf, of de plaatrand. */
   const asLen = beam ? beamLen : randLen;
 
-  // ── Deellast (begin/eind) — invoer in m vanaf de startknoop (staaf) of de
+  // ── Deellast (begin/eind) — invoer in mm vanaf de startknoop (staaf) of de
   //    beginhoek (plaatrand), intern opgeslagen als fracties 0..1
   //    (Load.startFrac/endFrac). ──────────────────────────────────────────
-  const lenM = asLen / 1000;
+  const lenMm = asLen;
   const fracA = Math.min(1, Math.max(0, load.startFrac ?? 0));
   const fracB = Math.min(1, Math.max(0, load.endFrac ?? 1));
-  const [beginStr, setBeginStr] = useState((fracA * lenM).toFixed(2));
-  const [endStr, setEndStr]     = useState((fracB * lenM).toFixed(2));
+  const [beginStr, setBeginStr] = useState(formatLength(fracA * lenMm));
+  const [endStr, setEndStr]     = useState(formatLength(fracB * lenMm));
   useEffect(() => {
-    setBeginStr((Math.min(1, Math.max(0, load.startFrac ?? 0)) * lenM).toFixed(2));
-    setEndStr((Math.min(1, Math.max(0, load.endFrac ?? 1)) * lenM).toFixed(2));
+    setBeginStr(formatLength(Math.min(1, Math.max(0, load.startFrac ?? 0)) * lenMm));
+    setEndStr(formatLength(Math.min(1, Math.max(0, load.endFrac ?? 1)) * lenMm));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load.id, load.startFrac, load.endFrac, lenM]);
-  /** Commit begin/eind (m) → fracties; ongeldig bereik wordt genegeerd
+  }, [load.id, load.startFrac, load.endFrac, lenMm]);
+  /** Commit begin/eind (mm) → fracties; ongeldig bereik wordt genegeerd
    *  (validatie: 0 ≤ begin < eind ≤ L) en de invoer springt terug. */
   const commitRange = (rawBegin: string, rawEnd: string) => {
-    if (!updateLoad || lenM <= 0) return;
-    const b0 = Number(rawBegin), b1 = Number(rawEnd);
+    if (!updateLoad || lenMm <= 0) return;
+    const b0 = parseLength(rawBegin), b1 = parseLength(rawEnd);
     const valid = Number.isFinite(b0) && Number.isFinite(b1)
-      && b0 >= 0 && b0 < b1 && b1 <= lenM + 1e-9;
+      && b0 >= 0 && b0 < b1 && b1 <= lenMm + 1e-9;
     if (!valid) {
       // terugspringen naar de huidige (geldige) waarden
-      setBeginStr((fracA * lenM).toFixed(2));
-      setEndStr((fracB * lenM).toFixed(2));
+      setBeginStr(formatLength(fracA * lenMm));
+      setEndStr(formatLength(fracB * lenMm));
       return;
     }
-    const aF = b0 / lenM;
-    const bF = Math.min(1, b1 / lenM);
+    const aF = b0 / lenMm;
+    const bF = Math.min(1, b1 / lenMm);
     const isFull = aF <= 0 && bF >= 1;
     updateLoad(load.id, {
       startFrac: isFull ? undefined : aF,
@@ -1351,21 +1348,13 @@ function LoadProperties({
           {beam && <Row label={t("props.load.onBeam")}><code>{beam.id} ({beam.from}–{beam.to})</code></Row>}
           {node && <Row label={t("props.load.onNode")}><code>{node.id}</code></Row>}
           {/* Puntlast op een vrije positie op de staaf: positie achteraf
-              bij te stellen, in meters vanaf de startknoop. */}
+              bij te stellen, in millimeters vanaf de startknoop. */}
           {beam && load.type === "pointForce" && load.posFrac !== undefined && beamLen > 0 && (
             <Row label={t("props.load.position")}>
-              <input
-                type="number"
-                className="fem-prop-input"
-                step="0.05"
-                min="0"
-                max={(beamLen / 1000).toFixed(3)}
-                value={((load.posFrac * beamLen) / 1000).toFixed(3)}
-                onChange={(e) => {
-                  const meters = Number(e.target.value);
-                  if (!Number.isFinite(meters) || beamLen <= 0) return;
-                  const frac = Math.min(1, Math.max(0, (meters * 1000) / beamLen));
-                  updateLoad?.(load.id, { posFrac: frac });
+              <LengthInput required className="fem-prop-input" max={beamLen}
+                value={(load.posFrac ?? 0) * beamLen}
+                onChange={mm => {
+                  if (mm !== undefined) updateLoad?.(load.id, { posFrac: mm / beamLen });
                 }}
               />
             </Row>
@@ -1374,31 +1363,23 @@ function LoadProperties({
             <Row label={t("props.load.onPlate")}><code>{load.plateId} ({randLabel(load)})</code></Row>
           )}
           {/* Puntlast op een plaatrand: positie langs de rand vanaf de
-              beginhoek, bij te stellen in meters — dezelfde as als de kern. */}
+              beginhoek, bij te stellen in millimeters — dezelfde as als de kern. */}
           {plaat && load.type === "pointForce" && randLen > 0 && (
             <Row label={t("props.load.position")}>
-              <input
-                type="number"
-                className="fem-prop-input"
-                step="0.05"
-                min="0"
-                max={(randLen / 1000).toFixed(3)}
-                value={(((load.posFrac ?? 0) * randLen) / 1000).toFixed(3)}
+              <LengthInput required className="fem-prop-input" max={randLen}
+                value={(load.posFrac ?? 0) * randLen}
                 title={t("props.load.edgePositionTitle")}
-                onChange={(e) => {
-                  const meters = Number(e.target.value);
-                  if (!Number.isFinite(meters)) return;
-                  const frac = Math.min(1, Math.max(0, (meters * 1000) / randLen));
-                  updateLoad?.(load.id, { posFrac: frac });
+                onChange={mm => {
+                  if (mm !== undefined) updateLoad?.(load.id, { posFrac: mm / randLen });
                 }}
               />
             </Row>
           )}
           {plaat && randLen > 0 && (
-            <Row label={t("props.load.edgeLength")}><code>{(randLen / 1000).toFixed(2)} m</code></Row>
+            <Row label={t("props.load.edgeLength")}><code>{formatLength(randLen)} mm</code></Row>
           )}
           {beamLen > 0 && load.type === "lineLoad" && (
-            <Row label={t("props.load.beamLength")}><code>{(beamLen / 1000).toFixed(2)} m</code></Row>
+            <Row label={t("props.load.beamLength")}><code>{formatLength(beamLen)} mm</code></Row>
           )}
         </Section>
 
@@ -1483,29 +1464,29 @@ function LoadProperties({
               <>
                 <Row label={t("props.load.start")}>
                   <input
-                    type="number" step="0.1" min="0" max={lenM}
+                    type="text" inputMode="decimal"
                     className="fem-prop-input fem-prop-input-mono"
                     value={beginStr}
                     onChange={e => setBeginStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={t("props.load.startTitleBeam", { lengte: lenM.toFixed(2) })}
+                    title={t("props.load.startTitleBeam", { lengte: formatLength(lenMm) })}
                   />
                 </Row>
                 <Row label={t("props.load.end")}>
                   <input
-                    type="number" step="0.1" min="0" max={lenM}
+                    type="text" inputMode="decimal"
                     className="fem-prop-input fem-prop-input-mono"
                     value={endStr}
                     onChange={e => setEndStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={t("props.load.endTitleBeam", { lengte: lenM.toFixed(2) })}
+                    title={t("props.load.endTitleBeam", { lengte: formatLength(lenMm) })}
                   />
                 </Row>
                 {isPartial && (
                   <Row label={t("props.load.loadedPart")}>
-                    <code>{((fracB - fracA) * lenM).toFixed(2)} m</code>
+                    <code>{formatLength((fracB - fracA) * lenMm)} mm</code>
                   </Row>
                 )}
                 <Row label={t("props.load.total")}>
@@ -1514,7 +1495,7 @@ function LoadProperties({
                       // Uniform: q·L_belast. Trapezium: (qa+qb)/2 · L_belast.
                       const qa = load.qStart ?? load.q ?? 0;
                       const qb = load.qEnd   ?? load.q ?? 0;
-                      return ((qa + qb) / 2 * (fracB - fracA) * lenM).toFixed(2);
+                      return ((qa + qb) / 2 * (fracB - fracA) * mmToMeters(lenMm)).toFixed(2);
                     })()} kN
                   </code>
                 </Row>
@@ -1594,29 +1575,29 @@ function LoadProperties({
               <>
                 <Row label={t("props.load.start")}>
                   <input
-                    type="number" step="0.1" min="0" max={lenM}
+                    type="text" inputMode="decimal"
                     className="fem-prop-input fem-prop-input-mono"
                     value={beginStr}
                     onChange={e => setBeginStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={t("props.load.startTitleEdge", { lengte: lenM.toFixed(2) })}
+                    title={t("props.load.startTitleEdge", { lengte: formatLength(lenMm) })}
                   />
                 </Row>
                 <Row label={t("props.load.end")}>
                   <input
-                    type="number" step="0.1" min="0" max={lenM}
+                    type="text" inputMode="decimal"
                     className="fem-prop-input fem-prop-input-mono"
                     value={endStr}
                     onChange={e => setEndStr(e.target.value)}
                     onBlur={() => commitRange(beginStr, endStr)}
                     onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                    title={t("props.load.endTitleEdge", { lengte: lenM.toFixed(2) })}
+                    title={t("props.load.endTitleEdge", { lengte: formatLength(lenMm) })}
                   />
                 </Row>
                 {isPartial && (
                   <Row label={t("props.load.loadedPart")}>
-                    <code>{((fracB - fracA) * lenM).toFixed(2)} m</code>
+                    <code>{formatLength((fracB - fracA) * lenMm)} mm</code>
                   </Row>
                 )}
                 <Row label={t("props.load.total")}>
@@ -1625,7 +1606,7 @@ function LoadProperties({
                       // Uniform: p·L_belast. Trapezium: (pa+pb)/2 · L_belast.
                       const pa = load.qStart ?? load.q ?? 0;
                       const pb = load.qEnd   ?? load.q ?? 0;
-                      return ((pa + pb) / 2 * (fracB - fracA) * lenM).toFixed(2);
+                      return ((pa + pb) / 2 * (fracB - fracA) * mmToMeters(lenMm)).toFixed(2);
                     })()} kN
                   </code>
                 </Row>
@@ -1716,6 +1697,21 @@ function LoadProperties({
  * elke plaatmutatie wist de resultaten, waarna Berekenen opnieuw rekent —
  * identiek aan staafwijzigingen (materiaal/profiel).
  */
+function PlooiMaatVeld({ value, onCommit }: { value: number; onCommit: (value: number) => void }) {
+  const { i18n } = useTranslation("check");
+  const formatted = String(value).replace(".", i18n.language.startsWith("en") ? "." : ",");
+  const [text, setText] = useState(formatted);
+  useEffect(() => setText(formatted), [formatted]);
+  const commit = () => {
+    const parsed = parsePlooiLengthMm(text);
+    if (parsed === null) setText(formatted);
+    else { onCommit(parsed); setText(String(parsed).replace(".", i18n.language.startsWith("en") ? "." : ",")); }
+  };
+  return <input type="text" inputMode="decimal" className="fem-prop-input fem-prop-input-mono"
+    value={text} onChange={e => setText(e.target.value)} onBlur={commit}
+    onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }} />;
+}
+
 function PlateProperties({ plate, nodes, updatePlate }: {
   plate: Plate; nodes: Node[];
   updatePlate?: (id: number, updates: Partial<Plate>) => void;
@@ -1873,6 +1869,9 @@ function PlateProperties({ plate, nodes, updatePlate }: {
     materiaal: t("props.plate.sourceMaterial"), handmatig: t("props.plate.sourceManual"), standaard: t("props.plate.sourceDefault"),
     aanname: t("props.plate.sourceAssumption"),
   };
+  const updatePlooi = (patch: Partial<NonNullable<Plate["plooi"]>>) => {
+    if (plate.plooi) updatePlate?.(plate.id, { plooi: { ...plate.plooi, ...patch } });
+  };
 
   const openingMaat = (p: { x: number; z: number }[]) => {
     const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
@@ -1945,6 +1944,41 @@ function PlateProperties({ plate, nodes, updatePlate }: {
               />
             </Row>
           )}
+          {(stijfheid?.soort === "staal" || plate.plooi) && <>
+            <Row label={t("props.plate.buckling")}>
+              <input type="checkbox" checked={!!plate.plooi} onChange={e => updatePlate?.(plate.id, {
+                plooi: e.target.checked ? {
+                  a_mm: punten ? Math.max(...punten.map(p => p.x)) - Math.min(...punten.map(p => p.x)) : 0,
+                  b_mm: punten ? Math.max(...punten.map(p => p.z)) - Math.min(...punten.map(p => p.z)) : 0,
+                  randvoorwaarden: "", steun_bron: "", onverstijfd: false, uniforme_spanning: false,
+                } : undefined,
+              })} />
+            </Row>
+            {plate.plooi && <>
+              <Row label={t("props.plate.bucklingA")}>
+                <PlooiMaatVeld value={plate.plooi.a_mm} onCommit={a_mm => updatePlooi({ a_mm })} />
+              </Row>
+              <Row label={t("props.plate.bucklingB")}>
+                <PlooiMaatVeld value={plate.plooi.b_mm} onCommit={b_mm => updatePlooi({ b_mm })} />
+              </Row>
+              <Row label={t("props.plate.bucklingSupports")}>
+                <input type="checkbox" checked={plate.plooi.randvoorwaarden === "vierzijdig_scharnierend"}
+                  onChange={e => updatePlooi({ randvoorwaarden: e.target.checked ? "vierzijdig_scharnierend" : "" })} />
+              </Row>
+              <Row label={t("props.plate.bucklingSource")}>
+                <input className="fem-prop-input" value={plate.plooi.steun_bron} onChange={e => updatePlooi({ steun_bron: e.target.value })} />
+              </Row>
+              <Row label={t("props.plate.bucklingUnstiffened")}>
+                <input type="checkbox" checked={plate.plooi.onverstijfd} onChange={e => updatePlooi({ onverstijfd: e.target.checked })} />
+              </Row>
+              <Row label={t("props.plate.bucklingUniform")}>
+                <input type="checkbox" checked={plate.plooi.uniforme_spanning} onChange={e => updatePlooi({ uniforme_spanning: e.target.checked })} />
+              </Row>
+              <div style={{ padding: "4px 10px", fontSize: 11 }}>
+                {t("props.plate.bucklingScope")}
+              </div>
+            </>}
+          </>}
           {/* Klimaatklasse van een houten plaat: alleen voor de plaattoets
               (k_mod, NEN-EN 1995-1-1 tabel 3.1); de stijfheid verandert niet. */}
           {stijfheid?.soort === "hout" && (
@@ -1961,6 +1995,9 @@ function PlateProperties({ plate, nodes, updatePlate }: {
               </select>
             </Row>
           )}
+          {/* Aanwezige wapening van een betonwand (issue #25): alleen voor de
+              plaattoets; de stijfheid verandert niet. */}
+          {stijfheid?.soort === "beton" && <PlaatWapeningVenster plate={plate} updatePlate={updatePlate} />}
           {stijfheid?.orthotroop && (
             <div style={{ padding: "4px 10px", fontSize: 11, color: "var(--theme-text-faint)" }}>
               {t("props.plate.orthotropic", {

@@ -109,12 +109,13 @@ export default function BetonKorfPaneel({
 
   // Diagram opvragen, met vertraging en bescherming tegen verouderde antwoorden.
   useEffect(() => {
+    const nummer = ++volgnummer.current;
+    setAntwoord(null);
+    setFout(null);
+    setBezig(false);
     if (geometrieFout) {
-      setAntwoord(null);
-      setFout(null);
       return;
     }
-    const nummer = ++volgnummer.current;
     const timer = window.setTimeout(() => {
       setBezig(true);
       const verzoek: MnKappaRequest = {
@@ -149,7 +150,11 @@ export default function BetonKorfPaneel({
           if (nummer === volgnummer.current) setBezig(false);
         });
     }, VERTRAGING_MS);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      // Ook een al verstuurd verzoek vervalt bij nieuwe invoer of unmount.
+      ++volgnummer.current;
+    };
   }, [korf, nEd, mEdKnm, geometrieFout, berekenDiagram]);
 
   const wijzig = (k: Wapeningskorf) => {
@@ -178,6 +183,7 @@ export default function BetonKorfPaneel({
   const diagram = antwoord?.diagram ?? null;
 
   return (
+    <div className="beton-paneel-container">
     <div className="beton-paneel">
       <div className="beton-kolom-invoer">
         <WapeningskorfEditor
@@ -298,6 +304,7 @@ export default function BetonKorfPaneel({
           )}
         </div>
       </div>
+    </div>
     </div>
   );
 }

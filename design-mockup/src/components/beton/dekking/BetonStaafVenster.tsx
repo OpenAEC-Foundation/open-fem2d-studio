@@ -38,6 +38,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Beam, BeamCheckConfig, Node, Support } from "../../fem/femTypes";
+import type { SolverResult } from "../../fem/solver/types";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "../../fem/ProfielKiezer";
 import type { ConcreteBeamCheckInput } from "../../../lib/types/concrete/ConcreteBeamCheckInput";
 import type { DekkingslijnAntwoord } from "../../../lib/types/concrete/DekkingslijnAntwoord";
@@ -72,6 +73,8 @@ import { kruipWaardenPerStaaf } from "../../../lib/kruipcoefficient";
 import { useDekkingslijnStore } from "../../../stores/dekkingslijnStore";
 import DoorsnedeTekening from "../DoorsnedeTekening";
 import RijBewerker from "../RijBewerker";
+import MnKappaDialoog from "../MnKappaDialoog";
+import { STANDAARD_BIJLAGE } from "../../../lib/normAanduidingen";
 import {
   STANDAARD_KORF,
   korfRij,
@@ -102,7 +105,7 @@ import {
   type LijnPunt,
 } from "./dekkingLagen";
 import { haalScheurwijdteLijn, type ScheurwijdteLijn } from "./scheurwijdteLijn";
-import { korfOpX, staafLengteMm } from "./zoneModel";
+import { kiesZone, korfOpX, staafLengteMm, standaardZonesUitKorf, type ZoneSelectie } from "./zoneModel";
 // De laagschakelaars zijn LETTERLIJK de schakelaars van de resultatenlijst in
 // de verkenner (`fem-results-toggle` + `fem-switch`). Een eigen soort
 // schakelaar verzinnen zou betekenen dat dezelfde handeling er in dit venster
@@ -126,6 +129,8 @@ interface Props {
    * doorsnede opent (hij toont welke profielen al in gebruik zijn).
    */
   beams?: Beam[];
+  /** Alleen de voltooide, huidige rekengeneratie uit App; anders null. */
+  actueleCombinatieResultaten?: Map<number, SolverResult> | null;
   /** Sluit het venster (de kruisknop in de werkbalk van het dock). */
   onSluiten?: () => void;
 }
@@ -140,7 +145,7 @@ function opgeschoond(c: BeamCheckConfig): BeamCheckConfig | undefined {
   return Object.keys(nieuw).length > 0 ? nieuw : undefined;
 }
 
-export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, beams, onSluiten }: Props) {
+export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, beams, onSluiten, actueleCombinatieResultaten }: Props) {
   // Dubbelklik op de doorsnede opent de profielkiezer voor deze staaf:
   // doorsnede, betonklasse, korf én milieuklasse op één plek. De uitkomst
   // landt zoals bij het eigenschappenpaneel: korf en klassen in checkConfig,
@@ -148,10 +153,13 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   const [kiezerOpen, setKiezerOpen] = useState(false);
   const [lagen, setLagen] = useState<LaagVlaggen>(STANDAARD_LAGEN);
   const [cursorXMm, setCursorXMm] = useState<number | null>(null);
-  const [antwoord, setAntwoord] = useState<DekkingslijnAntwoord | null>(null);
+  const [zoneSelectie, setZoneSelectie] = useState<ZoneSelectie | null>(null);
+  const [previewZones, setPreviewZones] = useState<ReinforcementZones | null>(null);
+  const [mnOpen, setMnOpen] = useState(false);
+  const [antwoordStaat, setAntwoord] = useState<{ bron: unknown; waarde: DekkingslijnAntwoord } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
-  const [scheur, setScheur] = useState<ScheurwijdteLijn | null>(null);
+  const [scheurStaat, setScheur] = useState<{ bron: unknown; waarde: ScheurwijdteLijn } | null>(null);
   const [scheurBezig, setScheurBezig] = useState(false);
   const [scheurFout, setScheurFout] = useState<string | null>(null);
   const [klassen, setKlassen] = useState<string[] | undefined>(undefined);
@@ -227,6 +235,16 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
 
   const doorsnede = parseConcreteSection(beam.profile);
   const korf: ReinforcementCage = beam.checkConfig?.betonKorf ?? STANDAARD_KORF.korf;
+  // Ontbrekende reeksen visualiseren dezelfde basiskorf, zonder iets op te slaan.
+  const bewerkZones = useMemo(() => {
+    const basis = standaardZonesUitKorf(korf, lengteMm);
+    return { longitudinal: [...(liveZonesRef?.longitudinal ?? []), ...basis.longitudinal.filter(z =>
+      !liveZonesRef?.longitudinal.some(l => l.side === z.side))],
+      stirrups: liveZonesRef?.stirrups.length ? liveZonesRef.stirrups : basis.stirrups };
+  }, [korf, lengteMm, liveZonesRef]);
+  const zichtZones = previewZones ?? bewerkZones;
+  const krachtenActueel = !!actueleCombinatieResultaten && actueleCombinatieResultaten === lastRunData?.combinationResults &&
+    JSON.stringify(gerekendeStaaf) === JSON.stringify(beam) && JSON.stringify(lastRunData.nodes) === JSON.stringify(nodes);
   const restKorf: Omit<Wapeningskorf, "korf" | "doorsnede"> = {
     betonklasse: beam.material ?? STANDAARD_KORF.betonklasse,
     staalsoort: beam.checkConfig?.betonStaalsoort ?? STANDAARD_KORF.staalsoort,
@@ -258,16 +276,22 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     return { verzoek: null, reden: over?.reason ?? t("concrete.memberWindow.notRecognised") };
   }, [lastRunData, klassen, beff, beam.id, t]);
 
+  const antwoord = krachtenActueel && !previewZones && antwoordStaat?.bron === verzoek?.verzoek ? antwoordStaat?.waarde ?? null : null;
+  const scheur = krachtenActueel && !previewZones && lagen.scheurwijdte && scheurStaat?.bron === verzoek?.verzoek ? scheurStaat?.waarde ?? null : null;
+  const magLijnenRekenen = krachtenActueel && !previewZones;
+
   // ── De dekkingslijn opvragen ─────────────────────────────────────────────
   useEffect(() => {
-    if (!verzoek) return;
+    const nummer = ++volgnummer.current;
+    setAntwoord(null); setFout(null); setBezig(false);
+    if (useDekkingslijnStore.getState().beamId === beam.id) useDekkingslijnStore.setState({ bezig: false, antwoord: null, fout: null, verzoek: null });
+    if (!verzoek || !magLijnenRekenen) return;
     if (!verzoek.verzoek) {
       setAntwoord(null);
       setFout(verzoek.reden);
       useDekkingslijnStore.getState().zetFout(beam.id, verzoek.reden);
       return;
     }
-    const nummer = ++volgnummer.current;
     const v = verzoek.verzoek;
     const timer = window.setTimeout(() => {
       setBezig(true);
@@ -275,7 +299,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       haalDekkingslijn(v)
         .then((r) => {
           if (nummer !== volgnummer.current) return;
-          setAntwoord(r);
+          setAntwoord({ bron: v, waarde: r });
           setFout(null);
           useDekkingslijnStore.getState().zetAntwoord(beam.id, r);
         })
@@ -290,8 +314,13 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
           if (nummer === volgnummer.current) setBezig(false);
         });
     }, VERTRAGING_MS);
-    return () => window.clearTimeout(timer);
-  }, [verzoek]);
+    return () => {
+      ++volgnummer.current;
+      window.clearTimeout(timer);
+      const store = useDekkingslijnStore.getState();
+      if (store.beamId === beam.id && store.verzoek === v && store.bezig) useDekkingslijnStore.setState({ bezig: false, antwoord: null, fout: null, verzoek: null });
+    };
+  }, [verzoek, magLijnenRekenen, beam.id]);
 
   // ── De scheurwijdtelijn: alleen wanneer de laag aan staat ────────────────
   //
@@ -299,19 +328,17 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   // (§7.3.4 komt uit `check_concrete_beams` voor de maatgevende snede, niet als
   // lijn). Ongevraagd ophalen zou elke selectie seconden kosten.
   useEffect(() => {
-    if (!lagen.scheurwijdte || !verzoek?.verzoek) {
-      setScheur(null);
-      setScheurFout(null);
-      return;
-    }
     const nummer = ++scheurVolgnummer.current;
+    setScheur(null); setScheurFout(null); setScheurBezig(false);
+    if (!lagen.scheurwijdte || !verzoek?.verzoek || !magLijnenRekenen) return;
+    const bron = verzoek.verzoek;
     const invoer: ConcreteBeamCheckInput = verzoek.verzoek.beam;
     const zones = invoer.reinforcement_zones;
     setScheurBezig(true);
     haalScheurwijdteLijn(invoer, zones, roepKern)
       .then((r) => {
         if (nummer !== scheurVolgnummer.current) return;
-        setScheur(r);
+        setScheur({ bron, waarde: r });
         setScheurFout(null);
       })
       .catch((e: unknown) => {
@@ -322,7 +349,8 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
       .finally(() => {
         if (nummer === scheurVolgnummer.current) setScheurBezig(false);
       });
-  }, [lagen.scheurwijdte, verzoek]);
+    return () => { ++scheurVolgnummer.current; };
+  }, [lagen.scheurwijdte, verzoek, magLijnenRekenen]);
 
   // ── De lanen ─────────────────────────────────────────────────────────────
   const kleurVan = (id: LaagId) => LAGEN.find((l) => l.id === id)?.swatch ?? "#666";
@@ -426,6 +454,10 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
     // aanwijzer ook bij elke herberekening terugspringen, dan zou hij tijdens
     // het bewerken van de zones onder de muis vandaan lopen.
     setCursorXMm(null);
+    setZoneSelectie(null);
+    setBewerkRij(null);
+    setPreviewZones(null);
+    setMnOpen(false);
   }, [beam.id]);
   useEffect(() => {
     setCursorXMm((huidig) => (huidig === null ? maatgevendeX : huidig));
@@ -525,7 +557,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   }, [beginknoop, eindknoop, lengteMm, supports]);
 
   // ── De doorsnede bij de aanwijzer ────────────────────────────────────────
-  const korfBijCursor = korfOpX(korf, liveZonesRef, cursorXMm ?? 0);
+  const korfBijCursor = korfOpX(korf, zichtZones, cursorXMm ?? 0);
   const tekenKorf: Wapeningskorf | null = doorsnede.ok
     ? { ...restKorf, doorsnede: doorsnede.doorsnede, korf: korfBijCursor }
     : null;
@@ -589,13 +621,39 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
   };
 
   // ── Een rij wijzigen vanuit de doorsnedetekening ─────────────────────────
-  // Klik op "4Ø20" of "2Ø12" in de doorsnede opent een kleine invoer voor
-  // aantal en diameter. Die schrijft naar de BASISKORF (`checkConfig.betonKorf`)
-  // — dezelfde plek als de staafeigenschappen. Een zone die ter plaatse van de
-  // cursor iets anders voorschrijft, blijft dat doen: zones hebben hun eigen
-  // editor hieronder, en de tekening volgt beide.
+  // Bewerk precies de rij die zichtbaar is; expliciete zones gaan vóór de basis.
   const [bewerkRij, setBewerkRij] = useState<KorfRij | null>(null);
+  const selecteerRij = (zijde: KorfRij) => {
+    setBewerkRij(zijde);
+    const z = zijde === "sides" ? undefined : kiesZone(bewerkZones.longitudinal.filter(z => z.side === (zijde === "bottom" ? "Bottom" : "Top")), cursorXMm ?? 0);
+    setZoneSelectie(z ? { soort: "langs", index: bewerkZones.longitudinal.indexOf(z) } : null);
+  };
+  const zetBewerkZones = (zones: ReinforcementZones) => {
+    // Alleen gewijzigde impliciete reeksen worden expliciet opgeslagen.
+    const ongewijzigdeZijden = (["Bottom", "Top"] as const).filter(side =>
+      !liveZonesRef?.longitudinal.some(z => z.side === side) &&
+      JSON.stringify(zones.longitudinal.filter(z => z.side === side)) === JSON.stringify(bewerkZones.longitudinal.filter(z => z.side === side)));
+    const nieuw: ReinforcementZones = { longitudinal: zones.longitudinal.filter(z => !ongewijzigdeZijden.includes(z.side)),
+      stirrups: !liveZonesRef?.stirrups.length && JSON.stringify(zones.stirrups) === JSON.stringify(bewerkZones.stirrups) ? [] : zones.stirrups };
+    if (zoneSelectie) {
+      const z = (zoneSelectie.soort === "langs" ? zones.longitudinal : zones.stirrups)[zoneSelectie.index];
+      if (z) {
+        const lijst = zoneSelectie.soort === "langs" ? nieuw.longitudinal : nieuw.stirrups;
+        const index = lijst.findIndex(k => k === z);
+        setZoneSelectie(index >= 0 ? { ...zoneSelectie, index } : null);
+        setCursorXMm((z.x_start_mm + z.x_end_mm) / 2);
+      }
+    }
+    setBewerkRij(null);
+    zetZones(naarOfVanReferentie(nieuw));
+  };
   const zetRij = (zijde: KorfRij, rij: { count: number; diameter_mm: number }) => {
+    if (previewZones) return;
+    const actief = zijde === "sides" ? undefined : kiesZone(liveZonesRef?.longitudinal.filter(z => z.side === (zijde === "bottom" ? "Bottom" : "Top")) ?? [], cursorXMm ?? 0);
+    if (actief && liveZonesRef) {
+      zetZones(naarOfVanReferentie({ ...liveZonesRef, longitudinal: liveZonesRef.longitudinal.map(z => z === actief ? { ...z, row: rij } : z) }));
+      return;
+    }
     const cfg = { ...(beam.checkConfig ?? {}) };
     // Zijstaven met 0 staven zijn geen zijstaven: dan gaat het veld WEG, zodat
     // de korf weer precies is wat hij was voordat er zijstaven in kwamen.
@@ -604,6 +662,27 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
         ? { ...korf, sides: undefined }
         : { ...korf, [zijde]: rij };
     updateBeam?.(beam.id, { checkConfig: cfg });
+  };
+  const geselecteerdeZone = zoneSelectie ? (zoneSelectie.soort === "langs" ? zichtZones.longitudinal : zichtZones.stirrups)[zoneSelectie.index] : undefined;
+  const geselecteerdeNaam = geselecteerdeZone && t(`concrete.zoneInteraction.${"side" in geselecteerdeZone ? geselecteerdeZone.side === "Top" ? "top" : "bottom" : "stirrups"}`);
+  const mnKrachten = useMemo(() => krachtenActueel ? (verzoek?.verzoek?.beam.forces_envelope ?? []).filter(p => {
+    const element = actueleCombinatieResultaten?.get(p.combination_id)?.elements.get(beam.id);
+    // De algemene toetsbouwer kent een nulpunt-terugval. Die is geen gemeten N.
+    return element && element.stations_mm.length > 0 && element.normalForce.length === element.stations_mm.length &&
+      element.bendingMoment.length === element.stations_mm.length && element.normalForce.every(Number.isFinite) && element.bendingMoment.every(Number.isFinite);
+  }) : [], [krachtenActueel, verzoek, actueleCombinatieResultaten, beam.id]);
+  const kiesCursor = (x: number) => {
+    setCursorXMm(x); setBewerkRij(null);
+    setZoneSelectie(sel => {
+      if (!sel) return null;
+      if (sel.soort === "beugel") {
+        const z = kiesZone(bewerkZones.stirrups, x);
+        return z ? { soort: "beugel", index: bewerkZones.stirrups.indexOf(z) } : null;
+      }
+      const side = bewerkZones.longitudinal[sel.index]?.side;
+      const z = kiesZone(bewerkZones.longitudinal.filter(z => z.side === side), x);
+      return z ? { soort: "langs", index: bewerkZones.longitudinal.indexOf(z) } : null;
+    });
   };
 
   return (
@@ -673,6 +752,7 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
           <div className="dek-tekenvlak" ref={vlakRef}>
             {lengteMm > 0 ? (
               <AanzichtTekening
+                key={beam.id}
                 lengteMm={lengteMm}
                 hoogteMm={doorsnede.ok ? doorsnede.doorsnede.h_mm : 0}
                 opleggingen={opleggingen}
@@ -684,8 +764,13 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
                 ucVakken={ucVakken}
                 lagen={lagen}
                 cursorXMm={cursorXMm}
-                onCursorX={setCursorXMm}
+                onCursorX={kiesCursor}
                 breedtePx={breedtePx}
+                zones={bewerkZones}
+                selectie={zoneSelectie}
+                onSelectie={setZoneSelectie}
+                onZonesPreview={setPreviewZones}
+                onZonesCommit={updateBeam ? zetBewerkZones : undefined}
               />
             ) : (
               <p className="beton-hint">{t("concrete.memberWindow.noLength")}</p>
@@ -739,20 +824,25 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
           </div>
           {tekenKorf ? (
             <>
+              <p className="dek-selectie" role="status">
+                {geselecteerdeZone ? t("concrete.zoneInteraction.selected", { zone: geselecteerdeNaam, start: maat(geselecteerdeZone.x_start_mm), end: maat(geselecteerdeZone.x_end_mm) }) : t("concrete.zoneInteraction.pick")}
+                {previewZones && ` · ${t("concrete.zoneInteraction.preview")}`}
+              </p>
               <DoorsnedeTekening
                 korf={tekenKorf}
                 className="dek-doorsnede"
-                onRij={updateBeam ? (zijde) => setBewerkRij(zijde) : undefined}
-                onRijAantal={updateBeam
+                geselecteerdeRij={bewerkRij}
+                onRij={updateBeam && !previewZones ? selecteerRij : undefined}
+                onRijAantal={updateBeam && !previewZones
                   ? (zijde, delta) => zetRij(zijde, {
-                      ...korfRij(korf, zijde),
+                      ...korfRij(korfBijCursor, zijde),
                       // De zijstaven mogen wél op 0 uitkomen: dat is de manier
                       // om ze met de "−" weer helemaal weg te halen. Bij de
                       // boven- en onderrij is 1 de ondergrens — een rij
                       // weghalen is een ander besluit dan er een staaf af.
                       count: Math.min(
                         40,
-                        Math.max(zijde === "sides" ? 0 : 1, korfRij(korf, zijde).count + delta),
+                        Math.max(zijde === "sides" ? 0 : 1, korfRij(korfBijCursor, zijde).count + delta),
                       ),
                     })
                   : undefined}
@@ -760,12 +850,19 @@ export default function BetonStaafVenster({ beam, nodes, supports, updateBeam, b
               />
               {bewerkRij && (
                 <RijBewerker
+                  key={`${beam.id}-${bewerkRij}-${cursorXMm}-${JSON.stringify(korfRij(korfBijCursor, bewerkRij))}`}
                   zijde={bewerkRij}
-                  rij={korfRij(korf, bewerkRij)}
+                  rij={korfRij(korfBijCursor, bewerkRij)}
+                  context={geselecteerdeZone ? t("concrete.zoneInteraction.selected", { zone: geselecteerdeNaam, start: maat(geselecteerdeZone.x_start_mm), end: maat(geselecteerdeZone.x_end_mm) }) : undefined}
                   onOpslaan={(rij) => { zetRij(bewerkRij, rij); setBewerkRij(null); }}
                   onSluiten={() => setBewerkRij(null)}
                 />
               )}
+              <button type="button" className="dek-knop" disabled={!!previewZones} onClick={() => setMnOpen(true)}>{t("concrete.sectionCurve.open")}</button>
+              {mnOpen && <MnKappaDialoog key={JSON.stringify([beam.id, cursorXMm, tekenKorf, mnKrachten])} korf={tekenKorf} xMm={cursorXMm ?? 0}
+                forces={mnKrachten}
+                bijlage={lastRunData?.nationaleBijlage ?? STANDAARD_BIJLAGE}
+                onSluiten={() => setMnOpen(false)} />}
               {kiezerOpen && (() => {
                 const cfg = beam.checkConfig ?? {};
                 const huidigBeton: Partial<BetonKorfKeuze> = {

@@ -23,38 +23,26 @@
  * space+drag pans; F-key fits all to view; HUD Reset button reverts to
  * the default 1/25 scale + (0,0) offset.
  *
- * Solver wiring: parent passes a `solveTrigger` — when it changes, canvas
- * runs the solver against the current store and stores+renders the result
- * via FemResultsOverlay until the next model edit.
+ * Solverresultaten komen uitsluitend uit de centrale rekengang. Wisselen
+ * van belastinggeval selecteert bestaande resultaten en rekent nooit opnieuw.
  */
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
+import { parseLength, formatLength } from "../../lib/lengthInput";
 import "./FemCanvas.css";
-import { solve } from "./solver/solver";
-import type { SolverResult, SolverInput } from "./solver/types";
+import type { SolverResult } from "./solver/types";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
 import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
-import {
-  controleerDoorsneden, doorsnedeVeldenVoorSolver, plaatNaarSolverInput, randlastNaarSolverInput,
-  staafLengteMm,
-  randpuntlastNaarSolverInput,
-} from "../../lib/modelNaarSolverInput";
+
 // Doorsnedenaam en begin-/eindmaten van een verlopende staaf: dezelfde
 // keuring als de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import { vertaal } from "../../lib/vertaalbareTekst";
-import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
-// Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
-// Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
-// App.tsx"), naast een identieke kopie in App.tsx — twee kopieën van dezelfde
-// eenheidsconversie is precies het soort duplicaat dat stil uit elkaar kan
-// lopen en dan twee antwoorden op hetzelfde model geeft.
-import { liftSpringK } from "../../lib/modelNaarSolverInput";
 import type {
   Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
@@ -509,16 +497,11 @@ interface FemCanvasProps {
   /** Bulk node translate — used by drag-to-move and G-grab. */
   translateNodes?: (nodeIds: number[], dx: number, dz: number) => void;
 
-  /** Incremented on every "Solve" click — canvas re-runs solver on change. */
-  solveTrigger?: number;
-  /** Notify parent of solver result. */
-  onSolveResult?: (result: SolverResult | null) => void;
-  /**
-   * Scheefstand (initiële imperfectie) — wanneer gezet krijgt elke verticale
-   * last in de solve een horizontale metgezel H = φ·V (zie ScheefstandInput).
-   * App.tsx levert dezelfde waarde aan het multi-LC-pad.
-   */
-  scheefstand?: { phi: number; richting: 1 | -1 };
+  /** Actuele, centraal berekende gevallen; null = nog niet geldig berekend. */
+  perCase?: Map<number, SolverResult> | null;
+  activeLoadCaseName?: string;
+  solverBusy?: boolean;
+  solveError?: string | null;
 
   // Multi-LC / combinations / envelope (step 2d/2e)
   combinations?: LoadCombination[];
@@ -572,7 +555,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     plakLasten,
     translateNodes,
     grid, structuralGrid, setStructuralGrid, verplaatsStramienAs,
-    solveTrigger, onSolveResult, scheefstand,
+    perCase, activeLoadCaseName, solverBusy = false, solveError,
     combinations, activeCombinationId, envelopeView,
     combinationResults, envelope,
     displayFlags: displayFlagsProp,
@@ -614,8 +597,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   } | null>(null);
   // First-click anchor for transform tools (move/copy/rotate/mirror)
   const [transformAnchor, setTransformAnchor] = useState<{ x: number; z: number } | null>(null);
-  const [results, setResults] = useState<SolverResult | null>(null);
-  const [solveError, setSolveError] = useState<string | null>(null);
+  const results = perCase?.get(activeLoadCaseId) ?? null;
   // Result display toggles — controlled by App.tsx via FemProjectTree sidebar.
   // We keep a local fallback so the component still works standalone, but the
   // setter is only used by the (now-removed) bottom canvas HUD; expose-only
@@ -629,7 +611,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   // Staat de bevindingenlijst van de modelcontrole uitgeklapt?
   const [controleOpen, setControleOpen] = useState(false);
   /**
-   * Maat die tijdens het tekenen van een staaf is ingetypt (in METERS, zoals
+   * Maat die tijdens het tekenen van een staaf is ingetypt (in mm, zoals
    * alle afstanden in de UI). null = niets getypt, de muispositie bepaalt het
    * tweede punt. Zelfde bediening als de G-greep: cijfers typen, Enter
    * bevestigt, Backspace wist, Escape annuleert.
@@ -788,176 +770,6 @@ export default function FemCanvas(props: FemCanvasProps) {
     /** snap to 15° increments unless SHIFT held */
     snap: boolean;
   } | null>(null);
-
-  // Callback via een ref, zodat een wisselende functie-identiteit vanuit de
-  // parent NOOIT als "modelwijziging" telt. Met onSolveResult in de dep-array
-  // hieronder wiste elke App-render (bv. direct na Berekenen, door
-  // setSolverOutputs) de zojuist berekende resultaten — de gemelde
-  // "resultaten verdwijnen gelijk weer"-bug.
-  const onSolveResultRef = useRef(onSolveResult);
-  onSolveResultRef.current = onSolveResult;
-
-  // Invalidate results whenever the model changes. `plates` doet mee sinds
-  // de canvas-solve platen meerekent (P3): een dikte- of meshSize-wijziging
-  // maakt ook het single-LC-resultaat (en de contourlaag) ongeldig.
-  // `scheefstand` doet mee omdat de canvasberekening hem gebruikt: na een
-  // wijziging van φ of de richting hoort het oude single-LC-resultaat bij een
-  // andere belasting.
-  useEffect(() => {
-    setResults(null);
-    setSolveError(null);
-    onSolveResultRef.current?.(null);
-  }, [nodes, beams, supports, plates, loads, activeLoadCaseId, scheefstand]);
-
-  // Run solver whenever parent bumps solveTrigger.
-  // This single-case run still feeds the right-rail Properties panel which
-  // expects a SolverResult; the multi-LC pipeline runs in parallel in App.tsx.
-  useEffect(() => {
-    if (solveTrigger === undefined || solveTrigger === 0) return;
-    // Modelcontrole VÓÓR het rekenen. Een kolomvoet die alleen maar óp een
-    // ligger ligt, of twee losse knopen op dezelfde plek, leveren een
-    // singuliere matrix op — een melding die niet zegt wélke knoop het is.
-    // Daarom eerst de controle, met knoopnummers en een herstelactie in het
-    // paneel rechtsonder. De berekening wordt dan overgeslagen: doorrekenen
-    // zou óf falen, óf een antwoord geven bij een model dat de gebruiker niet
-    // bedoeld heeft.
-    const vooraf = controleerModel({ nodes, beams, supports, plates, loads });
-    const blokkerend = vooraf.filter(b => b.ernst === "fout");
-    if (blokkerend.length > 0) {
-      setControleOpen(true);
-      setResults(null);
-      setSolveError(
-        i18next.t("common:canvas.solve.blockedByModelCheck", { count: blokkerend.length }),
-      );
-      onSolveResultRef.current?.(null);
-      return;
-    }
-    try {
-      const activeLoads = loads.filter(l => l.caseId === activeLoadCaseId);
-      const distLoads: {
-        beamId: number; q: number;
-        qStart?: number; qEnd?: number; qDir?: "x" | "z";
-        qCoord?: "global" | "local";
-        startFrac?: number; endFrac?: number;
-      }[] = [];
-      const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
-      // Puntlasten op een vrije positie op een staaf (posFrac 0..1) — de
-      // engine splitst de staaf daar en zet de kracht op de tussenknoop.
-      const beamPointLoads: { beamId: number; posFrac: number; fx?: number; fz?: number; my?: number }[] = [];
-      const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
-      const edgeLoads: NonNullable<SolverInput["edgeLoads"]> = [];
-      const edgePointLoads: NonNullable<SolverInput["edgePointLoads"]> = [];
-      for (const l of activeLoads) {
-        if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
-          // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
-          // richting (qDir + assenstelsel qCoord) en deellast-fracties
-          // (startFrac/endFrac) gaan mee — zelfde velden als het
-          // multi-LC-pad in App.tsx.
-          distLoads.push({
-            beamId: l.beamId, q: l.q,
-            qStart: l.qStart, qEnd: l.qEnd, qDir: l.qDir, qCoord: l.qCoord,
-            startFrac: l.startFrac, endFrac: l.endFrac,
-          });
-        } else if (l.type === "pointForce" && l.plateId !== undefined) {
-          // Puntlast op een PLAATRAND: vóór de knoop- en staaftak, zodat
-          // `plateId` de last aan de plaat bindt — dezelfde volgorde en
-          // dezelfde vertaling als het multi-LC-pad en de MCP
-          // (`randpuntlastNaarSolverInput`).
-          const rp = randpuntlastNaarSolverInput(l);
-          if (rp) edgePointLoads.push(rp);
-        } else if (l.type === "pointForce" && l.nodeId !== undefined) {
-          // Fx, Fz in kN → N (×1000)
-          pointLoads.push({
-            nodeId: l.nodeId,
-            fx: (l.fx ?? 0) * 1000,
-            fz: (l.fz ?? 0) * 1000,
-          });
-        } else if (l.type === "pointForce" && l.beamId !== undefined) {
-          // Staafgebonden puntlast (vrije positie): fractie 0..1 vanaf de
-          // startknoop — zelfde velden als het multi-LC-pad in App.tsx.
-          beamPointLoads.push({
-            beamId: l.beamId,
-            posFrac: Math.min(1, Math.max(0, l.posFrac ?? 0)),
-            fx: (l.fx ?? 0) * 1000,
-            fz: (l.fz ?? 0) * 1000,
-          });
-        } else if (l.type === "pointMoment" && l.nodeId !== undefined) {
-          // My in kNm → N·mm (×1e6)
-          pointLoads.push({
-            nodeId: l.nodeId,
-            my: (l.my ?? 0) * 1e6,
-          });
-        } else if (l.type === "thermal" && l.beamId !== undefined && l.deltaT !== undefined) {
-          // α per materiaal meesturen (hout ≠ staal) — zelfde keuze als het
-          // multi-LC-pad; één bron in lib/thermalAlpha.ts.
-          const beam = beams.find(b => b.id === l.beamId);
-          thermalLoads.push({
-            beamId: l.beamId, deltaT: l.deltaT,
-            alpha: thermalAlphaForMaterial(beam?.material),
-          });
-        } else if (l.type === "edgeLoad") {
-          // Randlast op een plaatrand (P3.3): DEZELFDE vertaling als het
-          // multi-LC-pad en de MCP (`randlastNaarSolverInput`). Hier stond een
-          // eigen kopie die een ontbrekende `edge` stil "top" maakte.
-          const rl = randlastNaarSolverInput(l);
-          if (rl) edgeLoads.push(rl);
-        }
-      }
-      // DOORSNEDECONTROLE, dezelfde als het multi-LC-pad. Een doorsnede die
-      // `resolveSection` niet kan bepalen gaf hier stil HEA 160 / S235
-      // (E = 210 000, A = 3877, I = 1,673e7) en een geslaagde berekening; nu
-      // gooit `controleerDoorsneden` met staafnummer en reden, en de catch
-      // hieronder zet die tekst in de banner in plaats van resultaten.
-      controleerDoorsneden(beams, { heeftPlaten: plates.length > 0 });
-      const input: SolverInput = {
-        nodes: nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
-        beams: beams.map(b => {
-          // Stijfheid uit materiaal + profiel (+ eindprofiel: segmenten),
-          // dezelfde functie als het multi-LC-pad; na de controle hierboven
-          // is dit nooit de terugval.
-          return {
-            id: b.id, from: b.from, to: b.to,
-            ...doorsnedeVeldenVoorSolver(b, staafLengteMm(b, nodes)),
-            startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
-            endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
-            // Volledige release-set (incl. Tx/Tz-hulzen, lokale assen).
-            releases: b.releases,
-          };
-        }),
-        supports: supports.map(s => ({
-          nodeId: s.nodeId,
-          type: s.type,
-          k: liftSpringK(s),
-        })),
-        loads: distLoads,
-        pointLoads,
-        beamPointLoads,
-        thermalLoads,
-        edgeLoads,
-        edgePointLoads,
-        // Platen (wandschijven): DEZELFDE vertaling als het multi-LC-pad en de
-        // MCP (`plaatNaarSolverInput`, met de CDT-meshcache van een
-        // polygoonplaat) — hiermee rekent óók de canvas-solve de platen mee
-        // (mixed_beam_plate) en levert het resultaat `plateElements` voor de
-        // contourlaag (P3.2).
-        plates: plates.map(plaatNaarSolverInput),
-        // Actief belastinggeval, ter herkenning van het resultaat.
-        caseId: activeLoadCaseId,
-        // Scheefstand — zelfde instelling als het multi-LC-pad in App.tsx.
-        scheefstand,
-      };
-      const r = solve(input);
-      setResults(r);
-      setSolveError(null);
-      onSolveResult?.(r);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setSolveError(msg);
-      setResults(null);
-      onSolveResult?.(null);
-      console.error("[FEM solver]", e);
-    }
-  }, [solveTrigger]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── CDT-meshcache actueel houden (P4.2) ─────────────────────────────────
   // Een geometrie- (hoekknoop verplaatst/gesleept/geroteerd) of meshSize-
@@ -1340,7 +1152,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (!grabMode) return;
     let dx = 0, dz = 0;
     if (grabMode.typedDistance !== null) {
-      const v = parseFloat(grabMode.typedDistance);
+      const v = parseLength(grabMode.typedDistance);
       if (!isNaN(v)) {
         if (grabMode.axisLock === "z") dz = v;
         else dx = v;
@@ -2020,17 +1832,15 @@ export default function FemCanvas(props: FemCanvasProps) {
   /**
    * Het tweede punt van de staaf uit de INGETYPTE lengte: de richting komt van
    * de muis (dus je wijst de kant op en typt hoe ver), de maat uit het
-   * toetsenbord. Zelfde bediening als de G-greep, maar in METERS — dat is de
-   * eenheid waarin de rest van de UI afstanden toont.
-   *
-   * Het eindpunt wordt op hele mm afgerond (het model rekent in mm) en via
+   * toetsenbord, in mm zoals de G-greep. Decimale millimeters blijven behouden.
+   * Het eindpunt wordt via
    * `plaatsKnoop` geplaatst, zodat een eindpunt dat op een bestaande staaf
    * valt daar ook echt op aansluit.
    */
   const beamLengteMm = useMemo(() => {
     if (beamLengte === null) return null;
-    const m = parseFloat(beamLengte.replace(",", "."));
-    return Number.isFinite(m) && m > 0 ? m * 1000 : null;
+    const mm = parseLength(beamLengte);
+    return Number.isFinite(mm) && mm > 0 ? mm : null;
   }, [beamLengte]);
 
   /** Eindpunt van de getypte maat, of null als er (nog) niets te tekenen is. */
@@ -2042,8 +1852,8 @@ export default function FemCanvas(props: FemCanvasProps) {
     const l = Math.hypot(dx, dz);
     if (l < 1e-6) return null;   // muis nog op de startknoop: geen richting
     return {
-      x: Math.round(start.x + (dx / l) * beamLengteMm),
-      z: Math.round(start.z + (dz / l) * beamLengteMm),
+      x: start.x + (dx / l) * beamLengteMm,
+      z: start.z + (dz / l) * beamLengteMm,
     };
   }, [beamStart, beamLengteMm, hoverModel, nodes]);
 
@@ -2086,7 +1896,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           setGrabMode({ ...grabMode, axisLock: grabMode.axisLock === "z" ? null : "z" });
           return;
         }
-        if (/^[0-9.\-]$/.test(e.key)) {
+        if (/^[0-9.,\-]$/.test(e.key)) {
           e.preventDefault();
           setGrabMode({ ...grabMode, typedDistance: (grabMode.typedDistance ?? "") + e.key });
           return;
@@ -3476,7 +3286,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   // waarop getoetst is (`lastRunData`), niet uit het getoonde resultaat: zo
   // hoort elke kleur bij precies het element dat de kern beoordeelde.
   const plaatUcData = useMemo(() => {
-    if (!showLoads || displayFlags.uc !== true || plateCheckResults.length === 0) return null;
+    if (!showLoads || !perCase || solverBusy || solveError || displayFlags.uc !== true || plateCheckResults.length === 0) return null;
     const cr = checkRunData?.combinationResults;
     if (!cr) return null;
     const uit: {
@@ -3503,7 +3313,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
     }
     return uit.length > 0 ? uit : null;
-  }, [showLoads, displayFlags.uc, plateCheckResults, checkRunData]);
+  }, [showLoads, displayFlags.uc, plateCheckResults, checkRunData, perCase, solverBusy, solveError]);
 
   // ── Modelcontrole ───────────────────────────────────────────────────────
   // Loopt live mee met het model: zo zie je een niet-aangesloten kolomvoet al
@@ -3536,7 +3346,8 @@ export default function FemCanvas(props: FemCanvasProps) {
   }, [verbindKnoopMetStaaf, voegKnopenSamen]);
 
   /** Banner text shown at the top of the canvas after a successful solve. */
-  const bannerText: { kind: "single" | "combo" | "envelope"; text: string } | null = useMemo(() => {
+  const bannerText: { kind: "single" | "combo" | "envelope" | "info"; text: string } | null = useMemo(() => {
+    if (solverBusy) return { kind: "info", text: tCommon("resultView.busy") };
     if (envelopeView && envelope) {
       const combo = combinations?.find(c => c.id === envelope.maxDisplacementCombinationId);
       const u = envelope.maxDisplacement.toFixed(2);
@@ -3556,10 +3367,13 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
     }
     if (results) {
-      return { kind: "single", text: tCommon("canvas.banner.solved", { u: results.maxDisplacement.toFixed(2) }) };
+      return { kind: "single", text: `${activeLoadCaseName ?? activeLoadCaseId}: ${tCommon("canvas.banner.solved", { u: results.maxDisplacement.toFixed(2) })}` };
+    }
+    if (perCase && activeCombinationId == null && !envelopeView) {
+      return { kind: "info", text: tCommon("resultView.emptyCase", { name: activeLoadCaseName ?? activeLoadCaseId }) };
     }
     return null;
-  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon]);
+  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon, perCase, activeLoadCaseId, activeLoadCaseName, solverBusy]);
 
   // ── Envelope overlay rendering ──────────────────────────────────────────
   // Colors each beam by sign of max |M| and labels with value + governing combo.
@@ -3869,7 +3683,6 @@ export default function FemCanvas(props: FemCanvasProps) {
                   const midX = (pa.x + pb.x) / 2, midY = pa.y;
                   const labelCY = midY - DIM_LABEL_DY;   // boven de maatlijn
                   const distMm = b.position - a.position;
-                  const distM  = distMm / 1000;
                   items.push(
                     <g key={`dimx${i}`}>
                       <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} className="fem-dim-line" pointerEvents="none" />
@@ -3891,7 +3704,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         }}
                       >
                         <rect x={midX - 30} y={labelCY - 9} width={60} height={18} rx={4} className="fem-dim-label-bg" />
-                        <text x={midX} y={labelCY} className="fem-dim-text">{distM.toFixed(2)} m</text>
+                        <text x={midX} y={labelCY} className="fem-dim-text">{formatLength(distMm)} mm</text>
                       </g>
                     </g>
                   );
@@ -3914,7 +3727,6 @@ export default function FemCanvas(props: FemCanvasProps) {
                   const midX = pa.x, midY = (pa.y + pb.y) / 2;
                   const labelCX = midX + DIM_LABEL_DY + 22;  // naast de maatlijn
                   const distMm = b.position - a.position;
-                  const distM  = distMm / 1000;
                   items.push(
                     <g key={`dimz${i}`}>
                       <line x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} className="fem-dim-line" pointerEvents="none" />
@@ -3936,7 +3748,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         }}
                       >
                         <rect x={labelCX - 30} y={midY - 9} width={60} height={18} rx={4} className="fem-dim-label-bg" />
-                        <text x={labelCX} y={midY} className="fem-dim-text">{distM.toFixed(2)} m</text>
+                        <text x={labelCX} y={midY} className="fem-dim-text">{formatLength(distMm)} mm</text>
                       </g>
                     </g>
                   );
@@ -4098,7 +3910,7 @@ export default function FemCanvas(props: FemCanvasProps) {
           const doel = beamMaatEindpunt ?? hoverModel;
           const p1 = worldToScreen(startNode.x, startNode.z);
           const p2 = worldToScreen(doel.x, doel.z);
-          const lengteM = Math.hypot(doel.x - startNode.x, doel.z - startNode.z) / 1000;
+          const lengteMm = Math.hypot(doel.x - startNode.x, doel.z - startNode.z);
           return (
             <g>
               <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} className="fem-member-preview" />
@@ -4112,7 +3924,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                     textAnchor="middle"
                   >
                     {beamMaatEindpunt
-                      ? `${fmtNl(lengteM, 3)} m`
+                      ? `${formatLength(lengteMm)} mm`
                       : tCommon("canvas.beam.lengthPointDirection", { lengte: beamLengte.replace(".", ",") })}
                   </text>
                 </>
@@ -4293,7 +4105,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         {grabMode && (() => {
           let dx = 0, dz = 0;
           if (grabMode.typedDistance !== null) {
-            const v = parseFloat(grabMode.typedDistance);
+            const v = parseLength(grabMode.typedDistance);
             if (!isNaN(v)) {
               if (grabMode.axisLock === "z") dz = v;
               else dx = v;
@@ -4501,7 +4313,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         {/* Unity-check-badges (Resultaten-tab, rij "Unity check"): per staaf
             met toetsresultaat de maatgevende UC op het staafmidden. Groen
             ≤ 1,0, rood > 1,0; klik opent het toetsingspaneel voor die staaf. */}
-        {showLoads && displayFlags.uc === true && checkResults.length > 0 && (
+        {showLoads && perCase && !solverBusy && !solveError && displayFlags.uc === true && checkResults.length > 0 && (
           <g className="fem-uc-layer">
             {checkResults.map(r => {
               const b = beams.find(bb => bb.id === r.beam_id);
@@ -4788,12 +4600,15 @@ export default function FemCanvas(props: FemCanvasProps) {
 
       {(bannerText || solveError) && (
         <div className="fem-hud fem-hud-tc">
-          <div className={`fem-hud-card ${solveError ? "fem-hud-error" : "fem-hud-success"}`}>
+          <div className={`fem-hud-card ${solveError ? "fem-hud-error" : bannerText?.kind === "info" ? "" : "fem-hud-success"}`}>
             {solveError ? (
               <span>{tCommon("canvas.solve.errorBanner", { fout: solveError })}</span>
             ) : bannerText ? (
               <span className="fem-hud-strong fem-hud-mono">{bannerText.text}</span>
             ) : null}
+            {displayFlags.uc && perCase && !solverBusy && !solveError && (
+              <span className="fem-hud-muted">{tCommon("resultView.ucCombinations")}</span>
+            )}
           </div>
         </div>
       )}
@@ -4838,7 +4653,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       {grabMode && (() => {
         let dx = 0, dz = 0;
         if (grabMode.typedDistance !== null) {
-          const v = parseFloat(grabMode.typedDistance);
+          const v = parseLength(grabMode.typedDistance);
           if (!isNaN(v)) {
             if (grabMode.axisLock === "z") dz = v;
             else dx = v;
@@ -4924,7 +4739,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       )}
 
       {/* Maatlijn-edit popover — opent als je op een maat-label klikt. Vul de
-          nieuwe afstand in m in. De bewegende as schuift mee, de referentie-as
+          nieuwe afstand in mm in. De bewegende as schuift mee, de referentie-as
           blijft op zijn plek, en de knopen ÓP de bewegende as schuiven mee
           zodat staven en lasten aan het stramien vast blijven zitten. */}
       {dimEdit && setStructuralGrid && (
@@ -5003,11 +4818,11 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (p.kind === "pointLoad" || p.kind === "pointLoadH") {
       // Twee aangrijpingsvormen: op een KNOOP (p.nodeId) of op een vrije
       // positie op een STAAF (p.beamId + p.posFrac). In het tweede geval
-      // toont het formulier ook een positieveld in m vanaf de startknoop.
+      // toont het formulier ook een positieveld in mm vanaf de startknoop.
       // Fx/Fz komen uit het waardegeheugen; de eerste keer per sessie zijn
       // dat de vertrouwde beginwaarden (verticaal −10 kN, horizontaal +10 kN).
       // Derde vorm: op een PLAATRAND (p.plateId + rand + p.posFrac), positie
-      // in m vanaf de beginhoek van die rand.
+      // in mm vanaf de beginhoek van die rand.
       const opStaaf = p.nodeId === undefined && p.beamId !== undefined;
       const opPlaat = p.nodeId === undefined && p.beamId === undefined && p.plateId !== undefined;
       const beam = opStaaf ? beams.find(b => b.id === p.beamId) : undefined;
@@ -5015,9 +4830,9 @@ export default function FemCanvas(props: FemCanvasProps) {
       const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
       const plaat = opPlaat ? plates.find(pp => pp.id === p.plateId) : undefined;
       const randGeo = plaat ? plaatRandGeometrie(plaat, nodes, p) : null;
-      const lenM = opPlaat
-        ? (randGeo?.lengteMm ?? 0) / 1000
-        : nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
+      const lenMm = opPlaat
+        ? (randGeo?.lengteMm ?? 0)
+        : nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
       const soort: LastSoort = p.kind === "pointLoadH" ? "puntlastH" : "puntlastV";
       const w = lastwaarden(soort);
       return <PopoverPointLoadForm
@@ -5025,10 +4840,10 @@ export default function FemCanvas(props: FemCanvasProps) {
         startFx={w.fx ?? 0}
         startFz={w.fz ?? 0}
         onthouden={isOnthouden(soort)}
-        beamLenM={opStaaf || opPlaat ? lenM : undefined}
-        defaultPosM={opStaaf || opPlaat ? (p.posFrac ?? 0) * lenM : undefined}
+        beamLenMm={opStaaf || opPlaat ? lenMm : undefined}
+        defaultPosMm={opStaaf || opPlaat ? (p.posFrac ?? 0) * lenMm : undefined}
         positieLabel={opPlaat
-          ? tCommon("canvas.popover.positionAlongEdge", { rand: plaatRandTekst(p, tCommon), plaat: p.plateId, lengte: lenM.toFixed(2) })
+          ? tCommon("canvas.popover.positionAlongEdge", { rand: plaatRandTekst(p, tCommon), plaat: p.plateId, lengte: formatLength(lenMm) })
           : undefined}
         onSubmit={(fx, fz, posFrac) => cbs.onAddLoad(
           opPlaat
@@ -5055,16 +4870,16 @@ export default function FemCanvas(props: FemCanvasProps) {
       />;
     }
     if (p.kind === "lineLoad") {
-      // Staaflengte (m) voor de begin/eind-invoer van een deellast.
+      // Staaflengte (mm) voor de begin/eind-invoer van een deellast.
       const beam = beams.find(b => b.id === p.beamId);
       const nA = beam ? nodes.find(n => n.id === beam.from) : undefined;
       const nB = beam ? nodes.find(n => n.id === beam.to) : undefined;
-      const lenM = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) / 1000 : 0;
+      const lenMm = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
       // q en richting komen uit het waardegeheugen; begin/einde niet — die
       // horen bij DEZE staaf en beginnen dus altijd op de volle lengte.
       const w = lastwaarden("lijnlast");
       return <PopoverLineLoadForm
-        beamLenM={lenM}
+        beamLenMm={lenMm}
         startQ={w.q ?? -5}
         startDir={w.qDir ?? "z"}
         onthouden={isOnthouden("lijnlast")}
@@ -5085,19 +4900,19 @@ export default function FemCanvas(props: FemCanvasProps) {
       // richting in globale assen — zelfde tekenconventie als lijnlasten.
       // Polygonranden gaan via de rand-index (`edgeIndex`), benoemde randen
       // blijven het rechthoekpad.
-      // Begin/einde van een deellast in m vanaf de beginhoek van de rand —
+      // Begin/einde van een deellast in mm vanaf de beginhoek van de rand —
       // dezelfde telrichting als de rekenkern (`bepaalPlaatRand`).
       const w = lastwaarden("randlast");
       const plaat = plates.find(pp => pp.id === p.plateId);
       const randGeo = plaat ? plaatRandGeometrie(plaat, nodes, p) : null;
-      const randLenM = (randGeo?.lengteMm ?? 0) / 1000;
+      const randLenMm = (randGeo?.lengteMm ?? 0);
       return <PopoverEdgeLoadForm
         randLabel={p.openingId !== undefined
           ? tCommon("canvas.edge.numberedOfOpening", { rand: (p.edgeIndex ?? 0) + 1, opening: p.openingId })
           : p.edgeIndex !== undefined
             ? tCommon("canvas.edge.numbered", { rand: p.edgeIndex + 1 })
             : randLabel(p.edge ?? "top")}
-        randLenM={randLenM}
+        randLenMm={randLenMm}
         startP={w.q ?? -5}
         startDir={w.qDir ?? "z"}
         onthouden={isOnthouden("randlast")}
@@ -5169,8 +4984,8 @@ function toolLabel(t: Tool): string {
 // ── Popover forms ─────────────────────────────────────────────────────────
 
 /** Form to enter a new distance for a clicked dimension line.
- *  Input is in METERS (matches the on-canvas label format), commit converts
- *  to mm and forwards to the parent which updates the moving axis position.
+ *  Input and label are in mm; commit forwards the distance unchanged to the
+ *  parent which updates the moving axis position.
  *  De knopen die OP de bewegende as liggen schuiven mee; het aantal staat als
  *  hint in de popover zodat de gebruiker vooraf weet wat er meebeweegt. */
 function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCancel }: {
@@ -5181,11 +4996,11 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
   onCancel: () => void;
 }) {
   const { t } = useTranslation("common");
-  const [val, setVal] = useState((currentMm / 1000).toFixed(2));
+  const [val, setVal] = useState(formatLength(currentMm));
   const commit = () => {
-    const m = parseFloat(val);
-    if (!Number.isFinite(m) || m <= 0) return;
-    onSubmit(Math.round(m * 1000));
+    const mm = parseLength(val);
+    if (!Number.isFinite(mm) || mm <= 0) return;
+    onSubmit(mm);
   };
   return (
     <div className="fem-popover-form">
@@ -5195,7 +5010,7 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
       <label className="fem-popover-row">
         <span>{t("canvas.dim.distance")}</span>
         <input
-          type="number" step="0.1" min="0.01" value={val} autoFocus
+          type="text" inputMode="decimal" value={val} autoFocus
           onChange={e => setVal(e.target.value)}
           onKeyDown={e => {
             if (e.key === "Enter") commit();
@@ -5249,9 +5064,9 @@ function PopoverSingleNumberForm({ title, label, defaultValue, hint, onSubmit }:
   );
 }
 
-function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }: {
-  /** Staaflengte in m — begrenst de begin/eind-invoer van een deellast. */
-  beamLenM: number;
+function PopoverLineLoadForm({ beamLenMm, startQ, startDir, onthouden, onSubmit }: {
+  /** Staaflengte in mm — begrenst de begin/eind-invoer van een deellast. */
+  beamLenMm: number;
   /** Voorgevulde q (kN/m) — beginwaarde of de laatst gebruikte waarde. */
   startQ: number;
   /** Voorgevulde richting — beginwaarde of de laatst gebruikte richting. */
@@ -5264,18 +5079,18 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
   const { t } = useTranslation("common");
   const [q, setQ]     = useState(String(startQ));
   const [dir, setDir] = useState<"x" | "z">(startDir);
-  // Deellast-invoer in m VANAF DE STARTKNOOP (zelfde eenheid als de
+  // Deellast-invoer in mm VANAF DE STARTKNOOP (zelfde eenheid als de
   // maatvoering elders in de UI); intern omgerekend naar fracties 0..1.
-  const [beginM, setBeginM] = useState("0");
-  const [endM, setEndM]     = useState(beamLenM > 0 ? beamLenM.toFixed(2) : "0");
-  const b0 = Number(beginM), b1 = Number(endM);
-  const rangeValid = beamLenM > 0
+  const [beginMm, setBeginMm] = useState("0");
+  const [endMm, setEndMm]     = useState(beamLenMm > 0 ? formatLength(beamLenMm) : "0");
+  const b0 = parseLength(beginMm), b1 = parseLength(endMm);
+  const rangeValid = beamLenMm > 0
     && Number.isFinite(b0) && Number.isFinite(b1)
-    && b0 >= 0 && b0 < b1 && b1 <= beamLenM + 1e-9;
+    && b0 >= 0 && b0 < b1 && b1 <= beamLenMm + 1e-9;
   const commit = () => {
     if (!rangeValid) return;
-    const aF = b0 / beamLenM;
-    const bF = Math.min(1, b1 / beamLenM);
+    const aF = b0 / beamLenMm;
+    const bF = Math.min(1, b1 / beamLenMm);
     const isFull = aF <= 0 && bF >= 1;
     onSubmit(Number(q) || 0, dir,
       isFull ? undefined : aF,
@@ -5304,25 +5119,25 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
       <label className="fem-popover-row">
         <span>{t("canvas.popover.beginM")}</span>
         <input
-          type="number" step="0.1" min="0" max={beamLenM} value={beginM}
-          onChange={e => setBeginM(e.target.value)}
+          type="text" inputMode="decimal" value={beginMm}
+          onChange={e => setBeginMm(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
       <label className="fem-popover-row">
         <span>{t("canvas.popover.endM")}</span>
         <input
-          type="number" step="0.1" min="0" max={beamLenM} value={endM}
-          onChange={e => setEndM(e.target.value)}
+          type="text" inputMode="decimal" value={endMm}
+          onChange={e => setEndMm(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
       <div className="fem-popover-hint">
-        {t("canvas.popover.lineLoadHint", { lengte: beamLenM.toFixed(2) })}
+        {t("canvas.popover.lineLoadHint", { lengte: formatLength(beamLenMm) })}
       </div>
       {!rangeValid && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
-          {t("canvas.popover.invalidRange", { lengte: beamLenM.toFixed(2) })}
+          {t("canvas.popover.invalidRange", { lengte: formatLength(beamLenMm) })}
         </div>
       )}
       <div className="fem-popover-actions">
@@ -5338,10 +5153,10 @@ function PopoverLineLoadForm({ beamLenM, startQ, startDir, onthouden, onSubmit }
  * Z, naar links voor X) — dezelfde tekenconventie als lijnlasten op staven.
  * `randLabel` is de NL-naam van de rand ("bovenrand" of "rand 3").
  */
-function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden, onSubmit }: {
+function PopoverEdgeLoadForm({ randLabel, randLenMm, startP, startDir, onthouden, onSubmit }: {
   randLabel: string;
-  /** Randlengte in m — begrenst de begin/eind-invoer van een deellast. */
-  randLenM: number;
+  /** Randlengte in mm — begrenst de begin/eind-invoer van een deellast. */
+  randLenMm: number;
   /** Voorgevulde p (kN/m) — beginwaarde of de laatst gebruikte waarde. */
   startP: number;
   /** Voorgevulde richting — beginwaarde of de laatst gebruikte richting. */
@@ -5354,21 +5169,21 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
   const { t } = useTranslation("common");
   const [p, setP] = useState(String(startP));
   const [dir, setDir] = useState<"x" | "z">(startDir);
-  // Deellast-invoer in m VANAF DE BEGINHOEK van de rand (hoek i bij een
+  // Deellast-invoer in mm VANAF DE BEGINHOEK van de rand (hoek i bij een
   // rand-index, de kleinste x of z bij een benoemde rand) — dezelfde
   // telrichting als de rekenkern; intern fracties 0..1, net als bij een staaf.
   // Een trapezium (p_start/p_end) stel je daarna in het eigenschappenpaneel
   // in, zoals bij een lijnlast.
-  const [beginM, setBeginM] = useState("0");
-  const [endM, setEndM] = useState(randLenM > 0 ? randLenM.toFixed(2) : "0");
-  const b0 = Number(beginM), b1 = Number(endM);
-  const rangeValid = randLenM > 0
+  const [beginMm, setBeginMm] = useState("0");
+  const [endMm, setEndMm] = useState(randLenMm > 0 ? formatLength(randLenMm) : "0");
+  const b0 = parseLength(beginMm), b1 = parseLength(endMm);
+  const rangeValid = randLenMm > 0
     && Number.isFinite(b0) && Number.isFinite(b1)
-    && b0 >= 0 && b0 < b1 && b1 <= randLenM + 1e-9;
+    && b0 >= 0 && b0 < b1 && b1 <= randLenMm + 1e-9;
   const commit = () => {
     if (!rangeValid) return;
-    const aF = b0 / randLenM;
-    const bF = Math.min(1, b1 / randLenM);
+    const aF = b0 / randLenMm;
+    const bF = Math.min(1, b1 / randLenMm);
     const isFull = aF <= 0 && bF >= 1;
     onSubmit(Number(p) || 0, dir, isFull ? undefined : aF, isFull ? undefined : bF);
   };
@@ -5395,25 +5210,25 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
       <label className="fem-popover-row">
         <span>{t("canvas.popover.beginM")}</span>
         <input
-          type="number" step="0.1" min="0" max={randLenM} value={beginM}
-          onChange={e => setBeginM(e.target.value)}
+          type="text" inputMode="decimal" value={beginMm}
+          onChange={e => setBeginMm(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
       <label className="fem-popover-row">
         <span>{t("canvas.popover.endM")}</span>
         <input
-          type="number" step="0.1" min="0" max={randLenM} value={endM}
-          onChange={e => setEndM(e.target.value)}
+          type="text" inputMode="decimal" value={endMm}
+          onChange={e => setEndMm(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter") commit(); }}
         />
       </label>
       <div className="fem-popover-hint">
-        {t("canvas.popover.edgeLoadHint", { lengte: randLenM.toFixed(2) })}
+        {t("canvas.popover.edgeLoadHint", { lengte: formatLength(randLenMm) })}
       </div>
       {!rangeValid && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
-          {t("canvas.popover.invalidRange", { lengte: randLenM.toFixed(2) })}
+          {t("canvas.popover.invalidRange", { lengte: formatLength(randLenMm) })}
         </div>
       )}
       <div className="fem-popover-actions">
@@ -5424,7 +5239,7 @@ function PopoverEdgeLoadForm({ randLabel, randLenM, startP, startDir, onthouden,
 }
 
 function PopoverPointLoadForm({
-  onSubmit, horizontal, startFx, startFz, onthouden, beamLenM, defaultPosM, positieLabel,
+  onSubmit, horizontal, startFx, startFz, onthouden, beamLenMm, defaultPosMm, positieLabel,
 }: {
   /** `posFrac` is alleen gevuld bij een puntlast op een vrije staaf- of randpositie. */
   onSubmit: (fx: number, fz: number, posFrac?: number) => void;
@@ -5435,11 +5250,11 @@ function PopoverPointLoadForm({
   startFz: number;
   /** Komen startFx/startFz uit de vorige plaatsing? Dan komt dat erbij te staan. */
   onthouden: boolean;
-  /** Lengte in m van de staaf of de plaatrand — gezet ⇒ de last grijpt op
+  /** Lengte in mm van de staaf of de plaatrand — gezet ⇒ de last grijpt op
    *  een vrije positie aan, niet op een knoop, en het positieveld verschijnt. */
-  beamLenM?: number;
-  /** Voorgestelde positie in m vanaf de startknoop of beginhoek (uit de klikpositie). */
-  defaultPosM?: number;
+  beamLenMm?: number;
+  /** Voorgestelde positie in mm vanaf de startknoop of beginhoek (uit de klikpositie). */
+  defaultPosMm?: number;
   /** Uitleg bij het positieveld; zonder: de staafvariant. */
   positieLabel?: string;
 }) {
@@ -5448,16 +5263,16 @@ function PopoverPointLoadForm({
   const { t } = useTranslation("common");
   const [fx, setFx] = useState(String(startFx));
   const [fz, setFz] = useState(String(startFz));
-  // Positie op de staaf in m vanaf de startknoop; intern omgerekend naar een
+  // Positie op de staaf in mm vanaf de startknoop; intern omgerekend naar een
   // fractie 0..1 (Load.posFrac) — dezelfde conventie als de deellast-invoer.
-  const opStaaf = beamLenM !== undefined && beamLenM > 0;
-  const [posM, setPosM] = useState((defaultPosM ?? 0).toFixed(2));
+  const opStaaf = beamLenMm !== undefined && beamLenMm > 0;
+  const [posMm, setPosMm] = useState(formatLength(defaultPosMm ?? 0));
   const posGeldig = !opStaaf
-    || (Number.isFinite(Number(posM)) && Number(posM) >= 0 && Number(posM) <= beamLenM! + 1e-9);
+    || (Number.isFinite(parseLength(posMm)) && parseLength(posMm) >= 0 && parseLength(posMm) <= beamLenMm! + 1e-9);
   const commit = () => {
     if (!posGeldig) return;
     const frac = opStaaf
-      ? Math.min(1, Math.max(0, Number(posM) / beamLenM!))
+      ? Math.min(1, Math.max(0, parseLength(posMm) / beamLenMm!))
       : undefined;
     onSubmit(Number(fx) || 0, Number(fz) || 0, frac);
   };
@@ -5470,9 +5285,9 @@ function PopoverPointLoadForm({
         <label className="fem-popover-row">
           <span>{t("canvas.popover.positionM")}</span>
           <input
-            type="number" step="0.05" min="0" max={beamLenM}
-            value={posM} onChange={e => setPosM(e.target.value)}
-            title={positieLabel ?? t("canvas.popover.positionAlongBeam", { lengte: beamLenM!.toFixed(2) })}
+            type="text" inputMode="decimal"
+            value={posMm} onChange={e => setPosMm(e.target.value)}
+            title={positieLabel ?? t("canvas.popover.positionAlongBeam", { lengte: formatLength(beamLenMm!) })}
             onKeyDown={e => { if (e.key === "Enter") commit(); }}
           />
         </label>
@@ -5492,7 +5307,7 @@ function PopoverPointLoadForm({
       {onthouden && <div className="fem-popover-hint">{t("canvas.popover.rememberedHint")}</div>}
       {opStaaf && !posGeldig && (
         <div className="fem-popover-hint" style={{ color: "var(--theme-danger, #d33)" }}>
-          {t("canvas.popover.invalidPosition", { lengte: beamLenM!.toFixed(2) })}
+          {t("canvas.popover.invalidPosition", { lengte: formatLength(beamLenMm!) })}
         </div>
       )}
       <div className="fem-popover-actions">

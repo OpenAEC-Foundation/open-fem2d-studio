@@ -20,6 +20,7 @@
  * meters; het SVG-stelsel klapt z om.
  */
 import { useTranslation } from "react-i18next";
+import { formatLength, type LengthUnit } from "../lengthInput";
 import { BEAM_LOAD_ROLE_SLEUTEL, type BeamLoadRole } from "../../components/fem/femTypes";
 import type { VlakRegel, WindGeometrie, Windrichting } from "./windGenerator";
 import type { OverkappingDakvorm, OverkappingZone } from "./windEurocode";
@@ -75,12 +76,15 @@ export interface DoorsnedeSchemaProps {
   /** Vrijstaand dak, c_f-geval: de resultante(n) van het getoonde geval. */
   resultanten?: readonly { x_m: number; z_m: number; F_kN: number }[];
   breedtePx?: number;
+  /** Invoervenster gebruikt mm; bestaande alleen-lezen afnemers behouden m. */
+  lengthUnit?: LengthUnit;
 }
 
 export function DoorsnedeSchema({
-  geometrie: g, richting, regels = [], gevelhoogte_m = null, resultanten = [], breedtePx = 440,
+  geometrie: g, richting, regels = [], gevelhoogte_m = null, resultanten = [], breedtePx = 440, lengthUnit = "m",
 }: DoorsnedeSchemaProps) {
   const { t } = useTranslation("common");
+  const maat = (m: number, d: number) => lengthUnit === "mm" ? formatLength(m, "m") : nl(m, d);
   const vrij = g.vrijstaand;
   // Onder het model: de gedachte gevel van een kap zonder gevel, of bij een
   // vrijstaand dak het stuk tussen het model en de opgegeven hoogte h.
@@ -143,7 +147,7 @@ export function DoorsnedeSchema({
       className="wgd-schema"
       viewBox={`0 0 ${breedtePx} ${hoogtePx.toFixed(0)}`}
       role="img"
-      aria-label={t("wind.schema.sectionAria", { h: nl(g.h_m, 2), d: nl(g.d_m, 2) })}
+      aria-label={t("wind.schema.sectionAria", { unit: lengthUnit, h: maat(g.h_m, 2), d: maat(g.d_m, 2) })}
     >
       <defs>
         <marker id="wgd-pijl" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
@@ -182,7 +186,7 @@ export function DoorsnedeSchema({
           <line x1={sx(g.xLinks_m)} y1={sy(minZ + gevel)} x2={sx(g.xLinks_m)} y2={y0} />
           <line x1={sx(g.xRechts_m)} y1={sy(minZ + gevel)} x2={sx(g.xRechts_m)} y2={y0} />
           <text x={sx(g.xLinks_m) - 6} y={(sy(minZ + gevel) + y0) / 2} fontSize="9" textAnchor="end" stroke="none" fill={ROL_KLEUR.gevelLinks}>
-            {t("wind.schema.wallHeight", { h: nl(gevel, 2) })}
+            {t("wind.schema.wallHeight", { unit: lengthUnit, h: maat(gevel, 2) })}
           </text>
         </g>
       )}
@@ -257,11 +261,11 @@ export function DoorsnedeSchema({
         <line x1={sx(g.xLinks_m)} y1={y0 + 16} x2={sx(g.xRechts_m)} y2={y0 + 16} />
         <line x1={sx(g.xLinks_m)} y1={y0 + 12} x2={sx(g.xLinks_m)} y2={y0 + 20} />
         <line x1={sx(g.xRechts_m)} y1={y0 + 12} x2={sx(g.xRechts_m)} y2={y0 + 20} />
-        <text x={(sx(g.xLinks_m) + sx(g.xRechts_m)) / 2} y={y0 + 27} textAnchor="middle" stroke="none">{`d = ${nl(g.d_m, 2)} m`}</text>
+        <text x={(sx(g.xLinks_m) + sx(g.xRechts_m)) / 2} y={y0 + 27} textAnchor="middle" stroke="none">{`d = ${maat(g.d_m, 2)} ${lengthUnit}`}</text>
         <line x1={sx(maxX) + 18} y1={sy(maxZ)} x2={sx(maxX) + 18} y2={y0} />
         <line x1={sx(maxX) + 14} y1={sy(maxZ)} x2={sx(maxX) + 22} y2={sy(maxZ)} />
         <line x1={sx(maxX) + 14} y1={y0} x2={sx(maxX) + 22} y2={y0} />
-        <text x={sx(maxX) + 24} y={(sy(maxZ) + y0) / 2 + 3} stroke="none">{`h = ${nl(g.h_m, 2)} m`}</text>
+        <text x={sx(maxX) + 24} y={(sy(maxZ) + y0) / 2 + 3} stroke="none">{`h = ${maat(g.h_m, 2)} ${lengthUnit}`}</text>
       </g>
     </svg>
   );
@@ -329,13 +333,16 @@ export interface PlattegrondSchemaProps {
    */
   vrijstaand?: { nokFractie: number | null };
   breedtePx?: number;
+  /** Invoervenster gebruikt mm; bestaande alleen-lezen afnemers behouden m. */
+  lengthUnit?: LengthUnit;
 }
 
 export function PlattegrondSchema({
   gebouwlengte_m: b, d_m: d, hoh_m, positie, afstandTotKopgevel_m, richtingLinks, richtingRechts, richtingHaaks,
-  e_m, vrijstaand, breedtePx = 440,
+  e_m, vrijstaand, breedtePx = 440, lengthUnit = "m",
 }: PlattegrondSchemaProps) {
   const { t } = useTranslation("common");
+  const maat = (m: number, d: number) => lengthUnit === "mm" ? formatLength(m, "m") : nl(m, d);
   const M = { l: 40, r: 40, t: 26, b: 22 };
   const tekenW = breedtePx - M.l - M.r;
   const schaal = Math.min(tekenW / Math.max(b, 0.1), 110 / Math.max(d, 0.1));
@@ -369,7 +376,7 @@ export function PlattegrondSchema({
   }
   return (
     <svg className="wgd-schema" viewBox={`0 0 ${breedtePx} ${hoogtePx.toFixed(0)}`} role="img"
-      aria-label={t("wind.schema.planAria", { b: nl(b, 1), d: nl(d, 1) })}>
+      aria-label={t("wind.schema.planAria", { unit: lengthUnit, b: maat(b, 1), d: maat(d, 1) })}>
       <defs>
         <marker id="wgd-pijl2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M 0 0 L 8 4 L 0 8 z" fill="context-stroke" />
@@ -395,7 +402,7 @@ export function PlattegrondSchema({
         <line key={y} x1={sx(y)} y1={y0} x2={sx(y)} y2={y0 + hPx} stroke="var(--theme-text-faint, #999)" strokeWidth="0.8" className="wgd-spant" />
       ))}
       <line x1={sx(ditSpant)} y1={y0 - 4} x2={sx(ditSpant)} y2={y0 + hPx + 4} stroke="var(--theme-accent, #d97706)" strokeWidth="3" strokeLinecap="round" className="wgd-dit-spant">
-        <title>{positie === "kopgevelspant" ? t("wind.positionGable") : t("wind.schema.innerFrameAt", { afstand: nl(ditSpant, 1) })}</title>
+        <title>{positie === "kopgevelspant" ? t("wind.positionGable") : t("wind.schema.innerFrameAt", { unit: lengthUnit, afstand: maat(ditSpant, 1) })}</title>
       </line>
       {/* Windrichtingen: links/rechts in het vlak van het spant (van onder en boven in de plattegrond), haaks langs de lengte */}
       {richtingLinks && (
@@ -408,10 +415,10 @@ export function PlattegrondSchema({
         <line x1={x0 - 30} y1={y0 + hPx / 2} x2={x0 - 6} y2={y0 + hPx / 2} stroke={KLEUR_WIND} strokeWidth="2" markerEnd="url(#wgd-pijl2)" className="wgd-wind" />
       )}
       <g fill="var(--theme-text-muted, #666)" fontSize="9">
-        <text x={x0 + wPx / 2} y={y0 + hPx + 18} textAnchor="middle">{t("wind.schema.planDims", { b: nl(b, 1), hoh: nl(hoh_m, 2) })}</text>
-        <text x={x0 + wPx + 6} y={y0 + hPx / 2 + 3}>{`d = ${nl(d, 1)} m`}</text>
+        <text x={x0 + wPx / 2} y={y0 + hPx + 18} textAnchor="middle">{t("wind.schema.planDims", { unit: lengthUnit, b: maat(b, 1), hoh: maat(hoh_m, 2) })}</text>
+        <text x={x0 + wPx + 6} y={y0 + hPx / 2 + 3}>{`d = ${maat(d, 1)} ${lengthUnit}`}</text>
         {positie === "tussenspant" && (
-          <text x={sx(ditSpant)} y={y0 - 8} textAnchor="middle" fill="var(--theme-accent, #d97706)">{`${nl(ditSpant, 1)} m`}</text>
+          <text x={sx(ditSpant)} y={y0 - 8} textAnchor="middle" fill="var(--theme-accent, #d97706)">{`${maat(ditSpant, 1)} ${lengthUnit}`}</text>
         )}
       </g>
     </svg>

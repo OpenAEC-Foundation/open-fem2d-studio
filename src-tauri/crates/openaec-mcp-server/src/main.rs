@@ -49,6 +49,8 @@ mod timber_tools;
 /// dezelfde `plaat_check::check_all_plates` aan als het Tauri-command en de
 /// toetsbrug. Zie `plate_tools.rs`.
 mod plate_tools;
+#[cfg(test)]
+mod report_tests;
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "openaec-fem";
@@ -440,6 +442,15 @@ fn tool_definitions() -> Value {
                     "clt_check_results":      { "type": "array" },
                     "concrete_check_results": { "type": "array" },
                     "stress_check_results":   { "type": "array" },
+                    "plate_inputs": { "type": "array", "items": plate_tools::schema_plaat(),
+                        "description": "Original plate inputs from the same check run, including all relevant ULS and SLS combinations and element stresses. Optional; the PDF lists every supplied combination and the stresses at its governing element. Does not rerun checks." },
+                    "plate_results": { "type": "array", "items": { "type": "object" },
+                        "description": "Complete PlateCheckResult objects returned by check_plates or check_fem_model: all combination results, governing element/combination, unperformed checks and refusal reasons. Results are printed without recalculation. Empty or absent with no plate inputs/skips omits the plate chapter." },
+                    "plate_skipped": { "type": "array", "items": {
+                        "type": "object", "additionalProperties": false,
+                        "required": ["plate_id", "reden"],
+                        "properties": { "plate_id": { "type": "integer", "minimum": 0 }, "reden": { "type": "string" } }
+                    }, "description": "Plates not sent to the check kernel, with their literal reason. Printed as not checked." },
                     "concrete_stiffness_trace": { "type": "object" },
                     "wind_toelichting": { "type": "string", "description": "Optional text block (one line per load case) describing generated wind loads: NEN-EN 1991-1-4 paragraph and table, roof pitch alpha, blockage phi and the coefficient used. Printed verbatim under 'Uitgangspunten' → 'Windbelasting'; empty or absent = the PDF says nothing about wind." }
                 },

@@ -171,6 +171,40 @@ fn beoordeel(el: &PlaatElementSpanning, s: &Sterkte) -> Vec<(String, f64)> {
     }
 }
 
+/// Geen spanningsresultaat mag zelf verklaren welke mesh volledig is.
+fn valideer_mesh(input: &PlateCheckInput) -> Result<(), String> {
+    use std::collections::BTreeSet;
+
+    if let Some(fout) = &input.mesh_fout {
+        return Err(format!("Betonmesh: invoerbouwer meldt onbetrouwbare meshmetadata: {fout}; niet getoetst."));
+    }
+    let ids = input.expected_element_ids.as_ref().ok_or_else(||
+        "Betonmesh: onafhankelijke expected_element_ids ontbreekt; bereken opnieuw met volledige meshmetadata. Niet getoetst.".to_string()
+    )?;
+    let verwacht: BTreeSet<_> = ids.iter().copied().collect();
+    if verwacht.is_empty() || verwacht.len() != ids.len() {
+        return Err("Betonmesh: expected_element_ids moet een niet-lege volledige meshset zonder duplicaten zijn; niet getoetst.".into());
+    }
+    if input.combinations.is_empty() {
+        return Err("Betonmesh: geen UGT-combinaties aangeleverd; niet getoetst.".into());
+    }
+    let mut combinaties = BTreeSet::new();
+    for (soort, cs) in [("UGT", &input.combinations), ("frequente BGT", &input.frequente_combinaties)] {
+        for c in cs {
+            if !combinaties.insert(c.combination_id) {
+                return Err(format!("Betonmesh: dubbel combinatie-id {} bij {soort}; UGT/BGT moeten afzonderlijke ids hebben. Niet getoetst.", c.combination_id));
+            }
+            let aanwezig: BTreeSet<_> = c.elements.iter().map(|e| e.element_id).collect();
+            if aanwezig.len() != c.elements.len() || aanwezig != verwacht {
+                let ontbrekend: Vec<_> = verwacht.difference(&aanwezig).copied().collect();
+                let extra: Vec<_> = aanwezig.difference(&verwacht).copied().collect();
+                return Err(format!("Betonmesh: {soort}-combinatie {} heeft onvolledige of dubbele elementdekking (ontbrekend: {ontbrekend:?}, extra: {extra:?}); niet getoetst.", c.combination_id));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
     // Op de VOLLEDIGE naam: "C30" is in EN 338 hout (zie `is_betonklasse` in de
     // MCP-server); de korte vorm hoort hier niet als beton te tellen.
@@ -186,6 +220,16 @@ pub fn toets(input: &PlateCheckInput) -> PlateCheckResult {
             ),
         );
     };
+    if let Err(reden) = valideer_mesh(input) {
+        let mut r = geweigerd(input, reden.clone());
+        r.niet_getoetst.push(PlaatNietGetoetst {
+            id: "beton_mesh_onvolledig".into(),
+            titel: "Volledige UGT/BGT-meshdekking niet aangetoond".into(),
+            reden,
+            bepaalt_status: true,
+        });
+        return r;
+    }
     let ndp = Ndp1992::voor(input.bijlage);
     let f_cd = ndp.alpha_cc * klasse.f_ck / ndp.gamma_c_blijvend;
     let nu_accent = 1.0 - klasse.f_ck / ndp.nu_accent_noemer;

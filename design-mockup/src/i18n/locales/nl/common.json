@@ -1,8 +1,23 @@
 {
+  "resultView": {
+    "busy": "Berekenen…",
+    "emptyCase": "{{name}}: geen werkzame belasting; geen gevalresultaat.",
+    "ucCombinations": "UC toont de maatgevende toets over belastingcombinaties, niet alleen het gekozen belastinggeval.",
+    "ucLabel": "UC (combinaties)"
+  },
+  "checkPanelControls": {
+    "open": "Toetsing",
+    "export": "Staafchecks (CSV)"
+  },
   "ok": "OK",
   "cancel": "Annuleren",
   "save": "Opslaan",
   "close": "Sluiten",
+  "windowControls": {
+    "closeBrowser": "Sluit dit tabblad via de browser. Sla je project eerst op als je wijzigingen wilt bewaren.",
+    "desktopOnly": "Deze vensterbediening is alleen beschikbaar in de desktop-app.",
+    "failed": "Vensteractie mislukt"
+  },
   "delete": "Verwijderen",
   "edit": "Bewerken",
   "apply": "Toepassen",
@@ -190,16 +205,16 @@
     "beamType": "Staaftype",
     "beamTypeAuto": "Automatisch — {{role}}",
     "schema": {
-      "sectionAria": "Doorsnede van het spant, h = {{h}} m, d = {{d}} m",
-      "wallHeight": "gevel {{h}} m",
+      "sectionAria": "Doorsnede van het spant, h = {{h}} {{unit}}, d = {{d}} {{unit}}",
+      "wallHeight": "gevel {{h}} {{unit}}",
       "beamTitle": "Staaf {{id}} — {{rol}}",
       "windPerpendicular": "Wind haaks op het spant (het vlak in)",
       "allDirections": "Alle windrichtingen (NEN-EN 1991-1-4 §7.3(3))",
       "blockageAria": "Blokkering onder het dak: φ = {{phi}}",
       "blockageEmpty": "φ = 0 — leeg",
-      "planAria": "Plattegrond, gebouwlengte {{b}} m, spanwijdte {{d}} m",
-      "innerFrameAt": "Tussenspant op {{afstand}} m van de kopgevel",
-      "planDims": "b = {{b}} m · h.o.h. {{hoh}} m"
+      "planAria": "Plattegrond, gebouwlengte {{b}} {{unit}}, spanwijdte {{d}} {{unit}}",
+      "innerFrameAt": "Tussenspant op {{afstand}} {{unit}} van de kopgevel",
+      "planDims": "b = {{b}} {{unit}} · h.o.h. {{hoh}} {{unit}}"
     },
     "regionOption": {
       "I": "Gebied I — kuststrook en Waddengebied (v_b,0 = 29,5 m/s)",
@@ -448,7 +463,7 @@
       "addZAxis": "Z-stramien toevoegen (horizontale lijn)"
     },
     "beam": {
-      "lengthPointDirection": "{{lengte}} m — wijs een richting aan"
+      "lengthPointDirection": "{{lengte}} mm — wijs een richting aan"
     },
     "uc": {
       "badgeTitle": "Staaf {{staaf}}: maatgevend {{toets}} — klik voor de toetsing",
@@ -459,8 +474,8 @@
       "tool": "Tool:",
       "continuousTitle": "Doorgaand tekenen: het eindpunt van een staaf is meteen het begin van de volgende (polylijn). Escape breekt de reeks af.",
       "continuous": "doorgaan",
-      "beamClickSecondNode": "klik tweede knoop, of typ een lengte in m",
-      "beamLengthTyped": "m · Enter bevestigt · Esc wist de maat",
+      "beamClickSecondNode": "klik tweede knoop, of typ een lengte in mm",
+      "beamLengthTyped": "mm · Enter bevestigt · Esc wist de maat",
       "plateCornersClose_one": "{{count}} hoek · klik de eerste knoop om te sluiten · Esc annuleert",
       "plateCornersClose_other": "{{count}} hoeken · klik de eerste knoop om te sluiten · Esc annuleert",
       "plateCornersNext_one": "{{count}} hoek · klik de volgende hoek · Esc annuleert",
@@ -544,18 +559,18 @@
       "addPointLoadH": "Horizontale puntlast toevoegen",
       "edgeLoadOn": "Randlast op {{rand}}",
       "rememberedHint": "Waarde overgenomen van je vorige plaatsing.",
-      "positionAlongEdge": "Afstand langs {{rand}} van plaat {{plaat}}, vanaf de beginhoek (0 – {{lengte}} m).",
-      "positionAlongBeam": "Afstand vanaf de startknoop van de staaf (0 – {{lengte}} m).",
-      "positionM": "Positie (m)",
+      "positionAlongEdge": "Afstand langs {{rand}} van plaat {{plaat}}, vanaf de beginhoek (0 – {{lengte}} mm).",
+      "positionAlongBeam": "Afstand vanaf de startknoop van de staaf (0 – {{lengte}} mm).",
+      "positionM": "Positie (mm)",
       "direction": "Richting",
       "directionVertical": "Verticaal (+Z, gravitatie)",
       "directionHorizontal": "Horizontaal (+X, wind)",
-      "beginM": "Begin (m)",
-      "endM": "Einde (m)",
-      "lineLoadHint": "Negatief = tegen +richting in (downward voor Z, links voor X). Begin/einde vanaf de startknoop; 0 t/m {{lengte}} m = volle lengte.",
-      "edgeLoadHint": "p werkt per meter randlengte. Negatief = tegen de +richting in (omlaag voor Z, links voor X). Begin/einde vanaf de beginhoek van de rand; 0 t/m {{lengte}} m = de volle rand.",
-      "invalidRange": "Ongeldig bereik: 0 ≤ begin < einde ≤ {{lengte}} m",
-      "invalidPosition": "Ongeldige positie: 0 ≤ positie ≤ {{lengte}} m"
+      "beginM": "Begin (mm)",
+      "endM": "Einde (mm)",
+      "lineLoadHint": "Negatief = tegen +richting in (downward voor Z, links voor X). Begin/einde vanaf de startknoop; 0 t/m {{lengte}} mm = volle lengte.",
+      "edgeLoadHint": "p werkt per meter randlengte. Negatief = tegen de +richting in (omlaag voor Z, links voor X). Begin/einde vanaf de beginhoek van de rand; 0 t/m {{lengte}} mm = de volle rand.",
+      "invalidRange": "Ongeldig bereik: 0 ≤ begin < einde ≤ {{lengte}} mm",
+      "invalidPosition": "Ongeldige positie: 0 ≤ positie ≤ {{lengte}} mm"
     },
     "edge": {
       "bottom": "onderrand",
@@ -570,7 +585,7 @@
     "dim": {
       "editXAxis": "Maat X-stramien bewerken",
       "editZLevel": "Maat Z-niveau bewerken",
-      "distance": "Afstand (m)",
+      "distance": "Afstand (mm)",
       "nodesMoveWithAxis_one": "{{count}} knoop op deze as schuift mee.",
       "nodesMoveWithAxis_other": "{{count}} knopen op deze as schuiven mee.",
       "nodesMoveWithLevel_one": "{{count}} knoop op dit niveau schuift mee.",
@@ -646,7 +661,7 @@
       "ongunstigste": "ongunstigste van toepassing"
     },
     "swayDenominatorTitle": "Scheefstand φ als 1/x (default 1/200)",
-    "swayHeightTitle": "Hoogte h in m voor α_h = 2/√h. Leeg = uit het model afgeleid ({{hoogte}} m): van de laagste oplegging tot de bovenkant van de constructie (EN 1993-1-1 figuur 5.2; EN 1992-1-1 §5.2(6) voor de schorende constructie).",
+    "swayHeightTitle": "Hoogte h in mm voor α_h = 2/√(h/1000). Leeg = uit het model afgeleid ({{hoogte}} mm): van de laagste oplegging tot de bovenkant van de constructie (EN 1993-1-1 figuur 5.2; EN 1992-1-1 §5.2(6) voor de schorende constructie).",
     "swayMembersTitle": "Aantal dragende verticale elementen m voor α_m = √(0,5(1+1/m)). Leeg = uit het model afgeleid ({{aantal}}): het aantal kolomlijnen, waarbij staven die op elkaar staan één kolom vormen. Het 50 %-criterium van EN 1993-1-1 5.3.2(3)a kan hier niet worden toegepast (het vraagt de kolomkrachten, en die volgen pas uit de berekening); haal een licht belaste stijl er met de hand uit — kleinere m geeft grotere φ.",
     "swayDirectionTitle": "Richting van de equivalente horizontale krachten: BEIDE. Elke combinatie wordt met de scheefstand in +x én in −x doorgerekend (EN 1993-1-1 5.3.2(2): in de meest ongunstige richting); de omhullende en de toetsing nemen per staaf de ongunstigste van de twee, en de combinatienaam noemt de richting. De hier opgeslagen voorkeursrichting ({{richting}}) bepaalt alleen welke variant het oorspronkelijke combinatienummer houdt.",
     "dialogTitle": "Belastinggevallen & combinaties",

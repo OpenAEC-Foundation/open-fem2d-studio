@@ -283,7 +283,7 @@
     "runGroup": "Ausführen",
     "run": "Berechnen (FEM)",
     "memberChecks": "Normnachweis",
-    "memberChecksRun": "Stahl + Holz nachweisen",
+    "memberChecksRun": "Normnachweise ausführen",
     "checkPanel": "Nachweisfenster",
     "standards": "Normen",
     "en1993": "EN 1993",
@@ -297,6 +297,7 @@
     "envelope": "Maßgebend (Umhüllende)"
   },
   "report": {
+    "plaatPlooiNoot": "Der optionale Beulnachweis gilt für das gesamte bestätigte Plattenfeld. Der Ausnutzungsgrad des Feldes gilt für alle Elemente; das angegebene Element ist stellvertretend.",
     "report": "Bericht",
     "print": "Drucken / PDF",
     "printHint": "Öffnet den Druckdialog — wählen Sie dort 'Als PDF speichern' für eine PDF.",
@@ -745,7 +746,7 @@
     "kruipInleiding": "Berechnet aus RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} Tagen und Zementklasse {{cement}}: φ(∞,t₀) = {{phi}}. Mit diesem Wert rechnen die GZG-Steifigkeit und der Stütznachweis dieses Stabes, weil kein φ(∞,t₀) angegeben ist.",
     "kruipKetenKop": "Herleitung nach Anhang B, Schritt für Schritt:",
     "sectionPlateCheck": "Nachweis Platten",
-    "plaatToetsNoot": "Je Element des Rechennetzes mit den elementgemittelten Spannungen in der Ebene nachgewiesen; je Platte der höchste Ausnutzungsgrad über alle GZT-Kombinationen. Was nicht nachgewiesen ist, steht je Platte mit Begründung.",
+    "plaatToetsNoot": "Je Element des Rechennetzes mit den elementgemittelten Spannungen in der Ebene nachgewiesen; je Platte der höchste Ausnutzungsgrad über die relevanten GZT- und GZG-Kombinationen. Was nicht nachgewiesen ist, steht je Platte mit Begründung.",
     "plaatMateriaal": "Werkstoff",
     "plaatNorm": "Norm",
     "plaatStatus": "Status",
@@ -755,7 +756,7 @@
     "plaatElementgemiddeld": "elementgemittelte Spannungen; das Element steht in den Anmerkungen",
     "plaatWapeningKop": "Erforderliche Bewehrung nach Anhang F",
     "plaatRichting": "Richtung",
-    "plaatWapeningNoot": "n_td = f'_td · t: die erforderliche Zugkraft in der Bewehrung je Meter Wand, beide Seiten zusammen, in horizontaler (x) und vertikaler (z) Modellrichtung; A_s = n_td / f_yd. Die vorhandene Bewehrung ist nicht nachgewiesen."
+    "plaatWapeningNoot": "n_td = f'_td · t: die erforderliche Zugkraft in der Bewehrung je Meter Wand, beide Seiten zusammen, in horizontaler (x) und vertikaler (z) Modellrichtung; A_s = n_td / f_yd. Nachweise der vorhandenen Bewehrung und etwaige Einschränkungen stehen bei den Nachweisen und den nicht durchgeführten Nachweisen."
   },
   "viewer": {
     "file": "Datei",

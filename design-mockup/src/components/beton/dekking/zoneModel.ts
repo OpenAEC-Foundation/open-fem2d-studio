@@ -54,6 +54,47 @@ export const ZIJDE_NAAM: Record<RebarSide, string> = {
   Top: "boven",
 };
 
+export interface ZoneSelectie { soort: "langs" | "beugel"; index: number }
+
+/** Bedieningsresolutie, geen normminimum of ontwerpregel. */
+export const MIN_ZONE_BEDIENING_MM = 1;
+
+/** Verplaats één grens en de aansluitende buur; de invoer blijft onaangeroerd. */
+export function verplaatsZoneGrens(
+  zones: ReinforcementZones, selectie: ZoneSelectie, einde: "start" | "end", xMm: number, lengteMm: number,
+): ReinforcementZones {
+  if (!Number.isFinite(xMm) || !Number.isFinite(lengteMm) || lengteMm <= 0) return zones;
+  const langs = selectie.soort === "langs";
+  const lijst = langs ? zones.longitudinal : zones.stirrups;
+  const zone = lijst[selectie.index];
+  if (!zone) return zones;
+  const start = einde === "start";
+  const veld = start ? "x_start_mm" : "x_end_mm";
+  const buurveld = start ? "x_end_mm" : "x_start_mm";
+  const buurIndex = lijst.findIndex((z, i) => i !== selectie.index &&
+    (!langs || (z as LongitudinalZone).side === (zone as LongitudinalZone).side) &&
+    Math.abs(z[buurveld] - zone[veld]) <= ZONE_TOLERANTIE_MM);
+  const buur = lijst[buurIndex];
+  // Het bestaande beugelcontract kent geen lege zone. Buitenranden blijven vast.
+  if (!langs && !buur) return zones;
+  const min = start ? (buur ? buur.x_start_mm + MIN_ZONE_BEDIENING_MM : 0) : zone.x_start_mm + MIN_ZONE_BEDIENING_MM;
+  const max = start ? zone.x_end_mm - MIN_ZONE_BEDIENING_MM : (buur ? buur.x_end_mm - MIN_ZONE_BEDIENING_MM : lengteMm);
+  if (min > max) return zones;
+  let x = Math.max(min, Math.min(max, xMm));
+  if (!buur && Math.abs(x - zone[veld]) < MIN_ZONE_BEDIENING_MM) x = zone[veld];
+  if (x === zone[veld]) return zones;
+  const vervang = <T extends LongitudinalZone | StirrupZone>(rijen: T[]): T[] => rijen.map((z, i) =>
+    i === selectie.index ? { ...z, [veld]: x } : i === buurIndex ? { ...z, [buurveld]: x } : z);
+  if (!langs) return { ...zones, stirrups: vervang(zones.stirrups) };
+  const longitudinal = vervang(zones.longitudinal);
+  if (!buur && (start ? x > zone[veld] : x < zone[veld])) {
+    const z = zone as LongitudinalZone;
+    longitudinal.push({ ...z, row: { ...z.row, count: 0 },
+      x_start_mm: start ? z.x_start_mm : x, x_end_mm: start ? x : z.x_end_mm });
+  }
+  return { ...zones, longitudinal };
+}
+
 /**
  * De lengte van een staaf uit zijn twee UI-knopen, in mm.
  *

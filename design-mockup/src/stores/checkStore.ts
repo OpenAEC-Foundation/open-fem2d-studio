@@ -482,6 +482,7 @@ export const useCheckStore = create<CheckState>((set) => ({
       const spanning = buildSpanningCheckInputs(data);
       // Platen: alleen volledige platen (met id) — zie `CheckRunData.plates`.
       const plaat = buildPlaatCheckInputs({
+        nodes: data.nodes,
         plates: (data.plates ?? []).filter((p): p is Plate => typeof p.id === "number"),
         combinations: data.combinations,
         combinationResults: data.combinationResults,

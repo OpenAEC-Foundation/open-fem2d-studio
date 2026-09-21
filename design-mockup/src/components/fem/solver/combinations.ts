@@ -548,6 +548,19 @@ export function combineResults(
         if (referentie) break;
       }
       if (!referentie) continue;
+      // De velddekking komt uit de mesh, nooit uit de (mogelijk onvolledige)
+      // spanningslijst. Bij een ontbrekende bijdrage mag een nulbijdrage niet
+      // worden aangezien voor een volledig uniform veld in de plooitoets.
+      const expectedIds = referentie.expectedElementIds;
+      let volledigeMesh = !!expectedIds?.length && new Set(expectedIds).size === expectedIds.length;
+      for (const [caseId, factor] of combo.factors) {
+        if (factor === 0) continue;
+        const bron = perCase.get(idVan(caseId))?.plateElements?.find(p => p.plateId === pid);
+        if (!expectedIds || !bron || bron.expectedElementIds?.length !== expectedIds.length
+            || bron.elements.length !== expectedIds.length || referentie.elements.length !== expectedIds.length
+            || expectedIds.some((id, i) => bron.expectedElementIds?.[i] !== id
+              || bron.elements[i]?.elementId !== id || referentie!.elements[i]?.elementId !== id)) volledigeMesh = false;
+      }
       const n = referentie.elements.length;
       const gecombineerd: PlateElementStress[] = referentie.elements.map(el => ({
         elementId: el.elementId,
@@ -605,6 +618,7 @@ export function combineResults(
       }
       plateElements.push({
         plateId: pid, elements: gecombineerd, ranges,
+        ...(expectedIds ? { expectedElementIds: volledigeMesh ? [...expectedIds] : [] } : {}),
         ...(referentie.materiaalassen
           ? { materiaalassen: materiaalasRanges(gecombineerd, referentie.materiaalassen.hoekGraden) }
           : {}),

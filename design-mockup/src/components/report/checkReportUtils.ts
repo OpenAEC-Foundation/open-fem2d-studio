@@ -60,9 +60,17 @@ export function renderLatexHtml(latex: string, displayMode: boolean): string {
   }
 }
 
-/** Getalnotatie zoals het toetsingspaneel: nl-NL, max. 3 decimalen. */
+/** MAX is de eindige kernrepresentatie van nulweerstand bij positieve belasting. */
+function rapportGetal(v: number, opties: Intl.NumberFormatOptions): string {
+  return (v === Number.MAX_VALUE ? Infinity : v).toLocaleString("nl-NL", {
+    notation: Math.abs(v) >= 1e6 ? "scientific" : "standard",
+    ...opties,
+  });
+}
+
+/** nl-NL, max. 3 decimalen; grote waarden compact, onbegrensd als taalneutraal ∞. */
 export function fmtValue(v: number, maxDigits = 3): string {
-  return v.toLocaleString("nl-NL", { maximumFractionDigits: maxDigits });
+  return rapportGetal(v, { maximumFractionDigits: maxDigits });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -88,10 +96,16 @@ export function fmtValue(v: number, maxDigits = 3): string {
 
 /** Getal in mathmodus: decimaalkomma zonder de spatie die LaTeX er van maakt. */
 export function latexGetal(v: number, maxDigits = 3): string {
-  const s = v.toLocaleString("nl-NL", {
+  if (v === Number.MAX_VALUE || v === Infinity) return "\\infty";
+  if (v === -Infinity) return "-\\infty";
+  const s = rapportGetal(v, {
     maximumFractionDigits: maxDigits,
     useGrouping: false,
   }).replace("−", "-");
+  const [mantisse, exponent] = s.split("E");
+  if (exponent !== undefined) {
+    return `${mantisse.replace(",", "{,}")} \\times 10^{${exponent}}`;
+  }
   // Een grootheid die numeriek nul is maar een spoortje negatief (β komt op
   // een vrij opgelegde ligger uit op −2,4·10⁻¹⁶) rondt af naar "-0". Dat leest
   // als een richting die er niet is; het minteken hoort dan weg.
@@ -188,7 +202,11 @@ export function vulGetallenIn(
     gebruikt.add(v.symbol);
     uit = uit.replace(re, (_m, voor: string) => {
       const maal = /[0-9)]$/.test(voor) ? "\\cdot " : "";
-      return `${voor}${maal}${latexGetal(v.value)}`;
+      const getal = latexGetal(v.value);
+      // Een wetenschappelijke notatie is een product: groepeer bij invullen,
+      // zodat een volgende macht of deling op de hele waarde blijft werken.
+      const factor = getal.includes("\\times") ? `\\left(${getal}\\right)` : getal;
+      return `${voor}${maal}${factor}`;
     });
   }
   if (gebruikt.size > 0) {
@@ -401,9 +419,9 @@ export function unityCheckLatex(uc: {
   return `${symbolisch} = \\frac{${latexGetal(uc.ed)}}{${latexGetal(uc.rd)}} = ${uitkomst}`;
 }
 
-/** Unity check als "0,79" — altijd twee decimalen, nl-notatie. */
+/** Unity check als "0,79", grote waarden wetenschappelijk, onbegrensd als ∞. */
 export function fmtUc(v: number): string {
-  return v.toLocaleString("nl-NL", {
+  return rapportGetal(v, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

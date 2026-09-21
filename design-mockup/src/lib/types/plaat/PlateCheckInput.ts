@@ -3,6 +3,8 @@ import type { CombinationLoadDuration } from "../timber/CombinationLoadDuration"
 import type { NationaleBijlage } from "../norm/NationaleBijlage";
 import type { PlaatCombinatie } from "./PlaatCombinatie";
 import type { PlaatMateriaalSoort } from "./PlaatMateriaalSoort";
+import type { PlaatPlooiInput } from "./PlaatPlooiInput";
+import type { PlaatWapeningInvoer } from "./PlaatWapeningInvoer";
 import type { ServiceClass } from "../timber/ServiceClass";
 
 /**
@@ -30,6 +32,10 @@ materiaal: string,
  */
 thickness_mm: number, 
 /**
+ * Zonder dit veld blijft de bestaande vloeicontrole ongewijzigd.
+ */
+plooi?: PlaatPlooiInput, 
+/**
  * Hout: hoofdrichting (vezel) in GRADEN tegen de klok in vanaf de globale
  * x-as — dezelfde hoek als `Plate.hoofdrichting` en als de solver gebruikt.
  * Weglaten = 0°. Bij staal zonder betekenis.
@@ -54,4 +60,28 @@ notities?: Array<string>,
 /**
  * De elementspanningen per UGT-combinatie.
  */
-combinations: Array<PlaatCombinatie>, };
+combinations: Array<PlaatCombinatie>, 
+/**
+ * Beton: volledige elementset uit de mesh, onafhankelijk van de spanningsresultaten.
+ * Weglaten betekent onbewezen dekking en levert geen betontoets op.
+ */
+expected_element_ids?: Array<number>, 
+/**
+ * Beton: ontbrekende of tegenstrijdige meshmetadata vastgesteld door de invoerbouwer.
+ * Een opgegeven fout blokkeert de toets, ook bij een verder passende elementset.
+ */
+mesh_fout?: string, 
+/**
+ * Beton: de AANWEZIGE wapening van de wand (issue #25). Weglaten = niet
+ * ingevoerd; dan toetst de kern alleen de benodigde wapening en het beton,
+ * precies zoals zonder dit veld, met de melding dat de aanwezige wapening
+ * niet is ingevoerd. Bij een ander materiaal dan beton geweigerd.
+ */
+wapening_aanwezig?: PlaatWapeningInvoer, 
+/**
+ * Beton: de elementspanningen per FREQUENTE BGT-combinatie (6.15b) — de
+ * combinatie waaronder de nationale bijlage bij 7.3.1(5) (tabel 7.1N) de
+ * scheurwijdte laat toetsen. Alleen gelezen samen met
+ * `wapening_aanwezig`; leeg = scheurwijdte niet getoetst, met reden.
+ */
+frequente_combinaties?: Array<PlaatCombinatie>, };

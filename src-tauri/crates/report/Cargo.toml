@@ -21,6 +21,9 @@ concrete-check = { path = "../concrete-check" }
 # getoetste staaf oplevert — en een rapport dat niets draagt, valt terug op een
 # norm die nergens is toegepast.
 spanning-check = { path = "../spanning-check" }
+# De plaattoets (wandschijven): het rapport draagt haar resultaten voor het
+# hoofdstuk "Platen" (issue #25), zoals het live rapport ze toont.
+plaat-check = { path = "../plaat-check" }
 # Alleen voor de betonfiguren (`betonfiguren.rs`): die leiden de doorsnede en de
 # korf af uit `ConcreteSection` / `ReinforcementCage` zelf, zodat de meetkunde
 # uit dezelfde bron komt als de tekening op het scherm.

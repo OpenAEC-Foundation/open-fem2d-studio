@@ -17,6 +17,8 @@
  */
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import LengthInput from "../../components/LengthInput";
+import { formatLength } from "../lengthInput";
 import {
   TERREIN_CATEGORIEEN, WINDGEBIEDEN, berekenE,
   type TerreinCategorie, type Windgebied,
@@ -54,21 +56,26 @@ function Klapblok({ kop, standaardOpen = false, children }: { kop: string; stand
 
 /** Een klein getalveld met label ernaast — de invoer blijft één regel. */
 function Getal({
-  label, value, onChange, step = 0.1, min = 0, eenheid = "m", leeg,
+  label, value, onChange, step = 0.1, min = 0, eenheid = "m", leeg, required = false,
 }: {
   label: string; value: number | null; onChange: (v: number | null) => void;
-  step?: number; min?: number; eenheid?: string; leeg?: string;
+  step?: number; min?: number; eenheid?: string; leeg?: string; required?: boolean;
 }) {
   return (
     <label className="wgd-getal">
       <span>{label}</span>
-      <input
-        type="number" step={step} min={min}
-        value={value ?? ""}
-        placeholder={leeg}
-        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-      />
-      <span className="wgd-eenheid">{eenheid}</span>
+      {eenheid === "m" || eenheid === "mm" ? (
+        <LengthInput required={required} value={value} storedUnit={eenheid} min={min}
+          placeholder={leeg} onChange={v => onChange(v ?? null)} />
+      ) : (
+        <input
+          type="number" step={step} min={min}
+          value={value ?? ""}
+          placeholder={leeg}
+          onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        />
+      )}
+      <span className="wgd-eenheid">{eenheid === "m" ? "mm" : eenheid}</span>
     </label>
   );
 }
@@ -196,7 +203,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
 
               <div className="wgd-section">
                 <div className="wgd-section-title">{t(vrijstaand ? "wind.secFrameCanopy" : "wind.secFrame")}</div>
-                <PlattegrondSchema
+                <PlattegrondSchema lengthUnit="mm"
                   gebouwlengte_m={i.gebouwlengte_m}
                   d_m={geo?.d_m ?? 10}
                   hoh_m={i.hohSpant_m}
@@ -223,14 +230,14 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                   </button>
                 </div>
                 <div className="wgd-getallen">
-                  <Getal label="h.o.h." value={i.hohSpant_m} onChange={(v) => set({ hohSpant_m: v ?? 0 })} />
-                  <Getal label="b" value={i.gebouwlengte_m} step={0.5} onChange={(v) => set({ gebouwlengte_m: v ?? 0 })} />
+                  <Getal required label="h.o.h." value={i.hohSpant_m} onChange={(v) => set({ hohSpant_m: v ?? 0 })} />
+                  <Getal required label="b" value={i.gebouwlengte_m} step={0.5} onChange={(v) => set({ gebouwlengte_m: v ?? 0 })} />
                   {i.positieSpant === "tussenspant" && (
-                    <Getal label={t("wind.distanceShort")} value={i.afstandTotKopgevel_m} step={0.5}
+                    <Getal required label={t("wind.distanceShort")} value={i.afstandTotKopgevel_m} step={0.5}
                       onChange={(v) => set({ afstandTotKopgevel_m: v ?? 0 })} />
                   )}
                   <Getal label={t("wind.loadWidthShort")} value={i.belastingbreedteOverride_m}
-                    leeg={s ? nl(s.belastingbreedte_m, 2) : "auto"}
+                    leeg={s ? formatLength(s.belastingbreedte_m, "m") : "auto"}
                     onChange={(v) => set({ belastingbreedteOverride_m: v })} />
                   {toonGevelhoogte && (
                     <Getal label={t("wind.gevelhoogte")} value={i.gevelhoogte_m} step={0.1}
@@ -261,7 +268,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                     <Getal label={t("wind.blockage")} value={i.blokkering_phi} step={0.1} eenheid=""
                       onChange={(v) => set({ blokkering_phi: v ?? 0 })} />
                     <Getal label={t("wind.canopyHeight")} value={i.vrijstaandHoogte_m} step={0.1}
-                      leeg={geo ? nl(geo.modelhoogte_m, 2) : t("wind.canopyHeightEmpty")}
+                      leeg={geo ? formatLength(geo.modelhoogte_m, "m") : t("wind.canopyHeightEmpty")}
                       onChange={(v) => set({ vrijstaandHoogte_m: v })} />
                   </div>
                   <div className="wgd-hint">{t("wind.blockageHint")}</div>
@@ -295,10 +302,10 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                   </div>
                   {(i.kolomDoorsnede ?? "geen") !== "geen" && (
                     <div className="wgd-getallen">
-                      <Getal label="b" value={i.kolomBreedte_mm ?? null} step={10} eenheid="mm"
+                      <Getal required label="b" value={i.kolomBreedte_mm ?? null} step={10} eenheid="mm"
                         onChange={(v) => set({ kolomBreedte_mm: v ?? 0 })} />
                       {i.kolomDoorsnede === "rechthoekig" && (
-                        <Getal label="d" value={i.kolomDiepte_mm ?? null} step={10} eenheid="mm"
+                        <Getal required label="d" value={i.kolomDiepte_mm ?? null} step={10} eenheid="mm"
                           onChange={(v) => set({ kolomDiepte_mm: v ?? 0 })} />
                       )}
                     </div>
@@ -392,7 +399,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                       ))}
                     </div>
                   )}
-                  <DoorsnedeSchema
+                  <DoorsnedeSchema lengthUnit="mm"
                     geometrie={geo}
                     richting={richtingVanGeval}
                     regels={geval?.regels ?? []}
@@ -419,7 +426,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                         loads: res?.lasten.length ?? 0,
                         combos: res?.combinaties.length ?? 0,
                       })}
-                      {` · h/d = ${nl(s.hOverD, 2)} · ${t("wind.loadWidthShort")} ${nl(s.belastingbreedte_m, 2)} m`}
+                      {` · h/d = ${nl(s.hOverD, 2)} · ${t("wind.loadWidthShort")} ${formatLength(s.belastingbreedte_m, "m")} mm`}
                     </div>
                   )}
                 </div>
@@ -454,7 +461,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
               )}
 
               {s && (
-                <Klapblok kop={`${t("wind.secDerivation")} — q_p = ${nl(s.stuwdruk.qp_kNm2, 3)} kN/m², z_e = ${nl(s.hoogte_m, 2)} m`}>
+                <Klapblok kop={`${t("wind.secDerivation")} — q_p = ${nl(s.stuwdruk.qp_kNm2, 3)} kN/m², z_e = ${formatLength(s.hoogte_m, "m")} mm`}>
                   <table className="wgd-table">
                     <tbody>
                       {s.stuwdruk.afleiding.map((r, k) => (

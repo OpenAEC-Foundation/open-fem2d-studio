@@ -19,7 +19,7 @@ import ReportPreview, { DetachedReportPreview } from "./components/panels/Report
 import { ReportWindowSync } from "./components/report/reportSync";
 import type { ReportData } from "./components/report/ReportDataContext";
 import InsightsView from "./components/panels/InsightsView";
-import CheckPanel from "./components/panels/CheckPanel";
+import CheckPanel, { CheckPanelToggle } from "./components/panels/CheckPanel";
 import FemProjectTree from "./components/fem/FemProjectTree";
 import FemProperties from "./components/fem/FemProperties";
 import FemCanvas from "./components/fem/FemCanvas";
@@ -80,7 +80,7 @@ import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { losEindtoestandOp } from "./lib/houtEindstijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
-import { controleerVoorRekenen, leesbareRekenfout, statusNaCanvasSolve } from "./lib/rekenPoort";
+import { controleerVoorRekenen, leesbareRekenfout } from "./lib/rekenPoort";
 // Scheefstand: φ komt óf uit de vaste noemer (het oude gedrag, en de stand van
 // elk bestaand projectbestand) óf uit de normformule van EN 1993-1-1 (5.5),
 // EN 1992-1-1 (5.1) of EN 1995-1-1 (5.1) — zie lib/scheefstandNorm.ts.
@@ -833,15 +833,6 @@ function App() {
     setActiveView("default");
   }, [fem, setActiveView, confirmUnsavedAction]);
 
-  // Scheefstand voor het canvas-pad (single-LC) — zelfde afleiding als het
-  // multi-LC-pad in computeAndStoreSolverOutputs. Beide gaan via de NOEMER
-  // van dezelfde uitkomst, zodat de twee paden bit voor bit dezelfde φ zien.
-  const scheefstandInput = useMemo(() =>
-    fem.scheefstandEnabled
-      ? { phi: 1 / scheefstandUitkomst.noemer, richting: fem.scheefstandRichting }
-      : undefined,
-    [fem.scheefstandEnabled, scheefstandUitkomst.noemer, fem.scheefstandRichting]);
-
   /**
    * Wat de interface over de fysisch niet-lineaire stand moet zeggen: hoeveel
    * betonstaven mét wapeningskorf er zijn (zonder die staven doet de derde
@@ -864,32 +855,20 @@ function App() {
   // kolomtoets (lib/kruipcoefficient.ts, `kruipveldZichtbaar`).
   const heeftBetonstaaf = useMemo(() => modelHeeftBetonstaaf(fem.beams), [fem.beams]);
 
-  const [solverResult, setSolverResult] = useState<SolverResult | null>(null);
   // Solverstatus voor de StatusBar: Gereed / Berekend om HH:MM / Fout.
   const [solverStatus, setSolverStatus] = useState<SolverStatus>({ kind: "ready" });
-  // STABIELE identiteit is essentieel: FemCanvas invalideert zijn resultaten
-  // (mede) wanneer deze callback wisselt. Een inline arrow kreeg bij élke
-  // App-render een nieuwe identiteit, waardoor resultaten direct na Berekenen
-  // weer verdwenen (de setSolverOutputs-render wiste ze meteen).
   /**
    * De reden dat de laatste rekengang (multi-LC-pad) mislukte, of null. Een
-   * ref en geen state: `handleSolveResult` en de bediening moeten de waarde van
+   * ref en geen state: de rekengang en de bediening moeten de waarde van
    * DEZE rekengang lezen, niet die van de vorige render.
    */
   const rekenFoutRef = useRef<string | null>(null);
   /** De laatst getoonde foutmelding — dezelfde fout niet bij elke live herberekening opnieuw melden. */
   const gemeldeRekenfoutRef = useRef<string | null>(null);
-  const handleSolveResult = useCallback((r: SolverResult | null) => {
-    setSolverResult(r);
-    // Single-LC solve geslaagd → "Berekend om …", MAAR ALLEEN als de
-    // rekengang zelf ook slaagde. Dat stond er andersom ("ook als de
-    // multi-LC-pipeline faalde"): het canvas rekent altijd eerste orde en
-    // slaagt dus ook waar de tweede orde knikt of een doorsnede onbekend is,
-    // en zette de statusbalk dan terug op succes. r === null laat de status
-    // met rust: invalidatie zet hem al op "Gereed", een fout op "Fout".
-    const status = statusNaCanvasSolve(r !== null, rekenFoutRef.current, Date.now());
-    if (status) setSolverStatus(status);
-  }, []);
+  const solverResult = solverStatus.kind !== "solved" || fem.envelopeView ? null
+    : fem.activeCombinationId != null
+      ? fem.combinationResults?.get(fem.activeCombinationId) ?? null
+      : fem.multiLcResult?.get(fem.activeLoadCaseId) ?? null;
   // Actuele canvas-zoom in % (gemeld door FemCanvas) — getoond in de StatusBar.
   const [zoomPct, setZoomPct] = useState(100);
 
@@ -1041,7 +1020,6 @@ function App() {
   // vorige geplande berekening, zodat er pas gerekend wordt als de gebruiker
   // even stilzit.
   useEffect(() => {
-    setSolverResult(null);
     // Also flip the envelope-view off; otherwise the user lingers on stale
     // envelope colors after editing the model.
     fem.setEnvelopeView(false);
@@ -1055,6 +1033,12 @@ function App() {
     // deze wijziging "klaar" was, ziet zo na het printen dat hij een ander
     // model kan hebben gevangen (bediening/rapportExport).
     rekenGeneratieRef.current += 1;
+    lopendeRekengangenRef.current = 0;
+    rapportRekenPogingRef.current = false;
+    volledigeRekengangRef.current = null;
+    rekenFoutRef.current = null;
+    setSolverErrorText(null);
+    setStabiliteitsMelding(null);
     if (!liveRekenenRef.current) {
       // Nog niet gerekend: status terug naar Gereed en verder niets doen.
       setSolverStatus({ kind: "ready" });
@@ -1065,11 +1049,14 @@ function App() {
     // het rapport staat gewist en nog niet opnieuw berekend.
     herberekeningGeplandRef.current = true;
     const id = window.setTimeout(() => {
+      herberekenTimerRef.current = null;
       herberekeningGeplandRef.current = false;
       void rekenDoorRef.current();
     }, HERBEREKEN_VERTRAGING_MS);
+    herberekenTimerRef.current = id;
     return () => {
       window.clearTimeout(id);
+      herberekenTimerRef.current = null;
       herberekeningGeplandRef.current = false;
     };
     // `fem.plates` doet mee sinds platen meerekenen (P2): een dikte- of
@@ -1099,8 +1086,6 @@ function App() {
   // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
   // in de constructie (idempotent, zie windStore.ts).
   const [windGeneratorOpen, setWindGeneratorOpen] = useState(false);
-  // Check-tab state.
-  const [activeCode, setActiveCode] = useState<"EN1993" | "EN1995" | "EN1992">("EN1993");
   // UC-badge op het canvas geklikt → toetsingspaneel openen gefocust op die
   // staaf. Elke klik maakt een nieuw object zodat een herhaalde klik op
   // dezelfde badge opnieuw scrollt (identiteit als trigger).
@@ -1124,8 +1109,8 @@ function App() {
    * toetsingspaneel rechts); de focus klapt de kaart van die staaf open en
    * scrollt hem in beeld.
    */
-  const handleOpenCheckForBeam = useCallback((beamId: number) => {
-    setCheckFocus({ beamId });
+  const handleOpenCheckForBeam = useCallback((beamId?: number) => {
+    setCheckFocus(beamId === undefined ? null : { beamId });
     setActiveView("check");
     // Ruimte maken voor de afleiding: het eigenschappenpaneel klapt in. Anders
     // staan er drie kolommen naast elkaar en houdt de toetsing te weinig
@@ -1165,9 +1150,14 @@ function App() {
   //    de app de fysisch niet-lineaire ronde hebben gehad — de toets-knop
   //    rekent zo nodig ook door, maar zonder die ronde.
   const herberekeningGeplandRef = useRef(false);
+  const herberekenTimerRef = useRef<number | null>(null);
+  // Alleen de actuele generatie blokkeert export; oude kernpromises mogen uitlopen.
   const lopendeRekengangenRef = useRef(0);
+  // Eén automatische rapportpoging per model; handmatig herhalen blijft mogelijk.
+  const rapportRekenPogingRef = useRef(false);
   const rekenGeneratieRef = useRef(0);
   const volledigeRekengangRef = useRef<Map<number, SolverResult> | null>(null);
+  useEffect(() => () => { rekenGeneratieRef.current += 1; checkClear(); }, [checkClear]);
   // Insights view mode (element-K / system-K / dof / logs / errors), controlled from Ribbon.
   const [insightsMode, setInsightsMode] = useState<"element" | "system" | "dof" | "logs" | "errors">("element");
   // De laatste rekenfout — getoond in Inzichten → Fouten. Had geen setter:
@@ -1191,6 +1181,7 @@ function App() {
   const bepaalStabiliteit = useCallback((
     multiInput: MultiInput,
     combinationResults: Map<number, SolverResult>,
+    generatie = rekenGeneratieRef.current,
   ): AlphaCrUitkomst[] => {
     const uitkomsten = bepaalAlphaCr(multiInput, fem.actieveCombinaties, combinationResults);
     const meldingen = stabiliteitsMeldingen(uitkomsten, fem.analysetype, fem.scheefstandEnabled);
@@ -1199,17 +1190,15 @@ function App() {
     setStabiliteitsMelding(tekst);
     if (tekst !== null && gemeldeStabiliteitRef.current !== tekst) {
       gemeldeStabiliteitRef.current = tekst;
-      void import("./io/notify").then(({ notifyWarning }) =>
-        notifyWarning(i18next.t("common:app.stability.firstOrderNotAllowed"), tekst),
-      );
+      void import("./io/notify").then(({ notifyWarning }) => {
+        if (generatie === rekenGeneratieRef.current)
+          notifyWarning(i18next.t("common:app.stability.firstOrderNotAllowed"), tekst);
+      }).catch(() => {});
     }
     if (tekst === null) gemeldeStabiliteitRef.current = null;
     return uitkomsten;
   }, [fem.actieveCombinaties, fem.analysetype, fem.scheefstandEnabled]);
   const [loadCasesTab, setLoadCasesTab] = useState<"cases" | "combos">("cases");
-  // FEM solve trigger — increments on each "Berekenen" click. FemCanvas
-  // watches this and re-runs the solver against the current model.
-  const [solveTrigger, setSolveTrigger] = useState(0);
   /**
    * Draai de multi-LC pipeline (alle belastinggevallen + combinaties +
    * envelope) en schrijf de uitkomst in de fem-store. Retourneert de verse
@@ -1217,6 +1206,7 @@ function App() {
    * hoeven te wachten. Fouten zijn non-fataal → null.
    */
   const computeAndStoreSolverOutputs = useCallback(() => {
+    const generatie = rekenGeneratieRef.current;
     try {
       // DE MODELCONTROLE OOK OP DIT PAD. Alleen het canvas deed hem; een staaf
       // van lengte nul of een kolomvoet die op een ligger ligt gaf daar "Model
@@ -1302,9 +1292,10 @@ function App() {
       // opnieuw melden; een andere fout wél.
       if (gemeldeRekenfoutRef.current !== tekst) {
         gemeldeRekenfoutRef.current = tekst;
-        void import("./io/notify").then(({ notifyWarning }) =>
-          notifyWarning(i18next.t("common:app.solve.failed"), tekst),
-        );
+        void import("./io/notify").then(({ notifyWarning }) => {
+          if (generatie === rekenGeneratieRef.current)
+            notifyWarning(i18next.t("common:app.solve.failed"), tekst);
+        }).catch(() => {});
       }
       return null;
     }
@@ -1331,15 +1322,29 @@ function App() {
     perCase: Map<number, SolverResult>;
     combinationResults: Map<number, SolverResult>;
     envelope: ReturnType<typeof computeEnvelope>;
-  }) => {
+  }, generatie: number, multiInput: MultiInput | null) => {
+    const bewaak = () => {
+      if (generatie !== rekenGeneratieRef.current) throw new Error("Verouderde rekengang");
+    };
+    // Ook binnenste kern-awaits bewaken: geen volgende segmentronde of
+    // solverlog meer starten nadat de invoer veranderde.
+    const roepActueel: typeof roepKern = async <T,>(opdracht: string, inputs?: unknown): Promise<T> => {
+      bewaak();
+      const antwoord = await roepKern<T>(opdracht, inputs);
+      bewaak();
+      return antwoord;
+    };
+    bewaak();
     const { notifyInfo, notifyWarning } = await import("./io/notify");
+    bewaak();
     const kruipBerekening = await bepaalKruipPerStaaf(
       fem.beams,
       fem.betonKruipInvoer,
       fem.betonKruipcoefficient,
-      roepKern,
+      roepActueel,
       bijlageVanProject(fem.nationaleBijlage),
     );
+    bewaak();
     // Een staaf waarvoor de kern bijlage B weigerde, rekent zonder
     // kruipcoëfficiënt; dat wordt hieronder al als "zonder kruip" gemeld, maar
     // de REDEN van de kern hoort er ook te staan.
@@ -1367,10 +1372,11 @@ function App() {
       bEffPerStaaf: bEffWaardenPerStaaf(
         await bepaalBeffPerStaaf(
           { nodes: fem.nodes, beams: fem.beams, supports: fem.supports },
-          roepKern,
+          roepActueel,
         ),
       ),
     });
+    bewaak();
     // Een vorige rekengang mag nooit als spoor van deze blijven staan.
     stijfheidClear();
     if (staven.length === 0) {
@@ -1453,7 +1459,9 @@ function App() {
           metKruip && grenstoestand === "DesignValues"
             ? kruipInvoerVoorCombinatie(input, combo, quasiBlijvend, staven, losEersteOrde)
             : undefined;
+        bewaak();
         const uit = await losCombinatieFysischOp(input, combo, staven, {
+          roep: roepActueel,
           segmentLengteMm: fem.betonSegmentLengteMm,
           grenstoestand,
           belastingduur: duur.duur,
@@ -1461,6 +1469,7 @@ function App() {
           // De bijlage van het project gaat de kromme van 5.8.6(3) in (normnaad).
           bijlage: bijlageVanProject(fem.nationaleBijlage),
         });
+        bewaak();
         if (uit.zonderLasten) continue;
         for (const id of uit.zonderKruipcoefficient) zonderKruip.add(id);
         zetCombinatieResultaat(outputs.perCase, combo, uit.resultaat);
@@ -1479,6 +1488,7 @@ function App() {
         });
       }
     } catch (e) {
+      bewaak();
       console.warn("[FEM fysisch niet-lineair]", e);
       fem.setSolverOutputs(null);
       // De statusbalk stond al op "Berekend om" (de synchrone gang slaagde);
@@ -1541,8 +1551,8 @@ function App() {
       fem.actieveCombinaties.map(c => [c.id, combineResults(c, outputs.perCase)]),
     );
     const envelope = computeEnvelope(fem.actieveCombinaties, outputs.perCase);
-    const stabiliteit = laatsteMultiInputRef.current
-      ? bepaalStabiliteit(laatsteMultiInputRef.current, combinationResults)
+    const stabiliteit = multiInput
+      ? bepaalStabiliteit(multiInput, combinationResults, generatie)
       : undefined;
     const verse = { perCase: outputs.perCase, combinationResults, envelope, stabiliteit };
     fem.setSolverOutputs(verse);
@@ -1558,10 +1568,13 @@ function App() {
    */
   const handleRunMemberChecks = useCallback(async (opts?: {
     openPanel?: boolean;
+    generatie?: number;
     outputs?: { combinationResults: Map<number, SolverResult>; perCase?: Map<number, SolverResult>; stabiliteit?: AlphaCrUitkomst[] } | null;
   }) => {
+    const generatie = opts?.generatie ?? rekenGeneratieRef.current;
     const openPanel = opts?.openPanel ?? true;
     const { notifyInfo, notifyWarning } = await import("./io/notify");
+    if (generatie !== rekenGeneratieRef.current) return;
     // Geen omgevingscontrole meer: de toetsing loopt overal mee. In de
     // desktop-app via Tauri, in de browser via de dev-brug (zie checkStore).
     // Lukt het niet, dan meldt de check-store dat als fout — beter dan een
@@ -1645,7 +1658,7 @@ function App() {
   }, [fem, computeAndStoreSolverOutputs, checkRun]);
 
   /**
-   * Eén rekengang: canvas-pad triggeren, multi-LC doorrekenen en de
+   * Eén rekengang: multi-LC doorrekenen en de
    * normtoetsing er direct achteraan. Gedeeld door de knop Berekenen en de
    * live-herberekening na een modelwijziging — de knop doet daarnaast de
    * weergave-omschakeling die bij een handmatige actie hoort, want tijdens
@@ -1662,19 +1675,31 @@ function App() {
    * blijft synchroon: een async functie loopt tot haar eerste `await` meteen.
    */
   const rekenDoor = useCallback((): Promise<RekengangUitkomst> => {
-    rekenGeneratieRef.current += 1;
-    lopendeRekengangenRef.current += 1;
+    const generatie = ++rekenGeneratieRef.current;
+    const actueel = () => generatie === rekenGeneratieRef.current;
+    const verouderd = (): RekengangUitkomst => ({ gelukt: false, fysisch: "verouderd" });
+    if (herberekenTimerRef.current !== null) window.clearTimeout(herberekenTimerRef.current);
+    herberekenTimerRef.current = null;
+    herberekeningGeplandRef.current = false;
+    volledigeRekengangRef.current = null;
+    checkClear();
+    stijfheidClear();
+    lopendeRekengangenRef.current = 1;
+    rapportRekenPogingRef.current = true;
     const gang = (async (): Promise<RekengangUitkomst> => {
-      setSolveTrigger((n) => n + 1);
+      setSolverStatus({ kind: "rekenen" });
       const outputs = computeAndStoreSolverOutputs();
-      setSolverStatus(outputs ? { kind: "solved", at: Date.now() } : { kind: "error" });
-      if (!outputs) return { gelukt: false, fysisch: "nvt" };
+      if (!outputs) {
+        setSolverStatus({ kind: "error" });
+        return { gelukt: false, fysisch: "nvt" };
+      }
       liveRekenenRef.current = true;
       if (fem.analysetype === "tweedeOrdeFysisch") {
         // De toetsing wacht op de fysisch niet-lineaire ronde: hij hoort op de
         // gescheurde krachtsverdeling te draaien, niet op de ongescheurde
         // ertussenin.
-        const verse = await rekenFysischNietlineair(outputs);
+        const verse = await rekenFysischNietlineair(outputs, generatie, laatsteMultiInputRef.current);
+        if (!actueel()) return verouderd();
         if (verse === null && rekenFoutRef.current !== null) {
           // De ronde MISLUKTE: de resultaten zijn gewist en de fout staat er.
           // Hier werd vroeger alsnog getoetst, op de P-Δ-krachten van ronde 0 —
@@ -1684,8 +1709,10 @@ function App() {
           return { gelukt: false, fysisch: "mislukt" };
         }
         const eind = verse ?? outputs;
-        await handleRunMemberChecks({ openPanel: false, outputs: eind });
+        await handleRunMemberChecks({ openPanel: false, outputs: eind, generatie });
+        if (!actueel()) return verouderd();
         volledigeRekengangRef.current = eind.combinationResults;
+        setSolverStatus({ kind: "solved", at: Date.now() });
         return { gelukt: true, fysisch: verse ? "gedraaid" : "niets-te-doen" };
       }
       // Er is NIET fysisch gerekend: een segmentspoor van een vorige
@@ -1694,12 +1721,20 @@ function App() {
       // model, en het analysetype staat daar niet in.
       stijfheidClear();
       // De normtoetsing hoort bij het resultaat en loopt altijd mee.
-      await handleRunMemberChecks({ openPanel: false, outputs });
+      await handleRunMemberChecks({ openPanel: false, outputs, generatie });
+      if (!actueel()) return verouderd();
       volledigeRekengangRef.current = outputs.combinationResults;
+      setSolverStatus({ kind: "solved", at: Date.now() });
       return { gelukt: true, fysisch: "nvt" };
     })();
     return gang
       .catch((e: unknown): RekengangUitkomst => {
+        if (!actueel()) return verouderd();
+        fem.setSolverOutputs(null);
+        checkClear();
+        stijfheidClear();
+        volledigeRekengangRef.current = null;
+        setStabiliteitsMelding(null);
         // Een onverwachte fout (bijvoorbeeld een onbereikbare rekenkern bij het
         // bepalen van b_eff, vóór de eigen foutafhandeling van de fysische
         // ronde) werd vroeger een onafgehandelde belofte zonder melding. Nu
@@ -1713,12 +1748,19 @@ function App() {
         return { gelukt: false, fysisch: "mislukt" };
       })
       .finally(() => {
-        lopendeRekengangenRef.current -= 1;
+        if (actueel()) lopendeRekengangenRef.current = 0;
       });
   }, [
     fem.analysetype, computeAndStoreSolverOutputs, handleRunMemberChecks,
     rekenFysischNietlineair, stijfheidClear, checkClear,
   ]);
+
+  const handleExportChecks = useCallback(async () => {
+    const generatie = rekenGeneratieRef.current;
+    const { exportCheckResultsCsv } = await import("./io/steelCheck");
+    if (generatie !== rekenGeneratieRef.current || lopendeRekengangenRef.current > 0) return;
+    if (checkResults.length > 0) exportCheckResultsCsv(checkResults, checkSkipped);
+  }, [checkResults, checkSkipped]);
 
   // Het invalidatie-effect leest deze functie uit een ref: zou het effect op
   // `rekenDoor` deppen, dan startte het opnieuw bij elke modelwijziging (die
@@ -1734,9 +1776,11 @@ function App() {
   // uit de rekengang zelf.
   useEffect(() => {
     if (activeView !== "report") return;
-    if (fem.combinationResults) return;
+    if (fem.combinationResults || rapportRekenPogingRef.current) return;
+    if (herberekeningGeplandRef.current || lopendeRekengangenRef.current > 0) return;
     void rekenDoorRef.current();
-  }, [activeView, fem.combinationResults]);
+  }, [activeView, fem.combinationResults, fem.nodes, fem.beams, fem.supports,
+    fem.loads, fem.plates, fem.rekenInstellingenVersie]);
 
   const handleSolve = useCallback(() => {
     // Make sure the user is looking at the canvas (not the report/IFC view).
@@ -1746,6 +1790,8 @@ function App() {
     //   2. belastinggevallen-strip (LoadCaseTabBar) — onder
     setTreeTab("results");
     setResultsTabActive(true);
+    // De Model-tab verbergt ook resultaatlagen via deze algemene schakelaar.
+    fem.setShowLoads(true);
     // Zet alle resultaten-overlays standaard aan zodat M/V/N + reacties +
     // vervorming meteen zichtbaar zijn op de canvas. De unity checks horen
     // daarbij: de toetsing loopt altijd mee met de berekening, dus de badges
@@ -2113,9 +2159,10 @@ function App() {
               <FemCanvas
                 tool={femTool}
                 onToolChange={setFemTool}
-                solveTrigger={solveTrigger}
-                scheefstand={scheefstandInput}
-                onSolveResult={handleSolveResult}
+                perCase={solverStatus.kind === "solved" ? fem.multiLcResult : null}
+                activeLoadCaseName={fem.loadCases.find(c => c.id === fem.activeLoadCaseId)?.name}
+                solverBusy={solverStatus.kind === "rekenen"}
+                solveError={solverErrorText}
                 nodes={fem.nodes}
                 beams={fem.beams}
                 supports={fem.supports}
@@ -2154,8 +2201,8 @@ function App() {
                 combinations={fem.actieveCombinaties}
                 activeCombinationId={fem.activeCombinationId}
                 envelopeView={fem.envelopeView}
-                combinationResults={fem.combinationResults}
-                envelope={fem.envelope}
+                combinationResults={solverStatus.kind === "solved" ? fem.combinationResults : null}
+                envelope={solverStatus.kind === "solved" ? fem.envelope : null}
                 displayFlags={displayFlags}
                 setDisplayFlags={setDisplayFlags}
                 resultsMode={resultsTabActive}
@@ -2175,7 +2222,10 @@ function App() {
                       focus komt van de UC-badge op het canvas: die klapt de
                       kaart van die staaf open en scrollt hem in beeld. */}
                   <CheckPanel
-                    onRun={() => { void handleRunMemberChecks(); }}
+                    onRun={() => { void rekenDoor(); }}
+                    running={solverStatus.kind === "rekenen" || checksRunning}
+                    onClose={() => setActiveView("default")}
+                    onExport={() => { void handleExportChecks(); }}
                     focus={checkFocus}
                   />
                 </div>
@@ -2284,12 +2334,6 @@ function App() {
         femTool={femTool}
         onFemToolChange={setFemTool}
         onSolve={handleSolve}
-        onShowEnvelope={() => {
-          fem.setEnvelopeView(true);
-          fem.setActiveCombinationId(null);
-          setActiveView("default");
-        }}
-        hasEnvelope={fem.envelope !== null}
         hasResults={solverResult !== null || fem.envelope !== null}
         onDelete={fem.deleteSelected}
         onUndo={fem.undo}
@@ -2320,33 +2364,6 @@ function App() {
             else if (sel.beamIds.length > 0)   fem.setSelection({ type: "beam", id: sel.beamIds[0] } as any);
             else if (sel.plateIds.length > 0)  fem.setSelection({ type: "plate", id: sel.plateIds[0] } as any);
           }
-        }}
-        onRunMemberChecks={() => { void handleRunMemberChecks(); }}
-        checksRunning={checksRunning}
-        onOpenCheckPanel={() => setActiveView(activeView === "check" ? "default" : "check")}
-        checkPanelActive={activeView === "check"}
-        activeCode={activeCode}
-        onSelectCode={setActiveCode}
-        resultsPanelActive={resultsTabActive}
-        onToggleResultsPanel={() => {
-          const next = !resultsTabActive;
-          setResultsTabActive(next);
-          setTreeTab(next ? "results" : "project");
-          if (next) setDisplayFlags(f => ({ ...f, M: true, V: true, N: true, deflection: true, reactions: true }));
-        }}
-        onExportCheck={async () => {
-          // Exporteert de toetsing zoals die in het paneel staat — dezelfde
-          // Rust-uitkomst, geen tweede berekening met eigen aannames.
-          const { exportCheckResultsCsv } = await import("./io/steelCheck");
-          const { notifyInfo } = await import("./io/notify");
-          if (checkResults.length === 0) {
-            notifyInfo(
-              i18next.t("common:app.check.noneYetTitle"),
-              i18next.t("common:app.check.noneYetBody"),
-            );
-            return;
-          }
-          exportCheckResultsCsv(checkResults, checkSkipped);
         }}
         onShowInsightsMode={(m) => { setInsightsMode(m); setActiveView("insights"); }}
         onExportMatrixCsv={async () => {
@@ -2466,6 +2483,10 @@ function App() {
                   </button>
                 </div>
                 <div className="right-panel-body">
+                  <CheckPanelToggle open={activeView === "check"} onToggle={() => {
+                    if (activeView === "check") setActiveView("default");
+                    else handleOpenCheckForBeam();
+                  }} />
                   <FemProperties
                     selection={fem.selection}
                     nodes={fem.nodes}
@@ -2516,6 +2537,7 @@ function App() {
                 <BetonStaafVenster
                   key={geselecteerdeBetonStaaf.id}
                   beam={geselecteerdeBetonStaaf}
+                  actueleCombinatieResultaten={solverStatus.kind === "solved" ? fem.combinationResults : null}
                   nodes={fem.nodes}
                   supports={fem.supports}
                   updateBeam={fem.updateBeam}

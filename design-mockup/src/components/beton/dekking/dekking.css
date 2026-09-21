@@ -284,3 +284,16 @@
   max-width: 720px;
 }
 
+.dek-selectie { font-size: 11px; color: var(--theme-text-secondary); margin: 6px 0; }
+.dek-aanzicht [role="slider"]:focus-visible,
+.dek-aanzicht [data-zone]:focus-visible,
+.dek-doorsnede circle:focus-visible { outline: 2px solid var(--theme-accent, #d97706); outline-offset: 2px; }
+.dek-mnkappa { max-width: calc(100vw - 32px); }
+.dek-mnkappa > .modal-body { overflow: auto; padding: 12px; }
+.dek-mnkappa-body { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr); gap: 16px; }
+.dek-mnkappa-body svg { width: 100%; }
+.dek-mnkappa label { display: block; margin-top: 10px; font-size: 12px; }
+.dek-mnkappa input, .dek-mnkappa select { display: block; width: 100%; box-sizing: border-box; }
+.dek-mnkappa p { font-size: 12px; }
+@media (max-width: 560px) { .dek-mnkappa-body { grid-template-columns: 1fr; } .dek-mnkappa-body > div > svg { max-height: 180px; } }
+

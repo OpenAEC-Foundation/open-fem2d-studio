@@ -326,6 +326,8 @@ body,
    `row-resize` in plaats van `col-resize`. */
 .bottom-panel {
   display: flex;
+  /* Houd het model zichtbaar, ook na verkleinen van het venster. */
+  max-height: min(45vh, max(120px, calc(100vh - 480px)));
   flex-direction: column;
   flex-shrink: 0;
   position: relative;

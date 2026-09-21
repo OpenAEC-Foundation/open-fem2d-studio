@@ -126,6 +126,7 @@ import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import CltOpbouwTekening, { CLT_THEMA_KLEUREN } from "../clt/CltOpbouwTekening";
 import ProfielMiniatuur from "../shared/ProfielMiniatuur";
+import MateriaalIcoon, { type MateriaalIcoonSoort } from "../shared/MateriaalIcoon";
 import { shapeVanProfiel } from "../shared/profielVorm";
 import "./ProfielKiezer.css";
 // Klik op een rijlabel in de doorsnedetekening → aantal en diameter invullen,
@@ -215,7 +216,7 @@ interface ProfielKiezerProps {
   inGebruik?: ProfielInGebruik[];
 }
 
-type MateriaalSoort = "staal" | "eigen" | "hout" | "beton" | "aluminium" | "overig";
+type MateriaalSoort = MateriaalIcoonSoort;
 
 // Label en hint staan in de locales onder check:profilePicker.kinds.<id>.label/.hint.
 const SOORTEN: Array<{ id: MateriaalSoort; beschikbaar: boolean }> = [
@@ -904,11 +905,15 @@ export default function ProfielKiezer({
             key={s.id}
             className={`pk-soort${s.beschikbaar ? "" : " pk-soort-uit"}`}
             disabled={!s.beschikbaar}
+            aria-label={t(`profilePicker.kinds.${s.id}.label`)}
             title={t(`profilePicker.kinds.${s.id}.hint`)}
             onClick={() => s.beschikbaar && setSoort(s.id)}
           >
-            <span className="pk-soort-naam">{t(`profilePicker.kinds.${s.id}.label`)}</span>
-            <span className="pk-soort-hint">{t(`profilePicker.kinds.${s.id}.hint`)}</span>
+            <MateriaalIcoon soort={s.id} className="pk-soort-icoon" />
+            <span className="pk-soort-tekst">
+              <span className="pk-soort-naam">{t(`profilePicker.kinds.${s.id}.label`)}</span>
+              <span className="pk-soort-hint">{t(`profilePicker.kinds.${s.id}.hint`)}</span>
+            </span>
           </button>
         ))}
       </div>

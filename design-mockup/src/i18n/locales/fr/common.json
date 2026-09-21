@@ -1,8 +1,23 @@
 {
+  "resultView": {
+    "busy": "Calcul en cours…",
+    "emptyCase": "{{name}} : aucune charge effective ; aucun résultat pour ce cas.",
+    "ucCombinations": "UC indique la vérification déterminante parmi les combinaisons de charges, et non uniquement le cas sélectionné.",
+    "ucLabel": "UC (combinaisons)"
+  },
+  "checkPanelControls": {
+    "open": "Vérifications",
+    "export": "Vérifications des barres (CSV)"
+  },
   "ok": "OK",
   "cancel": "Annuler",
   "save": "Enregistrer",
   "close": "Fermer",
+  "windowControls": {
+    "closeBrowser": "Fermez cet onglet depuis le navigateur. Enregistrez d’abord votre projet pour conserver vos modifications.",
+    "desktopOnly": "Ces commandes de fenêtre sont uniquement disponibles dans l’application de bureau.",
+    "failed": "Échec de l’action sur la fenêtre"
+  },
   "delete": "Supprimer",
   "edit": "Modifier",
   "apply": "Appliquer",
@@ -190,16 +205,16 @@
     "beamType": "Type de barre",
     "beamTypeAuto": "Automatique — {{role}}",
     "schema": {
-      "sectionAria": "Coupe du portique, h = {{h}} m, d = {{d}} m",
-      "wallHeight": "mur {{h}} m",
+      "sectionAria": "Coupe du portique, h = {{h}} {{unit}}, d = {{d}} {{unit}}",
+      "wallHeight": "mur {{h}} {{unit}}",
       "beamTitle": "Barre {{id}} — {{rol}}",
       "windPerpendicular": "Vent perpendiculaire au portique (normal au plan)",
       "allDirections": "Toutes les directions du vent (NEN-EN 1991-1-4 §7.3(3))",
       "blockageAria": "Obstruction sous la toiture : φ = {{phi}}",
       "blockageEmpty": "φ = 0 — vide",
-      "planAria": "Plan, longueur du bâtiment {{b}} m, portée {{d}} m",
-      "innerFrameAt": "Portique courant à {{afstand}} m du pignon",
-      "planDims": "b = {{b}} m · entraxe {{hoh}} m"
+      "planAria": "Plan, longueur du bâtiment {{b}} {{unit}}, portée {{d}} {{unit}}",
+      "innerFrameAt": "Portique courant à {{afstand}} {{unit}} du pignon",
+      "planDims": "b = {{b}} {{unit}} · entraxe {{hoh}} {{unit}}"
     },
     "regionOption": {
       "I": "Zone I — bande côtière et région des Wadden (v_b,0 = 29,5 m/s)",
@@ -448,7 +463,7 @@
       "addZAxis": "Ajouter une file Z (ligne horizontale)"
     },
     "beam": {
-      "lengthPointDirection": "{{lengte}} m — indiquez une direction"
+      "lengthPointDirection": "{{lengte}} mm — indiquez une direction"
     },
     "uc": {
       "badgeTitle": "Barre {{staaf}} : déterminant {{toets}} — cliquez pour la vérification",
@@ -459,8 +474,8 @@
       "tool": "Outil :",
       "continuousTitle": "Dessin continu : l'extrémité d'une barre devient aussitôt l'origine de la suivante (polyligne). Échap interrompt la série.",
       "continuous": "continuer",
-      "beamClickSecondNode": "cliquez sur le second nœud ou saisissez une longueur en m",
-      "beamLengthTyped": "m · Entrée valide · Échap efface la cote",
+      "beamClickSecondNode": "cliquez sur le second nœud ou saisissez une longueur en mm",
+      "beamLengthTyped": "mm · Entrée valide · Échap efface la cote",
       "plateCornersClose_one": "{{count}} coin · cliquez sur le premier nœud pour fermer · Échap annule",
       "plateCornersClose_other": "{{count}} coins · cliquez sur le premier nœud pour fermer · Échap annule",
       "plateCornersNext_one": "{{count}} coin · cliquez sur le coin suivant · Échap annule",
@@ -544,18 +559,18 @@
       "addPointLoadH": "Ajouter une charge ponctuelle horizontale",
       "edgeLoadOn": "Charge de bord sur {{rand}}",
       "rememberedHint": "Valeur reprise de votre placement précédent.",
-      "positionAlongEdge": "Distance le long de {{rand}} de la plaque {{plaat}}, depuis le coin de départ (0 – {{lengte}} m).",
-      "positionAlongBeam": "Distance depuis le nœud d'origine de la barre (0 – {{lengte}} m).",
-      "positionM": "Position (m)",
+      "positionAlongEdge": "Distance le long de {{rand}} de la plaque {{plaat}}, depuis le coin de départ (0 – {{lengte}} mm).",
+      "positionAlongBeam": "Distance depuis le nœud d'origine de la barre (0 – {{lengte}} mm).",
+      "positionM": "Position (mm)",
       "direction": "Direction",
       "directionVertical": "Verticale (+Z, gravité)",
       "directionHorizontal": "Horizontale (+X, vent)",
-      "beginM": "Début (m)",
-      "endM": "Fin (m)",
-      "lineLoadHint": "Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le nœud d'origine ; 0 à {{lengte}} m = longueur totale.",
-      "edgeLoadHint": "p agit par mètre de longueur de bord. Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le coin de départ du bord ; 0 à {{lengte}} m = le bord entier.",
-      "invalidRange": "Plage non valide : 0 ≤ début < fin ≤ {{lengte}} m",
-      "invalidPosition": "Position non valide : 0 ≤ position ≤ {{lengte}} m"
+      "beginM": "Début (mm)",
+      "endM": "Fin (mm)",
+      "lineLoadHint": "Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le nœud d'origine ; 0 à {{lengte}} mm = longueur totale.",
+      "edgeLoadHint": "p agit par mètre de longueur de bord. Négatif = contre le sens + (vers le bas pour Z, vers la gauche pour X). Début/fin depuis le coin de départ du bord ; 0 à {{lengte}} mm = le bord entier.",
+      "invalidRange": "Plage non valide : 0 ≤ début < fin ≤ {{lengte}} mm",
+      "invalidPosition": "Position non valide : 0 ≤ position ≤ {{lengte}} mm"
     },
     "edge": {
       "bottom": "bord inférieur",
@@ -570,7 +585,7 @@
     "dim": {
       "editXAxis": "Modifier la cote de la file X",
       "editZLevel": "Modifier la cote du niveau Z",
-      "distance": "Distance (m)",
+      "distance": "Distance (mm)",
       "nodesMoveWithAxis_one": "{{count}} nœud sur cet axe suit le déplacement.",
       "nodesMoveWithAxis_other": "{{count}} nœuds sur cet axe suivent le déplacement.",
       "nodesMoveWithLevel_one": "{{count}} nœud sur ce niveau suit le déplacement.",
@@ -646,7 +661,7 @@
       "ongunstigste": "le plus défavorable applicable"
     },
     "swayDenominatorTitle": "Défaut d'aplomb φ sous la forme 1/x (par défaut 1/200)",
-    "swayHeightTitle": "Hauteur h en m pour α_h = 2/√h. Vide = déduite du modèle ({{hoogte}} m) : de l'appui le plus bas jusqu'au sommet de la structure (EN 1993-1-1 figure 5.2 ; EN 1992-1-1 §5.2(6) pour la structure de contreventement).",
+    "swayHeightTitle": "Hauteur h en mm pour α_h = 2/√(h/1000). Vide = déduite du modèle ({{hoogte}} mm) : de l'appui le plus bas jusqu'au sommet de la structure (EN 1993-1-1 figure 5.2 ; EN 1992-1-1 §5.2(6) pour la structure de contreventement).",
     "swayMembersTitle": "Nombre d'éléments verticaux porteurs m pour α_m = √(0,5(1+1/m)). Vide = déduit du modèle ({{aantal}}) : le nombre de files de colonnes, les barres superposées formant une seule colonne. Le critère des 50 % de l'EN 1993-1-1 5.3.2(3)a ne peut pas être appliqué ici (il requiert les efforts dans les colonnes, qui ne résultent que du calcul) ; retirez manuellement un montant peu chargé — un m plus petit donne un φ plus grand.",
     "swayDirectionTitle": "Direction des forces horizontales équivalentes : LES DEUX. Chaque combinaison est calculée avec le défaut d'aplomb en +x et en −x (EN 1993-1-1 5.3.2(2) : dans la direction la plus défavorable) ; l'enveloppe et la vérification retiennent, par barre, la plus défavorable des deux, et le nom de la combinaison indique la direction. La direction préférée enregistrée ici ({{richting}}) détermine seulement quelle variante conserve le numéro de combinaison d'origine.",
     "dialogTitle": "Cas de charge & combinaisons",

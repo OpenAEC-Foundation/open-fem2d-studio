@@ -283,7 +283,7 @@
     "runGroup": "Run",
     "run": "Solve (FEM)",
     "memberChecks": "Code checks",
-    "memberChecksRun": "Check steel + timber",
+    "memberChecksRun": "Run code checks",
     "checkPanel": "Check panel",
     "standards": "Standards",
     "en1993": "EN 1993",
@@ -297,6 +297,7 @@
     "envelope": "Governing (envelope)"
   },
   "report": {
+    "plaatPlooiNoot": "The optional buckling check applies to the entire confirmed panel. The panel utilisation applies to every element; the listed element is a representative.",
     "report": "Report",
     "print": "Print / PDF",
     "printHint": "Opens the print dialog — choose 'Save as PDF' there for a PDF.",
@@ -745,7 +746,7 @@
     "kruipInleiding": "Calculated from RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} days and cement class {{cement}}: φ(∞,t₀) = {{phi}}. The SLS stiffness and the column check of this member use this value, because no φ(∞,t₀) has been specified.",
     "kruipKetenKop": "Derivation according to annex B, step by step:",
     "sectionPlateCheck": "Plate checks",
-    "plaatToetsNoot": "Checked per element of the analysis mesh with the element-averaged in-plane stresses; per plate the highest unity check over all ULS combinations. What is not checked is listed per plate with the reason.",
+    "plaatToetsNoot": "Checked per element of the analysis mesh with the element-averaged in-plane stresses; per plate the highest unity check over the relevant ULS and SLS combinations. What is not checked is listed per plate with the reason.",
     "plaatMateriaal": "Material",
     "plaatNorm": "Code",
     "plaatStatus": "Status",
@@ -755,7 +756,7 @@
     "plaatElementgemiddeld": "element-averaged stresses; the element is named in the notes",
     "plaatWapeningKop": "Required reinforcement according to annex F",
     "plaatRichting": "Direction",
-    "plaatWapeningNoot": "n_td = f'_td · t: the required tensile force in the reinforcement per metre of wall, both faces together, in the horizontal (x) and vertical (z) model direction; A_s = n_td / f_yd. The provided reinforcement is not checked."
+    "plaatWapeningNoot": "n_td = f'_td · t: the required tensile force in the reinforcement per metre of wall, both faces together, in the horizontal (x) and vertical (z) model direction; A_s = n_td / f_yd. Checks of the provided reinforcement and any limitations are listed with the checks and unperformed checks."
   },
   "viewer": {
     "file": "File",

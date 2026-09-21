@@ -38,12 +38,13 @@ const TITEL: Record<RijZijde, string> = {
 };
 
 export default function RijBewerker({
-  zijde, rij, onOpslaan, onSluiten,
+  zijde, rij, onOpslaan, onSluiten, context,
 }: {
   zijde: RijZijde;
   rij: Rij;
   onOpslaan: (rij: Rij) => void;
   onSluiten: () => void;
+  context?: string;
 }) {
   const { t } = useTranslation("check");
   const { t: tCommon } = useTranslation("common");
@@ -59,6 +60,7 @@ export default function RijBewerker({
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onSluiten(); } }}
     >
       <span className="beton-rijbewerker-titel">{t(TITEL[zijde])}</span>
+      {context && <span className="beton-rijbewerker-hint">{context}</span>}
       <label>
         {t("concrete.rows.count")}
         <input

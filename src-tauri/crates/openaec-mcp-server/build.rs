@@ -24,7 +24,12 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 fn main() {
-    let map = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets");
+    // Een gedeelde target-cache kan dit bouwscript uit een andere worktree
+    // hergebruiken. Lees daarom de huidige crate-map bij uitvoering, niet
+    // uit een pad dat bij compilatie van het bouwscript is ingebakken.
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .expect("Cargo moet de actuele crate-map aan het bouwscript doorgeven");
+    let map = Path::new(&manifest_dir).join("assets");
     let bundel = map.join("fem-kernel.mjs");
     let hashbestand = map.join("fem-kernel.sha256");
 

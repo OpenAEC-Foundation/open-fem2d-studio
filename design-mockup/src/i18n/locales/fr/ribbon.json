@@ -283,7 +283,7 @@
     "runGroup": "Exécuter",
     "run": "Calculer (MEF)",
     "memberChecks": "Vérification normative",
-    "memberChecksRun": "Vérifier acier + bois",
+    "memberChecksRun": "Vérifications normatives",
     "checkPanel": "Panneau de vérification",
     "standards": "Normes",
     "en1993": "EN 1993",
@@ -297,6 +297,7 @@
     "envelope": "Déterminant (enveloppe)"
   },
   "report": {
+    "plaatPlooiNoot": "La vérification optionnelle du voilement porte sur le panneau entier confirmé. Le taux de travail du panneau s’applique à tous les éléments ; l’élément indiqué est représentatif.",
     "report": "Rapport",
     "print": "Imprimer / PDF",
     "printHint": "Ouvre la boîte de dialogue d'impression — choisissez-y « Enregistrer au format PDF » pour obtenir un PDF.",
@@ -745,7 +746,7 @@
     "kruipInleiding": "Calculé à partir de RH = {{rh}} %, h₀ = {{h0}} mm, t₀ = {{t0}} jours et de la classe de ciment {{cement}} : φ(∞,t₀) = {{phi}}. La rigidité à l'ELS et la vérification de colonne de cette barre utilisent cette valeur, car aucun φ(∞,t₀) n'est renseigné.",
     "kruipKetenKop": "Démarche selon l'annexe B, étape par étape :",
     "sectionPlateCheck": "Vérification des plaques",
-    "plaatToetsNoot": "Vérifié par élément du maillage de calcul avec les contraintes moyennes dans le plan ; par plaque le taux de travail le plus élevé sur toutes les combinaisons ELU. Ce qui n'est pas vérifié est indiqué par plaque avec la raison.",
+    "plaatToetsNoot": "Vérifié par élément du maillage de calcul avec les contraintes moyennes dans le plan ; par plaque le taux de travail le plus élevé sur les combinaisons ELU et ELS pertinentes. Ce qui n'est pas vérifié est indiqué par plaque avec la raison.",
     "plaatMateriaal": "Matériau",
     "plaatNorm": "Norme",
     "plaatStatus": "Statut",
@@ -755,7 +756,7 @@
     "plaatElementgemiddeld": "contraintes moyennes par élément ; l'élément figure dans les remarques",
     "plaatWapeningKop": "Armatures nécessaires selon l'annexe F",
     "plaatRichting": "Direction",
-    "plaatWapeningNoot": "n_td = f'_td · t : l'effort de traction nécessaire dans les armatures par mètre de voile, les deux faces ensemble, dans la direction horizontale (x) et verticale (z) du modèle ; A_s = n_td / f_yd. Les armatures en place ne sont pas vérifiées."
+    "plaatWapeningNoot": "n_td = f'_td · t : l'effort de traction nécessaire dans les armatures par mètre de voile, les deux faces ensemble, dans la direction horizontale (x) et verticale (z) du modèle ; A_s = n_td / f_yd. Les vérifications des armatures en place et les éventuelles limites figurent parmi les vérifications et les contrôles non effectués."
   },
   "viewer": {
     "file": "Fichier",

@@ -23,7 +23,7 @@
  * hoort niet door de brug te reizen om met een zin terug te komen.
  */
 import { withPlateDefaults, type Plate } from "../components/fem/femTypes";
-import type { LoadCombination } from "../components/fem/solver/combinations";
+import { combinatiesVanSoort, type LoadCombination } from "../components/fem/solver/combinations";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { PlateCheckInput } from "./types/plaat/PlateCheckInput";
 import type { PlaatMateriaalSoort as KernSoort } from "./types/plaat/PlaatMateriaalSoort";
@@ -33,6 +33,8 @@ import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen
 import type { LoadCase } from "../components/fem/femTypes";
 import type { ServiceClass } from "./types/timber/ServiceClass";
 import { belastingduurPerCombinatie } from "./belastingduur";
+import { plaatPlooiGeometrieFout } from "./plaatPlooi";
+import type { Node } from "../components/fem/femTypes";
 
 /** Een plaat die niet naar de kern ging, met de reden. */
 export interface PlaatSkip {
@@ -41,6 +43,7 @@ export interface PlaatSkip {
 }
 
 export interface PlaatBuildData {
+  nodes?: readonly Pick<Node, "id" | "x" | "z">[];
   plates: readonly Plate[];
   combinations: readonly LoadCombination[];
   combinationResults: ReadonlyMap<number, SolverResult>;
@@ -121,23 +124,64 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
     const soort = KERN_SOORT[s.soort];
     const combinaties: PlaatCombinatie[] = [];
     const notities: string[] = [];
+    let expectedElementIds: number[] | undefined;
+    let dekkingFout: string | undefined;
+    let betonMeshIds: number[] | undefined;
+    let betonMeshCombinatie: number | undefined;
+    let betonMeshFout: string | undefined;
+    /** De elementspanningen van één combinatie, of null zonder plaatspanningen. */
+    const spanningen = (c: LoadCombination): PlaatCombinatie | null => {
+      const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+      if (soort === "Beton") {
+        const ids = pr?.expectedElementIds;
+        if (!ids?.length || new Set(ids).size !== ids.length ||
+            ids.some(id => !Number.isInteger(id) || id < 0 || id > 0xffffffff)) {
+          betonMeshFout ??= `Combinatie ${c.id}: onafhankelijke volledige meshset ontbreekt of is ongeldig; bereken opnieuw.`;
+        } else {
+          const gesorteerd = [...ids].sort((a, b) => a - b);
+          const referentie = betonMeshIds;
+          if (referentie && (gesorteerd.length !== referentie.length ||
+              gesorteerd.some((id, i) => id !== referentie[i]))) {
+            betonMeshFout ??= `Onafhankelijke meshsets van combinaties ${betonMeshCombinatie} en ${c.id} verschillen (UGT/BGT).`;
+          } else if (!betonMeshIds) {
+            betonMeshIds = gesorteerd;
+            betonMeshCombinatie = c.id;
+          }
+        }
+      }
+      if (!pr || pr.elements.length === 0) return null;
+      return {
+        combination_id: c.id,
+        elements: pr.elements.map((el) => ({
+          element_id: el.elementId,
+          sigma_x_mpa: el.sigmaX,
+          sigma_y_mpa: el.sigmaY,
+          tau_xy_mpa: el.tauXY,
+        })),
+      };
+    };
     if (SOORT_MET_SPANNINGEN.has(soort)) {
       const zonder: string[] = [];
       for (const c of ugt) {
-        const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
-        if (!pr || pr.elements.length === 0) {
+        const comb = spanningen(c);
+        if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
+          // Bij beton moet een ontbrekende UGT-combinatie
+          // zichtbaar blijven voor de kern, ook als andere combinaties bestaan.
+          if (plaat.plooi || soort === "Beton") combinaties.push({ combination_id: c.id, elements: [] });
           continue;
         }
-        combinaties.push({
-          combination_id: c.id,
-          elements: pr.elements.map((el) => ({
-            element_id: el.elementId,
-            sigma_x_mpa: el.sigmaX,
-            sigma_y_mpa: el.sigmaY,
-            tau_xy_mpa: el.tauXY,
-          })),
-        });
+        if (plaat.plooi) {
+          const ids = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id)?.expectedElementIds;
+          if (!ids?.length || new Set(ids).size !== ids.length) {
+            dekkingFout = "onafhankelijke volledige mesh-elementset ontbreekt; bereken opnieuw met de actuele solver";
+          } else if (expectedElementIds && (expectedElementIds.length !== ids.length || expectedElementIds.some((id, i) => id !== ids[i]))) {
+            dekkingFout = "de onafhankelijke mesh-elementset verschilt tussen UGT-combinaties";
+          } else {
+            expectedElementIds = [...ids];
+          }
+        }
+        combinaties.push(comb);
       }
       if (zonder.length > 0) {
         notities.push(
@@ -175,17 +219,42 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
             };
           })()
         : {};
+    const geometrieFout = plaatPlooiGeometrieFout(plaat, data.nodes) ?? dekkingFout;
+    // Beton met ingevoerde wapening (issue #25): de wapening ongewijzigd, en
+    // de spanningen van de FREQUENTE BGT-combinaties (6.15b) — daaronder laat
+    // de nationale bijlage bij 7.3.1(5) de scheurwijdte toetsen. Herkend op
+    // soort, zoals de betonbalkbouwer; een andere BGT-combinatie gaat niet mee.
+    // Meshmetadata wordt voor alle betonplaten bewaakt, ook zonder wapening.
+    const beton =
+      soort === "Beton" && plaat.wapening
+        ? {
+            wapening_aanwezig: plaat.wapening,
+            frequente_combinaties: combinatiesVanSoort(data.combinations, "6.15b")
+              .map((c) => spanningen(c) ?? { combination_id: c.id, elements: [] }),
+          }
+        : {};
     inputs.push({
       bijlage: data.nationaleBijlage ?? STANDAARD_BIJLAGE,
       plate_id: plaat.id,
       soort,
       materiaal: s.naam,
+      ...(plaat.plooi ? { plooi: {
+        ...plaat.plooi,
+        expected_element_ids: expectedElementIds ?? [],
+        rechthoek_zonder_openingen: !geometrieFout,
+        ...(geometrieFout ? { geometrie_fout: geometrieFout } : {}),
+      } } : {}),
       ...hout,
       // Dezelfde aanvulling als de solverinvoer (`plaatNaarSolverInput`): de
       // spanningen zijn met deze dikte berekend.
       thickness_mm: withPlateDefaults(plaat).thickness!,
       ...(notities.length > 0 ? { notities } : {}),
       combinations: combinaties,
+      ...beton,
+      ...(soort === "Beton" ? {
+        ...(betonMeshIds ? { expected_element_ids: betonMeshIds } : {}),
+        ...(betonMeshFout !== undefined ? { mesh_fout: betonMeshFout } : {}),
+      } : {}),
     });
   }
   return { inputs, skipped };

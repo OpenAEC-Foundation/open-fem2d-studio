@@ -17,6 +17,7 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { parseLength, formatLength } from "../../lib/lengthInput";
 import { HERKOMST_KIPSTEUNEN, voorspelKniklengte } from "../../lib/kniklengte";
 import type { Beam, BeamCheckConfig, BeamEindVeren, BeamReleases, Node } from "./femTypes";
 import AansluitingKeuze from "./AansluitingKeuze";
@@ -116,12 +117,12 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   // ── Toetsconfiguratie (Beam.checkConfig) ─────────────────────────────────
   // Getalvelden als string zodat "leeg" = builder-default kan blijven.
   const cfg0 = beam.checkConfig ?? {};
-  const [lcyStr, setLcyStr] = useState(cfg0.bucklingLengthY_m?.toString() ?? "");
-  const [lczStr, setLczStr] = useState(cfg0.bucklingLengthZ_m?.toString() ?? "");
+  const [lcyStr, setLcyStr] = useState(formatLength(cfg0.bucklingLengthY_m, "m"));
+  const [lczStr, setLczStr] = useState(formatLength(cfg0.bucklingLengthZ_m, "m"));
   // Kipsteunafstand voor EN 1995-1-1 art. 6.3.3 (tabel 6.1 -> l_ef). Leeg =
   // staaflengte. Eigen veld, geen afgeleide van de kipsteunfracties: die zijn
   // per FLENS en horen bij het staalmodel.
-  const [ltbStr, setLtbStr] = useState(cfg0.ltbSupportSpacing_m?.toString() ?? "");
+  const [ltbStr, setLtbStr] = useState(formatLength(cfg0.ltbSupportSpacing_m, "m"));
   // Scheurfactor k_cr (6.13a). Leeg = 1,0, de NB-waarde bij 6.1.7 voor een
   // prismatische doorsnede; alleen een waarde in (0, 1] gaat het bestand in.
   const [kCrStr, setKCrStr] = useState(cfg0.kCr?.toString() ?? "");
@@ -221,10 +222,16 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
    */
   const buildCheckConfig = (): BeamCheckConfig | undefined => {
     const cfg: BeamCheckConfig = {};
-    const lcy = parseFloat(lcyStr.replace(",", "."));
-    if (lcyStr.trim() !== "" && Number.isFinite(lcy) && lcy > 0) cfg.bucklingLengthY_m = lcy;
-    const lcz = parseFloat(lczStr.replace(",", "."));
-    if (lczStr.trim() !== "" && Number.isFinite(lcz) && lcz > 0) cfg.bucklingLengthZ_m = lcz;
+    const lcy = parseLength(lcyStr, "m");
+    if (lcyStr.trim() !== "" && Number.isFinite(lcy) && lcy > 0) {
+      cfg.bucklingLengthY_m = lcyStr === formatLength(cfg0.bucklingLengthY_m, "m")
+        ? cfg0.bucklingLengthY_m : lcy;
+    }
+    const lcz = parseLength(lczStr, "m");
+    if (lczStr.trim() !== "" && Number.isFinite(lcz) && lcz > 0) {
+      cfg.bucklingLengthZ_m = lczStr === formatLength(cfg0.bucklingLengthZ_m, "m")
+        ? cfg0.bucklingLengthZ_m : lcz;
+    }
     const restraints = sanitizeRestraintFractions(parseRestraintInput(restraintsStr));
     if (restraints.length > 0) cfg.lateralRestraints = restraints;
     if (deflClass !== "floor") cfg.deflectionClass = deflClass;
@@ -242,9 +249,9 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     }
     // Onvoorwaardelijk, net als de zeeg hierboven: wie tijdelijk van
     // materiaal wisselt, hoort zijn kipsteunafstand niet kwijt te raken.
-    const ltb = parseFloat(ltbStr.replace(",", "."));
+    const ltb = parseLength(ltbStr, "m");
     if (ltbStr.trim() !== "" && Number.isFinite(ltb) && ltb > 0) {
-      cfg.ltbSupportSpacing_m = ltb;
+      cfg.ltbSupportSpacing_m = ltbStr === formatLength(cfg0.ltbSupportSpacing_m, "m") ? cfg0.ltbSupportSpacing_m : ltb;
     }
     // Ook onvoorwaardelijk (zie hierboven): de houtkeuzen blijven bewaard bij
     // een tijdelijke materiaalwissel. k_cr alleen binnen (0, 1] — daarbuiten
@@ -280,7 +287,10 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     return Object.keys(cfg).length > 0 ? cfg : undefined;
   };
 
+  const geldigeLengte = (text: string) => !text.trim() || parseLength(text) > 0;
+  const lengtesGeldig = [lcyStr, lczStr, ...(isTimber ? [ltbStr] : [])].every(geldigeLengte);
   const handleConfirm = () => {
+    if (!lengtesGeldig) return;
     onUpdate?.({
       material, profile, profileEnd,
       releases, veren, checkConfig: buildCheckConfig(), bedding: buildBedding(),
@@ -322,7 +332,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   const nB = nodes.find(n => n.id === beam.to);
   const length = nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
   const angle  = nA && nB ? (Math.atan2(nB.z - nA.z, nB.x - nA.x) * 180 / Math.PI) : 0;
-  const systemLengthM = (length / 1000).toFixed(2);
+  const systemLengthMm = formatLength(length);
   // L_cr,z die de kern gebruikt als het veld leeg blijft. Deze dialoog kent
   // alleen de bovenflenssteunen als tekstveld; de onderflenssteunen komen uit
   // de bestaande configuratie (het eigenschappenpaneel bewerkt ze).
@@ -442,7 +452,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                 <div className="bar-props-row"><span>ID</span><code>{beam.id}</code></div>
                 <div className="bar-props-row"><span>{t("barDialog.nodeA")}</span><code>{beam.from}</code></div>
                 <div className="bar-props-row"><span>{t("barDialog.nodeB")}</span><code>{beam.to}</code></div>
-                <div className="bar-props-row"><span>{t("barDialog.length")}</span><code>{(length / 1000).toFixed(3)} m</code></div>
+                <div className="bar-props-row"><span>{t("barDialog.length")}</span><code>{formatLength(length)} mm</code></div>
                 <div className="bar-props-row"><span>{t("barDialog.angle")}</span><code>{angle.toFixed(1)}°</code></div>
               </div>
 
@@ -649,24 +659,24 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                 <div className="bar-props-row">
                   <span>{t("cfg.bucklingInPlane")}</span>
                   <input
-                    type="number" className="bar-props-input" step="0.1" min="0"
-                    placeholder={systemLengthM}
-                    value={lcyStr}
+                    type="text" inputMode="decimal" className="bar-props-input"
+                    placeholder={systemLengthMm}
+                    value={lcyStr} aria-invalid={!geldigeLengte(lcyStr)}
                     onChange={(e) => setLcyStr(e.target.value)}
                   />
                 </div>
                 <div className="bar-props-row">
                   <span>{t("cfg.bucklingOutOfPlane")}</span>
                   <input
-                    type="number" className="bar-props-input" step="0.1" min="0"
-                    placeholder={(voorspeldZ.lCrMm / 1000).toFixed(2)}
-                    value={lczStr}
+                    type="text" inputMode="decimal" className="bar-props-input"
+                    placeholder={formatLength(voorspeldZ.lCrMm)}
+                    value={lczStr} aria-invalid={!geldigeLengte(lczStr)}
                     onChange={(e) => setLczStr(e.target.value)}
                   />
                 </div>
                 <div className="bar-props-hint">
                   {t("cfg.bucklingEmptyIs", {
-                    waarde: (voorspeldZ.lCrMm / 1000).toFixed(2).replace(".", ","),
+                    waarde: formatLength(voorspeldZ.lCrMm),
                     herkomst:
                       voorspeldZ.herkomst === HERKOMST_KIPSTEUNEN
                         ? t("cfg.herkomstKipsteunen")
@@ -740,11 +750,11 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                         de sleutel staat nog niet in de check.json-bestanden
                         onder i18n/locales, en die vallen buiten deze
                         wijziging. */}
-                    <span>{t("cfg.ltbSupportSpacing", "Kipsteunafstand (m)")}</span>
+                    <span>{t("cfg.ltbSupportSpacing", "Kipsteunafstand (mm)")}</span>
                     <input
-                      type="number" className="bar-props-input" step="0.1" min="0"
-                      placeholder={systemLengthM}
-                      value={ltbStr}
+                      type="text" inputMode="decimal" className="bar-props-input"
+                      placeholder={systemLengthMm}
+                      value={ltbStr} aria-invalid={!geldigeLengte(ltbStr)}
                       onChange={(e) => setLtbStr(e.target.value)}
                     />
                   </div>
@@ -882,7 +892,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
             </span>
           )}
           <button className="bar-props-btn-secondary" onClick={onClose}>{t("barDialog.cancel")}</button>
-          <button className="bar-props-btn-primary" onClick={handleConfirm}>{t("common:ok")}</button>
+          <button className="bar-props-btn-primary" disabled={!lengtesGeldig} onClick={handleConfirm}>{t("common:ok")}</button>
         </div>
       </div>
     </div>
