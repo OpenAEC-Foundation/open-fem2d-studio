@@ -542,6 +542,10 @@ const ALLEEN_BRON = new Map([
     "de zoekfunctie van de profielkiezer (`lib/profielZoeken`, issue #39): term → treffers per reeks over de hele staalcatalogus, ongevoelig voor hoofdletters en spaties, oude reeksen onderaan, en welke al gebruikte profielen in welke stap horen. Presentatielogica van de frontend zonder rekenwerk; de module en de profieleditor-catalogus staan niet in de barrel, en de test leest daarnaast ProfielKiezer.tsx, de stylesheet en de vier locales van schijf",
   ],
   [
+    "profiel-zoeken-ui",
+    "de echte ProfielKiezer in Chromium: focus in het zoekveld bij openen, pijltjes/Enter/Esc, de lege toestand, \"In dit project\" in de staal- en houtstap, het verlopende profiel en een smal venster. React-interactie en CSS-indeling; geen solvercode en niet beschikbaar in de sidecarbundel",
+  ],
+  [
     "profielvarianten",
     "kiest naburige doorsneden uit de profieldatabase en de handelsmatenlijst en bouwt daarmee toetsinvoer; dat is invoerbouw en geen solverwerk, en de korfcontrole die hij meeneemt hoort niet in de barrel",
   ],
