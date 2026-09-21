@@ -141,7 +141,7 @@ function ResultsTab({
     { key: "N",          label: "N",             hint: t("tree.rowAxialHint"), swatch: "#f59e0b",            scaleKey: "scaleN" },
     { key: "rotation",   label: "φy",            hint: t("tree.rowRotationHint"), swatch: "#8b5cf6", scaleKey: "scaleR" },
     { key: "reactions",  label: t("tree.rowReactions"), hint: t("tree.rowReactionsHint"), swatch: "var(--theme-text)" },
-    { key: "uc",         label: t("tree.rowUnityCheck"), hint: t("tree.rowUnityCheckHint"), swatch: "#16a34a" },
+    { key: "uc",         label: t("resultView.ucLabel"), hint: t("resultView.ucCombinations"), swatch: "#16a34a" },
     // EI-verloop: alleen zinvol met segmentuitkomsten uit de fysisch
     // niet-lineaire (beton)berekening. Zonder die uitkomsten uitgegrijsd MET
     // reden — er is dan niets gescheurd gerekend, en dat is een geldige

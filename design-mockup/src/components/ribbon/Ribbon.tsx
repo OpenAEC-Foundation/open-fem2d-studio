@@ -6,7 +6,6 @@ import TableTab from "./TableTab";
 import SettingsTab from "./SettingsTab";
 import InsightsTab from "./InsightsTab";
 import IfcTab from "./IfcTab";
-import CheckTab from "./CheckTab";
 import ReportTab from "./ReportTab";
 import "./Ribbon.css";
 
@@ -25,12 +24,8 @@ interface RibbonProps {
   /** Active FEM canvas tool. Routed into HomeTab so draw buttons can highlight + dispatch. */
   femTool?: import("../fem/femTypes").Tool;
   onFemToolChange?: (t: import("../fem/femTypes").Tool) => void;
-  /** Fires when the user clicks the "Toetsen uitvoeren" button on the Toetsing tab. */
+  /** Start de volledige berekening vanaf de Start-tab. */
   onSolve?: () => void;
-  /** Fires when the user clicks the "Maatgevend (envelope)" button. */
-  onShowEnvelope?: () => void;
-  /** True when the multi-LC solver run has completed; gates the envelope button. */
-  hasEnvelope?: boolean;
   /** True when any solver result is available; lights up the Berekenen button on Home. */
   hasResults?: boolean;
   /** Delete currently-selected node/beam/plate from the store. */
@@ -52,17 +47,6 @@ interface RibbonProps {
   onShowInsightsMode?: (mode: "element" | "system" | "dof" | "logs" | "errors") => void;
   /** Export all stiffness matrices as CSV. */
   onExportMatrixCsv?: () => void;
-  // ── Check-tab wiring ──────────────────────────────────────────────────
-  /** Normtoetsing: EN 1993 + EN 1995 samen in één run (Rust-backend). */
-  onRunMemberChecks?: () => void;
-  checksRunning?: boolean;
-  onOpenCheckPanel?: () => void;
-  checkPanelActive?: boolean;
-  activeCode?: "EN1993" | "EN1995" | "EN1992";
-  onSelectCode?: (c: "EN1993" | "EN1995" | "EN1992") => void;
-  onToggleResultsPanel?: () => void;
-  resultsPanelActive?: boolean;
-  onExportCheck?: () => void;
   onFilterSelection?: () => void;
   /** Export standalone HTML report (browser + Tauri). */
   onExportHtml?: () => void;
@@ -112,20 +96,17 @@ interface RibbonProps {
   onTableFocusFilter?: () => void;
 }
 
-const TABS = ["home", "table", "settings", "insights", "ifc", "check", "report"] as const;
+const TABS = ["home", "table", "settings", "insights", "ifc", "report"] as const;
 type TabId = (typeof TABS)[number];
 
 export default function Ribbon({
   onFileTabClick, onSettingsClick, onProjectSettingsClick, activeView, onViewChange,
   theme, onThemeSelect, onOpenLibrary,
-  femTool, onFemToolChange, onSolve, onShowEnvelope, hasEnvelope, hasResults,
+  femTool, onFemToolChange, onSolve, hasResults,
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onOpenLoadCases, onOpenLoadCombinations, onOpenWindGenerator, onNewProject, onOpenProject,
   onSaveProject, onSaveProjectAs,
   onShowInsightsMode, onExportMatrixCsv,
-  onRunMemberChecks, checksRunning, onOpenCheckPanel, checkPanelActive,
-  activeCode, onSelectCode, onToggleResultsPanel, resultsPanelActive,
-  onExportCheck,
   onFilterSelection,
   onExportHtml, scheefstandToelichting, analyseToelichting, windToelichting,
   onExportIfc, onExportIfcStructural, onValidateIfc, onOpenIfcView,
@@ -180,18 +161,11 @@ export default function Ribbon({
     setActiveTab(newTab);
     setAnimating(true);
 
-    // Hoofdweergave meeschakelen met het tabblad.
-    //
-    // "check" moet hier expliciet in staan. Ontbrak hij, dan viel hij in de
-    // else en zette de ribbon de weergave terug op "default" — precies op het
-    // moment dat het effect hieronder naar dit tabblad schakelde omdat de
-    // weergave "check" wérd. Klikken op een UC-badge opende de toetsing dan
-    // wel, waarna zij binnen een tel weer verdween.
+    // Alleen een expliciete tabklik wisselt de hoofdweergave.
     if (newTab === "ifc") onViewChange("ifc");
     else if (newTab === "report") onViewChange("report");
     else if (newTab === "insights") onViewChange("insights");
     else if (newTab === "table") onViewChange("table");
-    else if (newTab === "check") onViewChange("check");
     else onViewChange("default");
   }, [activeTab, onViewChange]);
 
@@ -202,7 +176,7 @@ export default function Ribbon({
   useEffect(() => {
     if (
       (activeView === "report" || activeView === "ifc" ||
-       activeView === "insights" || activeView === "check" ||
+       activeView === "insights" ||
        activeView === "table") &&
       activeTab !== activeView
     ) {
@@ -279,21 +253,6 @@ export default function Ribbon({
           onExportIfcStructural={onExportIfcStructural}
           onValidateIfc={onValidateIfc}
           onOpenIfcView={onOpenIfcView}
-        />;
-      case "check":
-        return <CheckTab
-          onSolve={onSolve}
-          onShowEnvelope={onShowEnvelope}
-          hasEnvelope={hasEnvelope}
-          onRunMemberChecks={onRunMemberChecks}
-          checksRunning={checksRunning}
-          onOpenCheckPanel={onOpenCheckPanel}
-          checkPanelActive={checkPanelActive}
-          activeCode={activeCode}
-          onSelectCode={onSelectCode}
-          onToggleResultsPanel={onToggleResultsPanel}
-          resultsPanelActive={resultsPanelActive}
-          onExportCheck={onExportCheck}
         />;
       case "report":
         return <ReportTab

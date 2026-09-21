@@ -671,6 +671,34 @@
     "footer": "Klicken Sie auf eine Zeile, um die vollständige Herleitung dieser Variante zu sehen."
   },
   "concrete": {
+    "zoneInteraction": {
+      "top": "Obere Bewehrung",
+      "bottom": "Untere Bewehrung",
+      "stirrups": "Bügelzone",
+      "empty": "Keine Stäbe",
+      "start": "Beginn {{zone}}",
+      "end": "Ende {{zone}}",
+      "selected": "Ausgewählt: {{zone}} · {{start}}–{{end}} mm",
+      "pick": "Bewehrungszone oder Stabreihe auswählen.",
+      "preview": "Vorschau — Loslassen: übernehmen; Escape: abbrechen"
+    },
+    "sectionCurve": {
+      "open": "M-κ Querschnitt",
+      "title": "M-κ · Querschnitt x = {{x}} mm",
+      "assumptions": "Aktueller Querschnitt und lokaler Bewehrungskorb. Nationaler Anhang: {{bijlage}}. Keine automatische Bemessung.",
+      "source": "Normalkraft aus Kombination",
+      "manual": "N manuell eingeben",
+      "combination": "Kombination {{id}}",
+      "interpolated": "interpoliert",
+      "nLabel": "N [kN] — Druck negativ",
+      "enterN": "N ausdrücklich eingeben; Null wird nicht angenommen. Ohne eindeutige aktuelle Schnittkraft ist eine manuelle Eingabe erforderlich.",
+      "resultN": "N aus der gewählten aktuellen Kombination an diesem Querschnitt; Belastungssituation prüfen.",
+      "direction": "Momentenvorzeichen: Zugseite",
+      "situation": "Bemessungssituation",
+      "persistent": "Ständig / vorübergehend",
+      "accidental": "Außergewöhnlich",
+      "calculate": "Berechnen"
+    },
     "cage": {
       "notSpecified": "nicht angegeben",
       "barCountOf": "{{label}}: Anzahl Stäbe",
@@ -1373,7 +1401,7 @@
     "checkColumn": "Nachweis",
     "statusColumn": "Status",
     "governingLine": "Maßgebend: {{toets}} — UC {{uc}}. Vollständige Herleitung: Registerkarte Nachweis → Nachweisbereich.",
-    "notChecked": "Noch nicht nachgewiesen — führen Sie den Normnachweis über die Ribbon-Registerkarte \"Nachweis\" aus (Schaltfläche \"Stahl + Holz nachweisen\").",
+    "notChecked": "Noch nicht nachgewiesen — führen Sie die Normnachweise über die Registerkarte \"Nachweis\" aus (Schaltfläche \"Normnachweise ausführen\").",
     "cancel": "Abbrechen"
   },
   "plaat": {

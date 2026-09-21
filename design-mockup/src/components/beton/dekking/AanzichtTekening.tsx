@@ -33,7 +33,7 @@
  * afmetingen te renderen is en dat `test-dekkingsvenster.mjs` de LIGGING van de
  * trapjes uit de gerenderde SVG kan terugmeten.
  */
-import { useMemo, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { SupportType } from "../../fem/femTypes";
 import {
@@ -48,6 +48,8 @@ import {
   type UcVak,
 } from "./dekkingLagen";
 import { maat, nl } from "../wapeningskorf";
+import type { ReinforcementZones } from "../../../lib/types/concrete/ReinforcementZones";
+import { verplaatsZoneGrens, type ZoneSelectie } from "./zoneModel";
 
 /** Eén wapeningsbundel zoals de tekening hem nodig heeft. */
 export interface BundelTekening {
@@ -101,6 +103,11 @@ interface Props {
   onCursorX?: (xMm: number) => void;
   /** Breedte van het tekenvlak in beeldpunten. */
   breedtePx?: number;
+  zones?: ReinforcementZones;
+  selectie?: ZoneSelectie | null;
+  onSelectie?: (selectie: ZoneSelectie) => void;
+  onZonesPreview?: (zones: ReinforcementZones | null) => void;
+  onZonesCommit?: (zones: ReinforcementZones) => void;
 }
 
 // ── Maten van het kader, in beeldpunten ────────────────────────────────────
@@ -137,6 +144,7 @@ export default function AanzichtTekening({
   cursorXMm,
   onCursorX,
   breedtePx = 900,
+  zones, selectie, onSelectie, onZonesPreview, onZonesCommit,
 }: Props) {
   const { t } = useTranslation("check");
   const tekenW = Math.max(120, breedtePx - MARGE_LINKS - MARGE_RECHTS);
@@ -165,6 +173,39 @@ export default function AanzichtTekening({
   }, [lanenBoven, lanenOnder, lagen.uc]);
 
   const hoogte = indeling.totaal;
+  const svgRef = useRef<SVGSVGElement>(null);
+  const sleep = useRef<{ basis: ReinforcementZones; selectie: ZoneSelectie; einde: "start" | "end"; pointerId: number; beginX: number; waarde: number; preview: ReinforcementZones } | null>(null);
+  const [preview, setPreview] = useState<ReinforcementZones | null>(null);
+  const annuleer = () => { sleep.current = null; setPreview(null); onZonesPreview?.(null); };
+  const mmBijClientX = (clientX: number) => {
+    const kader = svgRef.current?.getBoundingClientRect();
+    return kader && kader.width > 0 ? (((clientX - kader.left) / kader.width * breedtePx - MARGE_LINKS) / tekenW) * lengteMm : 0;
+  };
+  useEffect(() => { annuleer(); }, [zones, lengteMm]);
+  useEffect(() => {
+    const beweeg = (e: PointerEvent) => {
+      const d = sleep.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      d.preview = verplaatsZoneGrens(d.basis, d.selectie, d.einde, Math.round(d.waarde + mmBijClientX(e.clientX) - d.beginX), lengteMm);
+      setPreview(d.preview); onZonesPreview?.(d.preview);
+    };
+    const klaar = (e: PointerEvent) => {
+      const d = sleep.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      beweeg(e);
+      annuleer();
+      if (d.preview !== d.basis) onZonesCommit?.(d.preview);
+    };
+    const cancel = (e: PointerEvent) => { if (e.pointerId === sleep.current?.pointerId) annuleer(); };
+    const toets = (e: KeyboardEvent) => { if (e.key === "Escape" && sleep.current) { e.preventDefault(); e.stopImmediatePropagation(); annuleer(); } };
+    window.addEventListener("pointermove", beweeg); window.addEventListener("pointerup", klaar);
+    window.addEventListener("pointercancel", cancel); window.addEventListener("keydown", toets, true);
+    return () => {
+      window.removeEventListener("pointermove", beweeg); window.removeEventListener("pointerup", klaar);
+      window.removeEventListener("pointercancel", cancel); window.removeEventListener("keydown", toets, true);
+    };
+  });
+  const tekenZones = preview ?? zones;
 
   const pakCursor = (e: MouseEvent<SVGSVGElement>) => {
     if (!onCursorX || lengteMm <= 0) return;
@@ -180,11 +221,12 @@ export default function AanzichtTekening({
 
   return (
     <svg
+      ref={svgRef}
       className="dek-aanzicht"
       viewBox={`0 0 ${breedtePx} ${hoogte}`}
       width={breedtePx}
       height={hoogte}
-      role="img"
+      role={onZonesCommit ? "group" : "img"}
       aria-label={t("concrete.elevation.ariaLabel", { lengte: nl(lengteMm / 1000, 2) })}
       // KLIKKEN wijst de snede aan, meebewegen met de muis niet. Dat is met
       // opzet: de werkwijze is "zet de aanwijzer waar je wilt inkorten en druk
@@ -227,9 +269,58 @@ export default function AanzichtTekening({
         hoogteMm={hoogteMm}
         sx={sx}
         opleggingen={opleggingen}
-        bundels={bundels}
+        bundels={onZonesCommit ? [] : bundels}
         beugels={beugels}
       />
+
+      {onZonesCommit && tekenZones && (["beugel", "langs"] as const).flatMap(soort => {
+        const lijst = soort === "langs" ? tekenZones.longitudinal : tekenZones.stirrups;
+        return lijst.map((z, index) => {
+          const zij = "side" in z ? z.side : null;
+          const y = indeling.staafY0 + (zij === "Top" ? 7 : zij === "Bottom" ? STAAF_H - 7 : STAAF_H / 2);
+          const gekozen = selectie?.soort === soort && selectie.index === index;
+          const naam = t(`concrete.zoneInteraction.${zij === "Top" ? "top" : zij === "Bottom" ? "bottom" : "stirrups"}`);
+          const label = `${naam} · ${maat(z.x_start_mm)}–${maat(z.x_end_mm)} mm`;
+          const kies = () => { onSelectie?.({ soort, index }); onCursorX?.((z.x_start_mm + z.x_end_mm) / 2); };
+          const kleur = gekozen ? "var(--theme-accent, #d97706)" : "var(--theme-materiaal-lijn, #2A2A30)";
+          return <g key={`${soort}-${index}`} data-zone={`${soort}-${index}`} role="button" tabIndex={0} aria-label={label} aria-pressed={gekozen}
+            style={{ cursor: "pointer" }} onClick={e => { e.stopPropagation(); kies(); }}
+            onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); kies(); } }}>
+            <title>{label}</title>
+            <rect x={sx(z.x_start_mm)} y={y - 6} width={sx(z.x_end_mm) - sx(z.x_start_mm)} height={12} fill={gekozen ? kleur : "transparent"} fillOpacity={gekozen ? .15 : 1} />
+            {zij && <>
+              <line x1={sx(z.x_start_mm)} x2={sx(z.x_end_mm)} y1={y} y2={y} stroke={kleur} strokeWidth={gekozen ? 3 : 2} strokeDasharray={"row" in z && z.row.count === 0 ? "3 3" : undefined} />
+              <text x={sx(z.x_start_mm) + 9} y={zij === "Top" ? y + 10 : y - 4} fontSize={8} fill={kleur}>
+                {"row" in z && (z.row.count ? `${z.row.count}Ø${maat(z.row.diameter_mm)}` : t("concrete.zoneInteraction.empty"))}
+              </text>
+            </>}
+            {gekozen && (["start", "end"] as const).map(einde => {
+              const waarde = einde === "start" ? z.x_start_mm : z.x_end_mm;
+              const buitenBeugel = soort === "beugel" && (waarde === 0 || waarde === lengteMm);
+              return <rect key={einde} data-zone-edge={einde} role="slider" tabIndex={buitenBeugel ? -1 : 0}
+                aria-label={t(`concrete.zoneInteraction.${einde}`, { zone: naam })} aria-valuemin={0} aria-valuemax={lengteMm} aria-valuenow={waarde} aria-disabled={buitenBeugel}
+                x={sx(waarde) - 5} y={y - 6} width={10} height={12} rx={2} fill={kleur} stroke="var(--theme-surface, white)"
+                style={{ cursor: buitenBeugel ? "not-allowed" : "ew-resize", touchAction: "none" }}
+                onClick={e => e.stopPropagation()}
+                onPointerDown={e => {
+                  e.stopPropagation(); if (buitenBeugel || e.button !== 0 || !zones) return;
+                  e.preventDefault(); e.currentTarget.focus();
+                  if (svgRef.current?.hasPointerCapture(e.pointerId) === false) {
+                    try { svgRef.current.setPointerCapture(e.pointerId); } catch { /* Geen actieve pointer bij synthetische invoer. */ }
+                  }
+                  sleep.current = { basis: zones, selectie: { soort, index }, einde, pointerId: e.pointerId, beginX: mmBijClientX(e.clientX), waarde, preview: zones };
+                }}
+                onKeyDown={e => {
+                  if (buitenBeugel || !zones || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+                  e.preventDefault(); e.stopPropagation();
+                  const x = e.key === "Home" ? 0 : e.key === "End" ? lengteMm : waarde + (e.key === "ArrowLeft" ? -10 : 10);
+                  const nieuw = verplaatsZoneGrens(zones, { soort, index }, einde, x, lengteMm);
+                  if (nieuw !== zones) onZonesCommit(nieuw);
+                }} />;
+            })}
+          </g>;
+        });
+      })}
 
       {indeling.onder.map((rij) => (
         <LaanTekening

@@ -72,6 +72,7 @@ const invoer = [
   // Beton, zuivere afschuiving τ = 3: bijlage F (F.2)/(F.3) f'_td = 3 N/mm² in
   // beide richtingen → n_td = 3·200 = 600 kN/m.
   { plate_id: 4, soort: "Beton", materiaal: "C30/37", thickness_mm: 200,
+    expected_element_ids: [1],
     combinations: [{ combination_id: 4, elements: [
       { element_id: 1, sigma_x_mpa: 0, sigma_y_mpa: 0, tau_xy_mpa: 3 },
     ] }] },

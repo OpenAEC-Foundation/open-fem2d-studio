@@ -104,6 +104,13 @@
   border-color: var(--theme-ribbon-btn-active-border);
 }
 
+.titlebar-button:disabled {
+  opacity: 0.35;
+  background: transparent;
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
 .titlebar-close:hover {
   background-color: #e81123;
   color: #ffffff;

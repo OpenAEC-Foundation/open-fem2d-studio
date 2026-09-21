@@ -1,8 +1,23 @@
 {
+  "resultView": {
+    "busy": "Berechnung läuft…",
+    "emptyCase": "{{name}}: keine wirksame Last; kein Lastfallergebnis.",
+    "ucCombinations": "UC zeigt den maßgebenden Nachweis über Lastkombinationen, nicht nur den gewählten Lastfall.",
+    "ucLabel": "UC (Kombinationen)"
+  },
+  "checkPanelControls": {
+    "open": "Nachweise",
+    "export": "Stabnachweise (CSV)"
+  },
   "ok": "OK",
   "cancel": "Abbrechen",
   "save": "Speichern",
   "close": "Schließen",
+  "windowControls": {
+    "closeBrowser": "Schließen Sie diesen Tab über den Browser. Speichern Sie zuerst Ihr Projekt, um Änderungen zu behalten.",
+    "desktopOnly": "Diese Fensterfunktionen sind nur in der Desktop-App verfügbar.",
+    "failed": "Fensteraktion fehlgeschlagen"
+  },
   "delete": "Löschen",
   "edit": "Bearbeiten",
   "apply": "Anwenden",

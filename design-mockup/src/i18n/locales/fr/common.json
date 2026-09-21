@@ -1,8 +1,23 @@
 {
+  "resultView": {
+    "busy": "Calcul en cours…",
+    "emptyCase": "{{name}} : aucune charge effective ; aucun résultat pour ce cas.",
+    "ucCombinations": "UC indique la vérification déterminante parmi les combinaisons de charges, et non uniquement le cas sélectionné.",
+    "ucLabel": "UC (combinaisons)"
+  },
+  "checkPanelControls": {
+    "open": "Vérifications",
+    "export": "Vérifications des barres (CSV)"
+  },
   "ok": "OK",
   "cancel": "Annuler",
   "save": "Enregistrer",
   "close": "Fermer",
+  "windowControls": {
+    "closeBrowser": "Fermez cet onglet depuis le navigateur. Enregistrez d’abord votre projet pour conserver vos modifications.",
+    "desktopOnly": "Ces commandes de fenêtre sont uniquement disponibles dans l’application de bureau.",
+    "failed": "Échec de l’action sur la fenêtre"
+  },
   "delete": "Supprimer",
   "edit": "Modifier",
   "apply": "Appliquer",

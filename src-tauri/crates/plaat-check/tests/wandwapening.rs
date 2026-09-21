@@ -8,6 +8,7 @@ fn invoer() -> Value {
     let h = json!({"diameter_mm":12.0,"hoh_mm":100.0,"dekking_mm":30.0});
     let v = json!({"diameter_mm":12.0,"hoh_mm":100.0,"dekking_mm":42.0});
     json!({"plate_id":1,"soort":"Beton","materiaal":"C30/37","thickness_mm":200.0,
+        "expected_element_ids":[7],
         "combinations":[{"combination_id":1,"elements":[
             {"element_id":7,"sigma_x_mpa":2.0,"sigma_y_mpa":0.0,"tau_xy_mpa":0.0}]}],
         "frequente_combinaties":[{"combination_id":2,"elements":[
@@ -67,10 +68,16 @@ fn handberekening_trek_en_scheurwijdte() {
 #[test]
 fn onvoldoende_en_alle_combinaties_assen_en_tekens() {
     let mut v = invoer();
+    v["expected_element_ids"] = json!([7,8]);
+    let nul = json!({"element_id":8,"sigma_x_mpa":0.0,"sigma_y_mpa":0.0,"tau_xy_mpa":0.0});
+    for veld in ["combinations", "frequente_combinaties"] {
+        v[veld][0]["elements"].as_array_mut().unwrap().push(nul.clone());
+    }
     v["combinations"]
         .as_array_mut()
         .unwrap()
         .push(json!({"combination_id":9,"elements":[
+        {"element_id":7,"sigma_x_mpa":0.0,"sigma_y_mpa":0.0,"tau_xy_mpa":0.0},
         {"element_id":8,"sigma_x_mpa":0.0,"sigma_y_mpa":8.0,"tau_xy_mpa":0.0}]}));
     let r = toets(v);
     assert_eq!(r.status, CheckStatus::NotOk);
@@ -318,18 +325,19 @@ fn ongeldige_bgt_en_dubbele_combinaties_worden_geweigerd() {
     let mut v = invoer();
     v["frequente_combinaties"][0]["elements"] = json!([]);
     let r = toets(v);
-    assert!(r.geweigerd.is_none());
+    assert!(r.geweigerd.is_some());
+    assert!(r.checks.is_empty());
     assert!(r
         .niet_getoetst
         .iter()
-        .any(|n| n.id == "7.3_mesh_onvolledig"));
+        .any(|n| n.id == "beton_mesh_onvolledig" && n.bepaalt_status));
     let mut v = invoer();
     v["wapening_aanwezig"]["horizontaal"]["zijde_1"]["as_mm2_per_m"] = json!(100.0);
     assert!(toets(v).geweigerd.is_some());
 }
 
 #[test]
-fn oude_invoer_blijft_exact_het_oude_resultaat_geven() {
+fn zonder_wapening_gebruikt_de_plaat_dezelfde_betontoets() {
     let mut v = invoer();
     v.as_object_mut().unwrap().remove("wapening_aanwezig");
     v.as_object_mut().unwrap().remove("frequente_combinaties");

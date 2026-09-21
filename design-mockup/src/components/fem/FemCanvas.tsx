@@ -23,39 +23,26 @@
  * space+drag pans; F-key fits all to view; HUD Reset button reverts to
  * the default 1/25 scale + (0,0) offset.
  *
- * Solver wiring: parent passes a `solveTrigger` — when it changes, canvas
- * runs the solver against the current store and stores+renders the result
- * via FemResultsOverlay until the next model edit.
+ * Solverresultaten komen uitsluitend uit de centrale rekengang. Wisselen
+ * van belastinggeval selecteert bestaande resultaten en rekent nooit opnieuw.
  */
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import { parseLength, formatLength } from "../../lib/lengthInput";
 import "./FemCanvas.css";
-import { solve } from "./solver/solver";
-import type { SolverResult, SolverInput } from "./solver/types";
+import type { SolverResult } from "./solver/types";
 import type { LoadCombination, Envelope } from "./solver/combinations";
 import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } from "./FemResultsOverlay";
 import BarPropertiesDialog from "./BarPropertiesDialog";
 import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
-import {
-  controleerDoorsneden, doorsnedeVeldenVoorSolver, plaatNaarSolverInput, randlastNaarSolverInput,
-  staafLengteMm,
-  randpuntlastNaarSolverInput,
-} from "../../lib/modelNaarSolverInput";
+
 // Doorsnedenaam en begin-/eindmaten van een verlopende staaf: dezelfde
 // keuring als de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import { vertaal } from "../../lib/vertaalbareTekst";
-import { thermalAlphaForMaterial } from "../../lib/thermalAlpha";
-// Veerstijfheid-omrekening: één bron voor het canvas-pad én het multi-LC-pad.
-// Stond hier eerder als eigen kopie onderaan dit bestand ("Same logic as
-// App.tsx"), naast een identieke kopie in App.tsx — twee kopieën van dezelfde
-// eenheidsconversie is precies het soort duplicaat dat stil uit elkaar kan
-// lopen en dan twee antwoorden op hetzelfde model geeft.
-import { liftSpringK } from "../../lib/modelNaarSolverInput";
 import type {
   Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
   ViewTransform, GridSettings, SupportType, StructuralGrid,
@@ -510,16 +497,11 @@ interface FemCanvasProps {
   /** Bulk node translate — used by drag-to-move and G-grab. */
   translateNodes?: (nodeIds: number[], dx: number, dz: number) => void;
 
-  /** Incremented on every "Solve" click — canvas re-runs solver on change. */
-  solveTrigger?: number;
-  /** Notify parent of solver result. */
-  onSolveResult?: (result: SolverResult | null) => void;
-  /**
-   * Scheefstand (initiële imperfectie) — wanneer gezet krijgt elke verticale
-   * last in de solve een horizontale metgezel H = φ·V (zie ScheefstandInput).
-   * App.tsx levert dezelfde waarde aan het multi-LC-pad.
-   */
-  scheefstand?: { phi: number; richting: 1 | -1 };
+  /** Actuele, centraal berekende gevallen; null = nog niet geldig berekend. */
+  perCase?: Map<number, SolverResult> | null;
+  activeLoadCaseName?: string;
+  solverBusy?: boolean;
+  solveError?: string | null;
 
   // Multi-LC / combinations / envelope (step 2d/2e)
   combinations?: LoadCombination[];
@@ -573,7 +555,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     plakLasten,
     translateNodes,
     grid, structuralGrid, setStructuralGrid, verplaatsStramienAs,
-    solveTrigger, onSolveResult, scheefstand,
+    perCase, activeLoadCaseName, solverBusy = false, solveError,
     combinations, activeCombinationId, envelopeView,
     combinationResults, envelope,
     displayFlags: displayFlagsProp,
@@ -615,8 +597,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   } | null>(null);
   // First-click anchor for transform tools (move/copy/rotate/mirror)
   const [transformAnchor, setTransformAnchor] = useState<{ x: number; z: number } | null>(null);
-  const [results, setResults] = useState<SolverResult | null>(null);
-  const [solveError, setSolveError] = useState<string | null>(null);
+  const results = perCase?.get(activeLoadCaseId) ?? null;
   // Result display toggles — controlled by App.tsx via FemProjectTree sidebar.
   // We keep a local fallback so the component still works standalone, but the
   // setter is only used by the (now-removed) bottom canvas HUD; expose-only
@@ -789,176 +770,6 @@ export default function FemCanvas(props: FemCanvasProps) {
     /** snap to 15° increments unless SHIFT held */
     snap: boolean;
   } | null>(null);
-
-  // Callback via een ref, zodat een wisselende functie-identiteit vanuit de
-  // parent NOOIT als "modelwijziging" telt. Met onSolveResult in de dep-array
-  // hieronder wiste elke App-render (bv. direct na Berekenen, door
-  // setSolverOutputs) de zojuist berekende resultaten — de gemelde
-  // "resultaten verdwijnen gelijk weer"-bug.
-  const onSolveResultRef = useRef(onSolveResult);
-  onSolveResultRef.current = onSolveResult;
-
-  // Invalidate results whenever the model changes. `plates` doet mee sinds
-  // de canvas-solve platen meerekent (P3): een dikte- of meshSize-wijziging
-  // maakt ook het single-LC-resultaat (en de contourlaag) ongeldig.
-  // `scheefstand` doet mee omdat de canvasberekening hem gebruikt: na een
-  // wijziging van φ of de richting hoort het oude single-LC-resultaat bij een
-  // andere belasting.
-  useEffect(() => {
-    setResults(null);
-    setSolveError(null);
-    onSolveResultRef.current?.(null);
-  }, [nodes, beams, supports, plates, loads, activeLoadCaseId, scheefstand]);
-
-  // Run solver whenever parent bumps solveTrigger.
-  // This single-case run still feeds the right-rail Properties panel which
-  // expects a SolverResult; the multi-LC pipeline runs in parallel in App.tsx.
-  useEffect(() => {
-    if (solveTrigger === undefined || solveTrigger === 0) return;
-    // Modelcontrole VÓÓR het rekenen. Een kolomvoet die alleen maar óp een
-    // ligger ligt, of twee losse knopen op dezelfde plek, leveren een
-    // singuliere matrix op — een melding die niet zegt wélke knoop het is.
-    // Daarom eerst de controle, met knoopnummers en een herstelactie in het
-    // paneel rechtsonder. De berekening wordt dan overgeslagen: doorrekenen
-    // zou óf falen, óf een antwoord geven bij een model dat de gebruiker niet
-    // bedoeld heeft.
-    const vooraf = controleerModel({ nodes, beams, supports, plates, loads });
-    const blokkerend = vooraf.filter(b => b.ernst === "fout");
-    if (blokkerend.length > 0) {
-      setControleOpen(true);
-      setResults(null);
-      setSolveError(
-        i18next.t("common:canvas.solve.blockedByModelCheck", { count: blokkerend.length }),
-      );
-      onSolveResultRef.current?.(null);
-      return;
-    }
-    try {
-      const activeLoads = loads.filter(l => l.caseId === activeLoadCaseId);
-      const distLoads: {
-        beamId: number; q: number;
-        qStart?: number; qEnd?: number; qDir?: "x" | "z";
-        qCoord?: "global" | "local";
-        startFrac?: number; endFrac?: number;
-      }[] = [];
-      const pointLoads: { nodeId: number; fx?: number; fz?: number; my?: number }[] = [];
-      // Puntlasten op een vrije positie op een staaf (posFrac 0..1) — de
-      // engine splitst de staaf daar en zet de kracht op de tussenknoop.
-      const beamPointLoads: { beamId: number; posFrac: number; fx?: number; fz?: number; my?: number }[] = [];
-      const thermalLoads: { beamId: number; deltaT: number; alpha?: number }[] = [];
-      const edgeLoads: NonNullable<SolverInput["edgeLoads"]> = [];
-      const edgePointLoads: NonNullable<SolverInput["edgePointLoads"]> = [];
-      for (const l of activeLoads) {
-        if (l.type === "lineLoad" && l.beamId !== undefined && l.q !== undefined) {
-          // q in kN/m → N/mm: 1 kN/m = 1 N/mm. Trapezium (qStart/qEnd),
-          // richting (qDir + assenstelsel qCoord) en deellast-fracties
-          // (startFrac/endFrac) gaan mee — zelfde velden als het
-          // multi-LC-pad in App.tsx.
-          distLoads.push({
-            beamId: l.beamId, q: l.q,
-            qStart: l.qStart, qEnd: l.qEnd, qDir: l.qDir, qCoord: l.qCoord,
-            startFrac: l.startFrac, endFrac: l.endFrac,
-          });
-        } else if (l.type === "pointForce" && l.plateId !== undefined) {
-          // Puntlast op een PLAATRAND: vóór de knoop- en staaftak, zodat
-          // `plateId` de last aan de plaat bindt — dezelfde volgorde en
-          // dezelfde vertaling als het multi-LC-pad en de MCP
-          // (`randpuntlastNaarSolverInput`).
-          const rp = randpuntlastNaarSolverInput(l);
-          if (rp) edgePointLoads.push(rp);
-        } else if (l.type === "pointForce" && l.nodeId !== undefined) {
-          // Fx, Fz in kN → N (×1000)
-          pointLoads.push({
-            nodeId: l.nodeId,
-            fx: (l.fx ?? 0) * 1000,
-            fz: (l.fz ?? 0) * 1000,
-          });
-        } else if (l.type === "pointForce" && l.beamId !== undefined) {
-          // Staafgebonden puntlast (vrije positie): fractie 0..1 vanaf de
-          // startknoop — zelfde velden als het multi-LC-pad in App.tsx.
-          beamPointLoads.push({
-            beamId: l.beamId,
-            posFrac: Math.min(1, Math.max(0, l.posFrac ?? 0)),
-            fx: (l.fx ?? 0) * 1000,
-            fz: (l.fz ?? 0) * 1000,
-          });
-        } else if (l.type === "pointMoment" && l.nodeId !== undefined) {
-          // My in kNm → N·mm (×1e6)
-          pointLoads.push({
-            nodeId: l.nodeId,
-            my: (l.my ?? 0) * 1e6,
-          });
-        } else if (l.type === "thermal" && l.beamId !== undefined && l.deltaT !== undefined) {
-          // α per materiaal meesturen (hout ≠ staal) — zelfde keuze als het
-          // multi-LC-pad; één bron in lib/thermalAlpha.ts.
-          const beam = beams.find(b => b.id === l.beamId);
-          thermalLoads.push({
-            beamId: l.beamId, deltaT: l.deltaT,
-            alpha: thermalAlphaForMaterial(beam?.material),
-          });
-        } else if (l.type === "edgeLoad") {
-          // Randlast op een plaatrand (P3.3): DEZELFDE vertaling als het
-          // multi-LC-pad en de MCP (`randlastNaarSolverInput`). Hier stond een
-          // eigen kopie die een ontbrekende `edge` stil "top" maakte.
-          const rl = randlastNaarSolverInput(l);
-          if (rl) edgeLoads.push(rl);
-        }
-      }
-      // DOORSNEDECONTROLE, dezelfde als het multi-LC-pad. Een doorsnede die
-      // `resolveSection` niet kan bepalen gaf hier stil HEA 160 / S235
-      // (E = 210 000, A = 3877, I = 1,673e7) en een geslaagde berekening; nu
-      // gooit `controleerDoorsneden` met staafnummer en reden, en de catch
-      // hieronder zet die tekst in de banner in plaats van resultaten.
-      controleerDoorsneden(beams, { heeftPlaten: plates.length > 0 });
-      const input: SolverInput = {
-        nodes: nodes.map(n => ({ id: n.id, x: n.x, z: n.z })),
-        beams: beams.map(b => {
-          // Stijfheid uit materiaal + profiel (+ eindprofiel: segmenten),
-          // dezelfde functie als het multi-LC-pad; na de controle hierboven
-          // is dit nooit de terugval.
-          return {
-            id: b.id, from: b.from, to: b.to,
-            ...doorsnedeVeldenVoorSolver(b, staafLengteMm(b, nodes)),
-            startConnection: b.releases?.startRy ? 'hinge' : 'fixed',
-            endConnection:   b.releases?.endRy   ? 'hinge' : 'fixed',
-            // Volledige release-set (incl. Tx/Tz-hulzen, lokale assen).
-            releases: b.releases,
-          };
-        }),
-        supports: supports.map(s => ({
-          nodeId: s.nodeId,
-          type: s.type,
-          k: liftSpringK(s),
-        })),
-        loads: distLoads,
-        pointLoads,
-        beamPointLoads,
-        thermalLoads,
-        edgeLoads,
-        edgePointLoads,
-        // Platen (wandschijven): DEZELFDE vertaling als het multi-LC-pad en de
-        // MCP (`plaatNaarSolverInput`, met de CDT-meshcache van een
-        // polygoonplaat) — hiermee rekent óók de canvas-solve de platen mee
-        // (mixed_beam_plate) en levert het resultaat `plateElements` voor de
-        // contourlaag (P3.2).
-        plates: plates.map(plaatNaarSolverInput),
-        // Actief belastinggeval, ter herkenning van het resultaat.
-        caseId: activeLoadCaseId,
-        // Scheefstand — zelfde instelling als het multi-LC-pad in App.tsx.
-        scheefstand,
-      };
-      const r = solve(input);
-      setResults(r);
-      setSolveError(null);
-      onSolveResult?.(r);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setSolveError(msg);
-      setResults(null);
-      onSolveResult?.(null);
-      console.error("[FEM solver]", e);
-    }
-  }, [solveTrigger]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── CDT-meshcache actueel houden (P4.2) ─────────────────────────────────
   // Een geometrie- (hoekknoop verplaatst/gesleept/geroteerd) of meshSize-
@@ -3475,7 +3286,7 @@ export default function FemCanvas(props: FemCanvasProps) {
   // waarop getoetst is (`lastRunData`), niet uit het getoonde resultaat: zo
   // hoort elke kleur bij precies het element dat de kern beoordeelde.
   const plaatUcData = useMemo(() => {
-    if (!showLoads || displayFlags.uc !== true || plateCheckResults.length === 0) return null;
+    if (!showLoads || !perCase || solverBusy || solveError || displayFlags.uc !== true || plateCheckResults.length === 0) return null;
     const cr = checkRunData?.combinationResults;
     if (!cr) return null;
     const uit: {
@@ -3502,7 +3313,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
     }
     return uit.length > 0 ? uit : null;
-  }, [showLoads, displayFlags.uc, plateCheckResults, checkRunData]);
+  }, [showLoads, displayFlags.uc, plateCheckResults, checkRunData, perCase, solverBusy, solveError]);
 
   // ── Modelcontrole ───────────────────────────────────────────────────────
   // Loopt live mee met het model: zo zie je een niet-aangesloten kolomvoet al
@@ -3535,7 +3346,8 @@ export default function FemCanvas(props: FemCanvasProps) {
   }, [verbindKnoopMetStaaf, voegKnopenSamen]);
 
   /** Banner text shown at the top of the canvas after a successful solve. */
-  const bannerText: { kind: "single" | "combo" | "envelope"; text: string } | null = useMemo(() => {
+  const bannerText: { kind: "single" | "combo" | "envelope" | "info"; text: string } | null = useMemo(() => {
+    if (solverBusy) return { kind: "info", text: tCommon("resultView.busy") };
     if (envelopeView && envelope) {
       const combo = combinations?.find(c => c.id === envelope.maxDisplacementCombinationId);
       const u = envelope.maxDisplacement.toFixed(2);
@@ -3555,10 +3367,13 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
     }
     if (results) {
-      return { kind: "single", text: tCommon("canvas.banner.solved", { u: results.maxDisplacement.toFixed(2) }) };
+      return { kind: "single", text: `${activeLoadCaseName ?? activeLoadCaseId}: ${tCommon("canvas.banner.solved", { u: results.maxDisplacement.toFixed(2) })}` };
+    }
+    if (perCase && activeCombinationId == null && !envelopeView) {
+      return { kind: "info", text: tCommon("resultView.emptyCase", { name: activeLoadCaseName ?? activeLoadCaseId }) };
     }
     return null;
-  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon]);
+  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon, perCase, activeLoadCaseId, activeLoadCaseName, solverBusy]);
 
   // ── Envelope overlay rendering ──────────────────────────────────────────
   // Colors each beam by sign of max |M| and labels with value + governing combo.
@@ -4498,7 +4313,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         {/* Unity-check-badges (Resultaten-tab, rij "Unity check"): per staaf
             met toetsresultaat de maatgevende UC op het staafmidden. Groen
             ≤ 1,0, rood > 1,0; klik opent het toetsingspaneel voor die staaf. */}
-        {showLoads && displayFlags.uc === true && checkResults.length > 0 && (
+        {showLoads && perCase && !solverBusy && !solveError && displayFlags.uc === true && checkResults.length > 0 && (
           <g className="fem-uc-layer">
             {checkResults.map(r => {
               const b = beams.find(bb => bb.id === r.beam_id);
@@ -4785,12 +4600,15 @@ export default function FemCanvas(props: FemCanvasProps) {
 
       {(bannerText || solveError) && (
         <div className="fem-hud fem-hud-tc">
-          <div className={`fem-hud-card ${solveError ? "fem-hud-error" : "fem-hud-success"}`}>
+          <div className={`fem-hud-card ${solveError ? "fem-hud-error" : bannerText?.kind === "info" ? "" : "fem-hud-success"}`}>
             {solveError ? (
               <span>{tCommon("canvas.solve.errorBanner", { fout: solveError })}</span>
             ) : bannerText ? (
               <span className="fem-hud-strong fem-hud-mono">{bannerText.text}</span>
             ) : null}
+            {displayFlags.uc && perCase && !solverBusy && !solveError && (
+              <span className="fem-hud-muted">{tCommon("resultView.ucCombinations")}</span>
+            )}
           </div>
         </div>
       )}

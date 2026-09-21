@@ -17,8 +17,8 @@
 //      velden in de test dekt ELK veld van `RekenInstellingen` — een nieuw veld
 //      zonder testgeval laat deze test falen.
 //  [2] Beide invalidatie-effecten (App.tsx en useFemStore.ts) lezen die versie.
-//      Dat is een bronteksttoets: de React-hooks draaien in deze testomgeving
-//      niet (geen DOM), en de afhankelijkheidslijst IS hier het gedrag.
+//      De afhankelijkheidslijsten worden gecontroleerd; het echte App-effect
+//      en de resultaatselectie worden uitgevoerd zonder DOM.
 //  [3] Een mislukte toetsronde wist dezelfde velden als `clear()` — met een
 //      nagebootste onbereikbare kern, dus zonder binary.
 //  [4] Hetzelfde met de echte toetsbrug: na een geslaagde ronde en een
@@ -28,6 +28,8 @@
 // Uitvoeren: npx tsx test-verouderd.mjs   (vanuit design-mockup/)
 
 import { spawnSync } from "node:child_process";
+import ts from "typescript";
+import vm from "node:vm";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -135,7 +137,27 @@ log("\n[2] Beide invalidatie-effecten lezen de versie");
 {
   const app = readFileSync(join(HIER, "src", "App.tsx"), "utf8");
   const store = readFileSync(join(HIER, "src", "hooks", "useFemStore.ts"), "utf8");
-  const canvas = readFileSync(join(HIER, "src", "components", "fem", "FemCanvas.tsx"), "utf8");
+  const ast = ts.createSourceFile("App.tsx", app, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let invalidatie, selectie;
+  function visit(n) {
+    if (ts.isCallExpression(n) && n.expression.getText(ast) === "useEffect" &&
+      n.arguments[1]?.getText(ast).includes("fem.rekenInstellingenVersie") &&
+      n.arguments[0]?.getText(ast).includes("checkClear()")) invalidatie = n.arguments[0];
+    if (ts.isVariableDeclaration(n) && n.name.getText(ast) === "solverResult") selectie = n.initializer;
+    ts.forEachChild(n, visit);
+  }
+  visit(ast);
+  let gewist = 0;
+  const ref = current => ({ current });
+  const context = {
+    fem: { setEnvelopeView() {}, setActiveCombinationId() {} },
+    checkClear() { gewist++; }, stijfheidClear() {}, setSolverStatus() {},
+    setSolverErrorText() {}, setStabiliteitsMelding() {},
+    rekenGeneratieRef: ref(1), lopendeRekengangenRef: ref(1),
+    rapportRekenPogingRef: ref(true), volledigeRekengangRef: ref(new Map()),
+    rekenFoutRef: ref("oud"), liveRekenenRef: ref(false),
+  };
+  vm.runInNewContext(ts.transpile(`(${invalidatie.getText(ast)})`, { target: ts.ScriptTarget.ES2022 }), context)();
 
   check(
     "App.tsx: het invalidatie-effect hangt aan fem.rekenInstellingenVersie",
@@ -143,7 +165,7 @@ log("\n[2] Beide invalidatie-effecten lezen de versie");
   );
   check(
     "App.tsx: dat effect wist de toetsuitslagen",
-    /useEffect\(\(\) => \{\s*setSolverResult\(null\);[\s\S]{0,600}?checkClear\(\);/.test(app),
+    gewist === 1 && context.rekenGeneratieRef.current === 2 && context.volledigeRekengangRef.current === null,
   );
   check(
     "useFemStore.ts: het store-effect hangt aan rekenInstellingenVersie",
@@ -165,8 +187,10 @@ log("\n[2] Beide invalidatie-effecten lezen de versie");
     /nationaleBijlage: projectInfo\.uitgangspunten\?\.nationaleBijlage/.test(app),
   );
   check(
-    "FemCanvas.tsx: het canvasresultaat vervalt ook bij een andere scheefstand",
-    /\[nodes, beams, supports, plates, loads, activeLoadCaseId, scheefstand\]/.test(canvas),
+    "App.tsx: eigenschappen lezen geen oude resultaten tijdens herberekenen",
+    vm.runInNewContext(ts.transpile(`(${selectie.getText(ast)})`, { target: ts.ScriptTarget.ES2022 }), {
+      solverStatus: { kind: "rekenen" }, fem: { multiLcResult: new Map([[1, { oud: true }]]), activeLoadCaseId: 1 },
+    }) === null,
   );
 }
 

@@ -1,8 +1,23 @@
 {
+  "resultView": {
+    "busy": "Berekenen…",
+    "emptyCase": "{{name}}: geen werkzame belasting; geen gevalresultaat.",
+    "ucCombinations": "UC toont de maatgevende toets over belastingcombinaties, niet alleen het gekozen belastinggeval.",
+    "ucLabel": "UC (combinaties)"
+  },
+  "checkPanelControls": {
+    "open": "Toetsing",
+    "export": "Staafchecks (CSV)"
+  },
   "ok": "OK",
   "cancel": "Annuleren",
   "save": "Opslaan",
   "close": "Sluiten",
+  "windowControls": {
+    "closeBrowser": "Sluit dit tabblad via de browser. Sla je project eerst op als je wijzigingen wilt bewaren.",
+    "desktopOnly": "Deze vensterbediening is alleen beschikbaar in de desktop-app.",
+    "failed": "Vensteractie mislukt"
+  },
   "delete": "Verwijderen",
   "edit": "Bewerken",
   "apply": "Toepassen",

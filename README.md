@@ -25,6 +25,34 @@
 - IFC-export; projectbestanden met de extensie `.ifcfem2d`
 - Gebruikersinterface in het Nederlands, Engels, Duits en Frans
 
+## Schermafbeeldingen
+
+Model met krachtsverloop en vervormingen:
+
+![Model en resultaten](docs/screenshots/model-resultaten.jpg)
+
+Betonmodule met wapening en momentendekking:
+
+![Betonmodule](docs/screenshots/betonmodule.jpg)
+
+M-κ-diagram van de geselecteerde doorsnede met lokale wapening en gekozen normaalkracht:
+
+![M-kappa-diagram](docs/screenshots/beton-m-kappa.jpg)
+
+De materiaalkiezer gebruikt dezelfde iconen in het lichte en donkere thema
+en past zich aan een smal venster aan.
+
+<details>
+<summary>Materiaalkiezer: licht, donker en smal</summary>
+
+![Materiaalkiezer in het lichte thema](docs/screenshots/materiaalkiezer-licht.jpg)
+
+![Materiaalkiezer in het donkere thema](docs/screenshots/materiaalkiezer-donker.jpg)
+
+<img src="docs/screenshots/materiaalkiezer-smal.jpg" alt="Materiaalkiezer op een smal scherm" width="390">
+
+</details>
+
 ## Opbouw van de repository
 
 | Map | Inhoud |

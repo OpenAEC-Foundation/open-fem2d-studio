@@ -1,5 +1,5 @@
 /**
- * CheckPanel — toetsingspaneel achter het ribbon-tabblad "Toetsing".
+ * CheckPanel — uitklapbaar toetsingspaneel naast het model.
  *
  * Per staaf een kaart met profiel/klasse, maatgevende UC en status;
  * uitklapbaar de volledige afleiding per toets (CheckBlock, KaTeX).
@@ -31,6 +31,10 @@ import "./CheckPanel.css";
 interface CheckPanelProps {
   /** Draait de gecombineerde normtoetsing (staal + hout). */
   onRun?: () => void;
+  onClose?: () => void;
+  onExport?: () => void;
+  /** Omvat ook de FEM- en fysische ronde vóór de normtoetsing. */
+  running?: boolean;
   /**
    * Focus op één staaf (UC-badge op het canvas geklikt): de kaart van deze
    * staaf klapt open en scrollt in beeld. Elke klik levert een NIEUW object
@@ -200,11 +204,21 @@ function MemberCard({ result, focusToken }: {
   );
 }
 
-export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
+export function CheckPanelToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const { t } = useTranslation("common");
+  return <button className="properties-check-toggle" aria-expanded={open}
+    aria-controls={open ? "member-check-panel" : undefined} onClick={onToggle}>
+    {t("checkPanelControls.open")} <span aria-hidden="true">{open ? "▾" : "▸"}</span>
+  </button>;
+}
+
+export default function CheckPanel({ onRun, onClose, onExport, running = false, focus }: CheckPanelProps) {
   const { t } = useTranslation("check");
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
-  const isRunning = useCheckStore((s) => s.isRunning);
+  const checkRunning = useCheckStore((s) => s.isRunning);
+  const isRunning = running || checkRunning;
+  const { t: tCommon } = useTranslation("common");
   const error = useCheckStore((s) => s.error);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
   const plateResults = useCheckStore((s) => s.plateResults);
@@ -220,9 +234,11 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
     : null;
 
   return (
-    <div className="check-panel">
+    <div className="check-panel" id="member-check-panel">
       <div className="cp-toolbar">
         <span className="cp-title">{t("title")}</span>
+        {onClose && <button className="cp-close-btn" onClick={onClose}
+          title={tCommon("close")} aria-label={tCommon("close")}>×</button>}
         {results.length > 0 && (
           <span className="cp-stats">
             {t("total")}: <strong>{results.length}</strong>
@@ -234,7 +250,10 @@ export default function CheckPanel({ onRun, focus }: CheckPanelProps) {
         <button className="cp-run-btn" onClick={onRun} disabled={isRunning || !onRun}>
           {isRunning ? t("running") : t("run")}
         </button>
+        {onExport && <button className="cp-export-btn" onClick={onExport}
+          disabled={isRunning || results.length === 0}>{tCommon("checkPanelControls.export")}</button>}
       </div>
+      <div className="cp-provenance">{tCommon("resultView.ucCombinations")}</div>
 
       <div className="cp-body">
         {error && <div className="cp-error">{error}</div>}

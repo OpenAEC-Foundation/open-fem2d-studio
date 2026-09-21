@@ -283,7 +283,7 @@
     "runGroup": "Uitvoeren",
     "run": "Berekenen (FEM)",
     "memberChecks": "Normtoetsing",
-    "memberChecksRun": "Staal + hout toetsen",
+    "memberChecksRun": "Normtoetsen uitvoeren",
     "checkPanel": "Toetsingspaneel",
     "standards": "Normen",
     "en1993": "EN 1993",

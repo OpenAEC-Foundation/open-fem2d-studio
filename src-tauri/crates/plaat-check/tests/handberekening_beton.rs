@@ -31,6 +31,8 @@ fn plaat(klasse: &str, elementen: Vec<PlaatElementSpanning>) -> PlateCheckInput 
         notities: vec![],
         combinations: vec![PlaatCombinatie { combination_id: 3, elements: elementen }],
         wapening_aanwezig: None,
+        expected_element_ids: Some(vec![1]),
+        mesh_fout: None,
         frequente_combinaties: vec![],
     }
 }

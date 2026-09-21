@@ -297,7 +297,9 @@ fn extend_met_invoer(
             style_body(),
         )));
     }
-    if p.combinations.is_empty() {
+    extend_met_wandinvoer(flow, p);
+    extend_met_meshdekking(flow, p);
+    if p.combinations.is_empty() && p.frequente_combinaties.is_empty() {
         flow.push(Box::new(Paragraph::new(
             "Geen combinaties aangeleverd.",
             style_note(),
@@ -311,7 +313,9 @@ fn extend_met_invoer(
     let rows = p
         .combinations
         .iter()
-        .map(|c| {
+        .map(|c| ("UGT", c))
+        .chain(p.frequente_combinaties.iter().map(|c| ("BGT freq.", c)))
+        .map(|(soort, c)| {
             let maatgevend = r.and_then(|r| {
                 r.combinaties
                     .iter()
@@ -320,7 +324,7 @@ fn extend_met_invoer(
             let spanning =
                 maatgevend.and_then(|u| c.elements.iter().find(|e| e.element_id == u.element_id));
             vec![
-                c.combination_id.to_string(),
+                format!("{soort} {}", c.combination_id),
                 c.elements.len().to_string(),
                 maatgevend.map_or("—".into(), |u| u.element_id.to_string()),
                 spanning.map_or("—".into(), |e| format!("{:.3}", e.sigma_x_mpa)),
@@ -343,11 +347,11 @@ fn extend_met_invoer(
             .to_vec(),
             rows,
         )
-        .with_col_widths_mm(vec![25.0, 30.0, 40.0, 25.0, 25.0, 25.0])
+        .with_col_widths_mm(vec![30.0, 25.0, 40.0, 25.0, 25.0, 25.0])
         .with_style(stijl_tabel())
         .with_repeat_header(true),
     ));
-    for c in &p.combinations {
+    for c in p.combinations.iter().chain(&p.frequente_combinaties) {
         let maatgevend = r.and_then(|r| {
             r.combinaties
                 .iter()
@@ -366,6 +370,140 @@ fn extend_met_invoer(
                 style_note(),
             )));
         }
+    }
+}
+
+/// Alleen de opgegeven laaggegevens afdrukken; geen ontbrekende invoer afleiden.
+fn extend_met_wandinvoer(flow: &mut Vec<Box<dyn Flowable>>, p: &PlateCheckInput) {
+    if p.soort != plaat_check::PlaatMateriaalSoort::Beton {
+        return;
+    }
+    let Some(w) = &p.wapening_aanwezig else {
+        flow.push(Box::new(Paragraph::new(
+            "Aanwezige wandwapening: niet ingevoerd.",
+            style_note(),
+        )));
+        return;
+    };
+    flow.push(Box::new(
+        Paragraph::new(
+            format!("Aanwezige wandwapening - {}", w.staalsoort),
+            style_body(),
+        )
+        .kop(),
+    ));
+    let getal = |v: Option<f64>| v.map_or("—".into(), |v| format!("{v:.3}"));
+    let mut rows = Vec::new();
+    for (richting, lagen) in [("horizontaal", &w.horizontaal), ("verticaal", &w.verticaal)] {
+        for (zijde, laag) in [(1, lagen.zijde_1), (2, lagen.zijde_2)] {
+            rows.push(match laag {
+                Some(l) => vec![
+                    format!("{richting}, zijde {zijde}"),
+                    getal(l.diameter_mm),
+                    getal(l.hoh_mm),
+                    getal(l.as_mm2_per_m),
+                    getal(Some(l.dekking_mm)),
+                ],
+                None => vec![
+                    format!("{richting}, zijde {zijde}"),
+                    "niet ingevoerd".into(),
+                    "—".into(),
+                    "—".into(),
+                    "—".into(),
+                ],
+            });
+        }
+    }
+    flow.push(Box::new(
+        Table::new(
+            [
+                "Laag",
+                "Ø [mm]",
+                "h.o.h. [mm]",
+                "A_s [mm²/m]",
+                "Dekking [mm]",
+            ]
+            .map(String::from)
+            .to_vec(),
+            rows,
+        )
+        .with_col_widths_mm(vec![55.0, 30.0, 25.0, 30.0, 30.0])
+        .with_style(stijl_tabel())
+        .with_repeat_header(true),
+    ));
+    flow.push(Box::new(Paragraph::new("Opgave per zijde en richting. Een streep betekent niet opgegeven, niet nul. A_s wordt hier niet uit Ø en h.o.h. berekend.", style_note())));
+    let milieu = w
+        .milieuklasse
+        .map_or("niet opgegeven".into(), |v| format!("{v:?}"));
+    let sterkte = w
+        .f_ct_eff_mpa
+        .map_or("f_ct,eff: niet opgegeven".into(), |v| {
+            format!("f_ct,eff = {v:.3} N/mm²")
+        });
+    let duur = match w.langdurend {
+        Some(true) => "langdurend",
+        Some(false) => "kortdurend",
+        None => "Belastingsduur: niet opgegeven",
+    };
+    let hechting = match w.hoge_aanhechting {
+        Some(true) => "hoge aanhechting",
+        Some(false) => "glad",
+        None => "Aanhechting: niet opgegeven",
+    };
+    flow.push(Box::new(Paragraph::new(
+        format!("Scheurbasis - Milieuklasse: {milieu}; {sterkte}; {duur}; {hechting}."),
+        style_body(),
+    )));
+}
+
+/// Vergelijk alleen de aangeleverde element-ID's; dit is geen normtoets of bewijs
+/// dat de aanroeper alle belastingcombinaties heeft meegestuurd.
+fn extend_met_meshdekking(flow: &mut Vec<Box<dyn Flowable>>, p: &PlateCheckInput) {
+    use std::collections::BTreeSet;
+    if let Some(fout) = &p.mesh_fout {
+        flow.push(Box::new(Paragraph::new(
+            format!("Meshmelding: {fout}"),
+            style_body(),
+        )));
+    }
+    let ids = p
+        .expected_element_ids
+        .as_ref()
+        .or_else(|| p.plooi.as_ref().map(|v| &v.expected_element_ids));
+    let Some(ids) = ids else {
+        if p.soort == plaat_check::PlaatMateriaalSoort::Beton {
+            flow.push(Box::new(Paragraph::new(
+                "Onafhankelijke meshverklaring: niet opgegeven; volledigheid niet vastgesteld.",
+                style_note(),
+            )));
+        }
+        return;
+    };
+    let verwacht: BTreeSet<_> = ids.iter().copied().collect();
+    flow.push(Box::new(Paragraph::new(format!("Onafhankelijke meshverklaring: {} unieke elementen; {} dubbele ID's in de verklaring. Dit vergelijkt alleen elementsets van aangeleverde combinaties, niet de normgeldigheid.", verwacht.len(), ids.len() - verwacht.len()), style_note())));
+    if verwacht.is_empty() {
+        flow.push(Box::new(Paragraph::new(
+            "Lege meshverklaring: volledigheid niet vastgesteld.",
+            style_note(),
+        )));
+    }
+    for (soort, c) in p
+        .combinations
+        .iter()
+        .map(|c| ("UGT", c))
+        .chain(p.frequente_combinaties.iter().map(|c| ("BGT freq.", c)))
+    {
+        let aanwezig: BTreeSet<_> = c.elements.iter().map(|e| e.element_id).collect();
+        flow.push(Box::new(Paragraph::new(
+            format!(
+                "Meshdekking {soort} {}: {} ontbrekend, {} extra, {} dubbel.",
+                c.combination_id,
+                verwacht.difference(&aanwezig).count(),
+                aanwezig.difference(&verwacht).count(),
+                c.elements.len() - aanwezig.len()
+            ),
+            style_note(),
+        )));
     }
 }
 
@@ -441,8 +579,12 @@ fn extend_met_plaat(flow: &mut Vec<Box<dyn Flowable>>, r: &PlateCheckResult) {
         ));
         flow.push(Box::new(Paragraph::new(
             "n_td = f'_td · t: de benodigde trekkracht in de wapening per meter wand, over beide \
-             zijden samen, in de horizontale (x) en verticale (z) modelrichting; A_s = n_td / f_yd. \
+             zijden samen, in de horizontale (x) en verticale (z) modelrichting. \
              De toetsing van aanwezige wapening en eventuele beperkingen staan bij de toetsen en niet-getoetste onderdelen.",
+            style_note(),
+        )));
+        flow.push(Box::new(Paragraph::new(
+            "A_s = 1000 · n_td / f_yd, met A_s in mm²/m, n_td in kN/m en f_yd in N/mm².",
             style_note(),
         )));
         flow.push(Box::new(Spacer::from_mm(1.5)));

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchAppVersion } from "../lib/appVersion";
+import { isTauriApp } from "../lib/tauri";
+import { notifyInfo, notifyWarning } from "../io/notify";
+import type { Window as TauriWindow } from "@tauri-apps/api/window";
 import "./TitleBar.css";
 
 interface TitleBarProps {
@@ -26,8 +29,8 @@ function TitleBar({
   const { t } = useTranslation();
   const [isMaximized, setIsMaximized] = useState(false);
   const [appVersion, setAppVersion] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const appWindowRef = useRef<any>(null);
+  const desktop = isTauriApp();
+  const appWindowRef = useRef<TauriWindow | null>(null);
 
   const getWindow = useCallback(async () => {
     if (!appWindowRef.current) {
@@ -50,24 +53,35 @@ function TitleBar({
   }, [getWindow]);
 
   useEffect(() => {
+    if (!desktop) return;
     updateMaximizedState();
 
     let cleanup: (() => void) | undefined;
+    let disposed = false;
     getWindow()
       .then((win) => win.onResized(() => updateMaximizedState()))
-      .then((unlisten) => { cleanup = unlisten; })
+      .then((unlisten) => { if (disposed) unlisten(); else cleanup = unlisten; })
       .catch(() => {});
 
-    return () => { cleanup?.(); };
-  }, [updateMaximizedState, getWindow]);
+    return () => { disposed = true; cleanup?.(); };
+  }, [desktop, updateMaximizedState, getWindow]);
 
-  const handleMinimize = async () => (await getWindow()).minimize();
-  const handleMaximize = async () => (await getWindow()).toggleMaximize();
-  const handleClose = async () => (await getWindow()).close();
+  const windowAction = async (action: "minimize" | "toggleMaximize" | "close") => {
+    if (!desktop) {
+      if (action === "close") notifyInfo(t("close"), t("windowControls.closeBrowser"));
+      return;
+    }
+    try {
+      // close() houdt onCloseRequested en de opslagbeveiliging in stand.
+      await (await getWindow())[action]();
+    } catch (error) {
+      notifyWarning(t("windowControls.failed"), error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const handleDoubleClick = async (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest(".titlebar-button")) return;
-    (await getWindow()).toggleMaximize();
+    if ((e.target as HTMLElement).closest("button")) return;
+    await windowAction("toggleMaximize");
   };
 
   return (
@@ -202,7 +216,9 @@ function TitleBar({
         </button>
         <button
           className="titlebar-button titlebar-minimize"
-          onClick={handleMinimize}
+          onClick={() => { void windowAction("minimize"); }}
+          disabled={!desktop}
+          title={!desktop ? t("windowControls.desktopOnly") : undefined}
           aria-label={t("minimize")}
           tabIndex={-1}
         >
@@ -213,7 +229,9 @@ function TitleBar({
 
         <button
           className="titlebar-button titlebar-maximize"
-          onClick={handleMaximize}
+          onClick={() => { void windowAction("toggleMaximize"); }}
+          disabled={!desktop}
+          title={!desktop ? t("windowControls.desktopOnly") : undefined}
           aria-label={isMaximized ? t("restore") : t("maximize")}
           tabIndex={-1}
         >
@@ -231,7 +249,7 @@ function TitleBar({
 
         <button
           className="titlebar-button titlebar-close"
-          onClick={handleClose}
+          onClick={() => { void windowAction("close"); }}
           aria-label={t("close")}
           tabIndex={-1}
         >

@@ -1,16 +1,23 @@
 // Wandwapening: UI, projectbestand, MCP-poort en UGT/BGT-doorgifte.
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { registerHooks } from "node:module";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { keurPlaatWapening } from "./src/lib/plaatWapening.ts";
 import { buildPlaatCheckInputs } from "./src/lib/plaatCheckBuilder.ts";
 import { controleerVelden } from "./src/mcp/valideerModel.ts";
 import { serializeProject, deserializeProject } from "./src/io/projectFile.ts";
-import { PlaatWapeningVenster } from "./src/components/fem/PlaatWapeningVenster.tsx";
 import { verwerkVerzoek } from "./src/mcp/sidecar.ts";
 import { verwerkVerzoek as viaBundel } from "../src-tauri/crates/openaec-mcp-server/assets/fem-kernel.mjs";
 import { zetTaal } from "./scripts/i18n-voor-tests.mjs";
+
+// SSR heeft geen stylesheets; de browsertest bundelt en meet de echte CSS.
+registerHooks({ load(url, context, nextLoad) {
+  if (url.endsWith(".css")) return { format: "module", source: "export {};", shortCircuit: true };
+  return nextLoad(url, context);
+} });
+const { PlaatWapeningVenster } = await import("./src/components/fem/PlaatWapeningVenster.tsx");
 
 const h = { diameter_mm: 12, hoh_mm: 100, dekking_mm: 30 };
 const v = { diameter_mm: 12, hoh_mm: 100, dekking_mm: 42 };
@@ -42,10 +49,13 @@ test("geldige UI-data reist exact door project en MCP-poort", () => {
 
 test("invoerbouwer houdt alle frequente combinaties apart van UGT en quasi", () => {
   const resultaten = new Map(combinaties.map(c => [c.id, { plateElements: [{ plateId: 1,
+    expectedElementIds: [7],
     elements: [{ elementId: 7, sigmaX: c.id, sigmaY: -c.id, tauXY: -0.2 }] }] }]));
   const input = buildPlaatCheckInputs({ plates: [plaat], combinations: combinaties,
     combinationResults: resultaten }).inputs[0];
   assert.deepEqual(input.wapening_aanwezig, wapening);
+  assert.deepEqual(input.expected_element_ids, [7]);
+  assert.equal(input.mesh_fout, undefined);
   assert.deepEqual(input.combinations.map(c => c.combination_id), [1]);
   assert.deepEqual(input.frequente_combinaties.map(c => c.combination_id), [2, 3]);
   assert.deepEqual(input.frequente_combinaties[1].elements[0], {

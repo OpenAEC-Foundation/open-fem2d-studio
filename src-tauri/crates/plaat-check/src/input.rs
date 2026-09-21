@@ -126,6 +126,16 @@ pub struct PlateCheckInput {
     pub notities: Vec<String>,
     /// De elementspanningen per UGT-combinatie.
     pub combinations: Vec<PlaatCombinatie>,
+    /// Beton: volledige elementset uit de mesh, onafhankelijk van de spanningsresultaten.
+    /// Weglaten betekent onbewezen dekking en levert geen betontoets op.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub expected_element_ids: Option<Vec<u32>>,
+    /// Beton: ontbrekende of tegenstrijdige meshmetadata vastgesteld door de invoerbouwer.
+    /// Een opgegeven fout blokkeert de toets, ook bij een verder passende elementset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub mesh_fout: Option<String>,
     /// Beton: de AANWEZIGE wapening van de wand (issue #25). Weglaten = niet
     /// ingevoerd; dan toetst de kern alleen de benodigde wapening en het beton,
     /// precies zoals zonder dit veld, met de melding dat de aanwezige wapening

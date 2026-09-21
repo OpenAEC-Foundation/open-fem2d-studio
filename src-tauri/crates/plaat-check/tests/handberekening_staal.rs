@@ -33,6 +33,8 @@ fn plaat(materiaal: &str, t_mm: f64, combinaties: Vec<(u32, Vec<PlaatElementSpan
             .map(|(id, elements)| PlaatCombinatie { combination_id: id, elements })
             .collect(),
         wapening_aanwezig: None,
+        expected_element_ids: None,
+        mesh_fout: None,
         frequente_combinaties: vec![],
     }
 }

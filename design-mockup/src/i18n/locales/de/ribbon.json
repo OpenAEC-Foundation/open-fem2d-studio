@@ -283,7 +283,7 @@
     "runGroup": "Ausführen",
     "run": "Berechnen (FEM)",
     "memberChecks": "Normnachweis",
-    "memberChecksRun": "Stahl + Holz nachweisen",
+    "memberChecksRun": "Normnachweise ausführen",
     "checkPanel": "Nachweisfenster",
     "standards": "Normen",
     "en1993": "EN 1993",

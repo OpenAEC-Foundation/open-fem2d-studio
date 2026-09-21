@@ -126,9 +126,29 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
     const notities: string[] = [];
     let expectedElementIds: number[] | undefined;
     let dekkingFout: string | undefined;
+    let betonMeshIds: number[] | undefined;
+    let betonMeshCombinatie: number | undefined;
+    let betonMeshFout: string | undefined;
     /** De elementspanningen van één combinatie, of null zonder plaatspanningen. */
     const spanningen = (c: LoadCombination): PlaatCombinatie | null => {
       const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+      if (soort === "Beton") {
+        const ids = pr?.expectedElementIds;
+        if (!ids?.length || new Set(ids).size !== ids.length ||
+            ids.some(id => !Number.isInteger(id) || id < 0 || id > 0xffffffff)) {
+          betonMeshFout ??= `Combinatie ${c.id}: onafhankelijke volledige meshset ontbreekt of is ongeldig; bereken opnieuw.`;
+        } else {
+          const gesorteerd = [...ids].sort((a, b) => a - b);
+          const referentie = betonMeshIds;
+          if (referentie && (gesorteerd.length !== referentie.length ||
+              gesorteerd.some((id, i) => id !== referentie[i]))) {
+            betonMeshFout ??= `Onafhankelijke meshsets van combinaties ${betonMeshCombinatie} en ${c.id} verschillen (UGT/BGT).`;
+          } else if (!betonMeshIds) {
+            betonMeshIds = gesorteerd;
+            betonMeshCombinatie = c.id;
+          }
+        }
+      }
       if (!pr || pr.elements.length === 0) return null;
       return {
         combination_id: c.id,
@@ -146,9 +166,9 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
         const comb = spanningen(c);
         if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
-          // Bij aanwezige wandwapening moet een ontbrekende UGT-combinatie
+          // Bij beton moet een ontbrekende UGT-combinatie
           // zichtbaar blijven voor de kern, ook als andere combinaties bestaan.
-          if (plaat.plooi || (soort === "Beton" && plaat.wapening)) combinaties.push({ combination_id: c.id, elements: [] });
+          if (plaat.plooi || soort === "Beton") combinaties.push({ combination_id: c.id, elements: [] });
           continue;
         }
         if (plaat.plooi) {
@@ -204,7 +224,7 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
     // de spanningen van de FREQUENTE BGT-combinaties (6.15b) — daaronder laat
     // de nationale bijlage bij 7.3.1(5) de scheurwijdte toetsen. Herkend op
     // soort, zoals de betonbalkbouwer; een andere BGT-combinatie gaat niet mee.
-    // Zonder wapening gaat er niets extra mee: de invoer blijft zoals hij was.
+    // Meshmetadata wordt voor alle betonplaten bewaakt, ook zonder wapening.
     const beton =
       soort === "Beton" && plaat.wapening
         ? {
@@ -231,6 +251,10 @@ export function buildPlaatCheckInputs(data: PlaatBuildData): PlaatBuildResult {
       ...(notities.length > 0 ? { notities } : {}),
       combinations: combinaties,
       ...beton,
+      ...(soort === "Beton" ? {
+        ...(betonMeshIds ? { expected_element_ids: betonMeshIds } : {}),
+        ...(betonMeshFout !== undefined ? { mesh_fout: betonMeshFout } : {}),
+      } : {}),
     });
   }
   return { inputs, skipped };

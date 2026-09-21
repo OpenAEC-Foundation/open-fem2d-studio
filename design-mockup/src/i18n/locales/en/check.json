@@ -671,6 +671,34 @@
     "footer": "Click a row to see the full derivation of that variant."
   },
   "concrete": {
+    "zoneInteraction": {
+      "top": "Top reinforcement",
+      "bottom": "Bottom reinforcement",
+      "stirrups": "Stirrup zone",
+      "empty": "No bars",
+      "start": "Start of {{zone}}",
+      "end": "End of {{zone}}",
+      "selected": "Selected: {{zone}} · {{start}}–{{end}} mm",
+      "pick": "Select a reinforcement zone or bar row.",
+      "preview": "Preview — release: apply; Escape: cancel"
+    },
+    "sectionCurve": {
+      "open": "Section M-κ",
+      "title": "M-κ · section x = {{x}} mm",
+      "assumptions": "Current section and local cage. National annex: {{bijlage}}. No automatic design.",
+      "source": "Axial force from combination",
+      "manual": "Enter N manually",
+      "combination": "Combination {{id}}",
+      "interpolated": "interpolated",
+      "nLabel": "N [kN] — compression negative",
+      "enterN": "Enter N explicitly; zero is not assumed. Manual input is required without an unambiguous current section force.",
+      "resultN": "N from the selected current combination at this section; verify the loading situation.",
+      "direction": "Moment sign: tension side",
+      "situation": "Design situation",
+      "persistent": "Persistent / transient",
+      "accidental": "Accidental",
+      "calculate": "Calculate"
+    },
     "cage": {
       "notSpecified": "not specified",
       "barCountOf": "{{label}}: number of bars",
@@ -1373,7 +1401,7 @@
     "checkColumn": "Check",
     "statusColumn": "Status",
     "governingLine": "Governing: {{toets}} — UC {{uc}}. Full derivation: Check tab → check panel.",
-    "notChecked": "Not checked yet — run the code check via the ribbon tab \"Check\" (button \"Check steel + timber\").",
+    "notChecked": "Not checked yet — run the code checks via the \"Check\" tab (button \"Run code checks\").",
     "cancel": "Cancel"
   },
   "plaat": {

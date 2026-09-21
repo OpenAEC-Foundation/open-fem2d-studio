@@ -4,11 +4,11 @@
  * Eén volledig, asgelijnd plaatveld; maten in mm en steun expliciet opgegeven.
  * De directe API-aanroeper bevestigt de geometrie; de app controleert haar tegen de knopen.
  */
-export type PlaatPlooiInput = {
+export type PlaatPlooiInput = { 
 /**
  * Volledige elementset uit de mesh, onafhankelijk van beschikbare spanningsresultaten.
  */
-expected_element_ids: Array<number>, a_mm: number, b_mm: number, randvoorwaarden: string, steun_bron: string, onverstijfd: boolean, uniforme_spanning: boolean, rechthoek_zonder_openingen: boolean,
+expected_element_ids: Array<number>, a_mm: number, b_mm: number, randvoorwaarden: string, steun_bron: string, onverstijfd: boolean, uniforme_spanning: boolean, rechthoek_zonder_openingen: boolean, 
 /**
  * Afwijking die de modelbouwer vaststelde. Nooit negeren in de kern.
  */

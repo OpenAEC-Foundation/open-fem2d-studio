@@ -1,16 +1,21 @@
 /* Wapeningskorf en M-N-κ-diagram — thema-volgend via de theme-tokens. */
 
+.beton-paneel-container {
+  container-type: inline-size;
+  min-width: 0;
+}
+
 .beton-paneel {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   color: var(--theme-text);
   font-size: 12px;
 }
 
-@media (max-width: 720px) {
+@container (min-width: 600px) {
   .beton-paneel {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   }
 }
 
@@ -65,11 +70,12 @@
 
 .beton-label {
   color: var(--theme-text-secondary);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .beton-invoer {
   width: 128px;
+  max-width: 100%;
   box-sizing: border-box;
   padding: 3px 6px;
   font: inherit;
@@ -92,6 +98,7 @@
 .beton-invoer-met-eenheid,
 .beton-invoer-groep {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
 }
@@ -149,6 +156,7 @@
 
 .beton-zijde-rij {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   margin-bottom: 3px;
@@ -160,11 +168,10 @@
   color: var(--theme-text-secondary);
 }
 
-/* De klassekiezer krimpt mee; zonder `min-width: 0` duwt de lange optietekst
-   ("XC4 — Wisselend nat en droog") de rij uit de kolom. */
+/* De klassekiezer blijft bedienbaar; in smalle panelen mag de rij ombreken. */
 .beton-invoer-zijde {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 120px;
+  min-width: 100px;
   width: auto;
 }
 
@@ -191,7 +198,7 @@
 
 .beton-tekening-blok {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 12px;
   align-items: start;
   border: 1px solid var(--theme-border);
@@ -209,7 +216,7 @@
 .beton-kerngetallen {
   margin: 0;
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   column-gap: 10px;
   row-gap: 3px;
   align-content: start;
@@ -217,11 +224,12 @@
 
 .beton-kerngetallen dt {
   color: var(--theme-text-muted);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .beton-kerngetallen dd {
   margin: 0;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
@@ -239,6 +247,8 @@
 
 .beton-grafiek-kop {
   display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   justify-content: space-between;
   align-items: baseline;
   font-weight: 600;
@@ -268,6 +278,7 @@
 }
 
 .beton-fout {
+  overflow-wrap: anywhere;
   margin-top: 8px;
   padding: 6px 8px;
   border-radius: 4px;
@@ -302,6 +313,7 @@
 }
 
 .beton-tabel {
+  overflow-x: auto;
   margin-top: 8px;
   font-size: 11px;
 }

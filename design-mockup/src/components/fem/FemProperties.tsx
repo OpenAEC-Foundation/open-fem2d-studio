@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import { parseLength, formatLength, mmToMeters } from "../../lib/lengthInput";
 import LengthInput from "../LengthInput";
+import { CONCRETE_E_CM, resolveSection } from "../../lib/sectionResolver";
 import {
   HERKOMST_KIPSTEUNEN,
   HERKOMST_OPGEGEVEN,
@@ -454,7 +455,8 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   const material = beam.material ?? "S235";
   const profile = beam.profile ?? "HEA160";
   const isHout = (SUPPORTED_TIMBER_GRADES as readonly string[]).includes(material);
-  const isBeton = matchSupportedConcreteClass(material) !== null;
+  const betonklasse = matchSupportedConcreteClass(material);
+  const isBeton = betonklasse !== null;
   // Staalsterkte volgt uit de naam (S235 → 235); voor hout tonen we geen
   // verzonnen getallen — de rekenwaarden komen uit de toetsing zelf.
   const fyStaal = /^S(\d+)$/.exec(material)?.[1];
@@ -642,7 +644,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               test-zwakke-as.mjs tegen de kern houdt. Om z kan dat de afstand
               tussen kipsteunen aan boven- én onderflens zijn; een lege doos
               zou die afleiding verzwijgen. */}
-          <Section title={t("cfg.bucklingTitle")}>
+          {!isBeton && <Section title={t("cfg.bucklingTitle")}>
             <Row label={t("cfg.bucklingInPlane")}>
               <LengthInput className="fem-prop-input" positive storedUnit="m"
                 placeholder={formatLength(voorspeldY.lCrMm)}
@@ -671,9 +673,9 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               {t("cfg.bucklingOutOfPlaneHint")}
               {isHout && " " + t("props.beam.timberLcrzHint")}
             </div>
-          </Section>
+          </Section>}
 
-          {(
+          {!isBeton && (
             <>
               {/* Sinds september 2026 ook voor hout: de kern leidt L_cr,z af
                   uit plaatsen waar boven- én onderrand gesteund zijn. Voor de
@@ -1062,7 +1064,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
             <Row label={t("props.beam.standard")}><code>EN 338 / EN 1995-1-1</code></Row>
           ) : (
             <>
-              <Row label="E"><code>210000 N/mm²</code></Row>
+              <Row label="E"><code>{betonklasse ? CONCRETE_E_CM[betonklasse] : resolveSection(material, profile).E} N/mm²</code></Row>
               {fyStaal && <Row label="fy"><code>{fyStaal} N/mm²</code></Row>}
             </>
           )}

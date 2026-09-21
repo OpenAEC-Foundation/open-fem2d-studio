@@ -23,16 +23,16 @@ verticaal: PlaatWapeningRichting,
  * w_max. Weglaten = scheurwijdte niet getoetst, met reden; er wordt geen
  * klasse aangenomen.
  */
-milieuklasse?: ExposureClass,
+milieuklasse?: ExposureClass, 
 /**
  * Treksterkte op het verwachte scheurtijdstip (7.3.2), N/mm².
  * Geen automatische aanname van ouderdom of f_ctm.
  */
-f_ct_eff_mpa?: number,
+f_ct_eff_mpa?: number, 
 /**
  * Belastingsduur voor (7.9): true = langdurend, false = kortdurend.
  */
-langdurend?: boolean,
+langdurend?: boolean, 
 /**
  * Aanhechting voor (7.11): true = hoog, false = glad.
  */

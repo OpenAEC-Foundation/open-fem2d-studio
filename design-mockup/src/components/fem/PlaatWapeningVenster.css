@@ -1,0 +1,100 @@
+.plaat-wapening {
+  container: plaat-wapening / inline-size;
+  min-width: 0;
+  color: var(--theme-text);
+  font: 400 11px/1.4 "Inter", system-ui, sans-serif;
+}
+
+.plaat-wapening .plaat-wapening-veld {
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 1fr);
+  gap: 4px 8px;
+  padding: 5px 8px;
+}
+
+.plaat-wapening .fem-prop-row-label,
+.plaat-wapening .fem-prop-row-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.plaat-wapening .fem-prop-input,
+.plaat-wapening .fem-prop-select {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 26px;
+}
+
+.plaat-wapening input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--theme-accent);
+}
+
+.plaat-wapening input:focus-visible,
+.plaat-wapening select:focus-visible {
+  outline: 2px solid var(--theme-focus-color);
+  outline-offset: 2px;
+}
+
+.plaat-wapening [aria-invalid="true"] {
+  border-color: var(--theme-danger-color);
+}
+
+.plaat-wapening-hint,
+.plaat-wapening-fout {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.plaat-wapening-hint { color: var(--theme-text-secondary); }
+.plaat-wapening-fout { color: var(--theme-danger-color); }
+.plaat-wapening-domein { margin: 10px 8px 4px; }
+
+.plaat-wapening-basis,
+.plaat-wapening-richtingen,
+.plaat-wapening-zijden {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.plaat-wapening-basis { gap: 0; }
+.plaat-wapening-richtingen { margin: 12px 8px 0; }
+
+.plaat-wapening-richting,
+.plaat-wapening-zijde {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.plaat-wapening-richting > legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.plaat-wapening-zijde {
+  border: 1px solid var(--theme-border);
+  border-radius: 3px;
+  padding: 2px 0 4px;
+}
+
+.plaat-wapening-zijde > legend {
+  margin-left: 8px;
+  padding: 0 4px;
+  color: var(--theme-text-secondary);
+  font-weight: 600;
+}
+
+@container plaat-wapening (min-width: 560px) {
+  .plaat-wapening-basis,
+  .plaat-wapening-richtingen { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container plaat-wapening (min-width: 900px) {
+  .plaat-wapening-zijden { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

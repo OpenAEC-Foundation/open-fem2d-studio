@@ -5,12 +5,14 @@ PROMPTS.md
 /src-tauri/target
 /src-tauri/gen
 .claude/
+.Codex/
+.codex/
 
 # Niet-geaccepteerde snapshots van insta — werkbestanden, geen broncode.
 *.snap.new
 
-# Normen (NEN/EN) — auteursrechtelijk beschermd, mogen NOOIT in de repo of op
-# GitHub terechtkomen. Lokaal naslagwerk, gekopieerd van de bedrijfsschijf.
+# Normen (NEN/EN) — uitsluitend lokaal naslagwerk binnen de werkmap.
+# Auteursrechtelijk beschermd: nooit committen of uploaden naar GitHub.
 /normen/
 
 # Bronbestanden van externe referentieberekeningen — de uitdraaien en de

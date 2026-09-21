@@ -1,8 +1,23 @@
 {
+  "resultView": {
+    "busy": "Calculating…",
+    "emptyCase": "{{name}}: no effective load; no case result.",
+    "ucCombinations": "UC shows the governing check across load combinations, not just the selected load case.",
+    "ucLabel": "UC (combinations)"
+  },
+  "checkPanelControls": {
+    "open": "Checks",
+    "export": "Member checks (CSV)"
+  },
   "ok": "OK",
   "cancel": "Cancel",
   "save": "Save",
   "close": "Close",
+  "windowControls": {
+    "closeBrowser": "Close this tab using your browser. Save your project first if you want to keep your changes.",
+    "desktopOnly": "These window controls are only available in the desktop app.",
+    "failed": "Window action failed"
+  },
   "delete": "Delete",
   "edit": "Edit",
   "apply": "Apply",

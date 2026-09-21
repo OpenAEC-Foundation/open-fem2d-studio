@@ -671,6 +671,34 @@
     "footer": "Cliquez sur une ligne pour voir le développement complet de cette variante."
   },
   "concrete": {
+    "zoneInteraction": {
+      "top": "Armatures supérieures",
+      "bottom": "Armatures inférieures",
+      "stirrups": "Zone d’étriers",
+      "empty": "Aucune barre",
+      "start": "Début {{zone}}",
+      "end": "Fin {{zone}}",
+      "selected": "Sélection : {{zone}} · {{start}}–{{end}} mm",
+      "pick": "Sélectionnez une zone d’armatures ou une rangée.",
+      "preview": "Aperçu — relâcher : appliquer ; Échap : annuler"
+    },
+    "sectionCurve": {
+      "open": "M-κ de la section",
+      "title": "M-κ · section x = {{x}} mm",
+      "assumptions": "Section actuelle et cage locale. Annexe nationale : {{bijlage}}. Aucun dimensionnement automatique.",
+      "source": "Effort normal de la combinaison",
+      "manual": "Saisir N manuellement",
+      "combination": "Combinaison {{id}}",
+      "interpolated": "interpolé",
+      "nLabel": "N [kN] — compression négative",
+      "enterN": "Saisissez N explicitement ; zéro n’est pas supposé. Une saisie manuelle est nécessaire sans effort actuel univoque à cette section.",
+      "resultN": "N de la combinaison actuelle sélectionnée à cette section ; vérifiez la situation de charge.",
+      "direction": "Signe du moment : côté tendu",
+      "situation": "Situation de projet",
+      "persistent": "Persistante / transitoire",
+      "accidental": "Accidentelle",
+      "calculate": "Calculer"
+    },
     "cage": {
       "notSpecified": "non renseigné",
       "barCountOf": "{{label}} : nombre de barres",
@@ -1373,7 +1401,7 @@
     "checkColumn": "Vérification",
     "statusColumn": "Statut",
     "governingLine": "Déterminant : {{toets}} — UC {{uc}}. Justification complète : onglet Vérification → panneau de vérification.",
-    "notChecked": "Pas encore vérifié — lancez la vérification normative via l'onglet du ruban \"Vérification\" (bouton \"Vérifier acier + bois\").",
+    "notChecked": "Pas encore vérifié — lancez les vérifications via l'onglet \"Vérification\" (bouton \"Vérifications normatives\").",
     "cancel": "Annuler"
   },
   "plaat": {

@@ -17907,8 +17907,26 @@ function buildPlaatCheckInputs(data) {
     const notities = [];
     let expectedElementIds;
     let dekkingFout;
+    let betonMeshIds;
+    let betonMeshCombinatie;
+    let betonMeshFout;
     const spanningen = (c) => {
       const pr = data.combinationResults.get(c.id)?.plateElements?.find((r) => r.plateId === plaat.id);
+      if (soort === "Beton") {
+        const ids = pr?.expectedElementIds;
+        if (!ids?.length || new Set(ids).size !== ids.length || ids.some((id) => !Number.isInteger(id) || id < 0 || id > 4294967295)) {
+          betonMeshFout ??= `Combinatie ${c.id}: onafhankelijke volledige meshset ontbreekt of is ongeldig; bereken opnieuw.`;
+        } else {
+          const gesorteerd = [...ids].sort((a, b) => a - b);
+          const referentie = betonMeshIds;
+          if (referentie && (gesorteerd.length !== referentie.length || gesorteerd.some((id, i) => id !== referentie[i]))) {
+            betonMeshFout ??= `Onafhankelijke meshsets van combinaties ${betonMeshCombinatie} en ${c.id} verschillen (UGT/BGT).`;
+          } else if (!betonMeshIds) {
+            betonMeshIds = gesorteerd;
+            betonMeshCombinatie = c.id;
+          }
+        }
+      }
       if (!pr || pr.elements.length === 0) return null;
       return {
         combination_id: c.id,
@@ -17926,7 +17944,7 @@ function buildPlaatCheckInputs(data) {
         const comb = spanningen(c);
         if (!comb) {
           if (data.combinationResults.has(c.id)) zonder.push(c.name);
-          if (plaat.plooi || soort === "Beton" && plaat.wapening) combinaties.push({ combination_id: c.id, elements: [] });
+          if (plaat.plooi || soort === "Beton") combinaties.push({ combination_id: c.id, elements: [] });
           continue;
         }
         if (plaat.plooi) {
@@ -17991,7 +18009,11 @@ function buildPlaatCheckInputs(data) {
       thickness_mm: withPlateDefaults(plaat).thickness,
       ...notities.length > 0 ? { notities } : {},
       combinations: combinaties,
-      ...beton
+      ...beton,
+      ...soort === "Beton" ? {
+        ...betonMeshIds ? { expected_element_ids: betonMeshIds } : {},
+        ...betonMeshFout !== void 0 ? { mesh_fout: betonMeshFout } : {}
+      } : {}
     });
   }
   return { inputs, skipped };

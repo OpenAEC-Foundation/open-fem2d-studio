@@ -177,6 +177,7 @@ fn wapeningstoelichting_is_resultaatgestuurd_en_noemt_beide_grenstoestanden() {
     plaat.soort = plaat_check::PlaatMateriaalSoort::Beton;
     plaat.materiaal = "C30/37".into();
     plaat.thickness_mm = 200.0;
+    plaat.expected_element_ids = Some(vec![701, 702]);
     for c in &mut plaat.combinations {
         for e in &mut c.elements {
             e.sigma_x_mpa = 0.0;
@@ -284,4 +285,132 @@ fn nulweerstand_met_positieve_belasting_blijft_leesbaar_in_elk_pdf_blok() {
         !bevat(&stroom, &format!("{:.0}", f64::MAX)),
         "geen honderden cijfers in tabellen, toetsblokken of afleiding"
     );
+}
+
+fn betonwand() -> PlateCheckInput {
+    let h = json!({"diameter_mm":12,"hoh_mm":100,"dekking_mm":30});
+    let v = json!({"diameter_mm":12,"hoh_mm":100,"dekking_mm":42});
+    serde_json::from_value(json!({
+        "plate_id":61,"soort":"Beton","materiaal":"C30/37","thickness_mm":200,
+        "expected_element_ids":[901],
+        "combinations":[{"combination_id":81,"elements":[
+            {"element_id":901,"sigma_x_mpa":2,"sigma_y_mpa":0,"tau_xy_mpa":0}]}],
+        "frequente_combinaties":[{"combination_id":92,"elements":[
+            {"element_id":901,"sigma_x_mpa":1.375,"sigma_y_mpa":0,"tau_xy_mpa":0}]}],
+        "wapening_aanwezig":{"staalsoort":"B500B",
+            "horizontaal":{"zijde_1":h,"zijde_2":h},"verticaal":{"zijde_1":v,"zijde_2":v},
+            "milieuklasse":"XC3","f_ct_eff_mpa":2.9,"langdurend":true,"hoge_aanhechting":true}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn frequente_bgt_invoer_met_maatgevende_spanning_staat_in_pdf() {
+    let mut inp = leeg();
+    inp.plate_inputs = vec![betonwand()];
+    inp.plate_results = check_all_plates(inp.plate_inputs.clone());
+    assert!(inp.plate_results[0].geweigerd.is_none());
+    assert!(inp.plate_results[0]
+        .combinaties
+        .iter()
+        .any(|c| c.combination_id == 92));
+    let pdf = generate_report_pdf(inp);
+    let stroom = inhoud(&pdf);
+    for tekst in ["UGT 81", "BGT freq. 92", "1.375"] {
+        assert!(bevat(&stroom, tekst), "Ontbrekende invoer: {tekst}");
+    }
+    if let Ok(pad) = std::env::var("PLAAT_WAND_PDF_PROEF") {
+        std::fs::write(pad, pdf).unwrap();
+    }
+}
+
+#[test]
+fn uitsluitend_bgt_zonder_resultaat_blijft_zichtbaar() {
+    let mut p = betonwand();
+    p.combinations.clear();
+    let mut inp = leeg();
+    inp.plate_inputs = vec![p];
+    let stroom = inhoud(&generate_report_pdf(inp));
+    assert!(bevat(&stroom, "BGT freq. 92"));
+    woorden(&stroom, "Combinatie 92: geen toetsuitkomst beschikbaar;");
+    assert!(!bevat(&stroom, "Geen combinaties aangeleverd."));
+}
+
+#[test]
+fn aanwezige_wapening_en_scheurbasis_zijn_ook_zonder_resultaat_herleidbaar() {
+    let mut p = betonwand();
+    let w = p.wapening_aanwezig.as_mut().unwrap();
+    w.horizontaal.zijde_2 = None;
+    w.verticaal.zijde_2 =
+        Some(serde_json::from_value(json!({"as_mm2_per_m":987.6,"dekking_mm":27})).unwrap());
+    w.langdurend = Some(false);
+    w.hoge_aanhechting = Some(false);
+    let mut inp = leeg();
+    inp.plate_inputs = vec![p];
+    let stroom = inhoud(&generate_report_pdf(inp));
+    for tekst in [
+        "B500B", "XC3", "987.600", "27.000", "42.000", "100.000", "12.000",
+    ] {
+        assert!(bevat(&stroom, tekst), "Ontbrekende invoer: {tekst}");
+    }
+    woorden(
+        &stroom,
+        "horizontaal verticaal zijde 1 zijde 2 niet ingevoerd",
+    );
+    woorden(&stroom, "f_ct,eff = 2.900 N/mm²; kortdurend; glad.");
+}
+
+#[test]
+fn ontbrekende_scheurbasis_krijgt_geen_standaard_in_pdf() {
+    let mut p = betonwand();
+    let w = p.wapening_aanwezig.as_mut().unwrap();
+    w.milieuklasse = None;
+    w.f_ct_eff_mpa = None;
+    w.langdurend = None;
+    w.hoge_aanhechting = None;
+    let mut inp = leeg();
+    inp.plate_inputs = vec![p];
+    let stroom = inhoud(&generate_report_pdf(inp));
+    for tekst in [
+        "Milieuklasse: niet opgegeven",
+        "f_ct,eff: niet opgegeven",
+        "Belastingsduur: niet opgegeven",
+        "Aanhechting: niet opgegeven",
+    ] {
+        woorden(&stroom, tekst);
+    }
+    assert!(!bevat(&stroom, "XC3"));
+}
+
+#[test]
+fn meshverklaring_en_afwijkingen_blijven_zichtbaar_bij_weigering() {
+    let mut p = betonwand();
+    p.expected_element_ids = Some(vec![901, 902]);
+    p.mesh_fout = Some("Meshbron onvolledig".into());
+    let e = p.frequente_combinaties[0].elements[0];
+    p.frequente_combinaties[0].elements.extend([
+        e,
+        plaat_check::PlaatElementSpanning {
+            element_id: 903,
+            ..e
+        },
+    ]);
+    let mut inp = leeg();
+    inp.plate_inputs = vec![p];
+    inp.plate_results = check_all_plates(inp.plate_inputs.clone());
+    assert!(inp.plate_results[0].geweigerd.is_some());
+    let stroom = inhoud(&generate_report_pdf(inp));
+    woorden(&stroom, "Onafhankelijke meshverklaring: 2 unieke elementen");
+    woorden(&stroom, "Meshbron onvolledig");
+    woorden(&stroom, "UGT 81: 1 ontbrekend, 0 extra, 0 dubbel.");
+    woorden(&stroom, "BGT freq. 92: 1 ontbrekend, 1 extra, 1 dubbel.");
+}
+
+#[test]
+fn wapeningstoelichting_converteert_kn_naar_n() {
+    let mut inp = leeg();
+    inp.plate_results = check_all_plates(vec![betonwand()]);
+    let stroom = inhoud(&generate_report_pdf(inp));
+    assert!(bevat(&stroom, "A_s = 1000 · n_td / f_yd"));
+    woorden(&stroom, "A_s in mm²/m, n_td in kN/m en f_yd in N/mm²");
 }

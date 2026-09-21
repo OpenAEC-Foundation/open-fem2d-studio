@@ -1,7 +1,7 @@
 //! Aanvullende controles voor een gewapende membraanwand. Een strook is 1 m breed.
 //! §7.3.4 is beperkt tot eenassige membraantrek met symmetrische wapening;
 //! schuif, tweeassige spanning en excentriciteit vragen een ander scheurmodel.
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use mechanics::{ForceStateSnapshot, InternalForces};
 use nationale_bijlage::Ndp1992;
@@ -132,32 +132,11 @@ pub fn valideer(input: &PlateCheckInput) -> Result<(), String> {
             "Wapeningslagen aan beide zijden passen niet naast elkaar in de wanddikte.".into(),
         );
     }
-    let mut ids = HashSet::new();
-    let mut elementen = HashSet::new();
-    for (bgt, combinaties) in [
-        (false, &input.combinations),
-        (true, &input.frequente_combinaties),
-    ] {
+    // Meshdekking en combinatie-identiteit worden voor iedere betonplaat
+    // onafhankelijk van de wapening gevalideerd in beton::toets.
+    for combinaties in [&input.combinations, &input.frequente_combinaties] {
         for c in combinaties {
-            if !ids.insert(c.combination_id) {
-                return Err(
-                    "Combinatie-id dubbel gebruikt (UGT/BGT moeten gescheiden zijn).".into(),
-                );
-            }
-            if !bgt && c.elements.is_empty() {
-                return Err("Opgegeven UGT-combinatie zonder elementspanningen.".into());
-            }
-            let mut lokaal = HashSet::new();
             for e in &c.elements {
-                if !lokaal.insert(e.element_id) {
-                    return Err("Dubbel element binnen een combinatie.".into());
-                }
-                if !bgt {
-                    elementen.insert(e.element_id);
-                }
-                if bgt && !elementen.contains(&e.element_id) {
-                    return Err("BGT-element ontbreekt in de UGT-mesh.".into());
-                }
                 if ![e.sigma_x_mpa, e.sigma_y_mpa, e.tau_xy_mpa]
                     .into_iter()
                     .all(f64::is_finite)
@@ -555,16 +534,7 @@ fn scheurcontroles(input: &PlateCheckInput, v: &mut Verzamel<'_>) {
         Aanhechting::Glad
     }
     .k_1();
-    let ugt_ids: HashSet<_> = input
-        .combinations
-        .iter()
-        .flat_map(|c| c.elements.iter().map(|e| e.element_id))
-        .collect();
     for c in &input.frequente_combinaties {
-        let ids: HashSet<_> = c.elements.iter().map(|e| e.element_id).collect();
-        if ids != ugt_ids {
-            niet(v.r,"7.3_mesh_onvolledig",format!("Frequente combinatie {} bevat niet alle UGT-elementen; scheurcontrole onvolledig.",c.combination_id));
-        }
         for e in &c.elements {
             // Alleen eenassige membraanspanning: dan volgt σ_s=N/A_s direct
             // uit gescheurd evenwicht, zonder bijlage F als BGT-model te misbruiken.

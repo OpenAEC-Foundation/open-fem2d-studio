@@ -283,7 +283,7 @@
     "runGroup": "Run",
     "run": "Solve (FEM)",
     "memberChecks": "Code checks",
-    "memberChecksRun": "Check steel + timber",
+    "memberChecksRun": "Run code checks",
     "checkPanel": "Check panel",
     "standards": "Standards",
     "en1993": "EN 1993",

@@ -34,7 +34,7 @@ thickness_mm: number,
 /**
  * Zonder dit veld blijft de bestaande vloeicontrole ongewijzigd.
  */
-plooi?: PlaatPlooiInput,
+plooi?: PlaatPlooiInput, 
 /**
  * Hout: hoofdrichting (vezel) in GRADEN tegen de klok in vanaf de globale
  * x-as — dezelfde hoek als `Plate.hoofdrichting` en als de solver gebruikt.
@@ -61,6 +61,16 @@ notities?: Array<string>,
  * De elementspanningen per UGT-combinatie.
  */
 combinations: Array<PlaatCombinatie>, 
+/**
+ * Beton: volledige elementset uit de mesh, onafhankelijk van de spanningsresultaten.
+ * Weglaten betekent onbewezen dekking en levert geen betontoets op.
+ */
+expected_element_ids?: Array<number>, 
+/**
+ * Beton: ontbrekende of tegenstrijdige meshmetadata vastgesteld door de invoerbouwer.
+ * Een opgegeven fout blokkeert de toets, ook bij een verder passende elementset.
+ */
+mesh_fout?: string, 
 /**
  * Beton: de AANWEZIGE wapening van de wand (issue #25). Weglaten = niet
  * ingevoerd; dan toetst de kern alleen de benodigde wapening en het beton,

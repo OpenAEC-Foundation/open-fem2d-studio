@@ -57,7 +57,7 @@ export interface RekengangUitkomst {
    * Wat de fysisch niet-lineaire ronde deed: `nvt` (ander analysetype),
    * `gedraaid`, `niets-te-doen` (geen betonstaaf met korf) of `mislukt`.
    */
-  fysisch: "nvt" | "gedraaid" | "niets-te-doen" | "mislukt";
+  fysisch: "nvt" | "gedraaid" | "niets-te-doen" | "mislukt" | "verouderd";
 }
 
 /** De rekentoestand die in refs van App.tsx leeft — niet in de render. */

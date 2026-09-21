@@ -51,6 +51,8 @@ fn plaat(
             .map(|(id, _, elements)| PlaatCombinatie { combination_id: id, elements })
             .collect(),
         wapening_aanwezig: None,
+        expected_element_ids: None,
+        mesh_fout: None,
         frequente_combinaties: vec![],
     }
 }

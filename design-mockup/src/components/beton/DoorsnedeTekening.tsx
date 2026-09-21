@@ -136,6 +136,7 @@ interface Props {
    * tekening een plaatje — zoals in het rapport.
    */
   onRij?: (zijde: KorfRij) => void;
+  geselecteerdeRij?: KorfRij | null;
   /**
    * Zet een "−" en "+" naast elk rijlabel om er in één klik een staaf af te
    * halen of bij te leggen. De eigenaar begrenst het aantal; de tekening
@@ -240,6 +241,7 @@ export default function DoorsnedeTekening({
   maatvoering = true,
   kleuren = THEMA_KLEUREN,
   onRij,
+  geselecteerdeRij,
   onRijAantal,
   onDubbelklik,
   titel,
@@ -388,7 +390,7 @@ export default function DoorsnedeTekening({
     <svg
       className={className}
       viewBox={`0 0 ${KADER_W} ${kaderH.toFixed(2)}`}
-      role="img"
+      role={onRij ? "group" : "img"}
       onDoubleClick={onDubbelklik}
       style={onDubbelklik ? { cursor: "zoom-in" } : undefined}
       aria-label={
@@ -453,7 +455,18 @@ export default function DoorsnedeTekening({
           cx={sx(st.x)}
           cy={sy(st.z)}
           r={Math.max(0.6, (st.diameter / 2) * s)}
-          fill={kleuren.betonLijn}
+          data-rij={st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides"}
+          role={onRij ? "button" : undefined}
+          tabIndex={onRij ? 0 : undefined}
+          aria-label={onRij ? t(`concrete.sectionDrawing.editRow.${st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides"}`) : undefined}
+          aria-pressed={onRij ? geselecteerdeRij === (st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides") : undefined}
+          fill={geselecteerdeRij === (st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides") ? "var(--theme-accent, #d97706)" : kleuren.betonLijn}
+          stroke={geselecteerdeRij === (st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides") ? "var(--theme-accent, #d97706)" : undefined}
+          strokeWidth={1.5}
+          style={onRij ? { cursor: "pointer" } : undefined}
+          onClick={onRij ? e => { e.stopPropagation(); onRij(st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides"); } : undefined}
+          onDoubleClick={onRij ? e => e.stopPropagation() : undefined}
+          onKeyDown={onRij ? e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRij(st.rij === "onder" ? "bottom" : st.rij === "boven" ? "top" : "sides"); } } : undefined}
         />
       ))}
 

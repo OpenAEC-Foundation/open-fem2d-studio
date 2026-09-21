@@ -671,6 +671,34 @@
     "footer": "Klik op een regel om de volledige afleiding van die variant te zien."
   },
   "concrete": {
+    "zoneInteraction": {
+      "top": "Bovenwapening",
+      "bottom": "Onderwapening",
+      "stirrups": "Beugelzone",
+      "empty": "Geen staven",
+      "start": "Begin {{zone}}",
+      "end": "Einde {{zone}}",
+      "selected": "Geselecteerd: {{zone}} · {{start}}–{{end}} mm",
+      "pick": "Selecteer een wapeningszone of staafrij.",
+      "preview": "Voorvertoning — loslaten: toepassen; Escape: annuleren"
+    },
+    "sectionCurve": {
+      "open": "M-κ doorsnede",
+      "title": "M-κ · doorsnede x = {{x}} mm",
+      "assumptions": "Huidige doorsnede en lokale korf. Nationale bijlage: {{bijlage}}. Geen automatisch ontwerp.",
+      "source": "Normaalkracht uit combinatie",
+      "manual": "N zelf invoeren",
+      "combination": "Combinatie {{id}}",
+      "interpolated": "geïnterpoleerd",
+      "nLabel": "N [kN] — druk negatief",
+      "enterN": "Voer N expliciet in; er wordt geen nul aangenomen. Zonder eenduidige actuele snedekracht is eigen invoer vereist.",
+      "resultN": "N uit de gekozen actuele combinatie op deze snede; controleer de belastingssituatie.",
+      "direction": "Momentteken: trekzijde",
+      "situation": "Ontwerpsituatie",
+      "persistent": "Blijvend / tijdelijk",
+      "accidental": "Buitengewoon",
+      "calculate": "Berekenen"
+    },
     "cage": {
       "notSpecified": "niet opgegeven",
       "barCountOf": "{{label}}: aantal staven",
@@ -1373,7 +1401,7 @@
     "checkColumn": "Toets",
     "statusColumn": "Status",
     "governingLine": "Maatgevend: {{toets}} — UC {{uc}}. Volledige afleiding: tabblad Toetsing → Toetsingspaneel.",
-    "notChecked": "Nog niet getoetst — draai de normtoetsing via het ribbon-tabblad \"Toetsing\" (knop \"Staal + hout toetsen\").",
+    "notChecked": "Nog niet getoetst — voer de normtoetsing uit via het tabblad \"Toetsing\" (knop \"Normtoetsen uitvoeren\").",
     "cancel": "Annuleer"
   },
   "plaat": {
