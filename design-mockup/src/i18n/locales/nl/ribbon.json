@@ -540,6 +540,7 @@
     "scopeLabel": "Combinatie",
     "scopeEnvelope": "Omhullende (alle combinaties)",
     "schemaLegend": "Knoopnummers zwart, staafnummers grijs tussen haakjes; maten in m, lasten karakteristiek per belastinggeval (G/Q/S/W).",
+    "schemaLegendKipsteunen": "Kipsteunen zoals de toetsing ze aanhoudt: een driehoekje aan de gesteunde flens (bij een staande staaf is de bovenflens de linkerzijde), een open ruitje voor een steun uit de kipsteunafstand van hout, een vorkje waar het staafeind als gaffel is aangenomen.",
     "envelopeBandNote": "Omhullende: per staaf de band tussen minimum en maximum over alle combinaties.",
     "envelopeReactionsTitle": "Omhullende (min/max over alle combinaties)",
     "reactionSignNote": "Tekenconventie: Fx positief naar rechts, Fz positief omhoog (reactie op de constructie).",

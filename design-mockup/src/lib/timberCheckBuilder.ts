@@ -73,13 +73,13 @@ import type { LtbLoadPosition } from "./types/timber/LtbLoadPosition";
 import type { CheckSkip } from "./checkTypes";
 import {
   isSteelProfile,
-  sanitizeRestraintFractions,
   beamLengthMm,
   buildForcesEnvelope,
   deflectionNotesFor,
   extractFieldDeflectionMm,
 } from "./steelCheckBuilder";
 import { voegDoorgaandeLijnenSamen } from "./doorgaandeLijn";
+import { kipsteunenVanStaaf } from "./kipsteunen";
 import { alphaCrStaafNotitie, type StabiliteitVoorToets } from "../components/fem/solver/alphaCr";
 import {
   eigenNaamVan,
@@ -777,6 +777,9 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
     // kent geen zeeg, en de EN 1995-sectie van de dialoog biedt het veld
     // daarom niet aan.
     const cfg = beam.checkConfig ?? {};
+    // Kipsteunen per rand en de kipsteunafstand: één afleiding, gedeeld met het
+    // tekenvlak (`lib/kipsteunen.ts`, issue #40).
+    const kip = kipsteunenVanStaaf(cfg, lengthMm, "hout");
     const defl = timberDeflectionNumerators(cfg.deflectionClass, cfg.deflectionLimitNumerator);
     // Een scheurfactor buiten (0, 1] is geen keuze maar een fout; die gaat
     // niet stil op 1,0 maar houdt de staaf buiten de toetsing, met reden.
@@ -860,10 +863,7 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       // Zijdelingse steunen per rand — ALLEEN voor de kniklengte om z. Dezelfde
       // twee lijsten als bij staal (boven = bovenrand, onder = onderrand). De
       // kipsteunafstand hieronder blijft er uitdrukkelijk los van.
-      lateral_bracing: {
-        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
-        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom),
-      },
+      lateral_bracing: kip.lateral_bracing,
       // Kipsteunafstand voor tabel 6.1; 0 → staaflengte.
       //
       // Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt
@@ -889,10 +889,10 @@ export function buildTimberCheckInputs(ruweData: TimberBuildData): TimberBuildRe
       // het andere (leeg, 0, negatief, NaN) wordt 0 en dan neemt de kern de
       // staaflengte — de veilige kant, want de volle lengte geeft de laagste
       // σ_m,crit.
-      ltb_segment_length_m:
-        Number.isFinite(cfg.ltbSupportSpacing_m) && (cfg.ltbSupportSpacing_m as number) > 0
-          ? (cfg.ltbSupportSpacing_m as number)
-          : 0,
+      //
+      // De waarde komt uit `lib/kipsteunen.ts`, dezelfde afleiding als het
+      // tekenvlak toont (issue #40).
+      ltb_segment_length_m: kip.ltb_segment_length_m,
       ltb_load_case: "UniformLoad",
       // Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a): aan de
       // drukzijde l_ef + 2h, aan de trekzijde l_ef − 0,5h. Leeg = zwaartepunt,
