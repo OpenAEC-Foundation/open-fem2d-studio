@@ -569,3 +569,242 @@
   line-height: 1.45;
   color: var(--theme-danger, #c0392b);
 }
+
+/* ── Zoekveld en "In dit project" boven de profielstap (issue #39) ────────
+   Eén balk boven de kolommen, buiten `.pk-stap2`: het zoekveld blijft staan
+   terwijl een kolom schuift. Het zoekveld is precies zo breed als de kolommen
+   Reeks en Profiel samen (140 + 12 + 130), zodat het boven de lijsten staat
+   waarin het zoekt; de snelkeuzen vullen de breedte van de detailkolom. */
+.pk-kopbalk {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--theme-border-subtle);
+}
+.pk-zoek {
+  flex: 0 0 282px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pk-zoek .pk-kolom-kop,
+.pk-gebruikt-stap .pk-kolom-kop {
+  margin-top: 0;
+}
+.pk-zoek-veld {
+  position: relative;
+  display: flex;
+}
+.pk-zoek-invoer {
+  flex: 1;
+  min-width: 0;
+  /* Rechts ruimte voor de wisknop, zodat de tekst er niet onder schuift. */
+  padding: 6px 28px 6px 8px;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 4px;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  font-size: 13px;
+}
+.pk-zoek-invoer::placeholder {
+  color: var(--theme-text-faint);
+}
+.pk-zoek-wis {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--theme-text-muted, var(--theme-text));
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pk-zoek-wis:hover {
+  background: var(--theme-bg-hover, rgba(128, 128, 128, 0.12));
+  color: var(--theme-text);
+}
+/* Vaste hoogte: de regel wisselt tussen de toetsenhulp en het aantal treffers
+   en mag de kolommen eronder daarbij niet laten verspringen. */
+.pk-zoek-status {
+  min-height: 14px;
+  font-size: 10.5px;
+  line-height: 1.3;
+  color: var(--theme-text-muted, var(--theme-text));
+}
+
+/* Zichtbare focus. De rijen en de snelkeuzen hadden er geen; met het
+   toetsenbord was niet te zien waar je stond. */
+.pk-zoek-invoer:focus-visible,
+.pk-zoek-wis:focus-visible,
+.pk-rij:focus-visible,
+.pk-gebruikt-knop:focus-visible,
+.pk-knop:focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: 1px;
+}
+.pk-zoek-invoer:focus-visible {
+  border-color: var(--theme-accent);
+}
+/* Op een gekozen rij valt een accentkleurige rand weg tegen de achtergrond. */
+.pk-rij.actief:focus-visible {
+  outline-color: var(--theme-text);
+  outline-offset: -2px;
+}
+
+/* De rij die de pijltjestoetsen aanwijzen. De focus blijft in het zoekveld
+   (aria-activedescendant), dus deze rand is het enige dat laat zien waar
+   Enter op valt. */
+.pk-rij.gemarkeerd {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: -2px;
+}
+.pk-rij.actief.gemarkeerd {
+  outline-color: var(--theme-text);
+}
+
+/* "In dit project" binnen een stap: compacter dan in de materiaalstap, en
+   begrensd in hoogte — een project met veel profielen mag de lijsten eronder
+   niet wegdrukken. */
+.pk-gebruikt-stap {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.pk-gebruikt-stap .pk-gebruikt-rij {
+  max-height: 58px;
+  overflow-y: auto;
+}
+/* De focusrand naar binnen: een schuifbak snijdt een rand aan de buitenkant
+   af, en ruimte ervoor maken met een negatieve marge gaf in een smal venster
+   horizontale overloop. */
+.pk-gebruikt-stap .pk-gebruikt-knop:focus-visible {
+  outline-offset: -2px;
+}
+.pk-gebruikt-stap .pk-gebruikt-knop {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 8px;
+}
+.pk-gebruikt-knop.actief {
+  border-color: var(--theme-accent);
+  box-shadow: inset 0 0 0 1px var(--theme-accent);
+}
+
+/* Reeksrij met het aantal treffers rechts. */
+.pk-rij-reeks {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pk-rij-tekst {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pk-telling {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+/* Een reeks zonder treffers blijft op zijn plaats staan — de kolom verspringt
+   niet tijdens het typen — maar is zichtbaar niet te kiezen. */
+.pk-rij:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pk-rij:disabled:hover {
+  background: none;
+}
+
+/* Treffers per reeks. De reekskop blijft boven in de schuifbak staan, zodat je
+   ook halverwege een lange groep ziet in welke reeks je zit. */
+.pk-groep {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.pk-groep-kop {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 8px 3px;
+  border-bottom: 1px solid var(--theme-border-subtle);
+  background: var(--theme-dialog-content-bg, var(--theme-bg));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--theme-text-muted, var(--theme-text));
+}
+/* `.pk-scroll` zet display:flex en wint daarmee van het hidden-attribuut. */
+.pk-scroll[hidden] {
+  display: none;
+}
+
+/* Geen treffers. */
+.pk-leeg {
+  padding: 10px;
+  border: 1px dashed var(--theme-border-subtle);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--theme-text);
+  overflow-wrap: anywhere;
+}
+.pk-leeg p {
+  margin: 0 0 6px;
+}
+p.pk-leeg {
+  margin: 0;
+  align-self: stretch;
+}
+
+/* In de stap "Eigen doorsnede" staat het zoekveld in een KOLOM; de vaste
+   flex-basis hierboven zou daar een hoogte worden. */
+.pk-eigen .pk-zoek {
+  flex: 0 0 auto;
+  width: 282px;
+  max-width: 100%;
+}
+
+/* Smal venster: zoekveld en snelkeuzen onder elkaar, op volle breedte. De
+   balk blijft boven in beeld terwijl de stap als geheel schuift; de
+   snelkeuzen krijgen daarom nog maar één regel hoogte. De reekskop plakt hier
+   niet: er is geen eigen schuifbak meer waarbinnen hij zou blijven staan. */
+@media (max-width: 860px) {
+  .pk-kopbalk {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--theme-dialog-content-bg, var(--theme-bg));
+  }
+  .pk-zoek,
+  .pk-gebruikt-stap {
+    flex: 1 1 100%;
+  }
+  .pk-gebruikt-stap .pk-gebruikt-rij {
+    max-height: 30px;
+  }
+  .pk-groep-kop {
+    position: static;
+  }
+}

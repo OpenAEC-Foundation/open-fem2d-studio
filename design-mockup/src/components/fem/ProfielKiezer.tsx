@@ -39,8 +39,31 @@
  * langs precies dezelfde weg als de beugelgegevens. Wat de stap er wél bij
  * toont is de tweede nuttige hoogte: met een eigen dekking boven en onder is
  * d aan de trekzijde boven niet meer h − d.
+ *
+ * ZOEKEN EN "IN DIT PROJECT" IN DE PROFIELSTAP (issue #39)
+ * Wie het profiel al kent hoeft de reeks niet meer op te zoeken: het zoekveld
+ * boven de staalstap geeft treffers uit ALLE reeksen, per reeks gegroepeerd,
+ * en de reekskolom telt ze. De zoekregels staan in `lib/profielZoeken.ts`
+ * (pure functie, eigen test); hier staat alleen het scherm. Zonder zoekterm
+ * werkt de stap per reeks, zoals altijd.
+ *  - Toetsen: de focus staat bij openen in het zoekveld; pijltjes lopen door
+ *    de lijst, Enter kiest de gemarkeerde rij (en past toe als die al gekozen
+ *    is), Esc wist eerst de zoekterm en sluit pas bij een lege term.
+ *  - Het zoekveld zoekt het BEGINprofiel. Het eindprofiel van een verlopende
+ *    staaf houdt zijn eigen keuzelijst: die bevat alleen de I- en H-profielen
+ *    waarvan een verloop bestaat, staat al per reeks gegroepeerd en laat zich
+ *    met het toetsenbord doorzoeken. Eén zoekveld voor twee keuzen zou de
+ *    vraag oproepen welke van de twee je aan het zoeken bent; het label zegt
+ *    daarom "beginprofiel" zodra de schakelaar aan staat.
+ *  - De houtstap heeft geen zoekveld: daar valt geen lijst te doorzoeken, de
+ *    doorsnede is twee getallen. De eigen doorsneden hebben er wel een.
+ *  - "In dit project" staat ook in de staal- en de houtstap, met alleen de
+ *    combinaties die díe stap kan maken. Eén klik zet profiel en klasse in de
+ *    stap; anders dan in de materiaalstap sluit het venster niet, want hier
+ *    staan de schakelaar voor het verloop en de knop Toepassen nog open.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import { STEEL_SECTION_DIMS } from "../../lib/steelSectionDims.generated";
@@ -122,6 +145,13 @@ import {
   profielenVanReeks,
   reeksVanProfiel,
 } from "../../lib/profieleditor/catalogus";
+import {
+  bevatZoekterm,
+  catalogusZoekReeksen,
+  inGebruikVoorStap,
+  verplaatsMarkering,
+  zoekProfielen,
+} from "../../lib/profielZoeken";
 import ProfielEditor from "../profieleditor/ProfielEditor";
 import Modal from "../Modal";
 import CltOpbouwTekening, { CLT_THEMA_KLEUREN } from "../clt/CltOpbouwTekening";
@@ -250,7 +280,11 @@ const STAAL_REEKSEN = REEKSEN;
 // er in die stap drie kolommen naast elkaar en past 720 niet meer. De maat
 // blijft voor élke stap dezelfde — dát was de afspraak, niet het getal.
 const VENSTER_BREEDTE = 880;
-const VENSTER_HOOGTE = 600;
+// 680 sinds het zoekveld en "In dit project" boven de profielstap staan (issue
+// #39): die balk kost ruim 70 px, en op 600 viel de schakelaar "Verlopend
+// profiel" daardoor onder de vouw van de detailkolom. `Modal` begrenst de
+// hoogte op 90 % van het scherm, dus op een laag scherm schuift de inhoud.
+const VENSTER_HOOGTE = 680;
 
 const HOUT_DOORSNEDE_DEFAULT = { b: 71, h: 171 };
 const BETON_DOORSNEDE_DEFAULT = { b: 300, h: 500, bw: 300, hf: 200 };
@@ -488,6 +522,88 @@ export default function ProfielKiezer({
 
   // Op maat gesorteerd, met de decimaal erin: "DIN 42.5" hoort tussen 40 en 45.
   const reeksProfielen = useMemo(() => profielenVanReeks(reeks), [reeks]);
+
+  // ── Zoeken over alle reeksen heen (issue #39) ────────────────────────────
+  // De regels staan in `lib/profielZoeken.ts`; hier alleen wat het scherm
+  // nodig heeft: de term, een reeks waarop de treffers versmald zijn, en de
+  // rij die de pijltjestoetsen aanwijzen.
+  const zoekId = useId();
+  const lijstId = `${zoekId}-lijst`;
+  const statusId = `${zoekId}-status`;
+  const optieId = (naam: string) => `${zoekId}-optie-${naam}`;
+  const zoekRef = useRef<HTMLInputElement>(null);
+  const eigenZoekRef = useRef<HTMLInputElement>(null);
+  const [zoekterm, setZoekterm] = useState("");
+  const [zoekReeks, setZoekReeks] = useState<string | null>(null);
+  const [gemarkeerd, setGemarkeerd] = useState<string | null>(null);
+  const [eigenZoekterm, setEigenZoekterm] = useState("");
+  // De vertaalde reeksnaam is zelf een zoekwoord ("koker 100", "hollow 100").
+  const zoekReeksen = useMemo(
+    () => catalogusZoekReeksen((r) => vertaalWaarde(t, reeksLabel(r))),
+    [t],
+  );
+  const zoekUitslag = useMemo(() => zoekProfielen(zoekterm, zoekReeksen), [zoekterm, zoekReeksen]);
+  const zoekActief = zoekUitslag.actief;
+  // Een reeksfilter dat door verder typen leeg is geraakt, vervalt vanzelf:
+  // anders zou de lijst leeg staan terwijl er elders wél treffers zijn.
+  const reeksFilter =
+    zoekActief && zoekReeks !== null && (zoekUitslag.perReeks[zoekReeks] ?? 0) > 0 ? zoekReeks : null;
+  const getoondeGroepen = zoekActief
+    ? zoekUitslag.groepen.filter((g) => reeksFilter === null || g.reeksId === reeksFilter)
+    : [{ reeksId: reeks, oud: false, treffers: reeksProfielen }];
+  // De eigen tussendoorsnede van een gesplitste verlopende staaf staat in geen
+  // reeks; hij doet mee op zijn naam.
+  const eigenBeginNaam = eigenVerloop.begin
+    ? vertaalWaarde(t, profielNaamTekst(eigenNaamVan(eigenVerloop.begin) ?? ""))
+    : "";
+  const toonEigenBegin =
+    !!eigenVerloop.begin && (!zoekActief || bevatZoekterm(eigenBeginNaam, zoekterm));
+  /** Alle rijen van de profielkolom, in schermvolgorde — het pad van de pijltjes. */
+  const navigatie = [
+    ...(toonEigenBegin ? [eigenVerloop.begin!] : []),
+    ...getoondeGroepen.flatMap((g) => g.treffers),
+  ];
+  // Tijdens het zoeken wijst de markering standaard de eerste treffer aan,
+  // zodat "hea160" + Enter genoeg is; zonder zoekterm het gekozen profiel.
+  const markering =
+    gemarkeerd !== null && navigatie.includes(gemarkeerd)
+      ? gemarkeerd
+      : zoekActief
+        ? navigatie[0] ?? null
+        : navigatie.includes(staalProfiel) ? staalProfiel : null;
+  // Alleen ná een pijltjestoets de rij in beeld schuiven. Bij het openen zou
+  // dat in een smal venster (waar de hele stap schuift) het zoekveld zelf uit
+  // beeld duwen.
+  const schuifNaToets = useRef(false);
+  useEffect(() => {
+    if (!schuifNaToets.current || markering === null) return;
+    schuifNaToets.current = false;
+    document.getElementById(optieId(markering))?.scrollIntoView({ block: "nearest" });
+    // optieId hangt alleen van zoekId af, en dat ligt vast.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markering]);
+  // Focus bij openen — en bij het binnenkomen van de stap — in het zoekveld.
+  useEffect(() => {
+    if (!open) return;
+    if (soort === "staal") zoekRef.current?.focus();
+    else if (soort === "eigen") eigenZoekRef.current?.focus();
+  }, [open, soort]);
+
+  const wisZoekterm = () => {
+    setZoekterm("");
+    setZoekReeks(null);
+    setGemarkeerd(null);
+    zoekRef.current?.focus();
+  };
+  /** Een profiel kiezen zet ook zijn reeks: na het wissen van de term staat de lijst dan goed. */
+  const kiesStaalProfiel = (naam: string) => {
+    setStaalProfiel(naam);
+    const r = reeksVanProfiel(naam);
+    if (r) setReeks(r);
+  };
+  const staalInGebruik = useMemo(() => inGebruikVoorStap(inGebruik ?? [], "staal"), [inGebruik]);
+  const houtInGebruik = useMemo(() => inGebruikVoorStap(inGebruik ?? [], "hout"), [inGebruik]);
+  const eigenGefilterd = eigenDoorsneden.filter((d) => bevatZoekterm(d.naam, eigenZoekterm));
 
   const dims = staalProfiel ? STEEL_SECTION_DIMS[staalProfiel] : undefined;
   const sectie = staalProfiel ? STEEL_SECTIONS[staalProfiel] : undefined;
@@ -857,6 +973,93 @@ export default function ProfielKiezer({
     : soort === "overig" ? !overigGeldig
     : true;
 
+  // ── Toetsen in het zoekveld (issue #39) ──────────────────────────────────
+  const opZoekToets = (e: KeyboardEvent<HTMLInputElement>) => {
+    // Een toets die een samengesteld teken afmaakt (IME) is geen opdracht.
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      schuifNaToets.current = true;
+      setGemarkeerd(verplaatsMarkering(navigatie, markering, e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (markering === null) return;
+      // Eerste Enter kiest; staat de rij al gekozen, dan is Enter "Toepassen".
+      if (markering === staalProfiel && !toepassenUit) pasToe();
+      else kiesStaalProfiel(markering);
+    } else if (e.key === "Escape" && zoekterm !== "") {
+      // Esc wist eerst de zoekterm. De toets mag dan het venster niet meer
+      // bereiken: `Modal` luistert op het document en zou meteen sluiten.
+      e.preventDefault();
+      e.stopPropagation();
+      wisZoekterm();
+    }
+  };
+  const opEigenZoekToets = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape" && eigenZoekterm !== "" && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      e.stopPropagation();
+      setEigenZoekterm("");
+    }
+  };
+
+  /**
+   * "In dit project" binnen een profielstap. Eén klik zet de keuze IN de stap;
+   * het venster blijft open, want het verloop en Toepassen staan er nog.
+   */
+  const kiesStaalInGebruik = (g: ProfielInGebruik) => {
+    kiesStaalProfiel(profileLookupKey(g.profile));
+    setStaalKlasse(g.material);
+    // Een zoekterm zou de gekozen rij kunnen verbergen; de lijst springt
+    // daarom terug naar de reeks van het gekozen profiel.
+    setZoekterm("");
+    setZoekReeks(null);
+    setGemarkeerd(null);
+  };
+  const kiesHoutInGebruik = (g: ProfielInGebruik) => {
+    setHoutKlasse(g.material);
+    const rechthoek = parseRechthoek(g.profile);
+    if (isCltProfiel(g.profile)) {
+      setHoutType("clt");
+      setCltTekst(g.profile);
+    } else if (rechthoek) {
+      setHoutType("massief");
+      setHoutB(rechthoek.b);
+      setHoutH(rechthoek.h);
+    }
+  };
+  const houtIsGekozen = (g: ProfielInGebruik) => {
+    if (g.material !== houtKlasse) return false;
+    if (isCltProfiel(g.profile)) return houtType === "clt" && g.profile === cltTekst;
+    const rechthoek = parseRechthoek(g.profile);
+    return houtType === "massief" && rechthoek?.b === houtB && rechthoek?.h === houtH;
+  };
+  const snelkeuzen = (
+    lijst: ProfielInGebruik[],
+    kies: (g: ProfielInGebruik) => void,
+    isGekozen: (g: ProfielInGebruik) => boolean,
+  ): ReactNode =>
+    lijst.length > 0 && (
+      <div className="pk-gebruikt pk-gebruikt-stap">
+        <div className="pk-kolom-kop">{t("profilePicker.inProject")}</div>
+        <div className="pk-gebruikt-rij">
+          {lijst.map((g) => (
+            <button
+              key={`${g.profile}|${g.material}`}
+              type="button"
+              className={`pk-gebruikt-knop${isGekozen(g) ? " actief" : ""}`}
+              aria-pressed={isGekozen(g)}
+              title={t("profilePicker.inUsePickTitle", { profiel: g.profile, materiaal: g.material, count: g.aantal })}
+              onClick={() => kies(g)}
+            >
+              <span className="pk-gebruikt-naam">{g.profile}</span>
+              <span className="pk-rij-sub">{g.material} · {g.aantal}×</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+
   if (!open) return null;
 
   return (
@@ -921,43 +1124,174 @@ export default function ProfielKiezer({
       )}
 
       {soort === "staal" && (
+        <>
+        {/* Boven de kolommen: het zoekveld en wat er al in het project staat
+            (issue #39). Buiten `.pk-stap2`, zodat het bij het schuiven van een
+            kolom op zijn plaats blijft. */}
+        <div className="pk-kopbalk">
+          <div className="pk-zoek">
+            {/* Met het verloop aan zoekt dit veld het BEGINprofiel; het eind
+                heeft zijn eigen keuzelijst (zie de kop van dit bestand). */}
+            <label className="pk-kolom-kop" htmlFor={zoekId}>
+              {verlopend ? t("profilePicker.searchLabelStart") : t("profilePicker.searchLabel")}
+            </label>
+            <div className="pk-zoek-veld">
+              <input
+                ref={zoekRef}
+                id={zoekId}
+                className="pk-zoek-invoer"
+                type="text"
+                role="combobox"
+                aria-expanded="true"
+                aria-controls={lijstId}
+                aria-autocomplete="list"
+                aria-activedescendant={markering !== null ? optieId(markering) : undefined}
+                aria-describedby={statusId}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={t("profilePicker.searchPlaceholder")}
+                value={zoekterm}
+                onChange={(e) => { setZoekterm(e.target.value); setGemarkeerd(null); }}
+                onKeyDown={opZoekToets}
+              />
+              {zoekterm !== "" && (
+                <button
+                  type="button"
+                  className="pk-zoek-wis"
+                  aria-label={t("profilePicker.searchClear")}
+                  title={t("profilePicker.searchClear")}
+                  onClick={wisZoekterm}
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+            {/* Zonder term de toetsen, met term het aantal treffers; als
+                `status` wordt een verandering ook voorgelezen. */}
+            <div id={statusId} className="pk-zoek-status" role="status">
+              {zoekActief
+                ? t("profilePicker.searchCount", { count: navigatie.length })
+                : t("profilePicker.searchHint")}
+            </div>
+          </div>
+          {snelkeuzen(
+            staalInGebruik,
+            kiesStaalInGebruik,
+            (g) => profileLookupKey(g.profile) === staalProfiel && g.material === staalKlasse,
+          )}
+        </div>
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
             <div className="pk-kolom-kop">{t("profilePicker.series")}</div>
-            {STAAL_REEKSEN.map((r) => (
-              <button
-                key={r.id}
-                className={`pk-rij${reeks === r.id ? " actief" : ""}`}
-                onClick={() => { setReeks(r.id); setStaalProfiel(""); }}
-              >
-                {vertaalWaarde(t, reeksLabel(r))}
-              </button>
-            ))}
+            <div className="pk-scroll">
+              {/* Tijdens het zoeken telt de reekskolom de treffers en versmalt
+                  een klik de lijst tot die reeks; zonder term kiest een klik
+                  de reeks, zoals altijd. */}
+              {zoekActief && (
+                <button
+                  type="button"
+                  className={`pk-rij pk-rij-reeks${reeksFilter === null ? " actief" : ""}`}
+                  aria-pressed={reeksFilter === null}
+                  onClick={() => { setZoekReeks(null); setGemarkeerd(null); }}
+                >
+                  <span className="pk-rij-tekst">{t("profilePicker.allSeries")}</span>
+                  <span className="pk-telling">{zoekUitslag.totaal}</span>
+                </button>
+              )}
+              {STAAL_REEKSEN.map((r) => {
+                const label = vertaalWaarde(t, reeksLabel(r));
+                const aantal = zoekUitslag.perReeks[r.id] ?? 0;
+                const actief = zoekActief ? reeksFilter === r.id : reeks === r.id;
+                return (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`pk-rij pk-rij-reeks${actief ? " actief" : ""}`}
+                    aria-pressed={actief}
+                    aria-label={zoekActief ? t("profilePicker.seriesHits", { reeks: label, count: aantal }) : undefined}
+                    disabled={zoekActief && aantal === 0}
+                    onClick={() => {
+                      if (zoekActief) {
+                        setZoekReeks(reeksFilter === r.id ? null : r.id);
+                        setGemarkeerd(null);
+                      } else {
+                        setReeks(r.id);
+                        setStaalProfiel("");
+                      }
+                    }}
+                  >
+                    <span className="pk-rij-tekst">{label}</span>
+                    {zoekActief && <span className="pk-telling">{aantal}</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
           <div className="pk-kolom pk-kolom-maat">
             <div className="pk-kolom-kop">{t("profilePicker.profile")}</div>
-            <div className="pk-scroll">
+            <div
+              className="pk-scroll"
+              id={lijstId}
+              role="listbox"
+              aria-label={t("profilePicker.profile")}
+              hidden={navigatie.length === 0}
+            >
               {/* Het beginprofiel van een gesplitst deel: een eigen gelaste
                   tussendoorsnede die in geen reeks staat (issue #31). */}
-              {eigenVerloop.begin && (
+              {toonEigenBegin && (
                 <button
-                  className={`pk-rij pk-rij-eigen${staalProfiel === eigenVerloop.begin ? " actief" : ""}`}
+                  type="button"
+                  role="option"
+                  id={optieId(eigenVerloop.begin!)}
+                  aria-selected={staalProfiel === eigenVerloop.begin}
+                  className={`pk-rij pk-rij-eigen${staalProfiel === eigenVerloop.begin ? " actief" : ""}${markering === eigenVerloop.begin ? " gemarkeerd" : ""}`}
                   onClick={() => setStaalProfiel(eigenVerloop.begin!)}
                   title={t("profilePicker.kinds.eigen.label")}
                 >
-                  {vertaalWaarde(t, profielNaamTekst(eigenNaamVan(eigenVerloop.begin) ?? ""))}
+                  {eigenBeginNaam}
                 </button>
               )}
-              {reeksProfielen.map((naam) => (
-                <button
-                  key={naam}
-                  className={`pk-rij${staalProfiel === naam ? " actief" : ""}`}
-                  onClick={() => setStaalProfiel(naam)}
-                >
-                  {profielLabel(naam)}
-                </button>
-              ))}
+              {getoondeGroepen.map((g) => {
+                const reeksVanGroep = STAAL_REEKSEN.find((r) => r.id === g.reeksId);
+                const groepLabel = reeksVanGroep ? vertaalWaarde(t, reeksLabel(reeksVanGroep)) : g.reeksId;
+                return (
+                  <div key={g.reeksId} className="pk-groep" role="group" aria-label={groepLabel}>
+                    {/* De reekskop alleen tijdens het zoeken: zonder term
+                        staat de reeks al in de kolom ernaast. */}
+                    {zoekActief && (
+                      <div className="pk-groep-kop" aria-hidden="true">
+                        <span className="pk-rij-tekst">{groepLabel}</span>
+                        <span className="pk-telling">{g.treffers.length}</span>
+                      </div>
+                    )}
+                    {g.treffers.map((naam) => (
+                      <button
+                        key={naam}
+                        type="button"
+                        role="option"
+                        id={optieId(naam)}
+                        aria-selected={staalProfiel === naam}
+                        className={`pk-rij${staalProfiel === naam ? " actief" : ""}${markering === naam ? " gemarkeerd" : ""}`}
+                        onClick={() => kiesStaalProfiel(naam)}
+                      >
+                        {profielLabel(naam)}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
+            {/* Geen treffers: zeggen dát er niets is, waarop gezocht wordt, en
+                hoe je eruit komt — geen stille lege kolom. */}
+            {zoekActief && navigatie.length === 0 && (
+              <div className="pk-leeg">
+                <p>{t("profilePicker.searchNone", { term: zoekterm.trim() })}</p>
+                <p className="pk-hint">{t("profilePicker.searchNoneHint")}</p>
+                <button type="button" className="pk-knop pk-knop-klein" onClick={wisZoekterm}>
+                  {t("profilePicker.searchClear")}
+                </button>
+              </div>
+            )}
           </div>
           <div className="pk-kolom pk-kolom-detail">
             <div className="pk-kolom-kop">{t("profilePicker.materialClass")}</div>
@@ -1048,9 +1382,18 @@ export default function ProfielKiezer({
             </div>
           </div>
         </div>
+        </>
       )}
 
       {soort === "hout" && (
+        <>
+        {/* Wat er al aan hout in het project staat; geen zoekveld, want de
+            doorsnede is hier twee getallen en geen lijst (issue #39). */}
+        {houtInGebruik.length > 0 && (
+          <div className="pk-kopbalk">
+            {snelkeuzen(houtInGebruik, kiesHoutInGebruik, houtIsGekozen)}
+          </div>
+        )}
         <div className="pk-stap2">
           <div className="pk-kolom pk-kolom-reeks">
             <div className="pk-kolom-kop">{t("profilePicker.shape")}</div>
@@ -1413,6 +1756,7 @@ export default function ProfielKiezer({
             </>
           )}
         </div>
+        </>
       )}
 
       {soort === "beton" && (
@@ -1767,8 +2111,43 @@ export default function ProfielKiezer({
               {t("profilePicker.noOwnSections")}
             </p>
           ) : (
-            <div className="pk-scroll">
-              {eigenDoorsneden.map((d) => (
+            <>
+            <div className="pk-zoek">
+              <label className="pk-kolom-kop" htmlFor={`${zoekId}-eigen`}>
+                {t("profilePicker.searchOwnLabel")}
+              </label>
+              <div className="pk-zoek-veld">
+                <input
+                  ref={eigenZoekRef}
+                  id={`${zoekId}-eigen`}
+                  className="pk-zoek-invoer"
+                  type="text"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={eigenZoekterm}
+                  onChange={(e) => setEigenZoekterm(e.target.value)}
+                  onKeyDown={opEigenZoekToets}
+                />
+                {eigenZoekterm !== "" && (
+                  <button
+                    type="button"
+                    className="pk-zoek-wis"
+                    aria-label={t("profilePicker.searchClear")}
+                    title={t("profilePicker.searchClear")}
+                    onClick={() => { setEigenZoekterm(""); eigenZoekRef.current?.focus(); }}
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+            </div>
+            {eigenGefilterd.length === 0 && (
+              <p className="pk-leeg" role="status">
+                {t("profilePicker.searchOwnNone", { term: eigenZoekterm.trim() })}
+              </p>
+            )}
+            <div className="pk-scroll" hidden={eigenGefilterd.length === 0}>
+              {eigenGefilterd.map((d) => (
                 <button
                   key={d.id}
                   className="pk-rij pk-rij-eigen"
@@ -1783,6 +2162,7 @@ export default function ProfielKiezer({
                 </button>
               ))}
             </div>
+            </>
           )}
 
           <button className="pk-knop" onClick={() => setEditorOpen(true)}>
