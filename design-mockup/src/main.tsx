@@ -2,6 +2,10 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./i18n/config";
 import App from "./App";
+import { installeerSelecteerBijFocus } from "./lib/selecteerBijFocus";
+
+// Eén klik in een invoerveld selecteert de hele waarde (alle vensters van de app).
+installeerSelecteerBijFocus();
 
 // Production: disable context menu and browser dev shortcuts
 if (import.meta.env.PROD) {

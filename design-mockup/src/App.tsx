@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
+import { undoRoute, moetEerstVastleggen } from "./lib/undoRoute";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import TitleBar from "./components/TitleBar";
@@ -1814,22 +1815,35 @@ function App() {
     void rekenDoor();
   }, [fem, rekenDoor]);
 
-  // Keyboard: Ctrl+Z / Ctrl+Y for undo/redo
+  // Keyboard: Ctrl+Z / Ctrl+Y for undo/redo. In vrije-tekstvelden blijft het de
+  // tekst-undo van de browser; in getalvelden, keuzelijsten e.d. gaat het naar
+  // de modelhistorie (zie lib/undoRoute.ts) — anders lijkt een verplaatsing via
+  // het eigenschappenpaneel niet terug te draaien zolang de cursor in het veld staat.
+  const undoRedoRef = useRef({ undo: fem.undo, redo: fem.redo });
+  undoRedoRef.current = { undo: fem.undo, redo: fem.redo };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      const isUndo = k === "z" && !e.shiftKey;
+      const isRedo = k === "y" || (e.shiftKey && k === "z");
+      if (!isUndo && !isRedo) return;
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
-        e.preventDefault();
-        fem.undo();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
-        e.preventDefault();
-        fem.redo();
+      if (undoRoute(t as HTMLInputElement | null) === "veld") return;
+      e.preventDefault();
+      const voerUit = () => (isUndo ? undoRedoRef.current.undo() : undoRedoRef.current.redo());
+      if (moetEerstVastleggen(t)) {
+        // Eerst vastleggen: een half ingetypte waarde wordt een historiestap en
+        // gaat dan mee terug. Een tik wachten, zodat undo de stap van de blur kent.
+        t?.blur();
+        setTimeout(voerUit, 0);
+      } else {
+        voerUit();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fem]);
+  }, []);
 
   // C1: Ctrl+S / Cmd+S = Opslaan, Ctrl+Shift+S = Opslaan als. Altijd
   // preventDefault zodat de browser-save-dialoog nooit verschijnt; opslaan
