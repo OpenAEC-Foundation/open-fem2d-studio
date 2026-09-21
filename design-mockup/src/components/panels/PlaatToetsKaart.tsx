@@ -7,30 +7,49 @@
  * kop, net als bij een staaf — en een geweigerde plaat toont alleen haar reden,
  * nooit een UC.
  */
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlateCheckResult } from "../../lib/types/plaat/PlateCheckResult";
 import type { PlaatSkip } from "../../lib/plaatCheckBuilder";
+import { maatgevendVanPlaat, sorteerRegels, ucKlasse, type ToetsVolgorde } from "../../lib/maatgevend";
 import CheckBlock from "./CheckBlock";
+import { ToetsLijst, type CombinatieNamen, type TekenvlakDoel } from "./MaatgevendBlokken";
 import "./CheckPanel.css";
 
+const UC_CSS = { goed: "cp-uc-ok", letop: "cp-uc-warn", overschreden: "cp-uc-fail" } as const;
 function ucClass(uc: number): string {
-  if (uc > 1.0) return "cp-uc-fail";
-  if (uc > 0.9) return "cp-uc-warn";
-  return "cp-uc-ok";
+  return UC_CSS[ucKlasse(uc)];
 }
 
 const nl = (v: number, d: number) => v.toLocaleString("nl-NL", { maximumFractionDigits: d });
 
-export function PlaatToetsKaart({ result }: { result: PlateCheckResult }) {
+export function PlaatToetsKaart({ result, focusToken, namen, onToon }: {
+  result: PlateCheckResult;
+  /** Niet-null → kaart openklappen en in beeld scrollen (klik in het modeloverzicht). */
+  focusToken?: object | null;
+  namen?: CombinatieNamen;
+  onToon?: (doel: TekenvlakDoel) => void;
+}) {
   const { t } = useTranslation("check");
   const [open, setOpen] = useState(false);
+  const [volgorde, setVolgorde] = useState<ToetsVolgorde>("uc");
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Zelfde afleiding als bij een staaf (`lib/maatgevend`): een plaat heeft
+  // geen positie x maar een element, en alleen bij haar maatgevende toets.
+  const overzicht = useMemo(() => maatgevendVanPlaat(result), [result]);
+  useEffect(() => {
+    if (!focusToken) return;
+    setOpen(true);
+    requestAnimationFrame(() => {
+      cardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [focusToken]);
   const geweigerd = result.geweigerd !== undefined;
   const status = result.status;
   const maatgevend = result.checks.find((c) => c.id === result.governing_check_id);
 
   return (
-    <div className={`cp-card cp-status-${status.toLowerCase()}`}>
+    <div ref={cardRef} className={`cp-card cp-status-${status.toLowerCase()}`}>
       <button className="cp-card-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         <svg
           className={`cp-chevron${open ? " open" : ""}`}
@@ -95,15 +114,8 @@ export function PlaatToetsKaart({ result }: { result: PlateCheckResult }) {
 
       {open && (
         <div className="cp-card-body">
-          {result.niet_getoetst.length > 0 && (
-            <ul className="cp-spanning-notes">
-              {result.niet_getoetst.map((n) => (
-                <li key={n.id}>
-                  <strong>{n.titel}</strong> — {n.reden}
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* Wat niet getoetst is staat met zijn reden in de toetslijst
+              hieronder, op dezelfde plek als bij een staaf. */}
           {result.notes.length > 0 && (
             <ul className="cp-spanning-notes">
               {result.notes.map((n, i) => (
@@ -111,17 +123,26 @@ export function PlaatToetsKaart({ result }: { result: PlateCheckResult }) {
               ))}
             </ul>
           )}
-          {[...result.checks]
-            .sort((a, b) => (b.kind.data.uc?.uc ?? -1) - (a.kind.data.uc?.uc ?? -1))
-            .map((named) => (
+          <ToetsLijst
+            overzicht={overzicht}
+            volgorde={volgorde}
+            onVolgorde={setVolgorde}
+            namen={namen}
+            onToon={onToon}
+          />
+          {sorteerRegels(overzicht.regels, volgorde).map((regel) => {
+            const named = result.checks.find((c) => c.id === regel.id);
+            return named ? (
               <CheckBlock
                 key={named.id}
                 check={named.kind.data}
+                maatgevend={regel.maatgevend}
                 krachtregel={t("plaat.krachtregel", {
                   combinatie: named.kind.data.force_state.combination_id,
                 })}
               />
-            ))}
+            ) : null;
+          })}
         </div>
       )}
     </div>

@@ -136,6 +136,7 @@ function Afleiding({ stappen }: { stappen: Deelstap[] }) {
 export default function CheckBlock({
   check,
   krachtregel,
+  maatgevend = false,
 }: {
   check: CheckLike;
   /**
@@ -145,6 +146,11 @@ export default function CheckBlock({
    * Ontbreekt de prop, dan is het blok ongewijzigd.
    */
   krachtregel?: ReactNode;
+  /**
+   * Dit is de maatgevende toets van de staaf of plaat (issue #41): het woord
+   * staat dan achter de titel, zodat het onderscheid niet aan kleur hangt.
+   */
+  maatgevend?: boolean;
 }) {
   const { t } = useTranslation("check");
   const formulaRef = useRef<HTMLDivElement>(null);
@@ -166,9 +172,12 @@ export default function CheckBlock({
   const intermediates = isStability(check) ? check.intermediate_values : [];
 
   return (
-    <div className="check-block">
+    <div className={`check-block${maatgevend ? " check-block-maatgevend" : ""}`}>
       <div className="check-header">
-        <h3 className="check-title">{check.title}</h3>
+        <h3 className="check-title">
+          {check.title}
+          {maatgevend && <span className="cp-maatgevend-label">{t("maatgevend.label")}</span>}
+        </h3>
         <span className="check-article">{artikel}</span>
       </div>
 

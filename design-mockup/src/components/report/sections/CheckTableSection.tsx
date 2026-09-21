@@ -2,8 +2,10 @@
  * CheckTableSection — het toetsingsoverzicht.
  *
  * Eén regel per getoetste staaf: profiel/klasse, norm, de maatgevende toets
- * (artikel + titel, met de UC-formule als KaTeX) en de hoogste unity check met
- * status. Bij tien staven dus tien regels.
+ * (artikel + titel, met de UC-formule als KaTeX), de combinatie en de positie
+ * x waarop de kern haar rekende (issue #41, uit `lib/maatgevend` — dezelfde
+ * afleiding als het toetsingspaneel), en de hoogste unity check met status.
+ * Bij tien staven dus tien regels.
  *
  * Bewust alléén de maatgevende toets. Er is hier ook een variant geweest die
  * álle toetsen per staaf opsomde — zoals het referentie-rapport dat doet —
@@ -33,6 +35,7 @@ import {
   type MemberCheckResult,
 } from "../../../lib/checkTypes";
 import { nietUitgevoerdOverzicht, nietUitgevoerdToetsen } from "../../../lib/nietUitgevoerd";
+import { maatgevendVanStaaf } from "../../../lib/maatgevend";
 import { useReportData } from "../ReportDataContext";
 import { useRapportProjectInfo } from "../useProjectInfo";
 import {
@@ -55,8 +58,49 @@ function statusCel(status: CheckStatus): string {
   return "rpt-status-na";
 }
 
+/**
+ * "comb. 4 (UGT 6.10b) · x = 3 000 mm" onder de maatgevende toets. Alleen wat
+ * de kern levert: een doorbuigingstoets draagt geen combinatie, en dan staat
+ * er niets in plaats van "combinatie 0, x = 0 mm".
+ */
+function MaatgevendeHerkomst({ result, namen }: {
+  result: MemberCheckResult;
+  namen: ReadonlyMap<number, string>;
+}) {
+  const { t } = useTranslation("ribbon");
+  const m = maatgevendVanStaaf(result).maatgevend;
+  if (!m) {
+    return <div className="rpt-gov-herkomst">{t("report.maatgevendGeen", "geen toets met een unity check")}</div>;
+  }
+  // De titel in deze cel is de toets die de KERN maatgevend noemt. Wijst de
+  // afleiding een andere aan (een geweigerde staaf, waar de kern zijn reden in
+  // dat veld zet), dan hoort haar combinatie niet onder die titel.
+  if (m.id !== result.governing_check_id) return null;
+  const delen: string[] = [];
+  if (m.combinatieId !== null) {
+    const naam = namen.get(m.combinatieId);
+    delen.push(
+      naam
+        ? t("report.maatgevendCombinatieMetNaam", "comb. {{id}} ({{naam}})", { id: m.combinatieId, naam })
+        : t("report.maatgevendCombinatie", "comb. {{id}}", { id: m.combinatieId }),
+    );
+  }
+  if (m.positieMm !== null) {
+    delen.push(
+      t("report.maatgevendPositie", "x = {{x}} mm", {
+        x: m.positieMm.toLocaleString("nl-NL", { maximumFractionDigits: 0 }),
+      }),
+    );
+  }
+  if (delen.length === 0) return null;
+  return <div className="rpt-gov-herkomst">{delen.join(" · ")}</div>;
+}
+
 /** Beknopt: één regel per staaf met de maatgevende toets. */
-function BeknopteRijen({ results }: { results: MemberCheckResult[] }) {
+function BeknopteRijen({ results, namen }: {
+  results: MemberCheckResult[];
+  namen: ReadonlyMap<number, string>;
+}) {
   const { t } = useTranslation("ribbon");
   return (
     <>
@@ -84,6 +128,7 @@ function BeknopteRijen({ results }: { results: MemberCheckResult[] }) {
                   }}
                 />
               )}
+              <MaatgevendeHerkomst result={r} namen={namen} />
             </td>
             <td className={`rpt-num${r.uc_max > 1 ? " rpt-uc-fail" : ""}`}>
               {fmtUc(r.uc_max)}
@@ -158,7 +203,8 @@ export default function CheckTableSection() {
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
   const lastRunAt = useCheckStore((s) => s.lastRunAt);
-  const { beams } = useReportData();
+  const { beams, combinations } = useReportData();
+  const namen = new Map(combinations.map((c) => [c.id, c.name]));
   // WAAROM DRIE LEEG-MELDINGEN. "Nog niet getoetst — voer de toetsing uit" stond
   // hier ook bij een model zonder één toetsbare staaf (de toetsing keert dan
   // terug zonder te draaien, `lastRunAt` blijft leeg) en bij een ronde waarin
@@ -225,9 +271,16 @@ export default function CheckTableSection() {
               </tr>
             </thead>
             <tbody>
-              <BeknopteRijen results={results} />
+              <BeknopteRijen results={results} namen={namen} />
             </tbody>
           </table>
+
+          <p className="rpt-note rpt-maatgevend-toelichting">
+            {t(
+              "report.maatgevendToelichting",
+              "Per staaf staat de maatgevende toets met de combinatie en de positie x langs de staaf (mm vanaf het begin) waarop de kern haar rekende. Staat er geen combinatie of positie, dan levert de kern die bij deze toets niet (bijvoorbeeld bij de doorbuiging). Toetsen met de status n.v.t. of zonder unity check tellen niet mee als maatgevend.",
+            )}
+          </p>
 
           {basis && <p className="rpt-note rpt-check-basis">{basis}</p>}
 

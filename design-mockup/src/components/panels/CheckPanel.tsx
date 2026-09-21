@@ -8,8 +8,14 @@
  * is identiek. Bij de vrije spanningstoets komt daar de doorsnedetekening met
  * het spanningsverloop bovenop, want daar zit de uitleg in het BEELD.
  * Niet-toetsbare staven staan er met expliciete reden bij.
+ *
+ * WAT MAATGEVEND IS staat er zonder zoeken (issue #41): bovenaan het paneel
+ * het maatgevende onderdeel van het model en per materiaal, per kaart een
+ * regel met de maatgevende toets, haar combinatie en positie, en in de kaart
+ * de lijst van alle toetsen met een balkje per unity check. De afleiding
+ * daarvan staat in `lib/maatgevend.ts`; hier wordt alleen getoond.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckStore } from "../../stores/checkStore";
 import {
@@ -25,7 +31,21 @@ import SpanningDoorsnedeTekening from "../spanning/SpanningDoorsnedeTekening";
 import CheckBlock from "./CheckBlock";
 import VariantenBlok from "./VariantenBlok";
 import { OvergeslagenPlaten, PlaatToetsKaart } from "./PlaatToetsKaart";
-import { governingInfo } from "../report/checkReportUtils";
+import {
+  maatgevendVanStaaf,
+  modelMaatgevend,
+  sorteerRegels,
+  ucKlasse,
+  type MaatgevendOverzicht,
+  type ToetsVolgorde,
+} from "../../lib/maatgevend";
+import {
+  MaatgevendRegel,
+  ModelMaatgevendBlok,
+  ToetsLijst,
+  type CombinatieNamen,
+  type TekenvlakDoel,
+} from "./MaatgevendBlokken";
 import "./CheckPanel.css";
 
 interface CheckPanelProps {
@@ -41,31 +61,18 @@ interface CheckPanelProps {
    * zodat een tweede klik op dezelfde badge opnieuw scrollt.
    */
   focus?: { beamId: number } | null;
+  /**
+   * Klik op een maatgevende regel: zet het tekenvlak op die staaf of plaat, op
+   * de combinatie van de toets, en markeer de positie. Ontbreekt de prop, dan
+   * zijn de regels gewone tekst.
+   */
+  onToonOpTekenvlak?: (doel: TekenvlakDoel) => void;
 }
 
+/** De bestaande kleurklassen van het paneel, op de grenzen uit `lib/maatgevend`. */
+const UC_CSS = { goed: "cp-uc-ok", letop: "cp-uc-warn", overschreden: "cp-uc-fail" } as const;
 function ucClass(uc: number): string {
-  if (uc > 1.0) return "cp-uc-fail";
-  if (uc > 0.9) return "cp-uc-warn";
-  return "cp-uc-ok";
-}
-
-/**
- * Toetsen op unity check, hoogste eerst — de maatgevende bovenaan.
- *
- * De kern levert ze in de volgorde waarin ze berekend zijn (druk, buiging,
- * afschuiving, …). Daardoor opende een kaart met een toets van UC 0,01, terwijl
- * de toets die de staaf afkeurt eronder verstopt zat. Wie een kaart openklapt
- * wil eerst zien wat er knelt.
- *
- * Een toets zonder unity check (niet van toepassing) heeft niets te vergelijken
- * en zakt naar beneden.
- */
-function opUnityCheck<T extends { kind: { data: { uc: { uc: number } | null } } }>(
-  checks: readonly T[],
-): T[] {
-  return [...checks].sort(
-    (a, b) => (b.kind.data.uc?.uc ?? -1) - (a.kind.data.uc?.uc ?? -1),
-  );
+  return UC_CSS[ucKlasse(uc)];
 }
 
 /**
@@ -115,14 +122,22 @@ function SpanningFiguur({ r }: { r: SpanningBeamCheckResult }) {
   );
 }
 
-function MemberCard({ result, focusToken }: {
+function MemberCard({ result, focusToken, namen, onToon }: {
   result: MemberCheckResult;
   /** Niet-null → kaart openklappen + in beeld scrollen (badge-klik). */
   focusToken?: { beamId: number } | null;
+  namen?: CombinatieNamen;
+  onToon?: (doel: TekenvlakDoel) => void;
 }) {
   const { t } = useTranslation("check");
   const [open, setOpen] = useState(false);
+  // Standaard op unity check, hoogste eerst: wie een kaart openklapt wil eerst
+  // zien wat er knelt. De kern levert de toetsen in de volgorde waarin ze
+  // berekend zijn (druk, buiging, afschuiving, …); die normvolgorde blijft een
+  // keuze, voor wie het rapport ernaast legt.
+  const [volgorde, setVolgorde] = useState<ToetsVolgorde>("uc");
   const cardRef = useRef<HTMLDivElement>(null);
+  const overzicht = useMemo(() => maatgevendVanStaaf(result), [result]);
 
   useEffect(() => {
     if (!focusToken) return;
@@ -159,12 +174,6 @@ function MemberCard({ result, focusToken }: {
               ({gradeLabel(result)})
             </span>
           </div>
-          <div className="cp-card-governing">
-            {/* De leesbare toetsnaam, niet de interne sleutel: "Doorbuiging
-                (BGT)" in plaats van "deflection_w_fin". Dezelfde bron als het
-                rapport gebruikt. */}
-            {t("governing")}: {governingInfo(result).title}
-          </div>
         </div>
         <div className={`cp-card-uc ${ucClass(result.uc_max)}`}>
           {result.uc_max.toFixed(2)}
@@ -173,6 +182,11 @@ function MemberCard({ result, focusToken }: {
           {result.status === "Ok" ? t("statusOk") : result.status === "NotOk" ? t("statusNotOk") : t("statusNa")}
         </div>
       </button>
+
+      {/* De maatgevende toets met haar combinatie en positie — buiten de knop
+          van de kop, want deze regel heeft zijn eigen handeling (naar het
+          tekenvlak). De leesbare toetsnaam, niet de interne sleutel. */}
+      <MaatgevendRegel overzicht={overzicht} namen={namen} onToon={onToon} />
 
       {/* Toetsen die NIET uitgevoerd konden worden (basisaudit ruw 55). Ze
           staan BUITEN het openklapbare deel: de badge zegt "n.v.t." en dan
@@ -195,9 +209,20 @@ function MemberCard({ result, focusToken }: {
               "kan het een maatje kleiner?" bij het OPENVOUWEN gesteld wordt,
               niet na twintig KaTeX-blokken. Rekent pas op verzoek. */}
           <VariantenBlok beamId={result.beam_id} />
-          {opUnityCheck(result.checks).map((named) => (
-            <CheckBlock key={named.id} check={named.kind.data} />
-          ))}
+          <ToetsLijst
+            overzicht={overzicht}
+            volgorde={volgorde}
+            onVolgorde={setVolgorde}
+            namen={namen}
+            onToon={onToon}
+          />
+          {/* De afleidingen in dezelfde volgorde als de lijst erboven. */}
+          {sorteerRegels(overzicht.regels, volgorde).map((regel) => {
+            const named = result.checks.find((c) => c.id === regel.id);
+            return named ? (
+              <CheckBlock key={named.id} check={named.kind.data} maatgevend={regel.maatgevend} />
+            ) : null;
+          })}
         </div>
       )}
     </div>
@@ -212,7 +237,9 @@ export function CheckPanelToggle({ open, onToggle }: { open: boolean; onToggle: 
   </button>;
 }
 
-export default function CheckPanel({ onRun, onClose, onExport, running = false, focus }: CheckPanelProps) {
+export default function CheckPanel({
+  onRun, onClose, onExport, running = false, focus, onToonOpTekenvlak,
+}: CheckPanelProps) {
   const { t } = useTranslation("check");
   const results = useCheckStore((s) => s.results);
   const skipped = useCheckStore((s) => s.skipped);
@@ -224,6 +251,27 @@ export default function CheckPanel({ onRun, onClose, onExport, running = false, 
   const plateResults = useCheckStore((s) => s.plateResults);
   const plateSkipped = useCheckStore((s) => s.plateSkipped);
   const heeftPlaten = plateResults.length > 0 || plateSkipped.length > 0;
+  const combinaties = useCheckStore((s) => s.lastRunData?.combinations);
+  const namen = useMemo<CombinatieNamen>(
+    () => new Map((combinaties ?? []).map((c) => [c.id, c.name])),
+    [combinaties],
+  );
+  const model = useMemo(() => modelMaatgevend(results, plateResults), [results, plateResults]);
+
+  // De focus komt van twee kanten: de UC-badge op het tekenvlak (prop) en het
+  // modeloverzicht hierboven. Beide maken een NIEUW object, zodat een tweede
+  // klik op hetzelfde onderdeel opnieuw openklapt en scrollt.
+  const [kaartFocus, setKaartFocus] = useState<{ beamId?: number; plateId?: number } | null>(null);
+  useEffect(() => { setKaartFocus(focus ?? null); }, [focus]);
+  const kiesOnderdeel = (o: MaatgevendOverzicht) => {
+    setKaartFocus(o.isPlaat ? { plateId: o.objectId } : { beamId: o.objectId });
+    const m = o.maatgevend;
+    onToonOpTekenvlak?.({
+      ...(o.isPlaat ? { plateId: o.objectId } : { beamId: o.objectId }),
+      combinatieId: m?.combinatieId ?? null,
+      positieMm: m?.positieMm ?? null,
+    });
+  };
 
   const okCount = results.filter((r) => r.status === "Ok").length;
   const notOkCount = results.filter((r) => r.status === "NotOk").length;
@@ -280,11 +328,19 @@ export default function CheckPanel({ onRun, onClose, onExport, running = false, 
           </div>
         )}
 
+        <ModelMaatgevendBlok model={model} namen={namen} onKies={kiesOnderdeel} />
+
         {results.map((r) => (
           <MemberCard
             key={`${isSteelCheckResult(r) ? "s" : "t"}-${r.beam_id}`}
             result={r}
-            focusToken={focus && focus.beamId === r.beam_id ? focus : null}
+            focusToken={
+              kaartFocus && kaartFocus.beamId === r.beam_id
+                ? (kaartFocus as { beamId: number })
+                : null
+            }
+            namen={namen}
+            onToon={onToonOpTekenvlak}
           />
         ))}
 
@@ -296,7 +352,13 @@ export default function CheckPanel({ onRun, onClose, onExport, running = false, 
             <div className="cp-title" style={{ margin: "10px 0 4px" }}>{t("plaat.titel")}</div>
             <OvergeslagenPlaten skipped={plateSkipped} open={plateResults.length === 0} />
             {plateResults.map((r) => (
-              <PlaatToetsKaart key={`p-${r.plate_id}`} result={r} />
+              <PlaatToetsKaart
+                key={`p-${r.plate_id}`}
+                result={r}
+                focusToken={kaartFocus && kaartFocus.plateId === r.plate_id ? kaartFocus : null}
+                namen={namen}
+                onToon={onToonOpTekenvlak}
+              />
             ))}
           </>
         )}

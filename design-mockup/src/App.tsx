@@ -92,6 +92,7 @@ import {
   toepasselijkeScheefstandNormen,
 } from "./lib/scheefstandNorm";
 import { useCheckStore, anyCheckableBeams, anyCheckablePlates, roepKern } from "./stores/checkStore";
+import { useMaatgevendMarkeringStore } from "./stores/maatgevendMarkeringStore";
 // Het venster onderin bij een betonstaaf: de aanzicht met de dekkingslijnen,
 // de doorsnede op de aangewezen snede en de invoer van de wapeningszones.
 import BetonStaafVenster from "./components/beton/dekking/BetonStaafVenster";
@@ -1136,6 +1137,40 @@ function App() {
       return false;
     });
   }, []);
+  /**
+   * Maatgevende regel in het toetsingspaneel aangeklikt (issue #41): selecteer
+   * die staaf of plaat, zet het tekenvlak op de combinatie van de toets en
+   * markeer de positie x op de staaf.
+   *
+   * De combinatie wordt alleen ingesteld als het tekenvlak haar kán tonen (er
+   * is een resultaat van). Levert de kern geen combinatie of positie — de
+   * doorbuigingstoetsen bijvoorbeeld — dan blijft het bij selecteren en gaat
+   * een oude markering weg: liever geen markering dan een plek die bij een
+   * andere toets hoort.
+   */
+  const handleToonMaatgevend = useCallback((doel: {
+    beamId?: number; plateId?: number; combinatieId: number | null; positieMm: number | null;
+  }) => {
+    if (doel.beamId !== undefined) fem.setSelection({ type: "beam", id: doel.beamId });
+    else if (doel.plateId !== undefined) fem.setSelection({ type: "plate", id: doel.plateId });
+    const markering = useMaatgevendMarkeringStore.getState();
+    const id = doel.combinatieId;
+    if (id === null || !fem.combinationResults?.has(id)) { markering.wis(); return; }
+    fem.setActiveCombinationId(id);
+    fem.setEnvelopeView(false);
+    fem.setShowLoads(true);
+    setResultsTabActive(true);
+    if (doel.beamId !== undefined && doel.positieMm !== null) {
+      markering.zet({
+        beamId: doel.beamId,
+        positieMm: doel.positieMm,
+        combinatieId: id,
+        rondeVan: useCheckStore.getState().lastRunAt,
+      });
+    } else {
+      markering.wis();
+    }
+  }, [fem.setSelection, fem.combinationResults, fem.setActiveCombinationId, fem.setEnvelopeView, fem.setShowLoads]);
   // Normtoetsing draait ALTIJD mee met een berekening: de toetsing hoort bij
   // het resultaat en is geen losse handeling. Er is bewust geen schakelaar —
   // een model waarvan je de krachten ziet maar de unity checks niet, nodigt
@@ -2236,6 +2271,7 @@ function App() {
                     onClose={() => setActiveView("default")}
                     onExport={() => { void handleExportChecks(); }}
                     focus={checkFocus}
+                    onToonOpTekenvlak={handleToonMaatgevend}
                   />
                 </div>
               </>

@@ -642,6 +642,14 @@ const ALLEEN_BRON = new Map([
     "legt het overzicht \"Niet uitgevoerd\" onder het toetsingsoverzicht van het live rapport vast: `lib/nietUitgevoerd` (rapportagelogica van de frontend), een bronteksttoets op `CheckTableSection` en de vertalingen. Geen van die bestanden staat in de barrel; de PDF-kant met een echte uitkomst van de betonkern staat in report/tests/niet_uitgevoerd_pdf.rs",
   ],
   [
+    "maatgevend",
+    "issue #41: welke toets maatgevend is, in welke combinatie en op welke positie. Test `lib/maatgevend` (weergavelogica van het toetsingspaneel en het live rapport) en `stores/maatgevendMarkeringStore` (zustand), rendert de React-blokken van het paneel, doet een bronteksttoets op paneel, plaatkaart, rapportsectie en App.tsx, leest de vertalingen en start de toetsbrug als apart proces voor een echt antwoord van de staal- en de houtkern. Geen van die modules staat in de barrel van de sidecarbundel; de sidecar toont niets en kent geen paneel",
+  ],
+  [
+    "maatgevend-ui",
+    "issue #41: het toetsingspaneel in een echte browser (headless Chromium): modeloverzicht, samenvattingsregel per kaart, de toetslijst met balkjes, de keuze van de volgorde en de klik naar het tekenvlak, plus de regel in het toetsingsoverzicht van het live rapport en de markering op het tekenvlak (die lezen uit een zustand-store, en die geeft bij renderen op de server de beginstand terug). Bundelt `components/panels/CheckPanel` met esbuild en vult `stores/checkStore` met een vaste uitslag; React, de DOM en die store bestaan in de sidecarbundel niet",
+  ],
+  [
     "rapport-datum",
     "issue #20: de datum voluit en in de taal van de app op titelblad en paginakop van het live rapport. Test `lib/rapportDatum` en `lib/rapportPdfInvoer` (rapportagelogica van de frontend) plus een bronteksttoets op `ReportShell` en `sections/ProjectSection`, en leest de gedeelde proeftabel van report/tests/datum_kop_pdf.rs. Geen van die modules staat in de barrel; de PDF-kant staat in die Rust-test",
   ],

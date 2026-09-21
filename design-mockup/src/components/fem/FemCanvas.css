@@ -627,6 +627,27 @@
   stroke: var(--theme-accent);
 }
 
+/* ── Maatgevende positie uit het toetsingspaneel (issue #41) ─────────── */
+.fem-maatgevend-ring {
+  fill: none;
+  stroke: var(--theme-accent);
+  stroke-width: 2.5;
+}
+.fem-maatgevend-kruis {
+  stroke: var(--theme-accent);
+  stroke-width: 1.5;
+}
+.fem-maatgevend-label {
+  fill: var(--theme-surface);
+  stroke: var(--theme-accent);
+  stroke-width: 1;
+}
+.fem-maatgevend-tekst {
+  font: 600 11px/1 "JetBrains Mono", monospace;
+  fill: var(--theme-text);
+  text-anchor: middle;
+}
+
 /* ── Drag ghost preview ─────────────────────────────────────────────── */
 .fem-node-ghost {
   fill: var(--theme-accent);

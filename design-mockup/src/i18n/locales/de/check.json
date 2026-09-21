@@ -1412,5 +1412,41 @@
     "krachtregel": "Kombination {{combinatie}} — elementgemittelte Spannungen in der Ebene; das Element steht in den Anmerkungen",
     "overgeslagenTitel": "Übersprungene Platten",
     "wapening": "Erforderliche Bewehrung (Anhang F): x bis {{x}} kN/m (Element {{ex}}), z bis {{z}} kN/m (Element {{ez}}) — vorhandene Bewehrung: siehe Nachweise und nicht nachgewiesene Punkte"
+  },
+  "maatgevend": {
+    "label": "maßgebend",
+    "geen": "Kein Nachweis mit Ausnutzungsgrad — nichts ist maßgebend",
+    "combinatie": "Komb. {{id}}",
+    "combinatieMetNaam": "Komb. {{id}} ({{naam}})",
+    "positie": "x = {{x}} mm",
+    "element": "Element {{id}}",
+    "toonOpTekenvlak": "Auf der Zeichenfläche zeigen: diese Kombination, mit markierter Stelle",
+    "markering": "maßgebend: x = {{x}} mm, Komb. {{combinatie}}",
+    "lijstTitel": "Alle Nachweise",
+    "volgorde": "Reihenfolge",
+    "volgordeUc": "Ausnutzungsgrad, hoch nach niedrig",
+    "volgordeNorm": "Normreihenfolge",
+    "nvt": "n. z. / nicht nachgewiesen",
+    "geenUc": "kein Ausnutzungsgrad",
+    "teltNietMee": "zählt nicht als maßgebend",
+    "nietMeeVoet_one": "{{count}} Nachweis ohne Ausnutzungsgrad (n. z. oder nicht nachgewiesen) zählt nicht als maßgebend; der Grund steht dabei.",
+    "nietMeeVoet_other": "{{count}} Nachweise ohne Ausnutzungsgrad (n. z. oder nicht nachgewiesen) zählen nicht als maßgebend; der Grund steht dabei.",
+    "modelTitel": "Maßgebend im Modell",
+    "naarOnderdeel": "Gehe zu {{onderdeel}}",
+    "zonderMaatgevend_one": "{{count}} Bauteil hat keinen Nachweis mit Ausnutzungsgrad und wird hier nicht berücksichtigt.",
+    "zonderMaatgevend_other": "{{count}} Bauteile haben keinen Nachweis mit Ausnutzungsgrad und werden hier nicht berücksichtigt.",
+    "klasse": {
+      "goed": "erfüllt",
+      "letop": "Achtung, über 0,90",
+      "overschreden": "überschritten"
+    },
+    "soort": {
+      "staal": "Stahl",
+      "hout": "Holz",
+      "clt": "Brettsperrholz",
+      "beton": "Beton",
+      "spanning": "Freies Material",
+      "plaat": "Platten"
+    }
   }
 }
