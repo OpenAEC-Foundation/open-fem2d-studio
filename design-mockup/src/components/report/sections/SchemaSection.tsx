@@ -8,6 +8,12 @@
  * van de overspanningen (stramienposities indien bruikbaar, anders
  * knoopafstanden). Puur modelweergave — geen resultaten nodig.
  *
+ * Kipsteunen (issue #40): dezelfde laag als het tekenvlak (`KipsteunLaag`, op
+ * dezelfde afleiding `lib/kipsteunBeeld.ts`), als de laag "Kipsteunen" daar aan
+ * staat. Alleen de symbolen: de kipveldlengtes verschijnen op het tekenvlak bij
+ * selectie, en een stilstaand vel kent geen selectie — de posities staan in de
+ * staventabel.
+ *
  * De model→SVG-transformatie en de staaf-/knoop-/opleggingstekening leven in
  * reportGeometry.tsx (gedeeld met de krachtsverdelingsfiguren); dit bestand
  * voegt de lasten en de maatvoering toe. Max. één vel via max-height in
@@ -16,6 +22,8 @@
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
 import { useReportData } from "../ReportDataContext";
+import { kipsteunBeelden } from "../../../lib/kipsteunBeeld";
+import KipsteunLaag from "../../fem/KipsteunLaag";
 import { fmtLenM, fmtNum } from "../reportFormat";
 import {
   DIM,
@@ -39,7 +47,7 @@ const CASE_TAGS: Record<LoadCase["type"], string> = {
 
 export default function SchemaSection() {
   const { t } = useTranslation("ribbon");
-  const { nodes, beams, supports, loads, loadCases, structuralGrid } =
+  const { nodes, beams, supports, plates, loads, loadCases, structuralGrid, kipsteunenTonen } =
     useReportData();
 
   if (nodes.length === 0) {
@@ -294,6 +302,11 @@ export default function SchemaSection() {
     }
   }
 
+  // Kipsteunen: alleen als de laag op het tekenvlak aan staat (ontbreekt het
+  // veld, dan de standaard: aan), en de legenda alleen als er iets te zien is.
+  const kipBeelden = kipsteunenTonen !== false ? kipsteunBeelden({ nodes, beams, supports, plates }) : [];
+  const heeftKipsteunen = kipBeelden.some((b) => b.steunen.length > 0);
+
   return (
     <div className="rpt-block">
       <h2 className="rpt-h2">{t("report.sectionSchema", "Constructieschets")}</h2>
@@ -302,6 +315,7 @@ export default function SchemaSection() {
           "report.schemaLegend",
           "Knoopnummers zwart, staafnummers grijs tussen haakjes; maten in m, lasten karakteristiek per belastinggeval (G/Q/S/W).",
         )}
+        {heeftKipsteunen && <> {t("report.schemaLegendKipsteunen")}</>}
       </p>
 
       {/* Generieke figuurconventie: figuurblok + vet bijschrift eronder. */}
@@ -323,6 +337,18 @@ export default function SchemaSection() {
 
           {/* Staven + staafnummers */}
           {renderBeamLines(beams, nodeById, tr)}
+
+          {/* Kipsteunen — alleen van staven die er hebben: een vorkje aan elk
+              staafeind van elk model zou de schets vullen zonder iets te
+              zeggen. */}
+          {heeftKipsteunen && (
+            <KipsteunLaag
+              beelden={kipBeelden.filter((b) => b.steunen.length > 0)}
+              naarScherm={(x, z) => ({ x: X(x), y: Y(z) })}
+              maat={13}
+              variant="rapport"
+            />
+          )}
 
           {/* Lasten */}
           {loadEls}

@@ -49,6 +49,7 @@ import { STEEL_SECTIONS } from "./steelSections.generated";
 import { bepaalVerloop } from "./sectionResolver";
 import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 import { blijvendeZakking } from "./blijvendeZakking";
+import { kipsteunenVanStaaf } from "./kipsteunen";
 
 // ── Per-staaf toetsconfiguratie (Beam.checkConfig) ─────────────────────────
 /** UI-doorbuigingsklasse → ts-rs/Rust-enum. Ontbreekt → "Floor". */
@@ -67,17 +68,11 @@ export function mapDeflectionClass(
   }
 }
 
-/**
- * Kipsteunfracties opschonen voor LateralBracing.top_flange_positions:
- * alleen 0 < f < 1 (de uiteinden zelf zijn geen kipsteun), gesorteerd en
- * ontdubbeld — de Rust-kern (lambda_chi.rs) vermenigvuldigt de fracties
- * met de staaflengte.
- */
-export function sanitizeRestraintFractions(fractions: number[] | undefined): number[] {
-  if (!Array.isArray(fractions)) return [];
-  return [...new Set(fractions.filter((f) => Number.isFinite(f) && f > 0 && f < 1))]
-    .sort((a, b) => a - b);
-}
+// Het opschonen van kipsteunfracties staat in `lib/kipsteunen.ts`, samen met
+// alles wat uit de kipsteunen volgt: die module is de ene bron voor de
+// toetsinvoer én voor de tekening (issue #40). Hier opnieuw uitgevoerd omdat
+// het eigenschappenvenster en de houtbouwer hem van oudsher hier vandaan halen.
+export { sanitizeRestraintFractions } from "./kipsteunen";
 
 /**
  * Staalsoorten die de Rust-kern kent (list_steel_grades).
@@ -1228,10 +1223,9 @@ export function buildSteelCheckInputs(ruweData: SteelBuildData): SteelBuildResul
       steel_grade: grade.toUpperCase(),
       length_m: lengthMm / 1000,
       forces_envelope: forcesEnvelope,
-      lateral_bracing: {
-        top_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraints),
-        bottom_flange_positions: sanitizeRestraintFractions(cfg.lateralRestraintsBottom),
-      },
+      // Dezelfde afleiding als het tekenvlak toont (`lib/kipsteunen.ts`): wat
+      // hier de kern in gaat, staat als symbool op de staaf.
+      lateral_bracing: kipsteunenVanStaaf(cfg, lengthMm, "staal").lateral_bracing,
       // Bij een staande staaf noemt de kern de boven- en onderflens in
       // wereldtermen (links en rechts); weglaten betekent liggend.
       ...(referentieVanStaaf(beam, data.nodes).staafstand === "Staand"

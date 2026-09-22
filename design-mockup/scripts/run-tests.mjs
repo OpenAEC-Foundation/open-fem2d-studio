@@ -550,6 +550,14 @@ const ALLEEN_BRON = new Map([
     "leidt de liggerlijn van 5.3.2.1 uit de modeltopologie af (knopen, staven, opleggingen); dat is invoerbouw voor de betontoetsing en geen solverwerk, dus hij hoort niet in de barrel",
   ],
   [
+    "profiel-zoeken",
+    "de zoekfunctie van de profielkiezer (`lib/profielZoeken`, issue #39): term → treffers per reeks over de hele staalcatalogus, ongevoelig voor hoofdletters en spaties, oude reeksen onderaan, en welke al gebruikte profielen in welke stap horen. Presentatielogica van de frontend zonder rekenwerk; de module en de profieleditor-catalogus staan niet in de barrel, en de test leest daarnaast ProfielKiezer.tsx, de stylesheet en de vier locales van schijf",
+  ],
+  [
+    "profiel-zoeken-ui",
+    "de echte ProfielKiezer in Chromium: focus in het zoekveld bij openen, pijltjes/Enter/Esc, de lege toestand, \"In dit project\" in de staal- en houtstap, het verlopende profiel en een smal venster. React-interactie en CSS-indeling; geen solvercode en niet beschikbaar in de sidecarbundel",
+  ],
+  [
     "profielvarianten",
     "kiest naburige doorsneden uit de profieldatabase en de handelsmatenlijst en bouwt daarmee toetsinvoer; dat is invoerbouw en geen solverwerk, en de korfcontrole die hij meeneemt hoort niet in de barrel",
   ],
@@ -654,6 +662,14 @@ const ALLEEN_BRON = new Map([
     "legt het overzicht \"Niet uitgevoerd\" onder het toetsingsoverzicht van het live rapport vast: `lib/nietUitgevoerd` (rapportagelogica van de frontend), een bronteksttoets op `CheckTableSection` en de vertalingen. Geen van die bestanden staat in de barrel; de PDF-kant met een echte uitkomst van de betonkern staat in report/tests/niet_uitgevoerd_pdf.rs",
   ],
   [
+    "maatgevend",
+    "issue #41: welke toets maatgevend is, in welke combinatie en op welke positie. Test `lib/maatgevend` (weergavelogica van het toetsingspaneel en het live rapport) en `stores/maatgevendMarkeringStore` (zustand), rendert de React-blokken van het paneel, doet een bronteksttoets op paneel, plaatkaart, rapportsectie en App.tsx, leest de vertalingen en start de toetsbrug als apart proces voor een echt antwoord van de staal- en de houtkern. Geen van die modules staat in de barrel van de sidecarbundel; de sidecar toont niets en kent geen paneel",
+  ],
+  [
+    "maatgevend-ui",
+    "issue #41: het toetsingspaneel in een echte browser (headless Chromium): modeloverzicht, samenvattingsregel per kaart, de toetslijst met balkjes, de keuze van de volgorde en de klik naar het tekenvlak, plus de regel in het toetsingsoverzicht van het live rapport en de markering op het tekenvlak (die lezen uit een zustand-store, en die geeft bij renderen op de server de beginstand terug). Bundelt `components/panels/CheckPanel` met esbuild en vult `stores/checkStore` met een vaste uitslag; React, de DOM en die store bestaan in de sidecarbundel niet",
+  ],
+  [
     "rapport-datum",
     "issue #20: de datum voluit en in de taal van de app op titelblad en paginakop van het live rapport. Test `lib/rapportDatum` en `lib/rapportPdfInvoer` (rapportagelogica van de frontend) plus een bronteksttoets op `ReportShell` en `sections/ProjectSection`, en leest de gedeelde proeftabel van report/tests/datum_kop_pdf.rs. Geen van die modules staat in de barrel; de PDF-kant staat in die Rust-test",
   ],
@@ -672,6 +688,14 @@ const ALLEEN_BRON = new Map([
   [
     "tekenrichting",
     "stuurt dezelfde constructie in beide tekenrichtingen door de hele toetsketen en eist gelijke uitkomsten plus de handberekening: de grens `lib/referentierichting.ts`, de invoerbouwers voor staal en beton, de dekkingslijnbouwer, en de toetsbrug als apart proces voor de echte EN 1992- en EN 1993-kern. De toetsbrug hoort niet in de sidecarbundel, en de betonbouwer met zijn korven staat buiten de barrel; tegen de bundel zou de test juist de kernen overslaan die de wereldtermen in de afleiding zetten",
+  ],
+  [
+    "kipsteunen-tekenvlak",
+    "issue #40: houdt de kipsteunen die het tekenvlak toont (`lib/kipsteunBeeld.ts`, buiten de barrel — het is een weergavemodule) tegen de `lateral_bracing`, de `ltb_segment_length_m` en de `staafeinden` die de staal- en de houtbouwer in de toetsinvoer zetten, en in het slotblok tegen de L_st en de l_ef die de echte EN 1993- en EN 1995-kern via de toetsbrug (apart proces) rapporteren. De gedeelde afleiding `lib/kipsteunen.ts` zit via de bouwers wél in de bundel; dat de bundelinvoer er niet door verandert, bewaken de bestaande bundeltests van de bouwers",
+  ],
+  [
+    "kipsteunen-ui",
+    "issue #40: het echte tekenvlak (FemCanvas), de weergavelijst en de constructieschets van het rapport in een lokale headless browser — symbolen aan de goede zijde en op de goede plaats, de maatketting in mm bij selectie en hover, de schakelaar, de zoomgrenzen en het rapport. React, SVG-meetkunde en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
 ]);
 

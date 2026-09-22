@@ -75,6 +75,13 @@ export interface DisplayFlags {
    * gebruiker laten zoeken waar iets uit te zetten valt.
    */
   profielLabels: boolean;
+  /**
+   * Kipsteunen als symbool langs de staaf (issue #40). Ook een MODELweergave,
+   * en om dezelfde reden in deze lijst. Aan: een kipsteun is een aanname van
+   * de toetsing, en een aanname die niet op de tekening staat, controleert
+   * niemand. De constructieschets in het rapport volgt dit vinkje.
+   */
+  kipsteunen: boolean;
 }
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
@@ -96,6 +103,7 @@ export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   // Aan: de gebruiker wil bij het tekenen kunnen zien welk profiel een staaf
   // heeft zonder hem eerst aan te klikken.
   profielLabels: true,
+  kipsteunen: true,
 };
 
 interface Props {

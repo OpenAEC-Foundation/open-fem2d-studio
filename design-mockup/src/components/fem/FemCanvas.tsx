@@ -37,11 +37,14 @@ import FemResultsOverlay, { DEFAULT_DISPLAY_FLAGS, fmtNl, type DisplayFlags } fr
 import BarPropertiesDialog from "./BarPropertiesDialog";
 import { erIsEenDialoogOpen } from "../Modal";
 import { useCheckStore } from "../../stores/checkStore";
+import MaatgevendMarkering from "./MaatgevendMarkering";
 import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 
 // Doorsnedenaam en begin-/eindmaten van een verlopende staaf: dezelfde
 // keuring als de solver en de rekenkern gebruiken; zie lib/verloopKeuze.
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
+import { kipsteunBeelden } from "../../lib/kipsteunBeeld";
+import KipsteunLaag from "./KipsteunLaag";
 import { vertaal } from "../../lib/vertaalbareTekst";
 import type {
   Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
@@ -547,6 +550,15 @@ const SCHARNIER_R_PX = 3.5;
 const SCHARNIER_AFSTAND_PX = 11;
 /** Loodrechte verspringing van de profielnaam t.o.v. de staafas (px). */
 const PROFIEL_LABEL_OFFSET_PX = 9;
+/**
+ * Hoogte van een kipsteunsymbool. Het schaalt mee met de zoom — 150 mm in het
+ * model — maar blijft tussen deze grenzen: kleiner dan 6 px is een stip zonder
+ * richting (en dus zonder flens), groter dan 10 px is het geen aanduiding meer
+ * maar een onderdeel van de tekening.
+ */
+const KIPSTEUN_MM = 150;
+const KIPSTEUN_MIN_PX = 6;
+const KIPSTEUN_MAX_PX = 10;
 
 export default function FemCanvas(props: FemCanvasProps) {
   const {
@@ -612,6 +624,17 @@ export default function FemCanvas(props: FemCanvasProps) {
   void setDisplayFlagsProp;
   // Beam currently open in the BarPropertiesDialog (dblclick).
   const [editingBeamId, setEditingBeamId] = useState<number | null>(null);
+  // De staaf onder de muis — alleen voor de kipveldlengtes van de
+  // kipsteunlaag; de hover-dikte van de staaflijn zelf doet de CSS.
+  const [hoverBeamId, setHoverBeamId] = useState<number | null>(null);
+  // Kipsteunen zoals de toetsing ze ziet (issue #40): één afleiding voor de
+  // toetsinvoer en voor deze laag, zie lib/kipsteunBeeld.ts. Alleen van het
+  // model afhankelijk, dus niet opnieuw bij pannen, zoomen of hover.
+  const toonKipsteunen = displayFlags.kipsteunen !== false;
+  const kipBeelden = useMemo(
+    () => (toonKipsteunen ? kipsteunBeelden({ nodes, beams, supports, plates }) : []),
+    [toonKipsteunen, nodes, beams, supports, plates],
+  );
   // Staat de bevindingenlijst van de modelcontrole uitgeklapt?
   const [controleOpen, setControleOpen] = useState(false);
   /**
@@ -3897,6 +3920,8 @@ export default function FemCanvas(props: FemCanvasProps) {
                 stroke="transparent" strokeWidth={12} style={{ cursor: "inherit" }}
                 onClick={selectBeam}
                 onDoubleClick={openBeamProps}
+                onMouseEnter={() => setHoverBeamId(b.id)}
+                onMouseLeave={() => setHoverBeamId((id) => (id === b.id ? null : id))}
               />
               {renderVerloopVorm(b, p1, p2)}
               {renderScharnieren(b, p1, p2)}
@@ -3904,6 +3929,28 @@ export default function FemCanvas(props: FemCanvasProps) {
             </g>
           );
         })}
+
+        {/* Kipsteunen: symbolen langs de staaf, en van de geselecteerde of
+            aangewezen staaf de kipveldlengtes in mm. Boven de staven, zodat
+            een symbool niet achter de staaflijn verdwijnt. */}
+        {toonKipsteunen && kipBeelden.length > 0 && (
+          <KipsteunLaag
+            beelden={kipBeelden}
+            naarScherm={worldToScreen}
+            maat={Math.min(KIPSTEUN_MAX_PX, Math.max(KIPSTEUN_MIN_PX, KIPSTEUN_MM * view.scale))}
+            variant="canvas"
+            kettingVoor={new Set([
+              ...beams.filter((b) => isBeamInSelection(b.id, selection)).map((b) => b.id),
+              ...(hoverBeamId !== null ? [hoverBeamId] : []),
+            ])}
+            onHover={(id) => setHoverBeamId(id)}
+            onKlik={(id, e) => {
+              if (tool !== "select" || dragState) return;
+              e.stopPropagation();
+              if (!e.shiftKey) setSelection({ type: "beam", id });
+            }}
+          />
+        )}
 
         {/* Beam preview while drawing. Is er een maat ingetypt, dan loopt de
             preview tot dáár (richting muis, lengte toetsenbord) met het
@@ -4357,6 +4404,16 @@ export default function FemCanvas(props: FemCanvasProps) {
               );
             })}
           </g>
+        )}
+        {/* De maatgevende positie die het toetsingspaneel aanwijst (issue #41):
+            alleen bij de combinatie waarbij zij hoort. */}
+        {showLoads && perCase && !solverBusy && !solveError && (
+          <MaatgevendMarkering
+            nodes={nodes}
+            beams={beams}
+            worldToScreen={worldToScreen}
+            activeCombinationId={activeCombinationId}
+          />
         )}
         {/* Plaattoets: per plaat de maatgevende UC in het zwaartepunt van de
             getoetste elementen (bovenop, net als de staafbadges). */}

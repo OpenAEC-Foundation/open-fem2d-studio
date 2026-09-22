@@ -136,6 +136,8 @@ interface WireReportData {
   scheefstandToelichting?: string;
   /** Het analysetype en α_cr als tekstblok; optioneel om dezelfde reden. */
   analyseToelichting?: string;
+  /** De laag "Kipsteunen" van het tekenvlak; optioneel om dezelfde reden. */
+  kipsteunenTonen?: boolean;
 }
 
 /** Toetsresultaten (checkStore) — al JSON-veilig, 1-op-1 mee in het snapshot. */
@@ -273,6 +275,7 @@ function serializeReportData(d: ReportData): WireReportData {
       : null,
     scheefstandToelichting: d.scheefstandToelichting,
     analyseToelichting: d.analyseToelichting,
+    kipsteunenTonen: d.kipsteunenTonen,
   };
 }
 
@@ -312,6 +315,8 @@ function deserializeReportData(w: WireReportData): ReportData {
     // "geen scheefstand te melden", precies wat de sectie dan toont.
     scheefstandToelichting: w.scheefstandToelichting ?? "",
     analyseToelichting: w.analyseToelichting ?? "",
+    // Ontbreekt bij een ouder hoofdvenster: dan geldt de standaard (aan).
+    kipsteunenTonen: w.kipsteunenTonen,
   };
 }
 
@@ -532,6 +537,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     data.envelope,
     data.scheefstandToelichting,
     data.analyseToelichting,
+    data.kipsteunenTonen,
     pageSize,
     orientation,
     hiddenSections,

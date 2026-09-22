@@ -98,6 +98,7 @@ import {
   toepasselijkeScheefstandNormen,
 } from "./lib/scheefstandNorm";
 import { useCheckStore, anyCheckableBeams, anyCheckablePlates, roepKern } from "./stores/checkStore";
+import { useMaatgevendMarkeringStore } from "./stores/maatgevendMarkeringStore";
 // Het venster onderin bij een betonstaaf: de aanzicht met de dekkingslijnen,
 // de doorsnede op de aangewezen snede en de invoer van de wapeningszones.
 import BetonStaafVenster from "./components/beton/dekking/BetonStaafVenster";
@@ -463,6 +464,12 @@ function App() {
     () => vrijstaandDakUitgangspunten(fem.loadCases, fem.loads),
     [fem.loadCases, fem.loads]);
 
+  // Result display toggles — lifted so both the FemCanvas HUD and the
+  // FemProjectTree "Resultaten" tab can mutate the same flags. Hier, vóór
+  // `reportData`: de constructieschets van het rapport volgt de laag
+  // "Kipsteunen" (issue #40).
+  const [displayFlags, setDisplayFlags] = useState<DisplayFlags>(DEFAULT_DISPLAY_FLAGS);
+
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
   // vensters. useMemo op veld-identiteiten: alleen echte mutaties leveren
@@ -502,12 +509,14 @@ function App() {
     // Het analysetype en α_cr: welke berekening er is gedaan en of de norm
     // die toestaat (5.2.1(3)). Ook een uitgangspunt, om dezelfde reden.
     analyseToelichting: analyseTekst,
+    // De laag "Kipsteunen" van het tekenvlak: aan = ook in de constructieschets.
+    kipsteunenTonen: displayFlags.kipsteunen !== false,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
     fem.combinatiesVoorRapport, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
-    scheefstandTekst, analyseTekst,
+    scheefstandTekst, analyseTekst, displayFlags.kipsteunen,
   ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────
@@ -1121,9 +1130,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fem.nodes, fem.beams, fem.supports, fem.loads, fem.plates, fem.rekenInstellingenVersie]);
 
-  // Result display toggles — lifted so both the FemCanvas HUD and the
-  // FemProjectTree "Resultaten" tab can mutate the same flags.
-  const [displayFlags, setDisplayFlags] = useState<DisplayFlags>(DEFAULT_DISPLAY_FLAGS);
+  // (De weergavevinkjes `displayFlags` staan hoger, vóór `reportData`.)
   // Results-tab active flag — toggled door de Resultaten-tab onderaan.
   // Wanneer true: alle krachten-overlays aan (M+V+N+vervorming+reacties).
   // Wordt uit-gezet zodra de gebruiker op Model of een LC-tab klikt.
@@ -1179,6 +1186,40 @@ function App() {
       return false;
     });
   }, []);
+  /**
+   * Maatgevende regel in het toetsingspaneel aangeklikt (issue #41): selecteer
+   * die staaf of plaat, zet het tekenvlak op de combinatie van de toets en
+   * markeer de positie x op de staaf.
+   *
+   * De combinatie wordt alleen ingesteld als het tekenvlak haar kán tonen (er
+   * is een resultaat van). Levert de kern geen combinatie of positie — de
+   * doorbuigingstoetsen bijvoorbeeld — dan blijft het bij selecteren en gaat
+   * een oude markering weg: liever geen markering dan een plek die bij een
+   * andere toets hoort.
+   */
+  const handleToonMaatgevend = useCallback((doel: {
+    beamId?: number; plateId?: number; combinatieId: number | null; positieMm: number | null;
+  }) => {
+    if (doel.beamId !== undefined) fem.setSelection({ type: "beam", id: doel.beamId });
+    else if (doel.plateId !== undefined) fem.setSelection({ type: "plate", id: doel.plateId });
+    const markering = useMaatgevendMarkeringStore.getState();
+    const id = doel.combinatieId;
+    if (id === null || !fem.combinationResults?.has(id)) { markering.wis(); return; }
+    fem.setActiveCombinationId(id);
+    fem.setEnvelopeView(false);
+    fem.setShowLoads(true);
+    setResultsTabActive(true);
+    if (doel.beamId !== undefined && doel.positieMm !== null) {
+      markering.zet({
+        beamId: doel.beamId,
+        positieMm: doel.positieMm,
+        combinatieId: id,
+        rondeVan: useCheckStore.getState().lastRunAt,
+      });
+    } else {
+      markering.wis();
+    }
+  }, [fem.setSelection, fem.combinationResults, fem.setActiveCombinationId, fem.setEnvelopeView, fem.setShowLoads]);
   // Normtoetsing draait ALTIJD mee met een berekening: de toetsing hoort bij
   // het resultaat en is geen losse handeling. Er is bewust geen schakelaar —
   // een model waarvan je de krachten ziet maar de unity checks niet, nodigt
@@ -2293,6 +2334,7 @@ function App() {
                     onClose={() => setActiveView("default")}
                     onExport={() => { void handleExportChecks(); }}
                     focus={checkFocus}
+                    onToonOpTekenvlak={handleToonMaatgevend}
                   />
                 </div>
               </>

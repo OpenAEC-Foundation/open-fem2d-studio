@@ -15,8 +15,15 @@ import { profileLookupKey } from "../steelCheckBuilder";
 import type { Basisprofiel, MotorSoort } from "./types";
 import { vt, type VertaalbareTekst } from "../vertaalbareTekst";
 
-/** Reeksindeling op naamprefix, zoals het profielkeuzescherm hem kent. */
-export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) => boolean }> = [
+/**
+ * Reeksindeling op naamprefix, zoals het profielkeuzescherm hem kent.
+ *
+ * `oud` merkt de reeksen die niet meer gewalst worden. Ze blijven gewoon
+ * kiesbaar, maar de zoekfunctie van de profielkiezer zet hun treffers onderaan
+ * (`lib/profielZoeken.ts`, issue #39). Een vlag en geen test op "(oud)" in het
+ * label: het label is vertaalbaar en heet in het Duits "(alt)".
+ */
+export const REEKSEN: Array<{ id: string; label: string; oud?: boolean; match: (naam: string) => boolean }> = [
   { id: "IPE", label: "IPE", match: (n) => n.startsWith("IPE") },
   { id: "HEA", label: "HEA", match: (n) => n.startsWith("HEA") },
   { id: "HEB", label: "HEB", match: (n) => n.startsWith("HEB") },
@@ -25,11 +32,11 @@ export const REEKSEN: Array<{ id: string; label: string; match: (naam: string) =
   { id: "UPE", label: "UPE", match: (n) => n.startsWith("UPE") },
   // Oude Differdinger parallelflensreeksen; zie
   // scripts/genereer-oude-profielen.mjs voor de bron van de maten.
-  { id: "DIE", label: "DIE (oud)", match: (n) => n.startsWith("DIE") },
-  { id: "DIL", label: "DIL (oud)", match: (n) => n.startsWith("DIL") },
-  { id: "DIN", label: "DIN (oud)", match: (n) => n.startsWith("DIN") },
+  { id: "DIE", label: "DIE (oud)", oud: true, match: (n) => n.startsWith("DIE") },
+  { id: "DIL", label: "DIL (oud)", oud: true, match: (n) => n.startsWith("DIL") },
+  { id: "DIN", label: "DIN (oud)", oud: true, match: (n) => n.startsWith("DIN") },
   // Normaalprofiel DIN 1025-1, toelopende flenzen; zelfde generator.
-  { id: "INP", label: "INP (oud)", match: (n) => n.startsWith("INP") },
+  { id: "INP", label: "INP (oud)", oud: true, match: (n) => n.startsWith("INP") },
   // Alle kokers en buizen in de catalogus zijn WARMVERVAARDIGD volgens
   // EN 10210-2 (hoekstraal 1,5·t) en krijgen daarmee knikkromme a uit
   // NEN-EN 1993-1-1 tabel 6.2. Een koudgevormde koker (EN 10219) heeft een
