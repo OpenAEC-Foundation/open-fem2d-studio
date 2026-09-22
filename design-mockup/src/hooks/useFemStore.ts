@@ -40,10 +40,15 @@ import {
   herstelCombinaties, meldingenBelastinggevallen, openCombinatieStaat, synchroniseerStandaard,
   vervangDoorStandaard, vervangVerouderdeCombinaties, verwijderBelastinggeval, verwijderCombinatie,
   voegBelastinggevalToe, voegCombinatieToe, volgendVrijId, wijzigBelastinggeval, wijzigCombinatie,
-  zetBijlage, zetGevolgklasse, bijlageUitKenmerk,
+  zetBijlage, zetGevolgklasse, bijlageUitKenmerk, verplaatsEigenGewichtNaarEigenGeval,
   type CombinatieAfwijking, type CombinatieStaat, type CombinatieVervanging, type GevalMelding,
 } from "../lib/combinatieBeheer";
 import { BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../lib/normAanduidingen";
+import i18next from "i18next";
+import {
+  EIGEN_GEWICHT_STANDAARD_AAN, STANDAARD_ACTIEF_GEVAL_ID, eigenGewichtNaGevalWijziging,
+  gevalNeemtHandmatigeLasten, standaardBelastinggevallen, type EigenGewichtUitReden,
+} from "../lib/eigenGewicht";
 import { matchSupportedTimberGrade } from "../lib/timberCheckBuilder";
 import {
   bepaalEindstijfheidHout,
@@ -214,7 +219,7 @@ const DEFAULT_NODES: Node[] = [
 // Zonder enige zijdelingse steun is een regel van 12 m op kip niet te krijgen
 // (IPE 330 komt dan op uc 1,36). Maar "geen enkele kipsteun over 12 m" is zelf
 // een zware aanname, en voor DEZE staaf een onjuiste: de last erop heet
-// "eigen gewicht dak en dakbedekking", dus er ligt per definitie een dakvlak
+// "dakopbouw en dakbedekking", dus er ligt per definitie een dakvlak
 // op. Gordingen of dakplaten houden de bovenflens zijdelings vast. Aangenomen
 // zijn gordingen op de kwartpunten — h.o.h. 3,0 m, aan de ruime kant voor een
 // stalen dak, dus de voorzichtige kant van wat er werkelijk ligt.
@@ -308,33 +313,45 @@ const DEFAULT_SUPPORTS: Support[] = [
 const DEFAULT_PLATES: Plate[] = [];
 // Geëxporteerd om dezelfde reden als `makeInitialSnapshot`: de belastinggevallen
 // horen bij het startmodel en de test heeft ze nodig om het door te rekenen.
-export const DEFAULT_LOAD_CASES: LoadCase[] = [
-  { id: 1, name: "Permanent (G)", type: "dead" },
-  { id: 2, name: "Variabel (Q)",  type: "live" },
-  { id: 3, name: "Sneeuw (S)",    type: "snow" },
-  { id: 4, name: "Wind (W)",      type: "wind" },
-];
+//
+// Het geval "Eigen gewicht" staat VOOROP en heeft id 5; de vier handmatige
+// gevallen houden id 1–4, zodat de lasten hieronder (caseId 1 en 2) en elke
+// test die "geval 1 = permanent" aanneemt blijven kloppen. Eén bron met
+// Bestand → Nieuw: `standaardBelastinggevallen` in lib/eigenGewicht (issue #42).
+export const DEFAULT_LOAD_CASES: LoadCase[] = standaardBelastinggevallen();
+/**
+ * Staat het eigen gewicht in het startmodel aan? Geëxporteerd om dezelfde
+ * reden als de gevallen: de test rekent het startmodel door zoals de app het
+ * opent, en dat is mét eigen gewicht.
+ */
+export const DEFAULT_SELF_WEIGHT_ENABLED: boolean = EIGEN_GEWICHT_STANDAARD_AAN;
 // Elke last draagt een `omschrijving`. Dat veld verandert geen enkel getal —
 // de solver leest het niet — maar zonder omschrijving zegt een regel
 // "q = −4,00 kN/m op staaf 4" in de lastentabel van het rapport niets over
 // waar die last vandaan komt. Het startmodel laat daarom meteen zien dat het
 // veld bestaat en waar het opduikt.
+//
+// De omschrijvingen noemen wat er op de ligger RUST (dak, vloer, afwerking) en
+// niet "eigen gewicht" van de ligger zelf: dat laatste staat sinds issue #42 in
+// het eigen geval "Eigen gewicht" en wordt automatisch gegenereerd. Een
+// omschrijving "eigen gewicht en vloerafwerking" zou dan suggereren dat het
+// liggergewicht twee keer is meegenomen. De getallen zijn ongewijzigd.
 const DEFAULT_LOADS: Load[] = [
   // Stalen portaal: alleen permanent, op de bovenregel.
   { id: 1, type: "lineLoad", caseId: 1, beamId: 3, q: -5 /* kN/m */,
-    omschrijving: "eigen gewicht dak en dakbedekking" },
+    omschrijving: "dakopbouw en dakbedekking" },
   // Houten ligger: beide velden, permanent én veranderlijk.
   { id: 2, type: "lineLoad", caseId: 1, beamId: 4, q: -4,
-    omschrijving: "eigen gewicht en vloerafwerking" },
+    omschrijving: "vloeropbouw en afwerking" },
   { id: 3, type: "lineLoad", caseId: 1, beamId: 5, q: -4,
-    omschrijving: "eigen gewicht en vloerafwerking" },
+    omschrijving: "vloeropbouw en afwerking" },
   { id: 4, type: "lineLoad", caseId: 2, beamId: 4, q: -2.5,
     omschrijving: "veranderlijke belasting vloer" },
   { id: 5, type: "lineLoad", caseId: 2, beamId: 5, q: -2.5,
     omschrijving: "veranderlijke belasting vloer" },
   // Betonnen balk.
   { id: 6, type: "lineLoad", caseId: 1, beamId: 6, q: -15,
-    omschrijving: "eigen gewicht en vloerafwerking" },
+    omschrijving: "vloeropbouw en afwerking" },
   { id: 7, type: "lineLoad", caseId: 2, beamId: 6, q: -10,
     omschrijving: "veranderlijke belasting vloer" },
 ];
@@ -360,6 +377,29 @@ function meldVervangingOngedaan(aantal: number, opnieuw: string): void {
 }
 
 /**
+ * De melding dat het eigen gewicht is uitgezet omdat zijn geval verdween
+ * (issue #42, punt 6). Nooit stil: zonder melding zou het project verder
+ * rekenen zonder eigen gewicht terwijl niemand dat koos.
+ */
+function meldEigenGewichtUit(reden: EigenGewichtUitReden, naam: string): void {
+  void import("../io/notify").then(({ notifyWarning }) =>
+    notifyWarning(
+      i18next.t("common:eigenGewicht.uitgezetTitel"),
+      i18next.t(`common:eigenGewicht.uitgezet.${reden}`, { naam }),
+      { duur: 12000 },
+    ));
+}
+
+/** Een last hoort niet in het geval van het automatische eigen gewicht. */
+function meldGeenHandmatigeLast(naam: string): void {
+  void import("../io/notify").then(({ notifyWarning }) =>
+    notifyWarning(
+      i18next.t("common:eigenGewicht.geenHandmatigeLastTitel"),
+      i18next.t("common:eigenGewicht.geenHandmatigeLast", { naam }),
+    ));
+}
+
+/**
  * Snapshot zoals de undo-historie hem bewaart: het model PLUS het stramien.
  * Het stramien zit bewust in de historie sinds een as-verplaatsing de knopen
  * op die as meeneemt (zie `verplaatsStramienAs`): as en knopen horen dan bij
@@ -372,10 +412,16 @@ function meldVervangingOngedaan(aantal: number, opnieuw: string): void {
  * combinaties zitten verder niet in de historie, dus draagt deze stap zelf wat
  * er terug moet: Ctrl+Z zet de lijst van ervoor terug (`herstelCombinaties`),
  * Ctrl+Y vervangt opnieuw (`vervangVerouderdeCombinaties`).
+ *
+ * `eigenGewichtStap`: deze stap gaf het project een eigen geval "Eigen
+ * gewicht" (het aanbod van issue #42). Om dezelfde reden draagt hij zelf de
+ * staat van ervoor en erna: Ctrl+Z zet gevallen en combinaties terug, Ctrl+Y
+ * zet ze opnieuw. Eén stap, zoals het issue vraagt.
  */
 type HistorieSnapshot = Snapshot & {
   structuralGrid?: StructuralGrid;
   combinatieStap?: CombinatieVervanging;
+  eigenGewichtStap?: { voor: CombinatieStaat; na: CombinatieStaat; actiefVoor: number };
 };
 
 /**
@@ -1618,6 +1664,12 @@ export interface FemStore {
    * meteen aan.
    */
   addLoadCase: (name: string, type?: LoadCase["type"]) => void;
+  /**
+   * Het aanbod van issue #42: eigen geval "Eigen gewicht" toevoegen en het
+   * eigen gewicht daarheen verplaatsen, als één undo-stap. Geeft het id van
+   * het nieuwe geval, of null als er niets te verplaatsen viel.
+   */
+  verplaatsEigenGewicht: () => number | null;
 
   /**
    * Vervang in ÉÉN stap alles wat een generator (vandaag: de windbelasting-
@@ -1872,7 +1924,9 @@ export function useFemStore(opties?: {
   const [loads, setLoads]       = useState<Load[]>(DEFAULT_LOADS);
 
   const [loadCases, setLoadCases] = useState<LoadCase[]>(DEFAULT_LOAD_CASES);
-  const [activeLoadCaseId, setActiveLoadCaseId] = useState<number>(1);
+  const [activeLoadCaseId, setActiveLoadCaseId] = useState<number>(STANDAARD_ACTIEF_GEVAL_ID);
+  const activeLoadCaseIdRef = useRef(activeLoadCaseId);
+  activeLoadCaseIdRef.current = activeLoadCaseId;
 
   // Combinations + cached solver outputs (step 2d/2e)
   const [combinations, setCombinations] = useState<LoadCombination[]>(
@@ -1950,7 +2004,12 @@ export function useFemStore(opties?: {
   const [structuralGrid, setStructuralGridState] = useState<StructuralGrid>(DEFAULT_STRUCTURAL_GRID);
 
   // Solver options — separate from undo history (UI toggles, not model state).
-  const [selfWeightEnabled, setSelfWeightEnabled] = useState<boolean>(false);
+  // Standaard AAN sinds issue #42: een nieuw project rekent mét eigen gewicht,
+  // in het eigen geval. Een geopend bestand zet hier zijn eigen waarde neer
+  // (`loadProjectState`); ontbreekt het veld daar, dan is het uit, zoals altijd.
+  const [selfWeightEnabled, setSelfWeightEnabled] = useState<boolean>(DEFAULT_SELF_WEIGHT_ENABLED);
+  const selfWeightRef = useRef(selfWeightEnabled);
+  selfWeightRef.current = selfWeightEnabled;
   const [analysetype, setAnalysetype]             = useState<Analysetype>("eersteOrde");
   const [betonSegmentLengteMm, setBetonSegmentLengteMm] =
     useState<number>(STANDAARD_SEGMENTLENGTE_MM);
@@ -2288,6 +2347,12 @@ export function useFemStore(opties?: {
   }, [pushHistory]);
 
   const addLoad = useCallback((l: Omit<Load, "id">) => {
+    // Het geval "Eigen gewicht" wordt automatisch gevuld; een handmatige last
+    // erin zou onzichtbaar bij het eigen gewicht optellen. Weigeren, met reden.
+    if (!gevalNeemtHandmatigeLasten(combiRef.current.loadCases, l.caseId)) {
+      meldGeenHandmatigeLast(combiRef.current.loadCases.find(c => c.id === l.caseId)?.name ?? String(l.caseId));
+      return;
+    }
     const cur = latestRef.current;
     const newId = cur.loads.length === 0 ? 1 : Math.max(...cur.loads.map(x => x.id)) + 1;
     const nextLoads = [...cur.loads, { ...l, id: newId }];
@@ -2299,6 +2364,12 @@ export function useFemStore(opties?: {
   const updateLoad = useCallback((id: number, updates: Partial<Load>) => {
     const cur = latestRef.current;
     if (!cur.loads.some(l => l.id === id)) return;
+    // Een last VERPLAATSEN naar het geval "Eigen gewicht" is hetzelfde als er
+    // een in aanmaken: geweigerd, met reden (zie addLoad).
+    if (updates.caseId !== undefined && !gevalNeemtHandmatigeLasten(combiRef.current.loadCases, updates.caseId)) {
+      meldGeenHandmatigeLast(combiRef.current.loadCases.find(c => c.id === updates.caseId)?.name ?? String(updates.caseId));
+      return;
+    }
     const nextLoads = cur.loads.map(l => l.id === id ? { ...l, ...updates } : l);
     setLoads(nextLoads);
     pushHistory({ ...cur, loads: nextLoads });
@@ -2511,6 +2582,11 @@ export function useFemStore(opties?: {
     const cur = latestRef.current;
     const gevalNaam = loadCases.find(c => c.id === doelCaseId)?.name
       ?? `Geval ${doelCaseId}`;
+    // Plakken in het geval "Eigen gewicht": geweigerd, zie addLoad.
+    if (!gevalNeemtHandmatigeLasten(loadCases, doelCaseId)) {
+      meldGeenHandmatigeLast(gevalNaam);
+      return { geplakt: 0, overgeslagen: klembord.length, verweesd: 0, verplaatst: 0, gevalNaam };
+    }
     const r = computeLastenPlakken(cur, klembord, doelCaseId);
     if (r.geplakt > 0) {
       setLoads(r.loads);
@@ -2618,6 +2694,41 @@ export function useFemStore(opties?: {
   const addLoadCase = useCallback((name: string, type?: LoadCase["type"]) => {
     pasCombiStaatToe(voegBelastinggevalToe(combiRef.current, name, type).staat);
   }, [pasCombiStaatToe]);
+
+  /**
+   * Verdween het gekenmerkte geval "Eigen gewicht" (verwijderd, of van type
+   * gewijzigd)? Dan gaat het eigen gewicht UIT, met melding — issue #42,
+   * punt 6. De regel staat in lib/eigenGewicht (`eigenGewichtNaGevalWijziging`).
+   */
+  const eigenGewichtUitNa = useCallback((voor: CombinatieStaat, na: CombinatieStaat) => {
+    const gevolg = eigenGewichtNaGevalWijziging({
+      voor: voor.loadCases, na: na.loadCases, selfWeightEnabled: selfWeightRef.current,
+    });
+    if (!gevolg) return;
+    selfWeightRef.current = false;
+    setSelfWeightEnabled(false);
+    meldEigenGewichtUit(gevolg.reden, gevolg.geval.name ?? String(gevolg.geval.id));
+  }, []);
+
+  /**
+   * Het aanbod van issue #42: geef dit project een eigen geval "Eigen gewicht"
+   * en verplaats het eigen gewicht daarheen. ÉÉN undo-stap: gevallen en
+   * combinaties zitten niet in de modelsnapshots, dus draagt de stap zelf de
+   * staat van ervoor en erna (`eigenGewichtStap`). Geeft het id van het nieuwe
+   * geval, of null als er niets te verplaatsen viel.
+   */
+  const verplaatsEigenGewicht = useCallback((): number | null => {
+    const voor = combiRef.current;
+    const r = verplaatsEigenGewichtNaarEigenGeval(voor);
+    if (r.id === null) return null;
+    pasCombiStaatToe(r.staat);
+    pushHistory({
+      ...latestRef.current,
+      eigenGewichtStap: { voor, na: r.staat, actiefVoor: activeLoadCaseIdRef.current },
+    });
+    setActiveLoadCaseId(r.id);
+    return r.id;
+  }, [pasCombiStaatToe, pushHistory]);
 
   /**
    * Zie de documentatie bij FemStore.vervangGegenereerdeBelasting. Één
@@ -2753,8 +2864,16 @@ export function useFemStore(opties?: {
   const undo = useCallback(() => {
     if (!canUndo) return;
     const stap = history[historyIdx].combinatieStap;
+    const egStap = history[historyIdx].eigenGewichtStap;
     const newIdx = historyIdx - 1;
     applySnapshot(history[newIdx]);
+    if (egStap) {
+      // Het geval "Eigen gewicht" weer weg: gevallen, combinaties en tellers
+      // van vóór het aanbod, en de tab terug waar hij stond.
+      pasCombiStaatToe(egStap.voor);
+      setActiveLoadCaseId(egStap.actiefVoor);
+      setActiveCombinationId(null);
+    }
     if (stap) {
       pasCombiStaatToe(herstelCombinaties(combiRef.current, stap.voor));
       zetVervanging(null);
@@ -2770,7 +2889,12 @@ export function useFemStore(opties?: {
     if (!canRedo) return;
     const newIdx = historyIdx + 1;
     const stap = history[newIdx].combinatieStap;
+    const egStap = history[newIdx].eigenGewichtStap;
     applySnapshot(history[newIdx]);
+    if (egStap) {
+      pasCombiStaatToe(egStap.na);
+      setActiveCombinationId(null);
+    }
     if (stap) {
       // Opnieuw afleiden in plaats van de lijst van toen terug te zetten:
       // tussen ongedaan maken en opnieuw kan een belastinggeval zijn veranderd.
@@ -2817,7 +2941,7 @@ export function useFemStore(opties?: {
     setPlateMeshCache,
     addSupport, removeSupport, addLoad, updateLoad,
     removeNode, removeBeam, removeLoad, removePlate,
-    deleteSelected, splitBeamAt, addLoadCase, vervangGegenereerdeBelasting,
+    deleteSelected, splitBeamAt, addLoadCase, verplaatsEigenGewicht, vervangGegenereerdeBelasting,
     addNodeMetSplitsing, verbindKnoopMetStaaf, voegKnopenSamen, herstelModel,
     translateSelection, copySelection, rotateSelection, mirrorSelection,
     plakLasten,
@@ -2845,13 +2969,17 @@ export function useFemStore(opties?: {
     // verwijderd geval verdwijnt uit ELKE factortabel (bevinding 14 van de
     // basisaudit: voorheen erfde het volgende geval de wees-factoren).
     updateLoadCase: (id, patch) => {
-      pasCombiStaatToe(wijzigBelastinggeval(combiRef.current, id, patch));
+      const voor = combiRef.current;
+      const na = wijzigBelastinggeval(voor, id, patch);
+      pasCombiStaatToe(na);
+      eigenGewichtUitNa(voor, na);
     },
     removeLoadCase: (id) => {
       const voor = combiRef.current;
       const na = verwijderBelastinggeval(voor, id);
       if (na === voor) return; // onbekend id, of het laatste geval — nooit alles wissen
       pasCombiStaatToe(na);
+      eigenGewichtUitNa(voor, na);
       // Detach loads die naar deze case verwijzen.
       setLoads(prev => prev.filter(l => l.caseId !== id));
       // Switch actieve case als die verdwijnt.

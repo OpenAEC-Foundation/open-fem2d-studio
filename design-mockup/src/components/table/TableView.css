@@ -129,6 +129,9 @@
 }
 
 .ftable-center { text-align: center; }
+/* Automatisch gegenereerde rij (eigen gewicht, issue #42): alleen-lezen, dus
+   gedempt en cursief — herkenbaar anders dan een invoerrij. */
+.ftable td.ftable-auto { color: var(--theme-text-secondary); font-style: italic; }
 .ftable-muted { color: var(--theme-text-faint); }
 
 /* Bewerkbare cellen — invulvelden vullen de cel, rand pas bij focus zodat de

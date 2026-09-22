@@ -26,6 +26,7 @@ import {
 } from "./solver/normcombinaties";
 import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../../lib/normAanduidingen";
 import type { OvergeslagenCombinatie } from "../../lib/combinatieSelectie";
+import { isEigenGewichtGeval } from "../../lib/eigenGewicht";
 import type {
   CombinatieAfwijking, CombinatieVervanging, GevalMelding,
 } from "../../lib/combinatieBeheer";
@@ -203,6 +204,10 @@ export default function LoadCasesDialog({
                               );
                             })}
                           </select>
+                        ) : isEigenGewichtGeval(lc) ? (
+                          <span className="lcd-td-leeg" title={t("loadCases.selfWeightCaseHint")}>
+                            {t("loadCases.autoTag")}
+                          </span>
                         ) : (
                           <span className="lcd-td-leeg">—</span>
                         )}

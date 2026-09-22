@@ -645,6 +645,21 @@
       "mirror": "Spiegeln"
     }
   },
+  "eigenGewicht": {
+    "auto": "auto",
+    "uitgezetTitel": "Eigengewicht ausgeschaltet",
+    "uitgezet": {
+      "verwijderd": "Der Lastfall „{{naam}}“ trug das automatische Eigengewicht und wurde gelöscht. Das Eigengewicht ist jetzt AUS und wird nicht mehr berücksichtigt. Schalten Sie „Eigengewicht“ wieder ein, um es im ersten ständigen Lastfall zu berücksichtigen.",
+      "typeGewijzigd": "Der Lastfall „{{naam}}“ trug das automatische Eigengewicht, ist aber nicht mehr vom Typ ständig. Das Kennzeichen wurde entfernt und das Eigengewicht ist jetzt AUS: es wird nicht mehr berücksichtigt. Schalten Sie „Eigengewicht“ wieder ein, um es im ersten ständigen Lastfall zu berücksichtigen."
+    },
+    "geenHandmatigeLastTitel": "Keine Last hinzugefügt",
+    "geenHandmatigeLast": "Der Lastfall „{{naam}}“ wird automatisch mit dem Eigengewicht gefüllt; es kann keine Last eingegeben werden. Wählen Sie zuerst einen anderen Lastfall.",
+    "aanbodTitel": "Eigengewicht in einem eigenen Lastfall?",
+    "aanbod": "Dieses Projekt berücksichtigt das Eigengewicht im ersten ständigen Lastfall, zwischen den eingegebenen Lasten. Es wurde nichts umgestellt: das Projekt rechnet genau wie zuvor. Sie können den Lastfall „Eigengewicht“ hinzufügen und das Eigengewicht dorthin verschieben; die Ergebnisse der Kombinationen ändern sich dadurch nicht.",
+    "aanbodKnop": "Verschieben",
+    "verplaatstTitel": "Eigengewicht verschoben",
+    "verplaatst": "Der Lastfall „Eigengewicht“ wurde hinzugefügt und trägt jetzt das Eigengewicht. Strg+Z macht dies in einem Schritt rückgängig."
+  },
   "loadCases": {
     "defaultCaseName": "Lastfall {{n}}",
     "defaultComboName": "Kombination {{n}}",
@@ -657,7 +672,14 @@
     "resultsTab": "Ergebnisse",
     "addTitle": "Neuen Lastfall hinzufügen",
     "addLabel": "Neuer Lastfall",
-    "selfWeightTitle": "Eigengewicht (ρ·A·g) zum ständigen Lastfall hinzufügen",
+    "selfWeightTitle": "Eigengewicht (ρ·A·g) berücksichtigen: automatisch erzeugt im Lastfall „Eigengewicht“ oder — in einem älteren Projekt ohne diesen Lastfall — im ersten ständigen Lastfall",
+    "selfWeightTabTitle_one": "{{naam}} — {{count}} automatisch erzeugte Last (Eigengewicht, schreibgeschützt)",
+    "selfWeightTabTitle_other": "{{naam}} — {{count}} automatisch erzeugte Lasten (Eigengewicht, schreibgeschützt)",
+    "tabTitleWithSelfWeight": "{{naam}} — {{count}} Lasten, davon {{automatisch}} automatisch (Eigengewicht)",
+    "autoTag": "auto",
+    "selfWeightCaseHint": "Dieser Lastfall wird automatisch mit dem Eigengewicht gefüllt (q = ρ·A·g je Stab). Löschen oder Ändern des Typs schaltet das Eigengewicht aus.",
+    "selfWeightOffer": "Eigengewicht → eigener Lastfall",
+    "selfWeightOfferTitle": "Das Eigengewicht steht derzeit zwischen den Lasten des ersten ständigen Lastfalls. Den Lastfall „Eigengewicht“ hinzufügen und das Eigengewicht dorthin verschieben. Die Ergebnisse der Kombinationen ändern sich nicht; ein Schritt, rückgängig mit Strg+Z.",
     "selfWeight": "Eigengewicht",
     "analysis": "Berechnung",
     "analysisType": {

@@ -960,3 +960,41 @@ async fn rapportschema_noemt_de_taal_van_de_datum() {
     drop(stdin);
     let _ = timeout(Duration::from_secs(5), child.wait()).await;
 }
+
+/// Het kenmerk `eigenGewicht` van een belastinggeval (issue #42) staat in het
+/// STRIKTE schema van de belastinggevallen, in elke tool die een model
+/// aanneemt: `additionalProperties: false` op het geval, en het veld zelf
+/// alleen `true`. Zonder het veld in het schema zou een client het kenmerk
+/// niet kunnen meesturen (strikt = geweigerd); met `false` toegestaan zou
+/// "geen kenmerk" twee spellingen hebben, en stuurt een model met
+/// `eigenGewicht: false` het eigen gewicht stil naar het eerste blijvende
+/// geval. De rekenkant staat in `eigen_gewicht_geval_mcp.rs`.
+#[tokio::test]
+async fn schema_van_de_belastinggevallen_kent_het_kenmerk_eigen_gewicht_strikt() {
+    let (mut child, mut stdin, mut reader) = start_server().await;
+    for (i, naam) in ["solve_fem_model", "check_fem_model", "validate_fem_model"]
+        .iter()
+        .enumerate()
+    {
+        let tool = tooldefinitie(&mut stdin, &mut reader, 60 + i as u32, naam).await;
+        let geval = &tool["inputSchema"]["properties"]["model"]["properties"]["loadCases"]["items"];
+        assert_eq!(
+            geval["additionalProperties"],
+            json!(false),
+            "{naam}: het schema van een belastinggeval hoort strikt te zijn: {geval}"
+        );
+        let veld = &geval["properties"]["eigenGewicht"];
+        assert_eq!(veld["type"], json!("boolean"), "{naam}: eigenGewicht ontbreekt: {geval}");
+        assert_eq!(veld["enum"], json!([true]), "{naam}: alleen true is toegestaan: {veld}");
+        let zelf_gewicht = &tool["inputSchema"]["properties"]["model"]["properties"]["selfWeightEnabled"];
+        assert!(
+            zelf_gewicht["description"]
+                .as_str()
+                .unwrap_or("")
+                .contains("eigenGewicht"),
+            "{naam}: selfWeightEnabled hoort naar het kenmerk te verwijzen: {zelf_gewicht}"
+        );
+    }
+    drop(stdin);
+    let _ = timeout(Duration::from_secs(5), child.wait()).await;
+}

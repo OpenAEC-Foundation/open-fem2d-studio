@@ -41,6 +41,7 @@ import { tocToestand } from "../components/report/toc";
 import type { Beam, Selection, SupportType, Load, Analysetype } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { ReinforcementCage } from "../lib/types/concrete/ReinforcementCage";
+import { isEigenGewichtGeval } from "../lib/eigenGewicht";
 import {
   lopendeExportId,
   rapportAfronden,
@@ -81,7 +82,9 @@ export interface BedieningActies {
     /** Platen: tellen mee bij "is er iets te toetsen" (plaattoets). */
     plates?: readonly { materiaal?: string }[];
     loads: readonly Load[];
-    loadCases: readonly { id: number; name: string }[];
+    loadCases: readonly { id: number; name: string; type?: string; eigenGewicht?: true }[];
+    /** Staat het automatische eigen gewicht aan? (issue #42) */
+    selfWeightEnabled?: boolean;
     combinations: readonly { id: number; name: string }[];
     combinationResults: Map<number, SolverResult> | null;
     analysetype: Analysetype;
@@ -304,6 +307,18 @@ export async function voerUit(
 
     case "model_bouwen": {
       const f = a().fem;
+      // Een last in het geval "Eigen gewicht" weigert de store (`addLoad`)
+      // met alleen een melding in de app; de client zou dan een model zonder
+      // die last terugkrijgen zonder het te weten. Daarom hier VOORAF, vóór er
+      // iets gebouwd is, met reden (issue #42).
+      for (const l of (args.loads as Array<Omit<Load, "id">> | undefined) ?? []) {
+        if (isEigenGewichtGeval(f.loadCases.find((c) => c.id === l.caseId))) {
+          throw new Error(
+            `last in belastinggeval ${l.caseId}: dat geval draagt het automatische eigen gewicht ` +
+            "(eigenGewicht) en wordt uit profiel, materiaal en geometrie gevuld; er kan geen last in. " +
+            "Zet de last in een ander blijvend geval, bijvoorbeeld \"Permanent (G)\" (id 1).");
+        }
+      }
       const knopen = (args.nodes as Array<{ x: number; z: number }> | undefined) ?? [];
       const nodeIds = knopen.map((n) => f.addNode(n.x, n.z));
       const staven = (args.beams as Array<{ from: number; to: number; updates?: Partial<Beam> }> | undefined) ?? [];
@@ -323,7 +338,20 @@ export async function voerUit(
       for (const naam of (args.load_cases as string[] | undefined) ?? []) f.addLoadCase(naam);
       for (const l of (args.loads as Array<Omit<Load, "id">> | undefined) ?? []) f.addLoad(l);
       await verseRender();
-      return { nodeIds, beamIds };
+      // De belastinggevallen ZOALS ZE NU IN DE APP STAAN gaan mee terug: een
+      // nieuw project opent met het geval "Eigen gewicht" (kenmerk
+      // `eigenGewicht`, automatisch gevuld, neemt geen lasten aan), en een
+      // client moet de id's kennen om zijn lasten in het juiste geval te
+      // zetten — "Permanent (G)" is id 1, niet het eerste geval in de lijst.
+      const na = a().fem;
+      return {
+        nodeIds, beamIds,
+        loadCases: na.loadCases.map((c) => ({
+          id: c.id, name: c.name, type: c.type ?? null,
+          ...(c.eigenGewicht === true ? { eigenGewicht: true } : {}),
+        })),
+        selfWeightEnabled: na.selfWeightEnabled ?? null,
+      };
     }
 
     case "staaf_selecteren": {

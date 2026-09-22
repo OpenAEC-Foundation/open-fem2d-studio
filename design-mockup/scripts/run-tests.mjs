@@ -106,6 +106,15 @@ const BUNDEL_TESTS = new Set([
   // getallen van buiten dit project.
   "dakconstructie-referentie",
   "doorbuiging-toets",
+  // Het belastinggeval "Eigen gewicht" (issue #42): de regel welk geval het
+  // eigen gewicht krijgt (`lib/eigenGewicht`, gelezen door `bouwMultiInput`),
+  // het overzicht voor tekenvlak/tabel/rapport, het aanbod voor oude projecten
+  // (`combinatieBeheer`), `valideerModel`, het projectbestand en de sidecar —
+  // alles in de barrel. Hoort juist óók tegen de bundel: de MCP-weg moet het
+  // kenmerk net zo lezen als de app, en een oud model zonder kenmerk daar net
+  // zo bit-identiek rekenen. Het blok over de store leest bronbestanden van
+  // schijf (de hook draait niet buiten React), wat in beide standen werkt.
+  "eigen-gewicht-geval",
   // Een door tussenknopen geknipte staaf als één staaf naar de kern
   // (`lib/doorgaandeLijn.ts`), en de staafeinden (vrij, doorlopend). Praat
   // alleen met engine, combinations en de bouwers; hoort óók tegen de bundel
@@ -371,7 +380,8 @@ const ALLEEN_BRON = new Map([
   ["undo-route", "Sneltoetsgedrag van de app (Ctrl+Z vanuit een invoerveld); geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["selecteer-bij-focus", "Invoergedrag van de app (focus selecteert de waarde); geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["tauri-plugin-versies", "Vergelijkt package-lock.json met Cargo.lock en leest App.tsx; geen solvercode en niet beschikbaar in de sidecarbundel."],
-  ["window-controls", "Echte React-titelbalk en native IPC-grens in Chromium, met de Tauri-windowcapability; geen solvercode en niet beschikbaar in de sidecarbundel."],
+  ["eigen-gewicht-ui", "Echte tabbalk en tekenvlak (React, CSS, thema's) in Chromium met het geval \"Eigen gewicht\" (issue #42); geen solvercode en niet in de sidecarbundel. De rekenkant bewaakt test-eigen-gewicht-geval in beide standen."],
+  ["window-controls","Echte React-titelbalk en native IPC-grens in Chromium, met de Tauri-windowcapability; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["beton-ui", "Echte React-interactie, async-resultaatverversing en containerlayout in Chromium; geen solverwijziging."],
   ["plaat-wapening-ui", "React/CSS-browsertests voor bereikbare wandwapeningsvelden, veldvalidatie en responsieve indeling."],
   ["mm-invoer-ui", "Interactietests van echte React-formulieren in een lokale headless browser; geen server of solver."],

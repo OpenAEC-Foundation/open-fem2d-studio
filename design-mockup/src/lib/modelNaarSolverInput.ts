@@ -55,6 +55,7 @@ import {
 } from "./sectionResolver";
 import { thermalAlphaForMaterial } from "./thermalAlpha";
 import { zoneSnedenUitStaven } from "./betonZoneSneden";
+import { eigenGewichtGeval } from "./eigenGewicht";
 
 /**
  * Het deel van het modelbestand dat de solver-invoer bepaalt. Bewust een eigen
@@ -68,7 +69,11 @@ export interface FemModelInvoer {
   plates: Plate[];
   loadCases: LoadCase[];
   loads: Load[];
-  /** Eigen gewicht van staven en platen meenemen in het eerste dead-geval. */
+  /**
+   * Eigen gewicht van staven en platen meenemen. In welk geval: zie
+   * `eigenGewichtDoel` (lib/eigenGewicht) — het gekenmerkte geval, anders het
+   * eerste dead-geval.
+   */
   selfWeightEnabled: boolean;
   /** Scheefstand (initiële imperfectie) meenemen. */
   scheefstandEnabled: boolean;
@@ -470,8 +475,11 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
       ? { phi: 1 / model.scheefstandNoemer, richting: model.scheefstandRichting }
       : undefined,
   };
-  // Optioneel: eigen gewicht als extra verdeelde lasten op het eerste
-  // permanente (dead) belastinggeval. Per staaf → q = -ρ·A·g (omlaag in +Z).
+  // Optioneel: eigen gewicht als extra verdeelde lasten. Per staaf →
+  // q = -ρ·A·g (omlaag in +Z). WELK geval ze krijgt beslist `eigenGewichtGeval`
+  // (lib/eigenGewicht): het geval met het kenmerk `eigenGewicht`, en zonder
+  // kenmerk in het model het eerste permanente (dead) geval — de regel van
+  // vóór issue #42, zodat elk bestaand projectbestand bit-identiek rekent.
   //
   // ZONDER blijvend geval wordt het eigen gewicht NIET toegepast. Tot september
   // 2026 viel het dan stil in `loadCases[0]`, welk type dat ook had: in een
@@ -480,8 +488,8 @@ export function bouwMultiInput(model: FemModelInvoer): MultiInput {
   // de factoren van een andere soort is geen veilige terugval. De melding staat
   // in `meldingenBelastinggevallen` (lib/combinatieBeheer) en komt in de
   // projectboom, het rapport en de MCP-antwoorden.
-  if (model.selfWeightEnabled) {
-    const deadCase = model.loadCases.find(c => c.type === "dead");
+  {
+    const deadCase = eigenGewichtGeval(model.loadCases, model.selfWeightEnabled);
     if (deadCase) {
       for (const b of model.beams) {
         multiInput.loads.push(...eigenGewichtLasten(b, staafLengteMm(b, model.nodes), deadCase.id));

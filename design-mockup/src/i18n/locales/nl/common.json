@@ -645,6 +645,21 @@
       "mirror": "Spiegelen"
     }
   },
+  "eigenGewicht": {
+    "auto": "auto",
+    "uitgezetTitel": "Eigen gewicht uitgezet",
+    "uitgezet": {
+      "verwijderd": "Belastinggeval “{{naam}}” droeg het automatische eigen gewicht en is verwijderd. Het eigen gewicht staat nu UIT en wordt niet meer meegerekend. Zet “Eigen gewicht” weer aan om het in het eerste permanente belastinggeval mee te rekenen.",
+      "typeGewijzigd": "Belastinggeval “{{naam}}” droeg het automatische eigen gewicht, maar is niet langer van type permanent. Het kenmerk is weggehaald en het eigen gewicht staat nu UIT: het wordt niet meer meegerekend. Zet “Eigen gewicht” weer aan om het in het eerste permanente belastinggeval mee te rekenen."
+    },
+    "geenHandmatigeLastTitel": "Geen last toegevoegd",
+    "geenHandmatigeLast": "Belastinggeval “{{naam}}” wordt automatisch gevuld met het eigen gewicht; er kan geen last in worden ingevoerd. Kies eerst een ander belastinggeval.",
+    "aanbodTitel": "Eigen gewicht in een eigen belastinggeval?",
+    "aanbod": "Dit project rekent het eigen gewicht mee in het eerste permanente belastinggeval, tussen de ingevoerde lasten. Er is niets omgezet: het project rekent precies als voorheen. U kunt het geval “Eigen gewicht” toevoegen en het eigen gewicht daarheen verplaatsen; de uitkomsten van de combinaties veranderen daardoor niet.",
+    "aanbodKnop": "Verplaatsen",
+    "verplaatstTitel": "Eigen gewicht verplaatst",
+    "verplaatst": "Het belastinggeval “Eigen gewicht” is toegevoegd en draagt nu het eigen gewicht. Ctrl+Z maakt dit in één stap ongedaan."
+  },
   "loadCases": {
     "defaultCaseName": "Geval {{n}}",
     "defaultComboName": "Combinatie {{n}}",
@@ -657,7 +672,14 @@
     "resultsTab": "Resultaten",
     "addTitle": "Nieuw belastinggeval toevoegen",
     "addLabel": "Nieuw belastinggeval",
-    "selfWeightTitle": "Voeg eigen gewicht (ρ·A·g) toe aan het permanente belastinggeval",
+    "selfWeightTitle": "Eigen gewicht (ρ·A·g) meerekenen: automatisch gegenereerd in het belastinggeval “Eigen gewicht”, of — in een ouder project zonder dat geval — in het eerste permanente belastinggeval",
+    "selfWeightTabTitle_one": "{{naam}} — {{count}} automatisch gegenereerde belasting (eigen gewicht, alleen-lezen)",
+    "selfWeightTabTitle_other": "{{naam}} — {{count}} automatisch gegenereerde belastingen (eigen gewicht, alleen-lezen)",
+    "tabTitleWithSelfWeight": "{{naam}} — {{count}} belastingen, waarvan {{automatisch}} automatisch (eigen gewicht)",
+    "autoTag": "auto",
+    "selfWeightCaseHint": "Dit geval wordt automatisch gevuld met het eigen gewicht (q = ρ·A·g per staaf). Verwijderen of het type wijzigen zet het eigen gewicht uit.",
+    "selfWeightOffer": "Eigen gewicht → eigen geval",
+    "selfWeightOfferTitle": "Het eigen gewicht staat nu tussen de lasten van het eerste permanente belastinggeval. Voeg het geval “Eigen gewicht” toe en verplaats het eigen gewicht daarheen. De uitkomsten van de combinaties veranderen niet; één stap, ongedaan te maken met Ctrl+Z.",
     "selfWeight": "Eigen gewicht",
     "analysis": "Analyse",
     "analysisType": {

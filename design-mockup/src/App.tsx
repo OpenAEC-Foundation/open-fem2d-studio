@@ -81,6 +81,11 @@ import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { losEindtoestandOp } from "./lib/houtEindstijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
+import {
+  EIGEN_GEWICHT_STANDAARD_AAN, STANDAARD_ACTIEF_GEVAL_ID, eigenGewichtAanbodVanToepassing,
+  standaardBelastinggevallen,
+} from "./lib/eigenGewicht";
+import { eigenGewichtOverzicht } from "./lib/eigenGewichtOverzicht";
 import { controleerVoorRekenen, leesbareRekenfout } from "./lib/rekenPoort";
 // Scheefstand: φ komt óf uit de vaste noemer (het oude gedrag, en de stand van
 // elk bestaand projectbestand) óf uit de normformule van EN 1993-1-1 (5.5),
@@ -296,6 +301,29 @@ function App() {
     // toetsing (normnaad); een wijziging laat de resultaten vervallen.
     nationaleBijlage: projectInfo.uitgangspunten?.nationaleBijlage ?? null,
   });
+  // Altijd de verse store, ook vanuit een meldingsknop die in een eerder event
+  // is gemaakt (het aanbod "Eigen gewicht naar een eigen geval" bij het openen).
+  const femRef = useRef(fem);
+  femRef.current = fem;
+  // HET AUTOMATISCHE EIGEN GEWICHT, één keer afgeleid en als GEGEVEN doorgegeven
+  // aan tekenvlak, tabbalk en tabel — uit dezelfde functie als de rekengang
+  // (`eigenGewichtLasten`, via lib/eigenGewichtOverzicht). Issue #42.
+  const eigenGewicht = useMemo(() => eigenGewichtOverzicht({
+    nodes: fem.nodes, beams: fem.beams, plates: fem.plates,
+    loadCases: fem.loadCases, selfWeightEnabled: fem.selfWeightEnabled,
+  }), [fem.nodes, fem.beams, fem.plates, fem.loadCases, fem.selfWeightEnabled]);
+  const biedEigenGewichtGevalAan = eigenGewichtAanbodVanToepassing({
+    loadCases: fem.loadCases, selfWeightEnabled: fem.selfWeightEnabled,
+  });
+  const handleVerplaatsEigenGewicht = useCallback(() => {
+    const id = femRef.current.verplaatsEigenGewicht();
+    if (id === null) return;
+    void import("./io/notify").then(({ notifySuccess }) =>
+      notifySuccess(
+        i18next.t("common:eigenGewicht.verplaatstTitel"),
+        i18next.t("common:eigenGewicht.verplaatst"),
+      ));
+  }, []);
   // Windbelastinggenerator — de hook draait de generator mee met wijzigingen
   // in de constructie (idempotent, zie windStore.ts). Staat hier boven de
   // snapshot-opbouw omdat zijn instellingen in het projectbestand gaan.
@@ -732,6 +760,22 @@ function App() {
           if (afwijking) notifyWarning(i18next.t("common:app.file.combosNoticeTitle"), afwijking.samenvatting);
         });
       }
+      // Issue #42: een project dat het eigen gewicht nog in het eerste
+      // blijvende geval heeft, wordt NIET stil omgezet — het rekent precies als
+      // voorheen. Wel een aanbod, met de knop in de melding; dezelfde knop
+      // staat blijvend in de tabbalk naast "Eigen gewicht".
+      if (eigenGewichtAanbodVanToepassing(parsed)) {
+        void import("./io/notify").then(({ notifyWarning }) => {
+          notifyWarning(
+            i18next.t("common:eigenGewicht.aanbodTitel"),
+            i18next.t("common:eigenGewicht.aanbod"),
+            {
+              actie: { label: i18next.t("common:eigenGewicht.aanbodKnop"), onClick: handleVerplaatsEigenGewicht },
+              duur: 30000,
+            },
+          );
+        });
+      }
       // Projectgegevens, wind- en rapportinstellingen uit het bestand — elk
       // optioneel; een ouder bestand laat de huidige stand staan.
       // Stond de gevolgklasse niet in het bestand maar kwam hij uit het kenmerk
@@ -776,7 +820,7 @@ function App() {
       }
       return overschreven;
     },
-    [fem, addRecentFile, windGenerator, projectInfo],
+    [fem, addRecentFile, windGenerator, projectInfo, handleVerplaatsEigenGewicht],
   );
 
   const handleOpenProject = useCallback(async () => {
@@ -838,14 +882,12 @@ function App() {
     baselineResetRef.current = true;
     fem.loadProjectState({
       nodes: [], beams: [], supports: [], plates: [], loads: [],
-      loadCases: [
-        { id: 1, name: "Permanent (G)", type: "dead" },
-        { id: 2, name: "Variabel (Q)",  type: "live" },
-        { id: 3, name: "Sneeuw (S)",    type: "snow" },
-        { id: 4, name: "Wind (W)",      type: "wind" },
-      ],
-      activeLoadCaseId: 1,
-      selfWeightEnabled: false,
+      // Zelfde bron als het startmodel (lib/eigenGewicht): het geval "Eigen
+      // gewicht" voorop, eigen gewicht AAN, en de eerste handmatige tab actief
+      // zodat een getekende last meteen in "Permanent (G)" landt (issue #42).
+      loadCases: standaardBelastinggevallen(),
+      activeLoadCaseId: STANDAARD_ACTIEF_GEVAL_ID,
+      selfWeightEnabled: EIGEN_GEWICHT_STANDAARD_AAN,
       analysetype: "eersteOrde",
     });
     setProjectPath("");
@@ -2232,6 +2274,7 @@ function App() {
                 supports={fem.supports}
                 plates={fem.plates}
                 loads={fem.loads}
+                eigenGewicht={eigenGewicht}
                 selection={fem.selection}
                 activeLoadCaseId={fem.activeLoadCaseId}
                 showLoads={fem.showLoads}
@@ -2316,6 +2359,7 @@ function App() {
                     plates={fem.plates}
                     supports={fem.supports}
                     loads={fem.loads}
+                    eigenGewicht={eigenGewicht}
                     loadCases={fem.loadCases}
                     activeLoadCaseId={fem.activeLoadCaseId}
                     selection={fem.selection}
@@ -2639,6 +2683,8 @@ function App() {
           loads={fem.loads}
           selfWeightEnabled={fem.selfWeightEnabled}
           setSelfWeightEnabled={fem.setSelfWeightEnabled}
+          eigenGewicht={eigenGewicht}
+          onVerplaatsEigenGewicht={biedEigenGewichtGevalAan ? handleVerplaatsEigenGewicht : undefined}
           analysetype={fem.analysetype}
           setAnalysetype={fem.setAnalysetype}
           betonSegmentLengteMm={fem.betonSegmentLengteMm}

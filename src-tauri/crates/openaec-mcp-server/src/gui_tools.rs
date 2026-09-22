@@ -404,7 +404,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "gui_build_model",
-            "description": format!("{vooraf}Builds a model in the app from scratch through the same store actions the canvas uses. Coordinates in mm; loads per the app's Load type."),
+            "description": format!("{vooraf}Builds a model in the app from scratch through the same store actions the canvas uses. Coordinates in mm; loads per the app's Load type. A new project already holds the load cases \"Eigen gewicht\" (id 5, marked `eigenGewicht`: filled automatically with q = ρ·A·g per member, read-only — a load with that caseId is refused), \"Permanent (G)\" (id 1), \"Variabel (Q)\" (2), \"Sneeuw (S)\" (3) and \"Wind (W)\" (4); the result returns the load cases as they stand (`loadCases`, with `eigenGewicht` on the automatic one) and `selfWeightEnabled`."),
             "inputSchema": { "type": "object", "additionalProperties": false,
                 "properties": {
                     "nodes": { "type": "array", "items": { "type": "object", "properties": { "x": {"type":"number"}, "z": {"type":"number"} }, "required": ["x","z"] } },
