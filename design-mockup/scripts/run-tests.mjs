@@ -106,6 +106,15 @@ const BUNDEL_TESTS = new Set([
   // getallen van buiten dit project.
   "dakconstructie-referentie",
   "doorbuiging-toets",
+  // Het belastinggeval "Eigen gewicht" (issue #42): de regel welk geval het
+  // eigen gewicht krijgt (`lib/eigenGewicht`, gelezen door `bouwMultiInput`),
+  // het overzicht voor tekenvlak/tabel/rapport, het aanbod voor oude projecten
+  // (`combinatieBeheer`), `valideerModel`, het projectbestand en de sidecar —
+  // alles in de barrel. Hoort juist óók tegen de bundel: de MCP-weg moet het
+  // kenmerk net zo lezen als de app, en een oud model zonder kenmerk daar net
+  // zo bit-identiek rekenen. Het blok over de store leest bronbestanden van
+  // schijf (de hook draait niet buiten React), wat in beide standen werkt.
+  "eigen-gewicht-geval",
   // Een door tussenknopen geknipte staaf als één staaf naar de kern
   // (`lib/doorgaandeLijn.ts`), en de staafeinden (vrij, doorlopend). Praat
   // alleen met engine, combinations en de bouwers; hoort óók tegen de bundel

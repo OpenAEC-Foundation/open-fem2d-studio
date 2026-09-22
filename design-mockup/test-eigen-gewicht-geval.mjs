@@ -37,7 +37,11 @@
 //  [7] het aanbod: eigen gewicht verplaatsen verandert geen enkele
 //      combinatie-uitkomst, ook niet in een eigen combinatie;
 //  [8] drie wegen: projectbestand, `valideerModel` (weigeringen met reden) en
-//      de sidecar (`solve`, `load_project`) kennen het kenmerk.
+//      de sidecar (`solve`, `load_project`) kennen het kenmerk;
+//  [9] het gekenmerkte geval verwijderen of van type wijzigen zet het eigen
+//      gewicht UIT, met melding — de regel (pure functie op de uitkomst van
+//      `verwijderBelastinggeval`/`wijzigBelastinggeval`) en de aansluiting in
+//      de store (broncontrole: beide paden melden, in vier talen).
 //
 // Uitvoeren: npx tsx test-eigen-gewicht-geval.mjs   (vanuit design-mockup/)
 //        of: node scripts/run-tests.mjs --filter=eigen-gewicht-geval
@@ -49,11 +53,12 @@ const { G, dichtheidVanMateriaal } = await import("./src/lib/sectionResolver.ts"
 const {
   eigenGewichtDoel, eigenGewichtGeval, standaardBelastinggevallen, HANDMATIGE_STANDAARDGEVALLEN,
   EIGEN_GEWICHT_STANDAARD_ID, EIGEN_GEWICHT_STANDAARD_AAN, EIGEN_GEWICHT_NAAM, STANDAARD_ACTIEF_GEVAL_ID,
-  gevalNeemtHandmatigeLasten, eigenGewichtAanbodVanToepassing,
+  gevalNeemtHandmatigeLasten, eigenGewichtAanbodVanToepassing, eigenGewichtNaGevalWijziging,
 } = await import("./src/lib/eigenGewicht.ts");
 const { eigenGewichtOverzicht } = await import("./src/lib/eigenGewichtOverzicht.ts");
 const {
   verplaatsEigenGewichtNaarEigenGeval, meldingenBelastinggevallen, volgendVrijId,
+  verwijderBelastinggeval, wijzigBelastinggeval,
 } = await import("./src/lib/combinatieBeheer.ts");
 const { valideerModel } = await import("./src/mcp/valideerModel.ts");
 const { verwerkVerzoek } = await import("./src/mcp/sidecar.ts");
@@ -402,9 +407,11 @@ log("\n[8] Drie wegen: projectbestand, valideerModel en de sidecar kennen het ke
   rel("sidecar: R_z staal in geval 1, zonder eigen gewicht (kN)", antw.result?.per_case?.["1"]?.reactions?.["1"]?.fz ?? NaN, Q_INGEVOERD * L_STAAL / 2);
   const geweigerd = verwerkVerzoek({ v: 1, id: 2, op: "solve", payload: { model: (() => { const m = kaal(); m.loads[0].caseId = 5; return m; })() } });
   ok("sidecar weigert een last in het gekenmerkte geval, met reden",
-    geweigerd.ok === false && /automatisch/.test(geweigerd.error?.melding ?? ""), `${geweigerd.error?.code}: ${(geweigerd.error?.melding ?? "").slice(0, 100)}`);
+    geweigerd.ok === false && geweigerd.error?.code === "INVOER_ONGELDIG" &&
+    (geweigerd.error?.detail?.fouten ?? []).some((f) => /automatisch/.test(f)),
+    `${geweigerd.error?.code}: ${(geweigerd.error?.detail?.fouten ?? []).join(" | ").slice(0, 100)}`);
 
-  const geladen = verwerkVerzoek({ v: 1, id: 3, op: "load_project", payload: { text: tekst } });
+  const geladen = verwerkVerzoek({ v: 1, id: 3, op: "load_project", payload: { inhoud: tekst } });
   ok("sidecar load_project leest het bestand", geladen.ok === true, geladen.error?.melding ?? "");
   gelijk("sidecar load_project: het kenmerk staat in het teruggegeven model", geladen.result?.model?.loadCases?.[0],
     { id: 5, name: EIGEN_GEWICHT_NAAM, type: "dead", eigenGewicht: true });
@@ -414,5 +421,73 @@ log("\n[8] Drie wegen: projectbestand, valideerModel en de sidecar kennen het ke
     geladen.result.combinations.every((c) => c.factors["5"] === c.factors["1"]));
 }
 
-log(`\n${failed === 0 ? "GESLAAGD" : "GEFAALD"}: ${passed} geslaagd, ${failed} gefaald.`);
+// ─────────────────────────────────────────────────────────────────────────
+log("\n[9] Het geval verwijderen of van type wijzigen: eigen gewicht UIT, met melding");
+// ─────────────────────────────────────────────────────────────────────────
+{
+  const gevallen = standaardBelastinggevallen();
+  const staat = {
+    loadCases: gevallen, combinations: defaultCombinations(gevallen), gevolgklasse: "CC2", bijlage: "NL",
+    volgendGevalId: 6, volgendCombinatieId: 100,
+  };
+
+  // Verwijderen — met de echte functie van de store.
+  const naVerwijderen = verwijderBelastinggeval(staat, EIGEN_GEWICHT_STANDAARD_ID);
+  ok("verwijderen haalt het geval weg", !naVerwijderen.loadCases.some((c) => c.id === EIGEN_GEWICHT_STANDAARD_ID));
+  gelijk("verwijderen → eigen gewicht UIT, reden \"verwijderd\"",
+    eigenGewichtNaGevalWijziging({ voor: gevallen, na: naVerwijderen.loadCases, selfWeightEnabled: true }),
+    { uitzetten: true, reden: "verwijderd", geval: gevallen[0] });
+
+  // Type wijzigen — het kenmerk gaat eraf (anders ψ₂ = 0,3 voor eigen gewicht).
+  const naType = wijzigBelastinggeval(staat, EIGEN_GEWICHT_STANDAARD_ID, { type: "live" });
+  const gewijzigd = naType.loadCases.find((c) => c.id === EIGEN_GEWICHT_STANDAARD_ID);
+  ok("type wijzigen haalt het kenmerk weg", gewijzigd?.type === "live" && gewijzigd.eigenGewicht === undefined,
+    JSON.stringify(gewijzigd));
+  gelijk("type wijzigen → eigen gewicht UIT, reden \"typeGewijzigd\"",
+    eigenGewichtNaGevalWijziging({ voor: gevallen, na: naType.loadCases, selfWeightEnabled: true })?.reden,
+    "typeGewijzigd");
+  // Zonder de uitschakeling zou het eigen gewicht STIL naar "Permanent (G)"
+  // verhuizen — precies wat de melding voorkomt. Dat bewijst waarom hij nodig is.
+  gelijk("… zonder uitschakelen zou de oude regel het stil in geval 1 zetten",
+    eigenGewichtGeval(naType.loadCases, true)?.id, 1);
+
+  // Geen melding als er niets verandert voor het eigen gewicht.
+  gelijk("hernoemen → geen melding",
+    eigenGewichtNaGevalWijziging({
+      voor: gevallen, na: wijzigBelastinggeval(staat, EIGEN_GEWICHT_STANDAARD_ID, { name: "EG" }).loadCases,
+      selfWeightEnabled: true,
+    }), null);
+  gelijk("een ánder geval verwijderen → geen melding",
+    eigenGewichtNaGevalWijziging({ voor: gevallen, na: verwijderBelastinggeval(staat, 3).loadCases, selfWeightEnabled: true }),
+    null);
+  gelijk("schakelaar stond al uit → geen melding",
+    eigenGewichtNaGevalWijziging({ voor: gevallen, na: naVerwijderen.loadCases, selfWeightEnabled: false }), null);
+  const oud = HANDMATIGE_STANDAARDGEVALLEN.map((c) => ({ ...c }));
+  gelijk("oud project zonder kenmerk: geval 1 verwijderen → geen melding van deze regel",
+    eigenGewichtNaGevalWijziging({ voor: oud, na: oud.filter((c) => c.id !== 1), selfWeightEnabled: true }), null);
+
+  // De aansluiting in de store: beide paden roepen de regel aan en melden.
+  // Bronbestanden, want de hook zelf draait niet buiten React.
+  const { readFileSync } = await import("node:fs");
+  const lees = (pad) => readFileSync(new URL(pad, import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  // Pad in delen: de bundelstand van run-tests.mjs herschrijft elke
+  // "./src/….ts"-tekst naar de bundel, en dit is een bronbestand, geen import.
+  const store = lees(["./src/hooks", "useFemStore.ts"].join("/"));
+  const blok = (sleutel) => {
+    const i = store.indexOf(`    ${sleutel}: (id`);
+    return i < 0 ? "" : store.slice(i, store.indexOf("\n    },", i));
+  };
+  ok("store: removeLoadCase zet het eigen gewicht uit via de regel", /eigenGewichtUitNa\(voor, na\)/.test(blok("removeLoadCase")));
+  ok("store: updateLoadCase zet het eigen gewicht uit via de regel", /eigenGewichtUitNa\(voor, na\)/.test(blok("updateLoadCase")));
+  ok("store: de uitschakeling meldt altijd (setSelfWeightEnabled(false) + meldEigenGewichtUit)",
+    /setSelfWeightEnabled\(false\);\s*\n\s*meldEigenGewichtUit\(gevolg\.reden/.test(store));
+  for (const taal of ["nl", "en", "de", "fr"]) {
+    const eg = JSON.parse(lees(`./src/i18n/locales/${taal}/common.json`)).eigenGewicht ?? {};
+    ok(`melding in het ${taal}: titel en beide redenen`,
+      typeof eg.uitgezetTitel === "string" && typeof eg.uitgezet?.verwijderd === "string" &&
+      typeof eg.uitgezet?.typeGewijzigd === "string" && eg.uitgezet.verwijderd.includes("{{naam}}"));
+  }
+}
+
+log(`\n${failed === 0 ? "GESLAAGD" : "GEFAALD"}:${passed} geslaagd, ${failed} gefaald.`);
 process.exit(failed === 0 ? 0 : 1);
