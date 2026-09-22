@@ -19616,6 +19616,54 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
   return handtekeningVanGeneratie(gevallen.map((c) => ({ sleutel: c.sleutel, naam: c.naam })), gLasten, gCombi);
 }
 
+// src/lib/eigenGewicht.ts
+function isEigenGewichtGeval(c) {
+  return c?.eigenGewicht === true;
+}
+function eigenGewichtDoel(loadCases) {
+  const gekenmerkt = loadCases.find(isEigenGewichtGeval);
+  if (gekenmerkt) {
+    return gekenmerkt.type === "dead" ? { soort: "kenmerk", geval: gekenmerkt } : { soort: "kenmerkNietBlijvend", geval: gekenmerkt };
+  }
+  const eersteBlijvend = loadCases.find((c) => c.type === "dead");
+  return eersteBlijvend ? { soort: "eersteBlijvend", geval: eersteBlijvend } : { soort: "geen" };
+}
+function eigenGewichtGeval(loadCases, selfWeightEnabled) {
+  if (selfWeightEnabled !== true) return void 0;
+  const doel = eigenGewichtDoel(loadCases);
+  return doel.soort === "kenmerk" || doel.soort === "eersteBlijvend" ? doel.geval : void 0;
+}
+function gevalNeemtHandmatigeLasten(loadCases, caseId) {
+  return !isEigenGewichtGeval(loadCases.find((c) => c.id === caseId));
+}
+var EIGEN_GEWICHT_NAAM = "Eigen gewicht";
+var EIGEN_GEWICHT_STANDAARD_ID = 5;
+var HANDMATIGE_STANDAARDGEVALLEN = [
+  { id: 1, name: "Permanent (G)", type: "dead" },
+  { id: 2, name: "Variabel (Q)", type: "live" },
+  { id: 3, name: "Sneeuw (S)", type: "snow" },
+  { id: 4, name: "Wind (W)", type: "wind" }
+];
+function standaardBelastinggevallen() {
+  return [
+    { id: EIGEN_GEWICHT_STANDAARD_ID, name: EIGEN_GEWICHT_NAAM, type: "dead", eigenGewicht: true },
+    ...HANDMATIGE_STANDAARDGEVALLEN.map((c) => ({ ...c }))
+  ];
+}
+var EIGEN_GEWICHT_STANDAARD_AAN = true;
+var STANDAARD_ACTIEF_GEVAL_ID = 1;
+function eigenGewichtNaGevalWijziging(p) {
+  if (!p.selfWeightEnabled) return null;
+  const voor = eigenGewichtDoel(p.voor);
+  if (voor.soort !== "kenmerk") return null;
+  if (eigenGewichtDoel(p.na).soort === "kenmerk") return null;
+  const staatErNog = p.na.some((c) => c.id === voor.geval.id);
+  return { uitzetten: true, reden: staatErNog ? "typeGewijzigd" : "verwijderd", geval: voor.geval };
+}
+function eigenGewichtAanbodVanToepassing(p) {
+  return p.selfWeightEnabled === true && eigenGewichtDoel(p.loadCases).soort === "eersteBlijvend";
+}
+
 // src/lib/combinatieBeheer.ts
 function volgendVrijId(bestaande, teller) {
   const hoogste = bestaande.reduce((m, x) => Math.max(m, x.id), 0);
@@ -19963,9 +20011,44 @@ function wijzigBelastinggeval(staat, id, patch) {
   const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
   const volgend = {
     ...staat,
-    loadCases: staat.loadCases.map((c) => c.id === id ? { ...c, ...patch, id } : c)
+    loadCases: staat.loadCases.map((c) => c.id === id ? zonderLosKenmerk({ ...c, ...patch, id }) : c)
   };
   return synchroniseerStandaard(volgend, vorig);
+}
+function zonderLosKenmerk(c) {
+  if (!isEigenGewichtGeval(c) || c.type === "dead") return c;
+  const { eigenGewicht: _weg, ...rest } = c;
+  return rest;
+}
+function verplaatsEigenGewichtNaarEigenGeval(staat) {
+  const doel = eigenGewichtDoel(staat.loadCases);
+  if (doel.soort !== "eersteBlijvend") return { staat, id: null, vanId: null };
+  const vanId = doel.geval.id;
+  const id = volgendVrijId(staat.loadCases, staat.volgendGevalId);
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
+  const volgend = {
+    ...staat,
+    loadCases: [
+      { id, name: vrijeNaam(staat.loadCases, EIGEN_GEWICHT_NAAM), type: "dead", eigenGewicht: true },
+      ...staat.loadCases
+    ],
+    combinations: staat.combinations.map((c) => {
+      if (c.standaard) return c;
+      const f = c.factors.get(vanId) ?? 0;
+      if (f === 0) return c;
+      const factors = new Map(c.factors);
+      factors.set(id, f);
+      return { ...c, factors };
+    }),
+    volgendGevalId: id + 1
+  };
+  const gesynchroniseerd = synchroniseerStandaard(volgend, vorig);
+  return { staat: gesynchroniseerd, id, vanId };
+}
+function vrijeNaam(gevallen, naam) {
+  const bezet = new Set(gevallen.map((c) => c.name));
+  if (!bezet.has(naam)) return naam;
+  for (let n = 2; ; n++) if (!bezet.has(`${naam} (${n})`)) return `${naam} (${n})`;
 }
 function verwijderBelastinggeval(staat, id) {
   if (!staat.loadCases.some((c) => c.id === id)) return staat;
@@ -20208,20 +20291,38 @@ function tekstBlijvendeAfwijking(a) {
 }
 function meldingenBelastinggevallen(p) {
   const meldingen = [];
-  const blijvend = p.loadCases.find((c) => c.type === "dead");
-  const gevuld = (id) => p.loads === void 0 || p.loads.some((l) => l.caseId === id) || p.selfWeightEnabled === true && blijvend?.id === id;
+  const egDoel = eigenGewichtDoel(p.loadCases);
+  const egGeval = eigenGewichtGeval(p.loadCases, p.selfWeightEnabled === true);
+  const gevuld = (id) => p.loads === void 0 || p.loads.some((l) => l.caseId === id) || egGeval?.id === id;
   const heeftFactor = (id, type) => p.combinations.some((c) => c.type === type && (c.factors.get(id) ?? 0) !== 0);
   const heeftBgt = p.combinations.some((c) => c.type === "sls");
   const naamVan = (id) => {
     const c = p.loadCases.find((x) => x.id === id);
     return c ? `${id} ("${c.name}")` : String(id);
   };
-  if (p.selfWeightEnabled && !blijvend) {
+  if (p.selfWeightEnabled && egDoel.soort === "geen") {
     meldingen.push({
       niveau: "fout",
       caseId: null,
       tekst: 'Eigen gewicht staat aan, maar er is geen belastinggeval van type "blijvend". Het eigen gewicht wordt daarom NIET meegerekend. Tot september 2026 kwam het stil in het eerste belastinggeval terecht, met de factoren van d\xE1t type \u2014 bij een veranderlijk geval \u03C8\u2082 = 0,3 in de quasi-blijvende combinatie in plaats van 1,0. Maak een belastinggeval van type "blijvend" aan.'
     });
+  }
+  if (p.selfWeightEnabled && egDoel.soort === "kenmerkNietBlijvend") {
+    meldingen.push({
+      niveau: "fout",
+      caseId: egDoel.geval.id,
+      tekst: `Belastinggeval ${naamVan(egDoel.geval.id)} draagt het kenmerk van het automatische eigen gewicht, maar is niet van type "blijvend". Het eigen gewicht wordt daarom NIET meegerekend: in een veranderlijk geval zou het \u03C8\u2082 = 0,3 krijgen in de quasi-blijvende combinatie in plaats van 1,0, en \u03B3_Q in de UGT. Er wordt ook niet stil op het eerste blijvende geval teruggevallen. Zet het type van dit geval op "blijvend", of haal het kenmerk weg.`
+    });
+  }
+  if (egDoel.soort === "kenmerk" && p.loads) {
+    const aantal = p.loads.filter((l) => l.caseId === egDoel.geval.id).length;
+    if (aantal > 0) {
+      meldingen.push({
+        niveau: "waarschuwing",
+        caseId: egDoel.geval.id,
+        tekst: `Belastinggeval ${naamVan(egDoel.geval.id)} is het geval van het automatische eigen gewicht, maar er ${aantal === 1 ? "staat 1 ingevoerde last" : `staan ${aantal} ingevoerde lasten`} in. Die tellen mee als blijvende belasting, maar horen in een ander blijvend geval: in dit geval zijn ze op het tekenvlak niet van het eigen gewicht te onderscheiden.`
+      });
+    }
   }
   const alle = p.alleCombinaties ?? p.combinations;
   const eenStandaard = alle.find((c) => c.standaard);
@@ -20613,8 +20714,8 @@ function bouwMultiInput(model) {
     // verticale last een horizontale metgezel H = φ·V.
     scheefstand: model.scheefstandEnabled ? { phi: 1 / model.scheefstandNoemer, richting: model.scheefstandRichting } : void 0
   };
-  if (model.selfWeightEnabled) {
-    const deadCase = model.loadCases.find((c) => c.type === "dead");
+  {
+    const deadCase = eigenGewichtGeval(model.loadCases, model.selfWeightEnabled);
     if (deadCase) {
       for (const b of model.beams) {
         multiInput.loads.push(...eigenGewichtLasten(b, staafLengteMm(b, model.nodes), deadCase.id));
@@ -22268,7 +22369,7 @@ var LOAD_VELDEN = [
   "gegenereerdDoor",
   "omschrijving"
 ];
-var LOADCASE_VELDEN = ["id", "name", "type", "categorie", "gegenereerd"];
+var LOADCASE_VELDEN = ["id", "name", "type", "categorie", "gegenereerd", "eigenGewicht"];
 var SUPPORT_TYPES = [
   "pinned",
   "fixed",
@@ -22867,7 +22968,27 @@ function controleerVelden(rauw) {
     }
     keurEnum(lc.type, LOADCASE_TYPES, `${pad}.type`, fouten);
     keurEnum(lc.categorie, GEBRUIKSCATEGORIEEN, `${pad}.categorie`, fouten);
+    if (lc.eigenGewicht !== void 0) {
+      if (lc.eigenGewicht !== true) {
+        fouten.push(
+          `${pad}.eigenGewicht: alleen de waarde true is toegestaan (laat het veld weg voor een gewoon belastinggeval).`
+        );
+      } else if (lc.type !== "dead") {
+        fouten.push(
+          `${pad}.eigenGewicht: het geval van het automatische eigen gewicht moet van type "dead" zijn, niet ${lc.type === void 0 ? "zonder type" : JSON.stringify(lc.type)}. Eigen gewicht is een blijvende belasting (\u03B3_G, \u03C8 = 1,0).`
+        );
+      }
+    }
   });
+  const egGevallen = loadCases.map((lc, i) => ({ lc, i })).filter(({ lc }) => isObject2(lc) && lc.eigenGewicht === true);
+  if (egGevallen.length > 1) {
+    fouten.push(
+      `model.loadCases: ${egGevallen.length} gevallen dragen eigenGewicht: true (${egGevallen.map(({ i }) => `[${i}]`).join(", ")}); hoogstens \xE9\xE9n geval mag het automatische eigen gewicht dragen.`
+    );
+  }
+  const egGevalIds = new Set(
+    egGevallen.map(({ lc }) => isObject2(lc) ? lc.id : void 0).filter((id) => typeof id === "number")
+  );
   const loads = leesArray(rauw, "loads", fouten);
   loads.forEach((l, i) => {
     const pad = `model.loads[${i}]`;
@@ -22875,6 +22996,11 @@ function controleerVelden(rauw) {
     keurVelden(l, LOAD_VELDEN, pad, fouten);
     eisGeheel(l.id, `${pad}.id`, fouten);
     eisGeheel(l.caseId, `${pad}.caseId`, fouten);
+    if (typeof l.caseId === "number" && egGevalIds.has(l.caseId)) {
+      fouten.push(
+        `${pad}.caseId: belastinggeval ${l.caseId} draagt eigenGewicht: true en wordt automatisch gevuld (q = \u03C1\xB7A\xB7g per staaf, \u03C1\xB7g\xB7t per plaat); er mag geen last in staan. Zet de last in een ander blijvend geval.`
+      );
+    }
     if (l.type === void 0) {
       fouten.push(`${pad}.type: verplicht. Toegestaan: ${LOAD_TYPES.join(", ")}.`);
     } else {
@@ -24391,6 +24517,75 @@ function draaitAlsHoofdmodule() {
 if (process.argv.includes("--sidecar") || draaitAlsHoofdmodule()) {
   startSidecar();
 }
+
+// src/lib/eigenGewichtOverzicht.ts
+function eigenGewichtOverzicht(model) {
+  const doel = eigenGewichtDoel(model.loadCases);
+  const geval = eigenGewichtGeval(model.loadCases, model.selfWeightEnabled);
+  const leeg2 = {
+    doel,
+    caseId: null,
+    g: G,
+    staven: [],
+    platen: [],
+    aantalLasten: 0,
+    gewichtStavenKN: 0
+  };
+  if (!geval) return leeg2;
+  const staven = [];
+  for (const b of model.beams) {
+    const lengteMm = staafLengteMm(b, model.nodes);
+    const lasten = eigenGewichtLasten(b, lengteMm, geval.id);
+    const verlopend = bepaalVerloop(b.material, b.profile, b.profileEnd).status === "verlopend";
+    const sec = resolveSection(b.material, b.profile);
+    const rho = dichtheidVanMateriaal(b.material);
+    const delen = lasten.map((l) => ({
+      q: l.q,
+      startFrac: l.startFrac ?? 0,
+      endFrac: l.endFrac ?? 1,
+      // Prismatisch: de volle doorsnede (aBruto bij kruislaaghout), zoals
+      // `eigenGewichtPerMeter`. Verlopend: het oppervlak volgt uit de last
+      // zelf, want de segmenten dragen hun A niet mee naar buiten.
+      A_mm2: verlopend ? Math.abs(l.q) * 1e3 / (rho * G) * 1e6 : sec.aBruto ?? sec.A
+    }));
+    const gewichtKN = delen.reduce(
+      (s, d) => s + Math.abs(d.q) * (d.endFrac - d.startFrac) * (lengteMm / 1e3),
+      0
+    );
+    staven.push({
+      beamId: b.id,
+      materiaal: b.material ?? "S235",
+      profiel: b.profile ?? "",
+      ...verlopend && b.profileEnd ? { profielEind: b.profileEnd } : {},
+      rho,
+      lengteMm,
+      delen,
+      gewichtKN
+    });
+  }
+  const platen = [];
+  for (const p of model.plates) {
+    const invoer = plaatNaarSolverInput(p);
+    const st = bepaalPlaatStijfheid(invoer);
+    if (!st.ok) continue;
+    platen.push({
+      plateId: p.id,
+      materiaal: (p.materiaal ?? "").trim(),
+      rho: st.stijfheid.rho,
+      dikteMm: invoer.thickness,
+      p: -(st.stijfheid.rho * STANDARD_GRAVITY * (invoer.thickness / 1e3)) / 1e3
+    });
+  }
+  return {
+    doel,
+    caseId: geval.id,
+    g: G,
+    staven,
+    platen,
+    aantalLasten: staven.reduce((s, x) => s + x.delen.length, 0) + platen.length,
+    gewichtStavenKN: staven.reduce((s, x) => s + x.gewichtKN, 0)
+  };
+}
 export {
   ALPHA_CR_GRENS_EERSTE_ORDE,
   ALPHA_CR_MAX_DOFS,
@@ -24421,6 +24616,9 @@ export {
   DEFAULT_STRUCTURAL_GRID,
   DEFAULT_VIEW,
   DoorsnedeOnbekendFout,
+  EIGEN_GEWICHT_NAAM,
+  EIGEN_GEWICHT_STANDAARD_AAN,
+  EIGEN_GEWICHT_STANDAARD_ID,
   EINDTOESTAND_COMBO_OFFSET,
   E_STAAL,
   FIGUUR_723_CF0,
@@ -24428,6 +24626,7 @@ export {
   GEBRUIKSCATEGORIEEN,
   GESCHAKELD_BRON,
   GEVOLGKLASSEN,
+  HANDMATIGE_STANDAARDGEVALLEN,
   HORIZONTAAL_COMBINATIE_UITLEG,
   KOLOM_BRON,
   K_CR_STANDAARD,
@@ -24468,6 +24667,7 @@ export {
   SPIEGELREGELS_TOETSCONFIG,
   SPRONGBAND_GRADEN,
   STAAFEINDE_BIJ_RAND_MM,
+  STANDAARD_ACTIEF_GEVAL_ID,
   STANDAARD_BELASTINGGEVALLEN,
   STANDAARD_BIJLAGE,
   STANDAARD_CATEGORIE,
@@ -24555,7 +24755,12 @@ export {
   dwingendeLijnenUitKnopen,
   eersteOrdeCombinatieResultaat,
   effectiefPlaatMeshType,
+  eigenGewichtAanbodVanToepassing,
+  eigenGewichtDoel,
+  eigenGewichtGeval,
   eigenGewichtLasten,
+  eigenGewichtNaGevalWijziging,
+  eigenGewichtOverzicht,
   eigenGewichtPerMeter,
   eigenGewichtVanDoorsnede,
   eindstijfheidInvoer,
@@ -24576,6 +24781,7 @@ export {
   getSecondOrderInput,
   getSecondOrderState,
   getekendeOppervlakte2,
+  gevalNeemtHandmatigeLasten,
   gevalResultaten,
   gevolgklasseBijOpenen,
   gradenTekst,
@@ -24588,6 +24794,7 @@ export {
   isAfgeleidVanStandaard,
   isAsgelijndeRechthoek,
   isBgtEindtoestand,
+  isEigenGewichtGeval,
   isOudeStandaardcombinatie,
   isOverwegendVerticaal,
   isSteelProfile,
@@ -24673,6 +24880,7 @@ export {
   staafLengteMm,
   staafeindeBijPlaatrandTekst,
   stabiliteitsMeldingen,
+  standaardBelastinggevallen,
   startSidecar,
   synchroniseerStandaard,
   synchroniseerWindCombinaties,
@@ -24685,6 +24893,7 @@ export {
   veranderlijkeFactorVerschillen,
   verenNaarCanoniek,
   verouderdeWindCombinaties,
+  verplaatsEigenGewichtNaarEigenGeval,
   vervangDoorStandaard,
   vervangVerouderdeCombinaties,
   verwerkRegel,
