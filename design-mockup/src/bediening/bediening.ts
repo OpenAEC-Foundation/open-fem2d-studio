@@ -41,6 +41,7 @@ import { tocToestand } from "../components/report/toc";
 import type { Beam, Selection, SupportType, Load, Analysetype } from "../components/fem/femTypes";
 import type { SolverResult } from "../components/fem/solver/types";
 import type { ReinforcementCage } from "../lib/types/concrete/ReinforcementCage";
+import { gevalNeemtHandmatigeLasten } from "../lib/eigenGewicht";
 import {
   lopendeExportId,
   rapportAfronden,
@@ -306,6 +307,18 @@ export async function voerUit(
 
     case "model_bouwen": {
       const f = a().fem;
+      // Een last in het geval "Eigen gewicht" weigert de store (`addLoad`)
+      // met alleen een melding in de app; de client zou dan een model zonder
+      // die last terugkrijgen zonder het te weten. Daarom hier VOORAF, vóór er
+      // iets gebouwd is, met reden (issue #42).
+      for (const l of (args.loads as Array<Omit<Load, "id">> | undefined) ?? []) {
+        if (!gevalNeemtHandmatigeLasten(f.loadCases, l.caseId)) {
+          throw new Error(
+            `last in belastinggeval ${l.caseId}: dat geval draagt het automatische eigen gewicht ` +
+            "(eigenGewicht) en wordt uit profiel, materiaal en geometrie gevuld; er kan geen last in. " +
+            "Zet de last in een ander blijvend geval, bijvoorbeeld \"Permanent (G)\" (id 1).");
+        }
+      }
       const knopen = (args.nodes as Array<{ x: number; z: number }> | undefined) ?? [];
       const nodeIds = knopen.map((n) => f.addNode(n.x, n.z));
       const staven = (args.beams as Array<{ from: number; to: number; updates?: Partial<Beam> }> | undefined) ?? [];
