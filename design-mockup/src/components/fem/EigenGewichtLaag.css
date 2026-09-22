@@ -24,3 +24,5 @@
   fill: var(--theme-text-secondary);
   text-anchor: middle;
 }
+/* Naast een kolom: links uitgelijnd, zodat het label van de staaf wegloopt. */
+.fem-eg-tekst-naast { text-anchor: start; }

@@ -61,6 +61,23 @@ export default function EigenGewichtLaag({
         const pA = worldToScreen(nA.x, nA.z), pB = worldToScreen(nB.x, nB.z);
         const dx = pB.x - pA.x, dy = pB.y - pA.y;
         if (Math.hypot(dx, dy) < 1) return null;
+        const qs = s.delen.map((d) => Math.abs(d.q));
+        const qMin = Math.min(...qs), qMax = Math.max(...qs);
+        const waarde = qMax - qMin < 5e-4 ? nl(qMax, 3) : `${nl(qMin, 3)}–${nl(qMax, 3)}`;
+        const label = `${waarde} kN/m (${autoLabel})`;
+        const mx = (pA.x + pB.x) / 2, my = (pA.y + pB.y) / 2;
+        // Steile staaf (kolom): pijlen OP de staaflijn vallen samen met de staaf
+        // zelf en zijn niet te lezen. Dan één pijl naast de staaf, halverwege,
+        // met het label ernaast.
+        if (Math.abs(dx) < 0.3 * Math.abs(dy)) {
+          const x = mx + 10;
+          return (
+            <g key={`eg-b${s.beamId}`} data-eg-staaf={s.beamId}>
+              <line x1={x} y1={my - PIJL_PX} x2={x} y2={my} className="fem-eg-pijl" markerEnd="url(#fem-eg-head)" />
+              <text x={x + 5} y={my - PIJL_PX / 2 + 3} className="fem-eg-tekst fem-eg-tekst-naast">{label}</text>
+            </g>
+          );
+        }
         const pijlen: React.ReactNode[] = [];
         for (const [i, d] of s.delen.entries()) {
           // Zwaartekracht: altijd globaal omlaag, ook op een schuine staaf —
@@ -75,17 +92,13 @@ export default function EigenGewichtLaag({
             );
           }
         }
-        const qs = s.delen.map((d) => Math.abs(d.q));
-        const qMin = Math.min(...qs), qMax = Math.max(...qs);
-        const waarde = qMax - qMin < 5e-4 ? nl(qMax, 3) : `${nl(qMin, 3)}–${nl(qMax, 3)}`;
         // Het label ONDER de staaf: boven staat het label van een ingevoerde last.
-        const mx = (pA.x + pB.x) / 2, my = (pA.y + pB.y) / 2;
         return (
           <g key={`eg-b${s.beamId}`} data-eg-staaf={s.beamId}>
             <line x1={pA.x} y1={pA.y - PIJL_PX} x2={pB.x} y2={pB.y - PIJL_PX} className="fem-eg-band" />
             {pijlen}
             <text x={mx} y={my + 15} className="fem-eg-tekst">
-              {`g = ${waarde} kN/m (${autoLabel})`}
+              {label}
             </text>
           </g>
         );
@@ -103,7 +116,7 @@ export default function EigenGewichtLaag({
             <line x1={p.x} y1={p.y - PIJL_PX - 12} x2={p.x} y2={p.y - 12}
               className="fem-eg-pijl" markerEnd="url(#fem-eg-head)" />
             <text x={p.x} y={p.y + 4} className="fem-eg-tekst">
-              {`g = ${nl(Math.abs(pl.p), 3)} kN/m² (${autoLabel})`}
+              {`${nl(Math.abs(pl.p), 3)} kN/m² (${autoLabel})`}
             </text>
           </g>
         );
