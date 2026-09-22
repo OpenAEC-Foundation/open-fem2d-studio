@@ -328,7 +328,12 @@ export function basisSleutel(sleutel: string): string {
 /** Het deel van een belastinggeval dat de generator leest. */
 export type GevalInvoer = Pick<LoadCase, "id" | "name" | "type" | "categorie" | "gegenereerd">;
 
-/** De vier gevallen van een nieuw model; gelijk aan `DEFAULT_LOAD_CASES` in de store. */
+/**
+ * De vier HANDMATIGE gevallen van een nieuw model (lib/eigenGewicht,
+ * `HANDMATIGE_STANDAARDGEVALLEN`). De store zet daar sinds issue #42 het geval
+ * "Eigen gewicht" (id 5, blijvend) vóór; deze lijst blijft de terugval voor
+ * aanroepers die geen gevallen meegeven, en blijft daarom ongewijzigd.
+ */
 export const STANDAARD_BELASTINGGEVALLEN: readonly GevalInvoer[] = [
   { id: 1, name: "Permanent (G)", type: "dead" },
   { id: 2, name: "Variabel (Q)", type: "live" },

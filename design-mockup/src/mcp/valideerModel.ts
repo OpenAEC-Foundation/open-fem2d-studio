@@ -275,7 +275,7 @@ const LOAD_VELDEN = [
   "plateId", "edge", "edgeIndex", "openingId", "gegenereerdDoor", "omschrijving",
 ] as const;
 
-const LOADCASE_VELDEN = ["id", "name", "type", "categorie", "gegenereerd"] as const;
+const LOADCASE_VELDEN = ["id", "name", "type", "categorie", "gegenereerd", "eigenGewicht"] as const;
 
 const SUPPORT_TYPES = [
   "pinned", "fixed", "xRoller", "zRoller", "zSpring", "xSpring", "rotSpring",
@@ -1094,7 +1094,38 @@ export function controleerVelden(rauw: unknown): string[] {
     // Gebruikscategorie (NB tabel NB.2–A1.1): een tikfout zou stil categorie A
     // opleveren, met ψ₂ = 0,3 waar bijvoorbeeld opslag (E) 0,8 vraagt.
     keurEnum(lc.categorie, GEBRUIKSCATEGORIEEN, `${pad}.categorie`, fouten);
+    // Het kenmerk van het automatische eigen gewicht (issue #42): alleen
+    // `true`, en alleen op een blijvend geval. `false` of een tekst zou stil
+    // "geen kenmerk" betekenen en het eigen gewicht naar het eerste blijvende
+    // geval sturen; een kenmerk op een veranderlijk geval zou het eigen
+    // gewicht ψ₂ = 0,3 geven. Beide worden geweigerd, met reden.
+    if (lc.eigenGewicht !== undefined) {
+      if (lc.eigenGewicht !== true) {
+        fouten.push(
+          `${pad}.eigenGewicht: alleen de waarde true is toegestaan (laat het veld weg voor een ` +
+          "gewoon belastinggeval).");
+      } else if (lc.type !== "dead") {
+        fouten.push(
+          `${pad}.eigenGewicht: het geval van het automatische eigen gewicht moet van type "dead" ` +
+          `zijn, niet ${lc.type === undefined ? "zonder type" : JSON.stringify(lc.type)}. Eigen gewicht ` +
+          "is een blijvende belasting (γ_G, ψ = 1,0).");
+      }
+    }
   });
+  // Hoogstens één geval draagt het eigen gewicht; bij twee zou de rekengang
+  // stil het eerste kiezen.
+  const egGevallen = loadCases
+    .map((lc, i) => ({ lc, i }))
+    .filter(({ lc }) => isObject(lc) && lc.eigenGewicht === true);
+  if (egGevallen.length > 1) {
+    fouten.push(
+      `model.loadCases: ${egGevallen.length} gevallen dragen eigenGewicht: true ` +
+      `(${egGevallen.map(({ i }) => `[${i}]`).join(", ")}); hoogstens één geval mag het automatische ` +
+      "eigen gewicht dragen.");
+  }
+  const egGevalIds = new Set(
+    egGevallen.map(({ lc }) => (isObject(lc) ? lc.id : undefined)).filter((id) => typeof id === "number"),
+  );
 
   // Lasten.
   const loads = leesArray(rauw, "loads", fouten);
@@ -1104,6 +1135,14 @@ export function controleerVelden(rauw: unknown): string[] {
     keurVelden(l, LOAD_VELDEN, pad, fouten);
     eisGeheel(l.id, `${pad}.id`, fouten);
     eisGeheel(l.caseId, `${pad}.caseId`, fouten);
+    // Het geval met `eigenGewicht: true` wordt automatisch gevuld; een last
+    // erin zou onzichtbaar bij het eigen gewicht optellen.
+    if (typeof l.caseId === "number" && egGevalIds.has(l.caseId)) {
+      fouten.push(
+        `${pad}.caseId: belastinggeval ${l.caseId} draagt eigenGewicht: true en wordt automatisch ` +
+        "gevuld (q = ρ·A·g per staaf, ρ·g·t per plaat); er mag geen last in staan. Zet de last in " +
+        "een ander blijvend geval.");
+    }
     if (l.type === undefined) {
       fouten.push(`${pad}.type: verplicht. Toegestaan: ${LOAD_TYPES.join(", ")}.`);
     } else {

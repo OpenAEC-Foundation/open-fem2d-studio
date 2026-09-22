@@ -81,7 +81,9 @@ export interface BedieningActies {
     /** Platen: tellen mee bij "is er iets te toetsen" (plaattoets). */
     plates?: readonly { materiaal?: string }[];
     loads: readonly Load[];
-    loadCases: readonly { id: number; name: string }[];
+    loadCases: readonly { id: number; name: string; type?: string; eigenGewicht?: true }[];
+    /** Staat het automatische eigen gewicht aan? (issue #42) */
+    selfWeightEnabled?: boolean;
     combinations: readonly { id: number; name: string }[];
     combinationResults: Map<number, SolverResult> | null;
     analysetype: Analysetype;
@@ -323,7 +325,20 @@ export async function voerUit(
       for (const naam of (args.load_cases as string[] | undefined) ?? []) f.addLoadCase(naam);
       for (const l of (args.loads as Array<Omit<Load, "id">> | undefined) ?? []) f.addLoad(l);
       await verseRender();
-      return { nodeIds, beamIds };
+      // De belastinggevallen ZOALS ZE NU IN DE APP STAAN gaan mee terug: een
+      // nieuw project opent met het geval "Eigen gewicht" (kenmerk
+      // `eigenGewicht`, automatisch gevuld, neemt geen lasten aan), en een
+      // client moet de id's kennen om zijn lasten in het juiste geval te
+      // zetten — "Permanent (G)" is id 1, niet het eerste geval in de lijst.
+      const na = a().fem;
+      return {
+        nodeIds, beamIds,
+        loadCases: na.loadCases.map((c) => ({
+          id: c.id, name: c.name, type: c.type ?? null,
+          ...(c.eigenGewicht === true ? { eigenGewicht: true } : {}),
+        })),
+        selfWeightEnabled: na.selfWeightEnabled ?? null,
+      };
     }
 
     case "staaf_selecteren": {

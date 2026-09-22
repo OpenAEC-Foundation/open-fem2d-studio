@@ -619,6 +619,21 @@
       "mirror": "Mirror"
     }
   },
+  "eigenGewicht": {
+    "auto": "auto",
+    "uitgezetTitel": "Self-weight switched off",
+    "uitgezet": {
+      "verwijderd": "Load case “{{naam}}” carried the automatic self-weight and has been removed. Self-weight is now OFF and is no longer included. Switch “Self-weight” back on to include it in the first permanent load case.",
+      "typeGewijzigd": "Load case “{{naam}}” carried the automatic self-weight but is no longer of type permanent. The marker has been removed and self-weight is now OFF: it is no longer included. Switch “Self-weight” back on to include it in the first permanent load case."
+    },
+    "geenHandmatigeLastTitel": "No load added",
+    "geenHandmatigeLast": "Load case “{{naam}}” is filled automatically with the self-weight; no load can be entered in it. Select another load case first.",
+    "aanbodTitel": "Self-weight in its own load case?",
+    "aanbod": "This project includes the self-weight in the first permanent load case, among the entered loads. Nothing has been converted: the project calculates exactly as before. You can add the “Self-weight” case and move the self-weight there; the combination results do not change.",
+    "aanbodKnop": "Move",
+    "verplaatstTitel": "Self-weight moved",
+    "verplaatst": "The “Self-weight” load case has been added and now carries the self-weight. Ctrl+Z undoes this in one step."
+  },
   "loadCases": {
     "defaultCaseName": "Case {{n}}",
     "defaultComboName": "Combination {{n}}",
@@ -631,7 +646,14 @@
     "resultsTab": "Results",
     "addTitle": "Add new load case",
     "addLabel": "New load case",
-    "selfWeightTitle": "Add self-weight (ρ·A·g) to the permanent load case",
+    "selfWeightTitle": "Include self-weight (ρ·A·g): generated automatically in the “Self-weight” load case, or — in an older project without that case — in the first permanent load case",
+    "selfWeightTabTitle_one": "{{naam}} — {{count}} automatically generated load (self-weight, read-only)",
+    "selfWeightTabTitle_other": "{{naam}} — {{count}} automatically generated loads (self-weight, read-only)",
+    "tabTitleWithSelfWeight": "{{naam}} — {{count}} loads, {{automatisch}} of them automatic (self-weight)",
+    "autoTag": "auto",
+    "selfWeightCaseHint": "This case is filled automatically with the self-weight (q = ρ·A·g per member). Deleting it or changing its type switches self-weight off.",
+    "selfWeightOffer": "Self-weight → own case",
+    "selfWeightOfferTitle": "Self-weight currently sits among the loads of the first permanent load case. Add the “Self-weight” case and move the self-weight there. The combination results do not change; one step, undo with Ctrl+Z.",
     "selfWeight": "Self-weight",
     "analysis": "Analysis",
     "analysisType": {

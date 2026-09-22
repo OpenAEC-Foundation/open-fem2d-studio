@@ -1,10 +1,12 @@
 /**
  * LoadsSection — belastinggevallen met per geval een tabel van de lasten:
  * type, staaf/knoop, waarde (q, F, M of ΔT), richting en bij deellasten het
- * belaste bereik in m vanaf de startknoop. Plus de eigen-gewicht-vermelding
- * (zelfde toewijzingsregel als de solver: het eerste geval van type "dead";
- * zonder zo'n geval rekent de solver het eigen gewicht niet mee, en zegt dit
- * rapport dat).
+ * belaste bereik in m vanaf de startknoop. Plus het automatische eigen gewicht
+ * in het geval dat het krijgt, met de afleiding q = ρ·A·g per staaf. Het geval
+ * én de getallen komen uit `eigenGewichtOverzicht` — dezelfde regel
+ * (lib/eigenGewicht) en dezelfde functie (`eigenGewichtLasten`) als de solver.
+ * Zonder geldig geval rekent de solver het eigen gewicht niet mee, en zegt dit
+ * rapport dat.
  */
 import { useTranslation } from "react-i18next";
 import type { Load, LoadCase } from "../../fem/femTypes";
@@ -12,6 +14,7 @@ import { plaatRandTekst, bepaalPlaatlastRand } from "../../fem/femTypes";
 import { beamLengthMm } from "../../../lib/steelCheckBuilder";
 import { useReportData } from "../ReportDataContext";
 import { fmtNum } from "../reportFormat";
+import { eigenGewichtOverzicht } from "../../../lib/eigenGewichtOverzicht";
 
 const CASE_TYPE_LABELS: Record<LoadCase["type"], string> = {
   dead: "Permanent",
@@ -41,13 +44,15 @@ export default function LoadsSection() {
     return rand.ok ? rand.lengte / 1000 : null;
   };
 
-  // Zelfde regel als de solver (bouwMultiInput in lib/modelNaarSolverInput):
-  // eigen gewicht landt in het eerste "dead"-geval. Zonder blijvend geval
-  // rekent de solver het NIET mee. Tot september 2026 viel het dan stil in het
-  // eerste geval, met de factoren van dát type, en noemde dit rapport dat
-  // geval; nu staat er dat het eigen gewicht ontbreekt (ruw 7 van de basisaudit).
-  const selfWeightCase = selfWeightEnabled
-    ? loadCases.find((c) => c.type === "dead")
+  // Zelfde regel én zelfde lasten als de solver (bouwMultiInput): het geval
+  // met het kenmerk `eigenGewicht`, en zonder kenmerk het eerste "dead"-geval.
+  // Zonder geldig geval rekent de solver het eigen gewicht NIET mee. Tot
+  // september 2026 viel het dan stil in het eerste geval, met de factoren van
+  // dát type, en noemde dit rapport dat geval; nu staat er dat het eigen
+  // gewicht ontbreekt (ruw 7 van de basisaudit).
+  const eigenGewicht = eigenGewichtOverzicht({ nodes, beams, plates, loadCases, selfWeightEnabled });
+  const selfWeightCase = eigenGewicht.caseId !== null
+    ? loadCases.find((c) => c.id === eigenGewicht.caseId)
     : undefined;
 
   // De omschrijvingskolom verschijnt alleen als er érgens in het model een
@@ -228,12 +233,72 @@ export default function LoadsSection() {
                     </table>
                   )}
                   {carriesSelfWeight && (
-                    <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
-                      {t(
-                        "report.selfWeightIncluded",
-                        "Eigen gewicht van alle staven wordt in dit geval automatisch meegenomen (q = ρ·A·g per staaf).",
+                    <>
+                      <p className="rpt-note" style={{ marginTop: "1.5mm" }}>
+                        {t(
+                          "report.selfWeightIncluded",
+                          "Eigen gewicht van alle staven wordt in dit geval automatisch meegenomen (q = ρ·A·g per staaf).",
+                        )}
+                        {" "}
+                        {t("report.selfWeightG", "g = {{g}} m/s².", { g: fmtNum(eigenGewicht.g, 2) })}
+                      </p>
+                      {eigenGewicht.staven.some((s) => s.delen.length > 0) && (
+                        <table className="rpt-table" data-testid="rpt-eigen-gewicht">
+                          <thead>
+                            <tr>
+                              <th>{t("report.selfWeightColBeam", "Staaf")}</th>
+                              <th>{t("report.selfWeightColMaterial", "Materiaal")}</th>
+                              <th>{t("report.selfWeightColProfile", "Profiel")}</th>
+                              <th>ρ [kg/m³]</th>
+                              <th>A [mm²]</th>
+                              <th>{t("report.selfWeightColRange", "Bereik")}</th>
+                              <th>q = ρ·A·g [kN/m]</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eigenGewicht.staven.flatMap((s) => s.delen.map((d, i) => (
+                              <tr key={`${s.beamId}-${i}`}>
+                                <td>{s.beamId}</td>
+                                <td>{s.materiaal}</td>
+                                <td>{s.profielEind ? `${s.profiel} → ${s.profielEind}` : s.profiel}</td>
+                                <td>{fmtNum(s.rho, 0)}</td>
+                                <td>{fmtNum(d.A_mm2, 0)}</td>
+                                <td>
+                                  {d.startFrac <= 0 && d.endFrac >= 1
+                                    ? t("report.fullLength", "volledige lengte")
+                                    : `${fmtNum(d.startFrac * s.lengteMm / 1000, 2)} – ${fmtNum(d.endFrac * s.lengteMm / 1000, 2)} m`}
+                                </td>
+                                <td>{fmtNum(d.q, 3)}</td>
+                              </tr>
+                            )))}
+                          </tbody>
+                        </table>
                       )}
-                    </p>
+                      {eigenGewicht.platen.length > 0 && (
+                        <table className="rpt-table" data-testid="rpt-eigen-gewicht-platen">
+                          <thead>
+                            <tr>
+                              <th>{t("report.selfWeightColPlate", "Plaat")}</th>
+                              <th>{t("report.selfWeightColMaterial", "Materiaal")}</th>
+                              <th>ρ [kg/m³]</th>
+                              <th>t [mm]</th>
+                              <th>p = ρ·g·t [kN/m²]</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eigenGewicht.platen.map((pl) => (
+                              <tr key={pl.plateId}>
+                                <td>{pl.plateId}</td>
+                                <td>{pl.materiaal || "—"}</td>
+                                <td>{fmtNum(pl.rho, 0)}</td>
+                                <td>{fmtNum(pl.dikteMm, 0)}</td>
+                                <td>{fmtNum(pl.p, 3)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -244,10 +309,15 @@ export default function LoadsSection() {
 
       {loadCases.length > 0 && selfWeightEnabled && !selfWeightCase && (
         <p className="rpt-note rpt-melding-fout" style={{ marginTop: "3mm" }}>
-          {t(
-            "report.selfWeightNoDeadCase",
-            "Eigen gewicht staat aan, maar er is geen belastinggeval van type “Permanent”: het eigen gewicht is NIET in de berekening meegenomen.",
-          )}
+          {eigenGewicht.doel.soort === "kenmerkNietBlijvend"
+            ? t(
+                "report.selfWeightCaseNotDead",
+                "Eigen gewicht staat aan, maar het belastinggeval met het kenmerk “eigen gewicht” is niet van type “Permanent”: het eigen gewicht is NIET in de berekening meegenomen.",
+              )
+            : t(
+                "report.selfWeightNoDeadCase",
+                "Eigen gewicht staat aan, maar er is geen belastinggeval van type “Permanent”: het eigen gewicht is NIET in de berekening meegenomen.",
+              )}
         </p>
       )}
 

@@ -76,6 +76,13 @@ export * from "../lib/sectionResolver";
 export * from "../lib/plaatMateriaal";
 export * from "../lib/plaatCheckBuilder";
 export * from "../lib/modelNaarSolverInput";
+// Het belastinggeval van het automatische eigen gewicht (issue #42): de regel
+// die bepaalt WELK geval het eigen gewicht krijgt, en het overzicht met de
+// afleiding (ρ, A, g). `bouwMultiInput` leest de regel al; met deze twee
+// regels draait ook hun test tegen de bundel, zodat het MCP-artefact het
+// kenmerk aantoonbaar net zo leest als de bron. Pure rekencode, geen DOM.
+export * from "../lib/eigenGewicht";
+export * from "../lib/eigenGewichtOverzicht";
 export * from "../components/fem/femTypes";
 // De plaatmesher (raster met openingen, koppeling tot vierhoeken, keuring van
 // een cache): pure meetkunde zonder WASM of DOM — de engine gebruikt hem al,

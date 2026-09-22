@@ -1675,6 +1675,19 @@ export interface LoadCase {
    * Ontbreekt het veld → handmatig aangemaakt belastinggeval.
    */
   gegenereerd?: { bron: "wind"; sleutel: string };
+  /**
+   * Dit geval draagt het AUTOMATISCHE eigen gewicht (issue #42). De inhoud
+   * volgt uit het model (per staaf q = ρ·A·g, per plaat ρ·g·t) via
+   * `eigenGewichtLasten`; de gebruiker voert er niets in. Alleen geldig op een
+   * geval van type "dead", en op hoogstens één geval.
+   *
+   * Additief en optioneel: ontbreekt het kenmerk in het hele model (elk
+   * projectbestand van vóór dit veld), dan geldt de oude regel — het eigen
+   * gewicht landt in het eerste geval van type "dead". Zie
+   * `eigenGewichtDoel` in lib/eigenGewicht.ts, de ENIGE plek waar die keuze
+   * valt. De aan/uit-schakelaar blijft `selfWeightEnabled`.
+   */
+  eigenGewicht?: true;
 }
 
 /**

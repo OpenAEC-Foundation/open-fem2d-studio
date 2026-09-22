@@ -1,0 +1,26 @@
+/* Automatisch eigen gewicht op het tekenvlak (issue #42). Gedempt en gestreept:
+   herkenbaar GEEN ingevoerde last (die is rood en doorgetrokken). De kleur komt
+   uit de thematokens, zodat licht en donker thema beide kloppen. */
+.fem-eg-pijl {
+  stroke: var(--theme-text-secondary);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2;
+  fill: none;
+}
+.fem-eg-band {
+  stroke: var(--theme-text-secondary);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+  fill: none;
+  opacity: 0.8;
+}
+.fem-eg-marker {
+  fill: var(--theme-text-secondary);
+  stroke: none;
+}
+.fem-eg-tekst {
+  font: 500 10.5px/1 "JetBrains Mono", monospace;
+  font-style: italic;
+  fill: var(--theme-text-secondary);
+  text-anchor: middle;
+}

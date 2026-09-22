@@ -21,6 +21,8 @@ import {
   STANDAARD_KRUIPINVOER,
   type KruipInvoerProject,
 } from "../../lib/kruipcoefficient";
+import type { EigenGewichtOverzicht } from "../../lib/eigenGewichtOverzicht";
+import { isEigenGewichtGeval } from "../../lib/eigenGewicht";
 import "./LoadCaseTabBar.css";
 
 interface Props {
@@ -33,6 +35,17 @@ interface Props {
   /** Solver toggles — surfaced on the right side of the bar. */
   selfWeightEnabled?: boolean;
   setSelfWeightEnabled?: (v: boolean) => void;
+  /**
+   * Het automatische eigen gewicht (issue #42), afgeleid in App.tsx uit
+   * dezelfde functie als de rekengang. De balk telt en rekent zelf niets: de
+   * tab van het geval dat het eigen gewicht krijgt toont dit aantal erbij.
+   */
+  eigenGewicht?: EigenGewichtOverzicht;
+  /**
+   * Het aanbod "geef het eigen gewicht een eigen geval". Alleen gezet als het
+   * van toepassing is (eigen gewicht aan, nog in het eerste blijvende geval).
+   */
+  onVerplaatsEigenGewicht?: () => void;
   /** Analysetype: 1e orde, 2e orde (P-Δ) of 2e orde + fysisch niet-lineair. */
   analysetype?: Analysetype;
   setAnalysetype?: (v: Analysetype) => void;
@@ -121,7 +134,7 @@ function typeTag(type: LoadCase["type"]): string {
 
 export default function LoadCaseTabBar({
   loadCases, activeLoadCaseId, setActiveLoadCaseId, addLoadCase, loads,
-  selfWeightEnabled, setSelfWeightEnabled,
+  selfWeightEnabled, setSelfWeightEnabled, eigenGewicht, onVerplaatsEigenGewicht,
   analysetype = "eersteOrde", setAnalysetype,
   betonSegmentLengteMm = 400, setBetonSegmentLengteMm,
   betonKruipcoefficient = null, setBetonKruipcoefficient, heeftBetonstaaf = false,
@@ -166,21 +179,32 @@ export default function LoadCaseTabBar({
 
       {loadCases.map(lc => {
         const isActive = showLoads && lc.id === activeLoadCaseId;
-        const count = loads.filter(l => l.caseId === lc.id).length;
+        // De teller telt ook de automatisch gegenereerde lasten van het eigen
+        // gewicht mee in het geval dat ze krijgt — het gekenmerkte geval, of
+        // (oud project) het eerste blijvende. Zo is een geval dat alleen eigen
+        // gewicht draagt zichtbaar NIET leeg.
+        const automatisch = eigenGewicht && eigenGewicht.caseId === lc.id ? eigenGewicht.aantalLasten : 0;
+        const count = loads.filter(l => l.caseId === lc.id).length + automatisch;
+        const isEg = isEigenGewichtGeval(lc);
         return (
           <button
             key={lc.id}
             role="tab"
             aria-selected={isActive}
-            className={`lc-tab${isActive ? " active" : ""}`}
+            className={`lc-tab${isActive ? " active" : ""}${isEg ? " lc-tab-auto" : ""}`}
             onClick={() => {
               setActiveLoadCaseId(lc.id);
               setShowLoads?.(true);    // any LC click leaves model-only view
             }}
-            title={t("loadCases.tabTitle", { naam: lc.name, count })}
+            title={isEg
+              ? t("loadCases.selfWeightTabTitle", { naam: lc.name, count: automatisch })
+              : automatisch > 0
+                ? t("loadCases.tabTitleWithSelfWeight", { naam: lc.name, count, automatisch })
+                : t("loadCases.tabTitle", { naam: lc.name, count })}
           >
             <span className={`lc-tab-type lc-tab-type-${lc.type}`}>{typeTag(lc.type)}</span>
             <span className="lc-tab-name">{lc.name}</span>
+            {isEg && <span className="lc-tab-auto-tag">{t("loadCases.autoTag")}</span>}
             {count > 0 && <span className="lc-tab-count">{count}</span>}
           </button>
         );
@@ -242,6 +266,20 @@ export default function LoadCaseTabBar({
           />
           <span>{t("loadCases.selfWeight")}</span>
         </label>
+      )}
+
+      {/* Het aanbod van issue #42: een ouder project heeft het eigen gewicht
+          nog tussen de handmatige lasten van het eerste blijvende geval. Niets
+          wordt stil omgezet; deze knop doet het op verzoek, als één undo-stap. */}
+      {onVerplaatsEigenGewicht && (
+        <button
+          type="button"
+          className="lc-tab-offer"
+          onClick={onVerplaatsEigenGewicht}
+          title={t("loadCases.selfWeightOfferTitle")}
+        >
+          {t("loadCases.selfWeightOffer")}
+        </button>
       )}
 
       {/* Analysetype — drie standen, want de derde (fysisch niet-lineair) past

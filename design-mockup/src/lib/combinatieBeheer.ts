@@ -115,6 +115,9 @@ import {
 import { genereerWindCombinaties, WIND_COMBI_PREFIX } from "./wind/windGenerator";
 import { STANDAARD_BIJLAGE, type NationaleBijlageCode } from "./normAanduidingen";
 import { ontbrekendeBlijvendeCombinatie } from "./belastingduur";
+import {
+  EIGEN_GEWICHT_NAAM, eigenGewichtDoel, eigenGewichtGeval, isEigenGewichtGeval,
+} from "./eigenGewicht";
 
 // ── Staat ─────────────────────────────────────────────────────────────────
 
@@ -862,9 +865,79 @@ export function wijzigBelastinggeval(
   const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
   const volgend: CombinatieStaat = {
     ...staat,
-    loadCases: staat.loadCases.map((c) => (c.id === id ? { ...c, ...patch, id } : c)),
+    loadCases: staat.loadCases.map((c) => (c.id === id ? zonderLosKenmerk({ ...c, ...patch, id }) : c)),
   };
   return synchroniseerStandaard(volgend, vorig);
+}
+
+/**
+ * Het kenmerk `eigenGewicht` hoort alleen op een blijvend geval. Wijzigt de
+ * gebruiker het type, dan gaat het kenmerk eraf: een veranderlijk geval dat
+ * stil het eigen gewicht draagt zou het ψ₂ = 0,3 geven waar 1,0 hoort. De
+ * store zet het eigen gewicht dan uit en meldt dat
+ * (`eigenGewichtNaGevalWijziging`); hier blijft alleen de gevallenlijst heel.
+ */
+function zonderLosKenmerk(c: LoadCase): LoadCase {
+  if (!isEigenGewichtGeval(c) || c.type === "dead") return c;
+  const { eigenGewicht: _weg, ...rest } = c;
+  return rest;
+}
+
+/**
+ * HET AANBOD VAN ISSUE #42: geef een project dat het eigen gewicht nog in het
+ * eerste blijvende geval heeft een eigen geval "Eigen gewicht", vooraan in de
+ * lijst. Alleen op verzoek van de gebruiker — bij het openen wordt niets stil
+ * omgezet.
+ *
+ * De uitkomsten van de combinaties veranderen er niet door:
+ *  - standaardcombinaties geven ELK blijvend geval dezelfde γ_G
+ *    (`synchroniseerStandaard` bouwt ze op uit de nieuwe gevallenlijst);
+ *  - eigen combinaties en combinaties van de windgenerator krijgen voor het
+ *    nieuwe geval de factor van het geval waar het eigen gewicht UIT komt.
+ *    Zonder die stap zou het eigen gewicht in een eigen combinatie stil als
+ *    nul tellen.
+ * Het eigen gewicht verhuist dus van geval A (factor f) naar geval N (factor
+ * f): f·(lasten + eg) wordt f·lasten + f·eg.
+ *
+ * Geeft dezelfde staat terug als er niets te verplaatsen valt (er is al een
+ * gekenmerkt geval, of er is geen blijvend geval).
+ */
+export function verplaatsEigenGewichtNaarEigenGeval(
+  staat: CombinatieStaat,
+): { staat: CombinatieStaat; id: number | null; vanId: number | null } {
+  const doel = eigenGewichtDoel(staat.loadCases);
+  if (doel.soort !== "eersteBlijvend") return { staat, id: null, vanId: null };
+  const vanId = doel.geval.id;
+  const id = volgendVrijId(staat.loadCases, staat.volgendGevalId);
+  const vorig = { loadCases: staat.loadCases, gevolgklasse: staat.gevolgklasse, bijlage: staat.bijlage };
+  const volgend: CombinatieStaat = {
+    ...staat,
+    loadCases: [
+      { id, name: vrijeNaam(staat.loadCases, EIGEN_GEWICHT_NAAM), type: "dead", eigenGewicht: true },
+      ...staat.loadCases,
+    ],
+    combinations: staat.combinations.map((c) => {
+      if (c.standaard) return c;
+      const f = c.factors.get(vanId) ?? 0;
+      if (f === 0) return c;
+      const factors = new Map(c.factors);
+      factors.set(id, f);
+      return { ...c, factors };
+    }),
+    volgendGevalId: id + 1,
+  };
+  const gesynchroniseerd = synchroniseerStandaard(volgend, vorig);
+  // De windgenerator bouwt zijn combinaties opnieuw op uit de gevallen; die
+  // kennen het nieuwe blijvende geval dan al. Waar hij ze liet staan, staat
+  // de gekopieerde factor er nog.
+  return { staat: gesynchroniseerd, id, vanId };
+}
+
+/** `naam`, of `naam (2)`, `naam (3)`… als die naam al bestaat. */
+function vrijeNaam(gevallen: readonly Pick<LoadCase, "name">[], naam: string): string {
+  const bezet = new Set(gevallen.map((c) => c.name));
+  if (!bezet.has(naam)) return naam;
+  for (let n = 2; ; n++) if (!bezet.has(`${naam} (${n})`)) return `${naam} (${n})`;
 }
 
 /**
@@ -1474,7 +1547,7 @@ function tekstBlijvendeAfwijking(a: BlijvendeAfwijking): string {
  */
 export function meldingenBelastinggevallen(p: {
   loadCases: readonly (Pick<LoadCase, "id" | "name" | "type"> &
-    Partial<Pick<LoadCase, "categorie" | "gegenereerd">>)[];
+    Partial<Pick<LoadCase, "categorie" | "gegenereerd" | "eigenGewicht">>)[];
   combinations: readonly LoadCombination[];
   alleCombinaties?: readonly LoadCombination[];
   gevolgklasse?: Gevolgklasse;
@@ -1493,11 +1566,15 @@ export function meldingenBelastinggevallen(p: {
   metHout?: boolean;
 }): GevalMelding[] {
   const meldingen: GevalMelding[] = [];
-  const blijvend = p.loadCases.find((c) => c.type === "dead");
+  // Zelfde regel als de rekengang: het gekenmerkte geval, anders het eerste
+  // blijvende (lib/eigenGewicht). Een geval dat alleen het automatische eigen
+  // gewicht draagt is dus NIET leeg.
+  const egDoel = eigenGewichtDoel(p.loadCases);
+  const egGeval = eigenGewichtGeval(p.loadCases, p.selfWeightEnabled === true);
   const gevuld = (id: number): boolean =>
     p.loads === undefined ||
     p.loads.some((l) => l.caseId === id) ||
-    (p.selfWeightEnabled === true && blijvend?.id === id);
+    egGeval?.id === id;
   const heeftFactor = (id: number, type: "uls" | "sls") =>
     p.combinations.some((c) => c.type === type && (c.factors.get(id) ?? 0) !== 0);
   const heeftBgt = p.combinations.some((c) => c.type === "sls");
@@ -1506,7 +1583,7 @@ export function meldingenBelastinggevallen(p: {
     return c ? `${id} ("${c.name}")` : String(id);
   };
 
-  if (p.selfWeightEnabled && !blijvend) {
+  if (p.selfWeightEnabled && egDoel.soort === "geen") {
     meldingen.push({
       niveau: "fout",
       caseId: null,
@@ -1517,6 +1594,37 @@ export function meldingenBelastinggevallen(p: {
         "bij een veranderlijk geval ψ₂ = 0,3 in de quasi-blijvende combinatie in plaats " +
         'van 1,0. Maak een belastinggeval van type "blijvend" aan.',
     });
+  }
+  if (p.selfWeightEnabled && egDoel.soort === "kenmerkNietBlijvend") {
+    meldingen.push({
+      niveau: "fout",
+      caseId: egDoel.geval.id,
+      tekst:
+        `Belastinggeval ${naamVan(egDoel.geval.id)} draagt het kenmerk van het automatische eigen ` +
+        'gewicht, maar is niet van type "blijvend". Het eigen gewicht wordt daarom NIET ' +
+        "meegerekend: in een veranderlijk geval zou het ψ₂ = 0,3 krijgen in de quasi-blijvende " +
+        "combinatie in plaats van 1,0, en γ_Q in de UGT. Er wordt ook niet stil op het eerste " +
+        'blijvende geval teruggevallen. Zet het type van dit geval op "blijvend", of haal het ' +
+        "kenmerk weg.",
+    });
+  }
+  // Een ingevoerde last in het gekenmerkte geval. De app laat dat niet toe en
+  // de MCP-poort weigert het; het kan alleen uit een met de hand bewerkt
+  // bestand komen. De last telt gewoon mee (blijvend, γ_G), maar staat dan
+  // onzichtbaar tussen het automatische eigen gewicht.
+  if (egDoel.soort === "kenmerk" && p.loads) {
+    const aantal = p.loads.filter((l) => l.caseId === egDoel.geval.id).length;
+    if (aantal > 0) {
+      meldingen.push({
+        niveau: "waarschuwing",
+        caseId: egDoel.geval.id,
+        tekst:
+          `Belastinggeval ${naamVan(egDoel.geval.id)} is het geval van het automatische eigen gewicht, ` +
+          `maar er ${aantal === 1 ? "staat 1 ingevoerde last" : `staan ${aantal} ingevoerde lasten`} in. ` +
+          "Die tellen mee als blijvende belasting, maar horen in een ander blijvend geval: in dit " +
+          "geval zijn ze op het tekenvlak niet van het eigen gewicht te onderscheiden.",
+      });
+    }
   }
 
   // Nooit stil een deelverzameling van de standaardset — ook niet als die

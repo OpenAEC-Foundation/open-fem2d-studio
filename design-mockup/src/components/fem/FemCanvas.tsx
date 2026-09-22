@@ -69,6 +69,8 @@ import {
 } from "../../core/fem/PlaatMesher";
 import InlinePopover from "../openaec/InlinePopover";
 import { notifyInfo, notifyWarning } from "../../io/notify";
+import EigenGewichtLaag from "./EigenGewichtLaag";
+import type { EigenGewichtOverzicht } from "../../lib/eigenGewichtOverzicht";
 // Pure stramien-helper (zelfde tolerantie als de store-mutator) — alleen om
 // in de maat-popover te tonen hoeveel knopen mee gaan schuiven.
 // Lastselectie + klembord: pure helpers, zodat de testbatterij dezelfde
@@ -499,6 +501,8 @@ interface FemCanvasProps {
 
   /** Actuele, centraal berekende gevallen; null = nog niet geldig berekend. */
   perCase?: Map<number, SolverResult> | null;
+  /** Het automatische eigen gewicht, afgeleid in App.tsx (issue #42); zie EigenGewichtLaag. */
+  eigenGewicht?: EigenGewichtOverzicht;
   activeLoadCaseName?: string;
   solverBusy?: boolean;
   solveError?: string | null;
@@ -555,7 +559,7 @@ export default function FemCanvas(props: FemCanvasProps) {
     plakLasten,
     translateNodes,
     grid, structuralGrid, setStructuralGrid, verplaatsStramienAs,
-    perCase, activeLoadCaseName, solverBusy = false, solveError,
+    perCase, eigenGewicht, activeLoadCaseName, solverBusy = false, solveError,
     combinations, activeCombinationId, envelopeView,
     combinationResults, envelope,
     displayFlags: displayFlagsProp,
@@ -3974,6 +3978,11 @@ export default function FemCanvas(props: FemCanvasProps) {
 
         {/* Loads */}
         <g className="fem-loads-layer">{activeLoads.map(renderLoad)}</g>
+        {/* Automatisch eigen gewicht (issue #42) — alleen-lezen, eigen component. */}
+        {showLoads && !resultsMode && eigenGewicht && eigenGewicht.caseId === activeLoadCaseId && (
+          <EigenGewichtLaag overzicht={eigenGewicht} nodes={nodes} beams={beams} plates={plates}
+            worldToScreen={worldToScreen} autoLabel={tCommon("eigenGewicht.auto")} />
+        )}
 
         {/* Supports */}
         {supports.map(renderSupport)}

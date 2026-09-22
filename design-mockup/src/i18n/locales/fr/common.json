@@ -619,6 +619,21 @@
       "mirror": "Symétrie"
     }
   },
+  "eigenGewicht": {
+    "auto": "auto",
+    "uitgezetTitel": "Poids propre désactivé",
+    "uitgezet": {
+      "verwijderd": "Le cas de charge « {{naam}} » portait le poids propre automatique et a été supprimé. Le poids propre est maintenant DÉSACTIVÉ et n'est plus pris en compte. Réactivez « Poids propre » pour le prendre en compte dans le premier cas de charge permanent.",
+      "typeGewijzigd": "Le cas de charge « {{naam}} » portait le poids propre automatique, mais n'est plus de type permanent. Le marqueur a été retiré et le poids propre est maintenant DÉSACTIVÉ : il n'est plus pris en compte. Réactivez « Poids propre » pour le prendre en compte dans le premier cas de charge permanent."
+    },
+    "geenHandmatigeLastTitel": "Aucune charge ajoutée",
+    "geenHandmatigeLast": "Le cas de charge « {{naam}} » est rempli automatiquement par le poids propre ; aucune charge ne peut y être saisie. Choisissez d'abord un autre cas de charge.",
+    "aanbodTitel": "Poids propre dans un cas de charge dédié ?",
+    "aanbod": "Ce projet prend en compte le poids propre dans le premier cas de charge permanent, parmi les charges saisies. Rien n'a été converti : le projet calcule exactement comme avant. Vous pouvez ajouter le cas « Poids propre » et y déplacer le poids propre ; les résultats des combinaisons ne changent pas.",
+    "aanbodKnop": "Déplacer",
+    "verplaatstTitel": "Poids propre déplacé",
+    "verplaatst": "Le cas de charge « Poids propre » a été ajouté et porte désormais le poids propre. Ctrl+Z annule cela en une étape."
+  },
   "loadCases": {
     "defaultCaseName": "Cas {{n}}",
     "defaultComboName": "Combinaison {{n}}",
@@ -631,7 +646,14 @@
     "resultsTab": "Résultats",
     "addTitle": "Ajouter un nouveau cas de charge",
     "addLabel": "Nouveau cas de charge",
-    "selfWeightTitle": "Ajouter le poids propre (ρ·A·g) au cas de charge permanent",
+    "selfWeightTitle": "Prendre en compte le poids propre (ρ·A·g) : généré automatiquement dans le cas de charge « Poids propre » ou — dans un projet plus ancien sans ce cas — dans le premier cas de charge permanent",
+    "selfWeightTabTitle_one": "{{naam}} — {{count}} charge générée automatiquement (poids propre, lecture seule)",
+    "selfWeightTabTitle_other": "{{naam}} — {{count}} charges générées automatiquement (poids propre, lecture seule)",
+    "tabTitleWithSelfWeight": "{{naam}} — {{count}} charges, dont {{automatisch}} automatiques (poids propre)",
+    "autoTag": "auto",
+    "selfWeightCaseHint": "Ce cas est rempli automatiquement par le poids propre (q = ρ·A·g par barre). Le supprimer ou changer son type désactive le poids propre.",
+    "selfWeightOffer": "Poids propre → cas dédié",
+    "selfWeightOfferTitle": "Le poids propre se trouve actuellement parmi les charges du premier cas de charge permanent. Ajouter le cas « Poids propre » et y déplacer le poids propre. Les résultats des combinaisons ne changent pas ; une seule étape, annulable avec Ctrl+Z.",
     "selfWeight": "Poids propre",
     "analysis": "Analyse",
     "analysisType": {

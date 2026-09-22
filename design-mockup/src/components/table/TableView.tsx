@@ -32,6 +32,8 @@ import { SUPPORTED_TIMBER_GRADES } from "../../lib/timberCheckBuilder";
 import { notifySuccess, notifyWarning } from "../../io/notify";
 import { NumCell, SelectCell, CheckCell, TextCell, fmtNum } from "./cells";
 import type { TableDataset, TableViewApi } from "./tableTypes";
+import type { EigenGewichtOverzicht } from "../../lib/eigenGewichtOverzicht";
+import { isEigenGewichtGeval } from "../../lib/eigenGewicht";
 import "./TableView.css";
 
 // ── Spec-typen: één uniforme beschrijving per dataset ───────────────────────
@@ -67,6 +69,12 @@ interface TableViewProps {
   loads: Load[];
   loadCases: LoadCase[];
   activeLoadCaseId: number;
+  /**
+   * Het automatische eigen gewicht (issue #42), afgeleid in App.tsx uit
+   * dezelfde functie als de rekengang. De lijnlastentabel toont het als
+   * alleen-lezen rijen, met de afleiding (ρ, A, g) in de omschrijving.
+   */
+  eigenGewicht?: EigenGewichtOverzicht;
   selection: Selection;
   setSelection: (s: Selection) => void;
   // Mutators (allemaal snapshot-bewust via useFemStore)
@@ -116,7 +124,7 @@ const trashIcon = (
 export default function TableView(props: TableViewProps) {
   const {
     dataset, apiRef,
-    nodes, beams, plates, supports, loads, loadCases, activeLoadCaseId,
+    nodes, beams, plates, supports, loads, loadCases, activeLoadCaseId, eigenGewicht,
     selection, setSelection,
     addNode, updateNode, removeNode,
     addBeam, updateBeam, removeBeam, updatePlate, removePlate,
@@ -156,7 +164,11 @@ export default function TableView(props: TableViewProps) {
   const beamOptions = beams.map((b) => ({
     value: String(b.id), label: `${b.id} (${b.from}–${b.to})`,
   }));
-  const caseOptions = loadCases.map((c) => ({ value: String(c.id), label: c.name }));
+  // Het geval "Eigen gewicht" is geen doel voor een handmatige last: de store
+  // weigert dat ook (zie `addLoad`), dus staat het niet in de keuzelijst.
+  const caseOptions = loadCases
+    .filter((c) => !isEigenGewichtGeval(c))
+    .map((c) => ({ value: String(c.id), label: c.name }));
   const caseName = (id: number) => loadCases.find((c) => c.id === id)?.name ?? String(id);
 
   const selNodeId = selection?.type === "node" ? selection.id : null;
@@ -689,7 +701,7 @@ export default function TableView(props: TableViewProps) {
         }
         addLoad({ type: "lineLoad", caseId: activeLoadCaseId, beamId: beams[0].id, q: -5 });
       },
-      rows: rows.map((l) => {
+      rows: [...eigenGewichtRijen(), ...rows.map((l) => {
         const isTrap = l.qStart !== undefined || l.qEnd !== undefined;
         const fracA = l.startFrac ?? 0;
         const fracB = l.endFrac ?? 1;
@@ -785,8 +797,51 @@ export default function TableView(props: TableViewProps) {
             </>
           ),
         };
-      }),
+      })],
     };
+  };
+
+  /**
+   * De automatisch gegenereerde lasten van het eigen gewicht als ALLEEN-LEZEN
+   * rijen bovenaan de lijnlastentabel (issue #42): geen invoercellen, geen
+   * prullenbak, en in de omschrijving de afleiding q = ρ·A·g. De getallen
+   * komen uit `eigenGewicht` (App.tsx → lib/eigenGewichtOverzicht), dezelfde
+   * bron als de rekengang.
+   */
+  const eigenGewichtRijen = (): RowSpec[] => {
+    if (!eigenGewicht || eigenGewicht.caseId === null) return [];
+    const geval = caseName(eigenGewicht.caseId);
+    const uit: RowSpec[] = [];
+    for (const s of eigenGewicht.staven) {
+      s.delen.forEach((d, i) => {
+        const afleiding = t("table.selfWeightDerivation", {
+          rho: fmtNum(s.rho, 0), A: fmtNum(d.A_mm2, 0), g: fmtNum(eigenGewicht.g, 2),
+        });
+        const cellen = [
+          t("table.selfWeightAuto"), afleiding, geval, String(s.beamId), t("table.dirZ"),
+          fmtNum(d.q, 3), "", "", fmtNum(d.startFrac, 3), fmtNum(d.endFrac, 3),
+        ];
+        uit.push({
+          key: `eg${s.beamId}-${i}`,
+          exportCells: cellen,
+          onSelect: () => setSelection({ type: "beam", id: s.beamId }),
+          cells: (
+            <>
+              {cellen.map((c, k) => (
+                <td
+                  key={k}
+                  className={k === 0 ? "ftable-id ftable-auto" : "ftable-auto"}
+                  title={t("table.selfWeightReadOnly")}
+                >
+                  {c || "—"}
+                </td>
+              ))}
+            </>
+          ),
+        });
+      });
+    }
+    return uit;
   };
 
   const buildThermalSpec = (): TableSpec => {

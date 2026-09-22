@@ -104,6 +104,36 @@
   font: 600 9px/1 "JetBrains Mono", monospace;
   border-radius: 7px;
 }
+/* Het geval "Eigen gewicht": automatisch gevuld, dus een label "auto" en een
+   cursieve naam — herkenbaar anders dan een geval waarin je lasten invoert. */
+.lc-tab-auto .lc-tab-name { font-style: italic; }
+.lc-tab-auto-tag {
+  padding: 0 4px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: 3px;
+  color: var(--theme-text-faint);
+  font: 600 8px/1 "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Het aanbod om het eigen gewicht een eigen geval te geven. */
+.lc-tab-offer {
+  align-self: center;
+  margin: 0 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--theme-accent);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--theme-accent);
+  font: 500 11px/1.4 "Inter", system-ui, sans-serif;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.lc-tab-offer:hover { background: var(--theme-hover); }
+
 .lc-tab.active .lc-tab-count {
   background: var(--theme-accent);
   color: var(--theme-accent-text, white);
