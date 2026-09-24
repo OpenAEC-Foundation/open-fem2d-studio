@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from "react";
+import { zonderResultaten } from "./lib/weergaveModel";
 import { undoRoute, moetEerstVastleggen } from "./lib/undoRoute";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
@@ -2724,18 +2725,26 @@ function App() {
           }
           scheefstandWaarschuwingen={scheefstandUitkomst.waarschuwingen}
           showLoads={fem.showLoads}
-          setShowLoads={(v) => { fem.setShowLoads(v); setResultsTabActive(false); }}
+          setShowLoads={(v) => {
+            fem.setShowLoads(v);
+            setResultsTabActive(false);
+            // Terug naar de tab Model: de resultaten sluiten (diagrammen,
+            // reacties, UC). De tab Resultaten zet ze weer aan.
+            if (!v) setDisplayFlags(zonderResultaten);
+          }}
           hasResults={solverResult !== null || fem.envelope !== null}
           resultsActive={resultsTabActive}
           onShowResults={() => {
             setResultsTabActive(true);
             fem.setShowLoads(true);
-            setDisplayFlags({
-              ...displayFlags,
+            // Zelfde lagen als Berekenen, zodat Model → Resultaten alles terugzet.
+            setDisplayFlags(prev => ({
+              ...prev,
               M: true, V: true, N: true,
               deflection: true,
               reactions: true,
-            });
+              uc: true,
+            }));
           }}
         />
       )}
