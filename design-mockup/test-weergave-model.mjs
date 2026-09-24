@@ -19,9 +19,20 @@ check("het origineel is niet gewijzigd", aan.M === true && aan.uc === true);
 
 log("\n[2] App.tsx");
 const app = readFileSync(join(HIER, "src", "App.tsx"), "utf8").replace(/\r\n/g, "\n");
-check("de tab Model zet de resultaten uit", /setShowLoads=\{\(v\) => \{[\s\S]{0,300}if \(!v\) setDisplayFlags\(zonderResultaten\)/.test(app));
-const res = /onShowResults=\{\(\) => \{[\s\S]{0,500}?\}\}/.exec(app)?.[0] ?? "";
+const model = /setShowLoads=\{\(v\) => \{[\s\S]{0,600}?\n {10}\}\}/.exec(app)?.[0] ?? "";
+check("de tab Model zet de resultaten uit", /if \(!v\) \{[\s\S]*setDisplayFlags\(zonderResultaten\)/.test(model), model.slice(0, 80));
+check("de tab Model zet de verkenner terug op Project", /if \(!v\) \{[\s\S]*setTreeTab\("project"\)/.test(model));
+const res = /onShowResults=\{\(\) => \{[\s\S]{0,700}?\}\}/.exec(app)?.[0] ?? "";
 check("de tab Resultaten zet M, V, N, doorbuiging, reacties en UC weer aan", ["M: true", "V: true", "N: true", "deflection: true", "reactions: true", "uc: true"].every((x) => res.includes(x)), res.slice(0, 80));
+check("de tab Resultaten zet de verkenner op Resultaten", /setTreeTab\("results"\)/.test(res));
+
+log("\n[3] FemCanvas");
+const canvas = readFileSync(join(HIER, "src", "components", "fem", "FemCanvas.tsx"), "utf8").replace(/\r\n/g, "\n");
+const banner = /const bannerText[\s\S]*?\}, \[[^\]]*\]\);/.exec(canvas)?.[0] ?? "";
+check("de resultaatregel bovenaan verdwijnt in de modelweergave", /if \(!showLoads\) return null;/.test(banner));
+check("…en hangt van showLoads af", /showLoads\]\);$/.test(banner));
+check("diagrammen en omhullende blijven onderdrukt in de modelweergave",
+  /\{showLoads && overlayResult && \(/.test(canvas) && /\{showLoads && \(\s*<g className="fem-envelope-overlay"/.test(canvas));
 
 log(`\n${geslaagd} geslaagd, ${gefaald} gefaald`);
 process.exit(gefaald > 0 ? 1 : 0);

@@ -3380,6 +3380,8 @@ export default function FemCanvas(props: FemCanvasProps) {
   /** Banner text shown at the top of the canvas after a successful solve. */
   const bannerText: { kind: "single" | "combo" | "envelope" | "info"; text: string } | null = useMemo(() => {
     if (solverBusy) return { kind: "info", text: tCommon("resultView.busy") };
+    // Modelweergave (tab Model): geen resultaatregel, net als de diagrammen.
+    if (!showLoads) return null;
     if (envelopeView && envelope) {
       const combo = combinations?.find(c => c.id === envelope.maxDisplacementCombinationId);
       const u = envelope.maxDisplacement.toFixed(2);
@@ -3405,7 +3407,7 @@ export default function FemCanvas(props: FemCanvasProps) {
       return { kind: "info", text: tCommon("resultView.emptyCase", { name: activeLoadCaseName ?? activeLoadCaseId }) };
     }
     return null;
-  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon, perCase, activeLoadCaseId, activeLoadCaseName, solverBusy]);
+  }, [envelopeView, envelope, activeCombinationId, combinationResults, combinations, results, tCommon, perCase, activeLoadCaseId, activeLoadCaseName, solverBusy, showLoads]);
 
   // ── Envelope overlay rendering ──────────────────────────────────────────
   // Colors each beam by sign of max |M| and labels with value + governing combo.

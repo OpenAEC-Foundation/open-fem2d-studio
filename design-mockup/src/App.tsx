@@ -2730,12 +2730,18 @@ function App() {
             setResultsTabActive(false);
             // Terug naar de tab Model: de resultaten sluiten (diagrammen,
             // reacties, UC). De tab Resultaten zet ze weer aan.
-            if (!v) setDisplayFlags(zonderResultaten);
+            if (!v) {
+              setDisplayFlags(zonderResultaten);
+              // De verkenner terug naar het project; de tab Resultaten zet hem
+              // weer op de resultaten.
+              setTreeTab("project");
+            }
           }}
           hasResults={solverResult !== null || fem.envelope !== null}
           resultsActive={resultsTabActive}
           onShowResults={() => {
             setResultsTabActive(true);
+            setTreeTab("results");
             fem.setShowLoads(true);
             // Zelfde lagen als Berekenen, zodat Model → Resultaten alles terugzet.
             setDisplayFlags(prev => ({
