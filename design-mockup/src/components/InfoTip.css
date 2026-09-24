@@ -1,0 +1,52 @@
+/* InfoTip — (i)-icoon naast een label met de uitleg als tip (issue #43).
+   Alleen thematokens: licht en donker volgen vanzelf. */
+
+.infotip-knop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  margin-left: 3px;
+  padding: 0;
+  vertical-align: -2px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--theme-text-muted);
+  cursor: help;
+}
+.infotip-knop:hover,
+.infotip-knop.open {
+  color: var(--theme-accent);
+}
+.infotip-knop:focus { outline: none; }
+.infotip-knop:focus-visible {
+  outline: 1.5px solid var(--theme-focus-color, var(--theme-accent));
+  outline-offset: 1px;
+}
+
+.infotip-bubbel {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 6px 9px;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  border: 1px solid var(--theme-border);
+  border-left: 3px solid var(--theme-accent);
+  border-radius: 3px;
+  box-shadow: var(--theme-popover-shadow);
+  font: 400 11px/1.45 "Inter", system-ui, sans-serif;
+  font-style: normal;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.infotip-bubbel p + p { margin-top: 4px; }

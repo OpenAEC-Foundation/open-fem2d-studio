@@ -15,7 +15,7 @@
  *  - Hout toont géén zeeg-veld: de EN 1995-kern consumeert geen zeeg, dus
  *    dat veld zou schijninvoer zijn.
  */
-import { useState } from "react";
+import { useState, useId, isValidElement, cloneElement, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { parseLength, formatLength } from "../../lib/lengthInput";
 import { HERKOMST_KIPSTEUNEN, voorspelKniklengte } from "../../lib/kniklengte";
@@ -31,7 +31,25 @@ import ProfielKiezer, { profielenInGebruik } from "./ProfielKiezer";
 // Één bron voor de doorsnedenaam en de begin-/eindmaten van een verlopende
 // staaf — dezelfde keuring als de solver en de rekenkern; zie lib/verloopKeuze.
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
+import InfoTip from "../InfoTip";
 import "./BarPropertiesDialog.css";
+
+/**
+ * Een dialoogregel label | veld, met de uitleg als InfoTip naast het label
+ * (issue #43) en die uitleg als `aria-describedby` op het veld.
+ */
+function DialoogRij({ label, info, children }: { label: ReactNode; info: ReactNode; children: ReactNode }) {
+  const id = useId();
+  const veld = isValidElement<{ "aria-describedby"?: string }>(children)
+    ? cloneElement(children, { "aria-describedby": id })
+    : children;
+  return (
+    <div className="bar-props-row">
+      <span>{label}<InfoTip id={id}>{info}</InfoTip></span>
+      {veld}
+    </div>
+  );
+}
 
 /**
  * De staalsoorten die de kern kent. Stond hier als eigen lijst NAAST die in
@@ -362,8 +380,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
   const deflectionSection = (
     <div className="bar-props-section">
       <div className="bar-props-section-title">{t("cfg.deflectionTitle")}</div>
-      <div className="bar-props-row">
-        <span>{t("cfg.deflClass")}</span>
+      <DialoogRij label={t("cfg.deflClass")} info={t("cfg.deflClassHint")}>
         <select
           className="bar-props-select"
           value={deflClass}
@@ -373,7 +390,7 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-      </div>
+      </DialoogRij>
       {deflClass === "custom" && (
         <div className="bar-props-row">
           <span>{t("cfg.deflNumerator")}</span>
@@ -385,9 +402,6 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
           />
         </div>
       )}
-      {deflClass !== "custom" && (
-        <div className="bar-props-hint">{t("cfg.deflClassHint")}</div>
-      )}
       {deflClass === "custom" && isTimber && (
         <div className="bar-props-hint">{t("cfg.deflCustomTimberHint")}</div>
       )}
@@ -395,29 +409,25 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
           `deflection_add_limit_numerator`. De houtkern krijgt zijn noemers via
           timberDeflectionNumerators uit de klasse. */}
       {!isTimber && (
-        <div className="bar-props-row">
-          <span>{t("cfg.deflAddNumerator")}</span>
+        <DialoogRij label={t("cfg.deflAddNumerator")} info={t("cfg.deflAddNumeratorHint")}>
           <input
             type="number" className="bar-props-input" step="1" min="1"
             placeholder="—"
             value={deflAddNStr}
             onChange={(e) => setDeflAddNStr(e.target.value)}
           />
-        </div>
+        </DialoogRij>
       )}
-      {!isTimber && <div className="bar-props-hint">{t("cfg.deflAddNumeratorHint")}</div>}
       {!isTimber && (
-        <div className="bar-props-row">
-          <span>{t("cfg.preCamber")}</span>
+        <DialoogRij label={t("cfg.preCamber")} info={t("cfg.preCamberHint")}>
           <input
             type="number" className="bar-props-input" step="1"
             placeholder="0"
             value={preCamberStr}
             onChange={(e) => setPreCamberStr(e.target.value)}
           />
-        </div>
+        </DialoogRij>
       )}
-      {!isTimber && <div className="bar-props-hint">{t("cfg.preCamberHint")}</div>}
     </div>
   );
 
@@ -624,18 +634,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       {(vrij.fToel / vrij.gammaM).toFixed(2)} N/mm²
                     </code>
                   </div>
-                  <div className="bar-props-row">
-                    <span>σ_z [N/mm²]</span>
+                  <DialoogRij label="σ_z [N/mm²]" info={t("barDialog.sigmaZHint")}>
                     <input
                       type="number" className="bar-props-input" step="1"
                       placeholder="0"
                       value={sigmaZStr}
                       onChange={(e) => setSigmaZStr(e.target.value)}
                     />
-                  </div>
-                  <div className="bar-props-hint">
-                    {t("barDialog.sigmaZHint")}
-                  </div>
+                  </DialoogRij>
                 </div>
               )}
 
@@ -665,15 +671,26 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                     onChange={(e) => setLcyStr(e.target.value)}
                   />
                 </div>
-                <div className="bar-props-row">
-                  <span>{t("cfg.bucklingOutOfPlane")}</span>
+                <DialoogRij
+                  label={t("cfg.bucklingOutOfPlane")}
+                  info={<>
+                    {t("cfg.bucklingOutOfPlaneHint")}{" "}
+                    {t("cfg.bucklingHint")}
+                    {/* Inline terugval-tekst: zonder terugval zou i18next de
+                        kale sleutelnaam tonen als een taal hem mist. */}
+                    {isTimber && ` ${t(
+                      "cfg.bucklingHintTimber",
+                      "Bij hout telt L_cr,z ook mee in de drukterm van de kiptoets (6.35).",
+                    )}`}
+                  </>}
+                >
                   <input
                     type="text" inputMode="decimal" className="bar-props-input"
                     placeholder={formatLength(voorspeldZ.lCrMm)}
                     value={lczStr} aria-invalid={!geldigeLengte(lczStr)}
                     onChange={(e) => setLczStr(e.target.value)}
                   />
-                </div>
+                </DialoogRij>
                 <div className="bar-props-hint">
                   {t("cfg.bucklingEmptyIs", {
                     waarde: formatLength(voorspeldZ.lCrMm),
@@ -681,25 +698,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       voorspeldZ.herkomst === HERKOMST_KIPSTEUNEN
                         ? t("cfg.herkomstKipsteunen")
                         : t("cfg.herkomstStaaflengte"),
-                  })}{" "}
-                  {t("cfg.bucklingOutOfPlaneHint")}{" "}
-                  {t("cfg.bucklingHint")}
-                  {/* Inline terugval-tekst: de sleutel staat (nog) niet in de
-                      check.json-bestanden onder i18n/locales, en die vallen
-                      buiten deze wijziging. Zonder terugval zou i18next de
-                      kale sleutelnaam tonen. */}
-                  {isTimber && ` ${t(
-                    "cfg.bucklingHintTimber",
-                    "Bij hout telt L_cr,z ook mee in de drukterm van de kiptoets (6.35).",
-                  )}`}
+                  })}
                 </div>
               </div>
 
               {!isTimber && (
                 <div className="bar-props-section">
                   <div className="bar-props-section-title">{t("cfg.bracingTitle")}</div>
-                  <div className="bar-props-row">
-                    <span>{t("cfg.bracingLabel")}</span>
+                  <DialoogRij label={t("cfg.bracingLabel")} info={t("cfg.bracingHint")}>
                     <input
                       type="text" className="bar-props-input"
                       placeholder="0.25, 0.5, 0.75"
@@ -707,16 +713,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       onChange={(e) => setRestraintsStr(e.target.value)}
                       spellCheck={false}
                     />
-                  </div>
-                  <div className="bar-props-hint">{t("cfg.bracingHint")}</div>
+                  </DialoogRij>
                 </div>
               )}
 
               {isTimber && (
                 <div className="bar-props-section">
                   <div className="bar-props-section-title">{t("cfg.timberTitle")}</div>
-                  <div className="bar-props-row">
-                    <span>{t("cfg.serviceClass")}</span>
+                  <DialoogRij label={t("cfg.serviceClass")} info={t("cfg.timberHint")}>
                     <select
                       className="bar-props-select"
                       value={serviceClass}
@@ -726,9 +730,14 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       <option value={2}>{t("cfg.sc2")}</option>
                       <option value={3}>{t("cfg.sc3")}</option>
                     </select>
-                  </div>
-                  <div className="bar-props-row">
-                    <span>{t("cfg.loadDuration")}</span>
+                  </DialoogRij>
+                  <DialoogRij
+                    label={t("cfg.loadDuration")}
+                    info={t(
+                      "cfg.durHint",
+                      "Automatisch: k_mod volgt per UGT-combinatie uit de kortstdurende belasting (EN 1995-1-1 3.1.3(2)). Een gekozen klasse werkt als ondergrens: zij kan de duur alleen verlengen.",
+                    )}
+                  >
                     <select
                       className="bar-props-select"
                       value={loadDuration}
@@ -738,33 +747,24 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                         <option key={o.value} value={o.value}>{o.label}</option>
                       ))}
                     </select>
-                  </div>
-                  <div className="bar-props-hint">
-                    {t(
-                      "cfg.durHint",
-                      "Automatisch: k_mod volgt per UGT-combinatie uit de kortstdurende belasting (EN 1995-1-1 3.1.3(2)). Een gekozen klasse werkt als ondergrens: zij kan de duur alleen verlengen.",
+                  </DialoogRij>
+                  {/* Inline terugval-teksten, net als bij bucklingHintTimber:
+                      zonder terugval zou i18next de kale sleutelnaam tonen als
+                      een taal hem mist. */}
+                  <DialoogRij
+                    label={t("cfg.ltbSupportSpacing", "Kipsteunafstand (mm)")}
+                    info={t(
+                      "cfg.ltbSupportSpacingHint",
+                      "Kipsteunafstand leeg = staaflengte. Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt; l_ef bepaalt σ_m,crit en daarmee k_crit (6.33)/(6.35).",
                     )}
-                  </div>
-                  <div className="bar-props-row">
-                    {/* Inline terugval-tekst, net als bij bucklingHintTimber:
-                        de sleutel staat nog niet in de check.json-bestanden
-                        onder i18n/locales, en die vallen buiten deze
-                        wijziging. */}
-                    <span>{t("cfg.ltbSupportSpacing", "Kipsteunafstand (mm)")}</span>
+                  >
                     <input
                       type="text" inputMode="decimal" className="bar-props-input"
                       placeholder={systemLengthMm}
                       value={ltbStr} aria-invalid={!geldigeLengte(ltbStr)}
                       onChange={(e) => setLtbStr(e.target.value)}
                     />
-                  </div>
-                  <div className="bar-props-hint">{t("cfg.timberHint")}</div>
-                  <div className="bar-props-hint">
-                    {t(
-                      "cfg.ltbSupportSpacingHint",
-                      "Kipsteunafstand leeg = staaflengte. Dit is de ℓ waaruit tabel 6.1 de meewerkende lengte l_ef maakt; l_ef bepaalt σ_m,crit en daarmee k_crit (6.33)/(6.35).",
-                    )}
-                  </div>
+                  </DialoogRij>
                   {/* Aangrijpingspunt (tabel 6.1, voetnoot a), kiptoets aan/uit
                       (art. 6.3.3(5)) en scheurfactor k_cr (6.13a). Inline
                       terugval-teksten, net als hierboven: de sleutels staan nog
@@ -794,32 +794,36 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                       )}
                     </div>
                   )}
-                  <div className="bar-props-row">
-                    <span>{t("cfg.kCr", "Scheurfactor k_cr (6.1.7)")}</span>
+                  <DialoogRij
+                    label={t("cfg.kCr", "Scheurfactor k_cr (6.1.7)")}
+                    info={t(
+                      "cfg.kCrHint",
+                      "b_ef = k_cr · b (6.13a). Leeg = 1,0: NEN-EN 1995-1-1/NB bij 6.1.7 voor een prismatische doorsnede. De Europese aanbeveling van 6.1.7(2) is 0,67 voor gezaagd en gelijmd gelamineerd hout; alleen waarden in (0, 1] worden bewaard.",
+                    )}
+                  >
                     <input
                       type="number" className="bar-props-input" step="0.01" min="0.01" max="1"
                       placeholder="1,00"
                       value={kCrStr}
                       onChange={(e) => setKCrStr(e.target.value)}
                     />
-                  </div>
-                  <div className="bar-props-hint">
-                    {t(
-                      "cfg.kCrHint",
-                      "b_ef = k_cr · b (6.13a). Leeg = 1,0: NEN-EN 1995-1-1/NB bij 6.1.7 voor een prismatische doorsnede. De Europese aanbeveling van 6.1.7(2) is 0,67 voor gezaagd en gelijmd gelamineerd hout; alleen waarden in (0, 1] worden bewaard.",
-                    )}
-                  </div>
+                  </DialoogRij>
                   {isCltProfiel(profile) && (
                     <>
-                      <div className="bar-props-row">
-                        <span>{t("cfg.cltKdef", "k_def kruislaaghout (§7.2)")}</span>
+                      <DialoogRij
+                        label={t("cfg.cltKdef", "k_def kruislaaghout (§7.2)")}
+                        info={t(
+                          "cfg.cltKdefHint",
+                          "Tabel 3.2 van EN 1995-1-1 kent geen k_def voor kruislaaghout, en de nationale bijlage voegt er geen toe. Er wordt daarom geen waarde aangenomen: vul k_def én de bron in (ETA of productverklaring van de plaat, bij deze klimaatklasse). Ontbreekt een van beide, dan worden w_fin en w_add niet getoetst en staat die reden in het rapport.",
+                        )}
+                      >
                         <input
                           type="number" className="bar-props-input" step="0.05" min="0"
                           placeholder={t("cfg.cltKdefLeeg", "verplicht")}
                           value={cltKdefStr}
                           onChange={(e) => setCltKdefStr(e.target.value)}
                         />
-                      </div>
+                      </DialoogRij>
                       <div className="bar-props-row">
                         <span>{t("cfg.cltKdefBron", "Bron k_def")}</span>
                         <input
@@ -828,12 +832,6 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
                           value={cltKdefBron}
                           onChange={(e) => setCltKdefBron(e.target.value)}
                         />
-                      </div>
-                      <div className="bar-props-hint">
-                        {t(
-                          "cfg.cltKdefHint",
-                          "Tabel 3.2 van EN 1995-1-1 kent geen k_def voor kruislaaghout, en de nationale bijlage voegt er geen toe. Er wordt daarom geen waarde aangenomen: vul k_def én de bron in (ETA of productverklaring van de plaat, bij deze klimaatklasse). Ontbreekt een van beide, dan worden w_fin en w_add niet getoetst en staat die reden in het rapport.",
-                        )}
                       </div>
                     </>
                   )}

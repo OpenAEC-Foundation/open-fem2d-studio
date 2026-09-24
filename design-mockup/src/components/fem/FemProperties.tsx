@@ -9,11 +9,12 @@
  *
  * Mutations dispatch through the store callbacks passed in by App.tsx.
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId, isValidElement, cloneElement } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import { parseLength, formatLength, mmToMeters } from "../../lib/lengthInput";
 import LengthInput from "../LengthInput";
+import InfoTip from "../InfoTip";
 import { CONCRETE_E_CM, resolveSection } from "../../lib/sectionResolver";
 import {
   HERKOMST_KIPSTEUNEN,
@@ -55,6 +56,10 @@ import { isOverwegendVerticaal, VERTICAAL_VANAF_GRADEN, STEEL_GRADES } from "../
 // waarschuwing bij de kipsteunen en de korf; zie DE SPRONG BIJ 75° in
 // lib/referentierichting.ts.
 import { gradenTekst, richtingssprongNabij } from "../../lib/referentierichting";
+// Het vinkje "Onder en boven gelijk" bij de kipsteunen (issue #44).
+import {
+  gelijkTrekken, kipsteunenGelijk, kipsteunenPatch, type KipsteunRij,
+} from "../../lib/kipsteunenGelijk";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
 // De doorsnedenaam van een staaf komt uit één plaats — dezelfde keuring als de
 // solver en de rekenkern gebruiken; zie lib/verloopKeuze.
@@ -85,11 +90,27 @@ function Section({ title, defaultOpen = true, children }: SectionProps) {
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Eén regel label | waarde. Met `info` staat er een (i)-icoon naast het label
+ * met die uitleg als tip (issue #43), en krijgt het veld de tekst als
+ * beschrijving (`aria-describedby`) — ook als de tip dicht is.
+ */
+function Row({ label, info, children }: {
+  label: string;
+  info?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const id = useId();
+  const veld = info && isValidElement<{ "aria-describedby"?: string }>(children)
+    ? cloneElement(children, { "aria-describedby": id })
+    : children;
   return (
     <div className="fem-prop-row">
-      <span className="fem-prop-row-label">{label}</span>
-      <span className="fem-prop-row-value">{children}</span>
+      <span className="fem-prop-row-label">
+        {label}
+        {info ? <InfoTip id={id}>{info}</InfoTip> : null}
+      </span>
+      <span className="fem-prop-row-value">{veld}</span>
     </div>
   );
 }
@@ -544,14 +565,41 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   const [kipsteunenOnderTekst, setKipsteunenOnderTekst] = useState(
     cfg.lateralRestraintsBottom?.join(", ") ?? "",
   );
+  // "Onder en boven gelijk" (issue #44): geen opgeslagen veld maar een
+  // afleiding uit de posities, bij het openen en bij een andere staaf. Aan =
+  // één invoer die beide velden in één wijziging zet; uit = twee rijen.
+  const [kipsteunenGelijkAan, setKipsteunenGelijkAan] = useState(() =>
+    kipsteunenGelijk(cfg.lateralRestraints, cfg.lateralRestraintsBottom, L),
+  );
   const vorigeBeamId = useRef(beam.id);
   useEffect(() => {
     if (vorigeBeamId.current !== beam.id) {
       vorigeBeamId.current = beam.id;
       setKipsteunenTekst(beam.checkConfig?.lateralRestraints?.join(", ") ?? "");
       setKipsteunenOnderTekst(beam.checkConfig?.lateralRestraintsBottom?.join(", ") ?? "");
+      setKipsteunenGelijkAan(kipsteunenGelijk(
+        beam.checkConfig?.lateralRestraints, beam.checkConfig?.lateralRestraintsBottom, L,
+      ));
     }
-  }, [beam.id, beam.checkConfig]);
+  }, [beam.id, beam.checkConfig, L]);
+  /**
+   * Vinkje aan: vanaf nu één invoer. Staan de rijen nog niet gelijk, dan gaan
+   * de posities van de bovenflens (of, als die leeg is, die van de onderflens)
+   * voor beide gelden — in één wijziging. Uit: niets schrijven, beide rijen
+   * blijven staan zoals ze zijn.
+   */
+  const zetKipsteunenGelijk = (aan: boolean) => {
+    setKipsteunenGelijkAan(aan);
+    if (!aan) return;
+    const boven = cfg.lateralRestraints;
+    const onder = cfg.lateralRestraintsBottom;
+    if (kipsteunenGelijk(boven, onder, L)) return;
+    const samen = gelijkTrekken(boven, onder);
+    const tekst = samen.join(", ");
+    setKipsteunenTekst(tekst);
+    setKipsteunenOnderTekst(tekst);
+    setCfg(kipsteunenPatch("beide", samen));
+  };
   const { t } = useTranslation("check");
 
   // Een naar links hellende staaf dicht bij 75°: daar springt "boven" van het
@@ -658,7 +706,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 herkomst: herkomstTekst(voorspeldY),
               })}
             </div>
-            <Row label={t("cfg.bucklingOutOfPlane")}>
+            <Row
+              label={t("cfg.bucklingOutOfPlane")}
+              info={<>
+                {t("cfg.bucklingOutOfPlaneHint")}
+                {isHout && " " + t("props.beam.timberLcrzHint")}
+              </>}
+            >
               <LengthInput className="fem-prop-input" positive storedUnit="m"
                 placeholder={formatLength(voorspeldZ.lCrMm)}
                 value={cfg.bucklingLengthZ_m}
@@ -669,9 +723,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               {t("cfg.bucklingEmptyIs", {
                 waarde: formatLength(voorspeldZ.lCrMm),
                 herkomst: herkomstTekst(voorspeldZ),
-              })}{" "}
-              {t("cfg.bucklingOutOfPlaneHint")}
-              {isHout && " " + t("props.beam.timberLcrzHint")}
+              })}
             </div>
           </Section>}
 
@@ -685,13 +737,48 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   verdeeld: vul het aantal in en de posities volgen. Wie een
                   onregelmatige verdeling nodig heeft, past het positieveld
                   daarna aan (het aantal volgt dan mee). */}
-              {([
-                ["boven", isHout ? t("cfg.bracingTopTimber") : t("props.beam.bracingTopFlange"), "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
-                ["onder", isHout ? t("cfg.bracingBottomTimber") : t("props.beam.bracingBottomFlange"), "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
-              ] as const).map(([sleutel, titel, veld, tekst, setTekst]) => {
-                const huidig = (cfg[veld] ?? []) as number[];
+              {/* ONDER EN BOVEN GELIJK (issue #44). Aan: één sectie voor
+                  beide flenzen; elke invoer zet `lateralRestraints` én
+                  `lateralRestraintsBottom` in één updateBeam, dus één
+                  undo-stap. Uit: de twee rijen zoals altijd. */}
+              {(kipsteunenGelijkAan
+                ? [{
+                    sleutel: "beide" as KipsteunRij,
+                    titel: isHout ? t("cfg.bracingBothTimber") : t("props.beam.bracingBothFlanges"),
+                    huidig: cfg.lateralRestraints ?? [],
+                    tekst: kipsteunenTekst,
+                    setTekst: (v: string) => { setKipsteunenTekst(v); setKipsteunenOnderTekst(v); },
+                  }]
+                : [
+                    {
+                      sleutel: "boven" as KipsteunRij,
+                      titel: isHout ? t("cfg.bracingTopTimber") : t("props.beam.bracingTopFlange"),
+                      huidig: cfg.lateralRestraints ?? [],
+                      tekst: kipsteunenTekst,
+                      setTekst: setKipsteunenTekst,
+                    },
+                    {
+                      sleutel: "onder" as KipsteunRij,
+                      titel: isHout ? t("cfg.bracingBottomTimber") : t("props.beam.bracingBottomFlange"),
+                      huidig: cfg.lateralRestraintsBottom ?? [],
+                      tekst: kipsteunenOnderTekst,
+                      setTekst: setKipsteunenOnderTekst,
+                    },
+                  ]
+              ).map(({ sleutel, titel, huidig, tekst, setTekst }) => {
                 return (
-                  <Section key={sleutel} title={titel} defaultOpen={sleutel === "boven"}>
+                  // Vaste sleutel voor de bovenste sectie: bij het omzetten van
+                  // het vinkje blijft hij (en de focus op het vinkje) staan.
+                  <Section key={sleutel === "onder" ? "onder" : "boven"} title={titel} defaultOpen={sleutel !== "onder"}>
+                    {sleutel !== "onder" && (
+                      <Row label={t("props.beam.bracingEqual")} info={t("props.beam.bracingEqualHint")}>
+                        <input
+                          type="checkbox" className="fem-prop-checkbox"
+                          checked={kipsteunenGelijkAan}
+                          onChange={(e) => zetKipsteunenGelijk(e.target.checked)}
+                        />
+                      </Row>
+                    )}
                     <Row label={t("props.beam.bracingCount")}>
                       <input
                         type="number" className="fem-prop-input" min="0" max="20" step="1"
@@ -703,11 +790,17 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                           // op 1/(n+1), 2/(n+1), … n/(n+1).
                           const posities = Array.from({ length: n }, (_, i) => (i + 1) / (n + 1));
                           setTekst(posities.map((f) => f.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")).join(", "));
-                          setCfg({ [veld]: posities } as Partial<BeamCheckConfig>);
+                          setCfg(kipsteunenPatch(sleutel, posities));
                         }}
                       />
                     </Row>
-                    <Row label={t("cfg.bracingLabel")}>
+                    <Row
+                      label={t("cfg.bracingLabel")}
+                      info={<>
+                        {t("props.beam.bracingFillHint")}
+                        {isHout && " " + t("cfg.bracingTimberHint")}
+                      </>}
+                    >
                       <input
                         type="text" className="fem-prop-input"
                         placeholder="0.25, 0.5, 0.75"
@@ -716,14 +809,11 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                           // Ruwe tekst in lokale state (zodat "0.25, " typen
                           // mag), geparseerde fracties meteen naar het model.
                           setTekst(e.target.value);
-                          setCfg({ [veld]: parseKipsteunen(e.target.value) } as Partial<BeamCheckConfig>);
+                          setCfg(kipsteunenPatch(sleutel, parseKipsteunen(e.target.value)));
                         }}
                         spellCheck={false}
                       />
                     </Row>
-                    {isHout && (
-                      <div className="fem-prop-hint">{t("cfg.bracingTimberHint")}</div>
-                    )}
                     {huidig.length > 0 && L > 0 && (
                       <div className="fem-prop-hint">
                         {t("props.beam.bracingPositions", {
@@ -736,19 +826,16 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         +y naar links. Zie lib/referentierichting.ts. */}
                     {isOverwegendVerticaal(beam, nodes) && (
                       <div className="fem-prop-hint">
-                        {sleutel === "boven"
-                          ? t("props.beam.standingTop")
-                          : t("props.beam.standingBottom")}
+                        {sleutel === "onder"
+                          ? t("props.beam.standingBottom")
+                          : sleutel === "boven"
+                            ? t("props.beam.standingTop")
+                            : `${t("props.beam.standingTop")} ${t("props.beam.standingBottom")}`}
                       </div>
                     )}
                     {sprong && (
                       <div className="fem-prop-hint fem-prop-let-op" role="note">
                         {sprongTekst("flens")}
-                      </div>
-                    )}
-                    {huidig.length === 0 && (
-                      <div className="fem-prop-hint">
-                        {t("props.beam.bracingFillHint")}
                       </div>
                     )}
                   </Section>
@@ -759,7 +846,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
 
           {isHout && (
             <Section title={t("props.beam.ltbTitle")}>
-              <Row label={t("props.beam.ltbSpacing")}>
+              <Row
+                label={t("props.beam.ltbSpacing")}
+                info={t("props.beam.ltbSpacingHint", { lengte: systeemlengteMm })}
+              >
                 <LengthInput className="fem-prop-input" positive storedUnit="m"
                   placeholder={systeemlengteMm}
                   value={cfg.ltbSupportSpacing_m}
@@ -767,7 +857,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 />
               </Row>
               <div className="fem-prop-hint">
-                {t("props.beam.ltbSpacingHint", { lengte: systeemlengteMm })}
+                {t("cfg.bucklingEmptyIs", {
+                  waarde: systeemlengteMm,
+                  herkomst: t("cfg.herkomstStaaflengte"),
+                })}
               </div>
               {/* Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a).
                   Leeg/zwaartepunt = geen correctie; de drukzijde (dak of vloer
@@ -813,7 +906,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   waarde van de NB bij 6.1.7 voor een prismatische doorsnede; de
                   Europese aanbeveling is 0,67. Buiten (0, 1] wordt niet
                   weggeschreven: dat is geen factor maar een fout. */}
-              <Row label={t("props.beam.kCr")}>
+              <Row label={t("props.beam.kCr")} info={t("props.beam.kCrHint")}>
                 <input
                   type="number" className="fem-prop-input" step="0.01" min="0.01" max="1"
                   placeholder="1,00"
@@ -828,15 +921,12 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   }}
                 />
               </Row>
-              <div className="fem-prop-hint">
-                {t("props.beam.kCrHint")}
-              </div>
             </Section>
           )}
 
           {isHout && (
             <Section title={t("props.beam.climateTitle")}>
-              <Row label={t("cfg.serviceClass")}>
+              <Row label={t("cfg.serviceClass")} info={t("props.beam.climateHint")}>
                 <select
                   className="fem-prop-select"
                   value={cfg.serviceClass ?? 1}
@@ -867,9 +957,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   <option value="instantaneous">{t("props.beam.durInstantaneous")}</option>
                 </select>
               </Row>
-              <div className="fem-prop-hint">
-                {t("props.beam.climateHint")}
-              </div>
             </Section>
           )}
 
@@ -973,7 +1060,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               </Row>
             )}
             {!isHout && !isBeton && (
-              <Row label={t("props.beam.preCamber")}>
+              <Row label={t("props.beam.preCamber")} info={t("cfg.preCamberHint")}>
                 <input
                   type="number" className="fem-prop-input" step="1"
                   placeholder="0"
@@ -983,9 +1070,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   })}
                 />
               </Row>
-            )}
-            {!isHout && !isBeton && (
-              <div className="fem-prop-hint">{t("cfg.preCamberHint")}</div>
             )}
           </Section>
         </div>
@@ -1045,7 +1129,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               staaf zou een lege regel "Verloop" alleen ruis zijn. */}
           {verloopBeamMaten && (
             <>
-              <Row label={t("props.beam.taperStart")}>
+              <Row label={t("props.beam.taperStart")} info={t("props.beam.taperHint")}>
                 <code>
                   {beam.profile} · h = {verloopBeamMaten.begin.h} mm, b = {verloopBeamMaten.begin.b} mm
                 </code>
@@ -1055,9 +1139,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   {beam.profileEnd} · h = {verloopBeamMaten.eind.h} mm, b = {verloopBeamMaten.eind.b} mm
                 </code>
               </Row>
-              <div className="fem-prop-hint">
-                {t("props.beam.taperHint")}
-              </div>
             </>
           )}
           {isHout ? (
