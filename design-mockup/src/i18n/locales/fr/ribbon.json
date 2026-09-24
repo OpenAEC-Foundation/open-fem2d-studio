@@ -204,6 +204,8 @@
     "diagnostics": "Diagnostic",
     "logs": "Journaux",
     "errors": "Erreurs",
+    "view": "Affichage",
+    "visibility": "Visibilité",
     "info": "Info",
     "matrixEmpty": "— vide —",
     "truncated": "La matrice fait {{totaalRijen}}×{{totaalKolommen}}, les {{rijen}}×{{kolommen}} premières sont affichées. Utilisez Analyse → Exporter la matrice pour le CSV complet.",

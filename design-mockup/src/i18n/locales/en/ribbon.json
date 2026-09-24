@@ -204,6 +204,8 @@
     "diagnostics": "Diagnostics",
     "logs": "Logs",
     "errors": "Errors",
+    "view": "View",
+    "visibility": "Visibility",
     "info": "Info",
     "matrixEmpty": "— empty —",
     "truncated": "Matrix is {{totaalRijen}}×{{totaalKolommen}}, first {{rijen}}×{{kolommen}} shown. Use Insights → Export matrix for the full CSV.",

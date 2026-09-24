@@ -78,6 +78,7 @@ function ResultsTab({
   envelopeView = false,
   hasPlates = false,
   onSelectScope,
+  onOpenZichtbaarheid,
 }: {
   displayFlags?: DisplayFlags;
   setDisplayFlags?: React.Dispatch<React.SetStateAction<DisplayFlags>>;
@@ -89,6 +90,8 @@ function ResultsTab({
   envelopeView?: boolean;
   /** True zodra het model platen bevat — toont de contour-rij (P3.2). */
   hasPlates?: boolean;
+  /** Opent het venster Zichtbaarheid (issue #47): het tandwiel bij de titel. */
+  onOpenZichtbaarheid?: () => void;
   /** Called when user picks a scope. Encodes which one was chosen so App
    * can set the right state (single LC / combination / envelope). */
   onSelectScope?: (scope:
@@ -211,7 +214,27 @@ function ResultsTab({
         </optgroup>
       </select>
 
-      <div className="fem-results-section-title">{t("tree.canvasDisplay")}</div>
+      {/* Tandwiel: het venster Zichtbaarheid met alle weergave-instellingen
+          bij elkaar (issue #47). Zelfde vlaggen als de schakelaars hieronder. */}
+      <div className="fem-results-section-title fem-results-section-title-met-knop">
+        <span>{t("tree.canvasDisplay")}</span>
+        {onOpenZichtbaarheid && (
+          <button
+            type="button"
+            className="fem-results-title-knop"
+            onClick={onOpenZichtbaarheid}
+            title={t("tree.openZichtbaarheid")}
+            aria-label={t("tree.openZichtbaarheid")}
+            data-actie="zichtbaarheid"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        )}
+      </div>
       <div className="fem-results-toggle-list">
         {ROWS.map(row => {
           const uitgegrijsd = row.disabledReden !== undefined;
@@ -270,6 +293,21 @@ function ResultsTab({
                       onChange={(e) => setDisplayFlags(f => ({ ...f, knoopWaarden: e.target.checked }))}
                     />
                     <span>{t("tree.nodeValues")}</span>
+                  </label>
+                </div>
+              )}
+              {/* Profielbreedte-subvinkje onder Aanzicht (issue #47): de maat
+                  b bij het aanzicht — zelfde vlag als in het venster
+                  Zichtbaarheid. */}
+              {row.key === "aanzicht" && active && (
+                <div className="fem-results-scale-row" title={t("zichtbaarheid.aanzichtBreedteHint")}>
+                  <label className="fem-results-subcheck">
+                    <input
+                      type="checkbox"
+                      checked={displayFlags.aanzichtBreedte === true}
+                      onChange={(e) => setDisplayFlags(f => ({ ...f, aanzichtBreedte: e.target.checked }))}
+                    />
+                    <span>{t("zichtbaarheid.aanzichtBreedte")}</span>
                   </label>
                 </div>
               )}
@@ -456,6 +494,8 @@ interface FemProjectTreeProps {
   setDisplayFlags?: React.Dispatch<React.SetStateAction<DisplayFlags>>;
   /** True when any solver result is available — gates the toggle hint. */
   hasResults?: boolean;
+  /** Opent het venster Zichtbaarheid (tandwiel bij "Weergave op canvas", issue #47). */
+  onOpenZichtbaarheid?: () => void;
   /** Optional controlled tab — when supplied, App.tsx drives which tab is open. */
   activeTab?: "project" | "results";
   setActiveTab?: (t: "project" | "results") => void;
@@ -470,7 +510,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
     belastingMeldingen = [], combinatieAfwijking = null, combinatieVervanging = null, onOpenCombinaties,
     activeCombinationId, setActiveCombinationId,
     envelopeView, setEnvelopeView, envelope,
-    displayFlags, setDisplayFlags, hasResults,
+    displayFlags, setDisplayFlags, hasResults, onOpenZichtbaarheid,
     activeTab, setActiveTab,
   } = props;
   const { t } = useTranslation("common");
@@ -790,6 +830,7 @@ export default function FemProjectTree(props: FemProjectTreeProps) {
             setDisplayFlags={setDisplayFlags}
             hasResults={hasResults ?? false}
             hasPlates={plates.length > 0}
+            onOpenZichtbaarheid={onOpenZichtbaarheid}
             loadCases={loadCases}
             activeLoadCaseId={activeLoadCaseId}
             combinations={actieveCombinaties}

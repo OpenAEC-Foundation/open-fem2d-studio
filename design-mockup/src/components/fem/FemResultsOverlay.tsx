@@ -92,6 +92,32 @@ export interface DisplayFlags {
    * De constructieschets in het rapport volgt dit vinkje.
    */
   aanzicht: boolean;
+  /**
+   * De breedte b van het profiel als label bij het aanzicht (issue #47): het
+   * zijaanzicht toont de hoogte h, de breedte staat loodrecht op de tekening
+   * en is anders nergens te zien. Alleen zichtbaar samen met `aanzicht`.
+   */
+  aanzichtBreedte: boolean;
+  /**
+   * Weergave-instellingen van het venster Zichtbaarheid (issue #47). Allemaal
+   * MODELweergave; ze horen hier om dezelfde reden als `profielLabels`: één
+   * lijst, één bron. De keuzes worden per gebruiker onthouden
+   * (lib/zichtbaarheid.ts), niet in het projectbestand.
+   */
+  /** Knoopnummers naast de knopen. */
+  knoopnummers: boolean;
+  /** Staafnummers "(3)" op het staafmidden, naast de profielnaam. */
+  staafnummers: boolean;
+  /** De getallen bij de lasten (kN, kN/m, kNm, ΔT); de pijlen blijven. */
+  lastWaarden: boolean;
+  /** Peilmaten van de niveaus van het stramien. */
+  peilmaten: boolean;
+  /** Maatlijnen tussen de stramienassen. */
+  maatlijnen: boolean;
+  /** Oplegsymbolen. */
+  opleggingen: boolean;
+  /** Scharnieren en veren aan de staafeinden. */
+  scharnieren: boolean;
 }
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
@@ -115,6 +141,18 @@ export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   profielLabels: true,
   kipsteunen: true,
   aanzicht: false,
+  // Uit: een extra label per staaf; wie het aanzicht controleert, zet hem aan.
+  aanzichtBreedte: false,
+  // Zoals het tekenvlak altijd was: knoopnummers aan, de rest van de modellagen
+  // ook; staafnummers zijn nieuw en staan uit, het tekenvlak blijft zo rustig
+  // als de gebruiker het kent.
+  knoopnummers: true,
+  staafnummers: false,
+  lastWaarden: true,
+  peilmaten: true,
+  maatlijnen: true,
+  opleggingen: true,
+  scharnieren: true,
 };
 
 interface Props {

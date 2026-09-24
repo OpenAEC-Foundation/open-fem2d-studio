@@ -47,6 +47,8 @@ interface RibbonProps {
   onShowInsightsMode?: (mode: "element" | "system" | "dof" | "logs" | "errors") => void;
   /** Export all stiffness matrices as CSV. */
   onExportMatrixCsv?: () => void;
+  /** Opent het venster Zichtbaarheid (tab Inzicht, issue #47). */
+  onOpenZichtbaarheid?: () => void;
   onFilterSelection?: () => void;
   /** Export standalone HTML report (browser + Tauri). */
   onExportHtml?: () => void;
@@ -106,7 +108,7 @@ export default function Ribbon({
   onDelete, onUndo, onRedo, canUndo, canRedo, onOpenGrids,
   onOpenLoadCases, onOpenLoadCombinations, onOpenWindGenerator, onNewProject, onOpenProject,
   onSaveProject, onSaveProjectAs,
-  onShowInsightsMode, onExportMatrixCsv,
+  onShowInsightsMode, onExportMatrixCsv, onOpenZichtbaarheid,
   onFilterSelection,
   onExportHtml, scheefstandToelichting, analyseToelichting, windToelichting,
   onExportIfc, onExportIfcStructural, onValidateIfc, onOpenIfcView,
@@ -246,7 +248,7 @@ export default function Ribbon({
           onOpenLibrary={onOpenLibrary}
         />;
       case "insights":
-        return <InsightsTab onShowInsights={() => onViewChange("insights")} onShowInsightsMode={onShowInsightsMode} onExportMatrixCsv={onExportMatrixCsv} />;
+        return <InsightsTab onShowInsights={() => onViewChange("insights")} onShowInsightsMode={onShowInsightsMode} onExportMatrixCsv={onExportMatrixCsv} onOpenZichtbaarheid={onOpenZichtbaarheid} />;
       case "ifc":
         return <IfcTab
           onExportIfc={onExportIfc}

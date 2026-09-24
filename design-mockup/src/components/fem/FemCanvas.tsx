@@ -92,6 +92,17 @@ import {
 // samenvallende knopen en vrije uiteinden — mét knoopnummers en herstelactie,
 // zodat de solver niet als eerste met "singuliere matrix" hoeft te komen.
 import { CONTROLE_TOL_MM, controleerModel, type Bevinding } from "../../lib/modelControle";
+// Profielnaam, staafnummer en profielbreedte op het staafmidden, zonder
+// overlap (issue #47); de weergavevlaggen lezen zoals verkenner en venster.
+import { staafLabelPlaatsen, type LabelPlaats } from "../../lib/staafLabels";
+import { vlagAan } from "../../lib/zichtbaarheid";
+// Peilmaat van een niveau (issue #48): tekst, klikvlak en het lezen van de
+// niveau-invoer in mm. Horizontale assen zijn NIVEAUS met een peilmaat, geen
+// genummerd stramien — alleen de verticale assen dragen een stramienletter.
+import {
+  PEILMAAT_AFSTAND_PX, PEILMAAT_KLIK_HOOGTE_PX, PEIL_DRIEHOEK_HALF_PX, PEIL_DRIEHOEK_HOOGTE_PX,
+  leesNiveauInvoer, niveauInvoerStart, niveauLabel, peilmaatBreedtePx, peilmaatTekst,
+} from "../../lib/peilmaat";
 // Snap per soort (knoop / stramien / raster) — de knopjes staan in de
 // statusbalk onderin; deze hook leest dezelfde stand.
 import { useSnapInstellingen } from "../../hooks/useSnapInstellingen";
@@ -175,16 +186,9 @@ function fmtLegenda(v: number): string {
   return v.toFixed(3);
 }
 
-/**
- * Peilmaat van een niveau in bouwkundige notatie: "+5,00 m" boven peil,
- * "−1,20 m" eronder en "±0,00 m" op het nulniveau. Horizontale assen zijn
- * NIVEAUS met een peilmaat, geen genummerd stramien — alleen de verticale
- * assen dragen een stramienletter.
- */
-function peilmaatTekst(positieMm: number): string {
-  const m = positieMm / 1000;
-  const teken = Math.abs(m) < 0.005 ? "±" : m > 0 ? "+" : "−";
-  return `${teken}${Math.abs(m).toFixed(2).replace(".", ",")} m`;
+/** Een maat in mm voor een label, op 0,1 mm (bv. de profielbreedte "135" of "60.3"). */
+function fmtMaat(mm: number): string {
+  return formatLength(Math.round(mm * 10) / 10);
 }
 
 /**
@@ -554,8 +558,6 @@ const DIM_LABEL_DY = 13;
 const SCHARNIER_R_PX = 3.5;
 /** Afstand van het scharnierbolletje tot de knoop (px, schermruimte). */
 const SCHARNIER_AFSTAND_PX = 11;
-/** Loodrechte verspringing van de profielnaam t.o.v. de staafas (px). */
-const PROFIEL_LABEL_OFFSET_PX = 9;
 /**
  * Hoogte van een kipsteunsymbool. Het schaalt mee met de zoom — 150 mm in het
  * model — maar blijft tussen deze grenzen: kleiner dan 6 px is een stip zonder
@@ -637,6 +639,11 @@ export default function FemCanvas(props: FemCanvasProps) {
   // toetsinvoer en voor deze laag, zie lib/kipsteunBeeld.ts. Alleen van het
   // model afhankelijk, dus niet opnieuw bij pannen, zoomen of hover.
   const toonKipsteunen = displayFlags.kipsteunen !== false;
+  // Weergavevlaggen van het venster Zichtbaarheid (issue #47).
+  const toonKnoopnummers = vlagAan(displayFlags, "knoopnummers");
+  const toonStaafnummers = vlagAan(displayFlags, "staafnummers");
+  const toonPeilmaten = vlagAan(displayFlags, "peilmaten");
+  const toonMaatlijnen = vlagAan(displayFlags, "maatlijnen");
   const kipBeelden = useMemo(
     () => (toonKipsteunen ? kipsteunBeelden({ nodes, beams, supports, plates }) : []),
     [toonKipsteunen, nodes, beams, supports, plates],
@@ -658,6 +665,14 @@ export default function FemCanvas(props: FemCanvasProps) {
     currentMm: number;         // current distance in mm
     sx: number; sy: number;    // popover anchor position (screen)
     meeschuivendeKnopen: number; // aantal knopen ÓP de bewegende as
+  } | null>(null);
+  // Peilmaat-invoer (issue #48): klik op de peilmaat van een niveau → het
+  // niveau zelf in mm wijzigen. Zelfde popover-patroon als de maatlijn.
+  const [peilEdit, setPeilEdit] = useState<{
+    axisId: string;
+    currentMm: number;         // huidig niveau in mm
+    sx: number; sy: number;    // popover-anker (scherm)
+    meeschuivendeKnopen: number;
   } | null>(null);
 
   // Pan/zoom view transform
@@ -3112,52 +3127,54 @@ export default function FemCanvas(props: FemCanvasProps) {
   };
 
   /**
-   * Profielnaam klein langs de staaf, meegedraaid met de staafrichting en
-   * altijd leesbaar (nooit ondersteboven). Uit te zetten met het vinkje
-   * "Profielnaam" in de weergavelijst.
-   *
-   * Op een staaf die op het scherm korter is dan het label zelf wordt niets
-   * getekend: een naam die over drie staven heen loopt hoort bij geen van
-   * drieën meer.
+   * De labels op het staafmidden (lib/staafLabels.ts): de profielnaam klein
+   * langs de staaf (vinkje "Profielnaam"), het staafnummer "(3)" een regel
+   * verder naar buiten (vinkje "Staafnummers", issue #47) en, met het aanzicht
+   * aan, de profielbreedte b aan de andere kant van het aanzicht (vinkje
+   * "Profielbreedte in het aanzicht"). Meegedraaid met de staaf en altijd
+   * leesbaar; een label dat niet op de staaf past, vervalt.
    */
-  const renderProfielLabel = (
+  const renderStaafLabels = (
     b: Beam,
     p1: { x: number; y: number },
     p2: { x: number; y: number },
   ) => {
-    if (displayFlags.profielLabels === false) return null;
-    if (!b.profile) return null;
     // VERLOPEND PROFIEL: het label draagt begin én eind ("IPE 300 → IPE 200
     // (verlopend)"), dezelfde schrijfwijze als het eigenschappenpaneel en het
     // rapport. Alleen het beginprofiel tonen zou de staaf op de tekening
     // prismatisch laten lijken.
-    const naam = doorsnedeNaamVertaald(b, tCommon);
-    const dx = p2.x - p1.x, dy = p2.y - p1.y;
-    const len = Math.hypot(dx, dy);
-    // Ruwe schatting van de labelbreedte bij 9 px letterhoogte.
-    if (len < naam.length * 5.5 + 10) return null;
-    let hoek = (Math.atan2(dy, dx) * 180) / Math.PI;
-    if (hoek > 90) hoek -= 180;
-    if (hoek < -90) hoek += 180;
-    // Loodrecht verschuiven zodat de tekst NAAST de staaf staat; de kant die
-    // op het scherm omhoog wijst, zodat het label niet op de diagrammen valt.
-    const nx = -dy / len, ny = dx / len;
-    const teken = ny > 0 ? -1 : 1;
-    // Met het aanzicht aan: naast het aanzicht, niet erin.
+    const naam = displayFlags.profielLabels !== false && b.profile ? doorsnedeNaamVertaald(b, tCommon) : null;
+    const nummer = toonStaafnummers ? `(${b.id})` : null;
     const half = aanzichtHalf.get(b.id);
-    const afstand = half !== undefined
-      ? Math.max(PROFIEL_LABEL_OFFSET_PX, half * view.scale + 7)
-      : PROFIEL_LABEL_OFFSET_PX;
-    const tx = p1.x + dx / 2 + nx * afstand * teken;
-    const ty = p1.y + dy / 2 + ny * afstand * teken;
+    const bMaat = toonAanzichtBreedte ? aanzichtBreedte.get(b.id) : undefined;
+    const breedte = bMaat
+      ? (Math.abs(bMaat.begin - bMaat.eind) < 0.05
+        ? tCommon("canvas.aanzicht.breedte", { b: fmtMaat(bMaat.begin) })
+        : tCommon("canvas.aanzicht.breedteVerloop", { b1: fmtMaat(bMaat.begin), b2: fmtMaat(bMaat.eind) }))
+      : null;
+    if (!naam && !nummer && !breedte) return null;
+    // Met het aanzicht aan: naast het aanzicht, niet erin.
+    const plek = staafLabelPlaatsen(p1, p2, {
+      profiel: naam, nummer, breedte,
+      aanzichtHalfPx: half !== undefined ? half * view.scale : undefined,
+    });
+    const tekst = (pl: LabelPlaats | null, inhoud: string | null, klasse: string, extra?: Record<string, string>) =>
+      pl && inhoud ? (
+        <text
+          x={pl.x} y={pl.y}
+          className={klasse}
+          textAnchor="middle"
+          transform={`rotate(${pl.hoek.toFixed(2)} ${pl.x.toFixed(2)} ${pl.y.toFixed(2)})`}
+          pointerEvents="none"
+          {...extra}
+        >{inhoud}</text>
+      ) : null;
     return (
-      <text
-        x={tx} y={ty}
-        className="fem-beam-profiel"
-        textAnchor="middle"
-        transform={`rotate(${hoek.toFixed(2)} ${tx.toFixed(2)} ${ty.toFixed(2)})`}
-        pointerEvents="none"
-      >{naam}</text>
+      <>
+        {tekst(plek.profiel, naam, "fem-beam-profiel", { "data-staafprofiel": String(b.id) })}
+        {tekst(plek.nummer, nummer, "fem-beam-nummer", { "data-staafnummer": String(b.id) })}
+        {tekst(plek.breedte, breedte, "fem-aanzicht-breedte", { "data-staafbreedte": String(b.id) })}
+      </>
     );
   };
 
@@ -3334,6 +3351,12 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
     return m;
   }, [aanzichten]);
+  /** Profielbreedte b (mm) per staaf in het aanzicht, voor het breedtelabel (issue #47). */
+  const toonAanzichtBreedte = toonAanzicht && vlagAan(displayFlags, "aanzichtBreedte");
+  const aanzichtBreedte = useMemo(
+    () => new Map(aanzichten.map((a) => [a.staafId, a.breedte] as const)),
+    [aanzichten],
+  );
 
   // ── Beschikbaarheid van de EI-weergave doorgeven ────────────────────────
   // De weergavelijst (FemProjectTree) moet de EI-stand kunnen uitgrijzen als
@@ -3729,26 +3752,79 @@ export default function FemCanvas(props: FemCanvasProps) {
                 // ("verdieping", "maaiveld") staat ervóór; het automatische
                 // volgnummer wordt niet meer getoond.
                 const elevText = peilmaatTekst(az.position);
-                const eigenNaam = /^\d+$/.test(az.label.trim()) ? "" : az.label.trim();
-                const labelTekst = eigenNaam ? `${eigenNaam}  ${elevText}` : elevText;
+                const labelTekst = niveauLabel(az.label, az.position);
+                const tekstPx = peilmaatBreedtePx(labelTekst);
+                // De peilmaat is aan te klikken (issue #48): tekst en driehoekje
+                // openen de invoer van het NIVEAU in mm. Het klikvlak is ruimer
+                // dan de tekst, zodat hij bij elke zoomstand te raken is.
+                const bewerkbaar = !!setStructuralGrid;
+                const openPeil = (e: React.MouseEvent, sx: number, sy: number) => {
+                  if (!bewerkbaar) return;
+                  e.stopPropagation();
+                  setDimEdit(null);
+                  setPeilEdit({
+                    axisId: az.id,
+                    currentMm: az.position,
+                    sx, sy,
+                    meeschuivendeKnopen: knopenOpStramienAs(nodes, "z", az.position).length,
+                  });
+                };
+                // Indrukken op de peilmaat is geen begin van een selectierechthoek.
+                const houdMuis = (e: React.MouseEvent) => {
+                  if (bewerkbaar && e.button === 0 && !spaceHeld) e.stopPropagation();
+                };
+                const actief = peilEdit?.axisId === az.id;
+                const klasse = `fem-peilmaat${bewerkbaar ? " bewerkbaar" : ""}${actief ? " actief" : ""}`;
+                const titel = bewerkbaar ? tCommon("canvas.grid.editLevelTitle", { peil: elevText }) : undefined;
+                const H = PEILMAAT_KLIK_HOOGTE_PX;
+                const linksX = pL.x - PEILMAAT_AFSTAND_PX;
+                const rechtsX = pR.x + PEILMAAT_AFSTAND_PX;
                 return (
                   <g key={`zax${az.id}`}>
                     <line x1={pL.x} y1={pL.y} x2={pR.x} y2={pR.y} className="fem-stramien-line" />
-                    {/* Peilmaat-symbool links: het bouwkundige driehoekje op de lijn. */}
-                    <polygon
-                      points={`${pL.x - 4},${pL.y - 5} ${pL.x + 4},${pL.y - 5} ${pL.x},${pL.y}`}
-                      className="fem-peil-driehoek"
-                    />
-                    <text x={pL.x - 10} y={pL.y + 4} className="fem-stramien-elev fem-stramien-elev-left">
-                      {labelTekst}
-                    </text>
-                    <text x={pR.x + 10} y={pR.y + 4} className="fem-stramien-elev fem-stramien-elev-right">
-                      {labelTekst}
-                    </text>
-                    {/* Minus button — verwijder dit niveau */}
+                    {/* Links: het bouwkundige peildriehoekje op de lijn + de peilmaat.
+                        Uit te zetten met "Peilmaten" (Zichtbaarheid, issue #47). */}
+                    {toonPeilmaten && <>
+                    <g
+                      className={klasse} data-peilmaat={az.id} data-zijde="links"
+                      onMouseDown={houdMuis}
+                      onClick={(e) => openPeil(e, linksX - tekstPx / 2, pL.y + H / 2)}
+                    >
+                      {titel && <title>{titel}</title>}
+                      <rect
+                        x={linksX - tekstPx - 6} y={pL.y - H / 2 - 2}
+                        width={tekstPx + PEILMAAT_AFSTAND_PX + PEIL_DRIEHOEK_HALF_PX + 10} height={H}
+                        rx={4} className="fem-peilmaat-vlak"
+                      />
+                      <polygon
+                        points={`${pL.x - PEIL_DRIEHOEK_HALF_PX},${pL.y - PEIL_DRIEHOEK_HOOGTE_PX} ${pL.x + PEIL_DRIEHOEK_HALF_PX},${pL.y - PEIL_DRIEHOEK_HOOGTE_PX} ${pL.x},${pL.y}`}
+                        className="fem-peil-driehoek"
+                      />
+                      <text x={linksX} y={pL.y} className="fem-stramien-elev fem-stramien-elev-left">
+                        {labelTekst}
+                      </text>
+                    </g>
+                    <g
+                      className={klasse} data-peilmaat={az.id} data-zijde="rechts"
+                      onMouseDown={houdMuis}
+                      onClick={(e) => openPeil(e, rechtsX + tekstPx / 2, pR.y + H / 2)}
+                    >
+                      {titel && <title>{titel}</title>}
+                      <rect
+                        x={pR.x + 4} y={pR.y - H / 2}
+                        width={tekstPx + PEILMAAT_AFSTAND_PX + 2} height={H}
+                        rx={4} className="fem-peilmaat-vlak"
+                      />
+                      <text x={rechtsX} y={pR.y} className="fem-stramien-elev fem-stramien-elev-right">
+                        {labelTekst}
+                      </text>
+                    </g>
+                    </>}
+                    {/* Minus button — verwijder dit niveau; náást de peilmaat,
+                        ook als die een eigen niveaunaam draagt. */}
                     {setStructuralGrid && (
                       <g
-                        transform={`translate(${pR.x + 96}, ${pR.y})`}
+                        transform={`translate(${rechtsX + tekstPx + 16}, ${pR.y})`}
                         className="fem-stramien-minus"
                         onClick={(e) => { e.stopPropagation(); removeZAxis(az.id); }}
                       >
@@ -3768,7 +3844,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                   Opmaak: op het snijpunt met de stramienlijn een open cirkeltje (gevuld met
                   de achtergrondkleur, zodat de maatlijn er niet doorheen loopt) en de maat
                   BOVEN de maatlijn. */}
-              {xSorted.length > 1 && (() => {
+              {toonMaatlijnen && xSorted.length > 1 && (() => {
                 const dimZ = zLo - DIM_PAD;
                 const items: React.ReactNode[] = [];
                 for (let i = 0; i < xSorted.length - 1; i++) {
@@ -3788,6 +3864,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         onClick={(e) => {
                           if (!setStructuralGrid) return;
                           e.stopPropagation();
+                          setPeilEdit(null);
                           setDimEdit({
                             axis: "x",
                             movingAxisId: b.id,
@@ -3812,13 +3889,20 @@ export default function FemCanvas(props: FemCanvasProps) {
                   snijpunt met de niveaulijn en de maat NAAST de maatlijn in plaats van
                   eróp. De tekst gaat naar de buitenzijde (rechts van de lijn) — de
                   binnenzijde is bezet door de peilmaten van de niveaus. */}
-              {zSorted.length > 1 && (() => {
+              {toonMaatlijnen && zSorted.length > 1 && (() => {
                 const dimX = xHi + DIM_PAD;
+                // Uitgezoomd ligt DIM_PAD op het scherm maar een paar pixel
+                // van de niveaulijn, en dan liep de maatlijn dwars door de
+                // rechter peilmaat en de −-knop (issue #48). De maatlijn blijft
+                // daarom op het scherm minstens rechts van die twee.
+                const peilPx = Math.max(0, ...zSorted.map(z => peilmaatBreedtePx(niveauLabel(z.label, z.position))));
+                const vrijX = worldToScreen(xHi, 0).x + PEILMAAT_AFSTAND_PX + peilPx + 16 + 7 + 10;
+                const lijnX = Math.max(worldToScreen(dimX, 0).x, vrijX);
                 const items: React.ReactNode[] = [];
                 for (let i = 0; i < zSorted.length - 1; i++) {
                   const a = zSorted[i], b = zSorted[i + 1];
-                  const pa = worldToScreen(dimX, a.position);
-                  const pb = worldToScreen(dimX, b.position);
+                  const pa = { x: lijnX, y: worldToScreen(dimX, a.position).y };
+                  const pb = { x: lijnX, y: worldToScreen(dimX, b.position).y };
                   const midX = pa.x, midY = (pa.y + pb.y) / 2;
                   const labelCX = midX + DIM_LABEL_DY + 22;  // naast de maatlijn
                   const distMm = b.position - a.position;
@@ -3832,6 +3916,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         onClick={(e) => {
                           if (!setStructuralGrid) return;
                           e.stopPropagation();
+                          setPeilEdit(null);
                           setDimEdit({
                             axis: "z",
                             movingAxisId: b.id,
@@ -4003,8 +4088,8 @@ export default function FemCanvas(props: FemCanvasProps) {
                 onMouseLeave={() => setHoverBeamId((id) => (id === b.id ? null : id))}
               />
               {renderVerloopVorm(b, p1, p2)}
-              {renderScharnieren(b, p1, p2)}
-              {renderProfielLabel(b, p1, p2)}
+              {displayFlags.scharnieren !== false && renderScharnieren(b, p1, p2)}
+              {renderStaafLabels(b, p1, p2)}
             </g>
           );
         })}
@@ -4103,7 +4188,11 @@ export default function FemCanvas(props: FemCanvasProps) {
         })()}
 
         {/* Loads */}
-        <g className="fem-loads-layer">{activeLoads.map(renderLoad)}</g>
+        {/* Zonder "Belastingwaarden" (issue #47) blijven de pijlen staan en
+            verdwijnen alleen de getallen (CSS: .zonder-waarden). */}
+        <g className={`fem-loads-layer${vlagAan(displayFlags, "lastWaarden") ? "" : " zonder-waarden"}`}>
+          {activeLoads.map(renderLoad)}
+        </g>
         {/* Automatisch eigen gewicht (issue #42) — alleen-lezen, eigen component. */}
         {showLoads && !resultsMode && eigenGewicht && eigenGewicht.caseId === activeLoadCaseId && (
           <EigenGewichtLaag overzicht={eigenGewicht} nodes={nodes} beams={beams} plates={plates}
@@ -4111,7 +4200,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         )}
 
         {/* Supports */}
-        {supports.map(renderSupport)}
+        {vlagAan(displayFlags, "opleggingen") && supports.map(renderSupport)}
 
         {/* Nodes */}
         {nodes.map(n => {
@@ -4133,7 +4222,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                     setSelection({ type: "node", id: n.id });
                   }
                 }} />
-              <text x={p.x + 8} y={p.y - 8} className="fem-node-label">{n.id}</text>
+              {toonKnoopnummers && <text x={p.x + 8} y={p.y - 8} className="fem-node-label">{n.id}</text>}
             </g>
           );
         })}
@@ -4920,6 +5009,34 @@ export default function FemCanvas(props: FemCanvasProps) {
         </InlinePopover>
       )}
 
+      {/* Peilmaat-invoer (issue #48) — opent als je op de peilmaat van een
+          niveau klikt. Het NIVEAU zelf in mm (huidig niveau voorgevuld);
+          Enter bevestigt, Esc annuleert. De knopen op het niveau schuiven mee,
+          as en knopen samen in één undo-stap (`verplaatsStramienAs`). */}
+      {peilEdit && setStructuralGrid && (
+        <InlinePopover x={peilEdit.sx} y={peilEdit.sy} onClose={() => setPeilEdit(null)}>
+          <NiveauEditForm
+            axisId={peilEdit.axisId}
+            currentMm={peilEdit.currentMm}
+            niveaus={structuralGrid?.zAxes ?? []}
+            meeschuivendeKnopen={peilEdit.meeschuivendeKnopen}
+            onSubmit={(nieuwMm) => {
+              if (verplaatsStramienAs) {
+                verplaatsStramienAs("z", peilEdit.axisId, nieuwMm);
+              } else {
+                // Standalone canvas zonder mutator: alleen de niveaulijn.
+                setStructuralGrid(prev => ({
+                  ...prev,
+                  zAxes: prev.zAxes.map(a => a.id === peilEdit.axisId ? { ...a, position: nieuwMm } : a),
+                }));
+              }
+              setPeilEdit(null);
+            }}
+            onCancel={() => setPeilEdit(null)}
+          />
+        </InlinePopover>
+      )}
+
       {/* Beam properties dialog — opened by double-click on a beam, or via
           the right-click context-menu "Bewerk eigenschappen" action. */}
       {editingBeamId !== null && (() => {
@@ -5172,6 +5289,57 @@ function DimEditForm({ axis, currentMm, meeschuivendeKnopen = 0, onSubmit, onCan
           : (axis === "x"
             ? t("canvas.dim.noNodesOnAxis")
             : t("canvas.dim.noNodesOnLevel"))}
+      </div>
+      <div className="fem-popover-actions">
+        <button onClick={onCancel}>{t("canvas.dim.cancel")}</button>
+        <button onClick={commit} className="fem-popover-primary">{t("ok")}</button>
+      </div>
+    </div>
+  );
+}
+
+/** Invoer van het NIVEAU van een horizontale stramienas (issue #48), in mm.
+ *  Voorgevuld met het huidige niveau; negatief mag (onder peil). Een hoogte
+ *  waar al een ander niveau ligt, wordt met een melding geweigerd. */
+function NiveauEditForm({ axisId, currentMm, niveaus, meeschuivendeKnopen = 0, onSubmit, onCancel }: {
+  axisId: string;
+  currentMm: number;
+  niveaus: readonly { id: string; position: number }[];
+  meeschuivendeKnopen?: number;
+  onSubmit: (nieuwMm: number) => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation("common");
+  const [val, setVal] = useState(niveauInvoerStart(currentMm));
+  const [fout, setFout] = useState<string | null>(null);
+  const commit = () => {
+    const r = leesNiveauInvoer(val, axisId, niveaus);
+    if (r.ok) { onSubmit(r.mm); return; }
+    setFout(r.fout === "bezet" ? t("canvas.dim.levelTaken", { peil: r.peil }) : t("canvas.dim.levelInvalid"));
+  };
+  return (
+    <div className="fem-popover-form" data-niveau-invoer={axisId}>
+      <div className="fem-popover-title">
+        {t("canvas.dim.editLevel", { peil: peilmaatTekst(currentMm) })}
+      </div>
+      <label className="fem-popover-row">
+        <span>{t("canvas.dim.level")}</span>
+        <input
+          type="text" inputMode="decimal" value={val} autoFocus
+          onChange={e => { setVal(e.target.value); setFout(null); }}
+          onKeyDown={e => {
+            if (e.key === "Enter") commit();
+            else if (e.key === "Escape") { e.stopPropagation(); onCancel(); }
+          }}
+          onFocus={e => e.target.select()}
+          aria-invalid={fout !== null}
+        />
+      </label>
+      {fout && <div className="fem-popover-hint fem-popover-fout" role="alert">{fout}</div>}
+      <div className="fem-popover-hint">
+        {meeschuivendeKnopen > 0
+          ? t("canvas.dim.nodesMoveWithLevel", { count: meeschuivendeKnopen })
+          : t("canvas.dim.noNodesOnLevel")}
       </div>
       <div className="fem-popover-actions">
         <button onClick={onCancel}>{t("canvas.dim.cancel")}</button>

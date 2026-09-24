@@ -81,6 +81,8 @@ import { bepaalKruipPerStaaf, kruipWaardenPerStaaf, modelHeeftBetonstaaf } from 
 import { bepaalOnbepaaldheid } from "./lib/statischeOnbepaaldheid";
 import { losEindtoestandOp } from "./lib/houtEindstijfheid";
 import { DEFAULT_DISPLAY_FLAGS, type DisplayFlags } from "./components/fem/FemResultsOverlay";
+import ZichtbaarheidVenster from "./components/fem/ZichtbaarheidVenster";
+import { WEERGAVE_VOORKEUREN_SLEUTEL, metVoorkeuren, voorkeurenVan } from "./lib/zichtbaarheid";
 import { bouwMultiInput } from "./lib/modelNaarSolverInput";
 import {
   EIGEN_GEWICHT_STANDAARD_AAN, STANDAARD_ACTIEF_GEVAL_ID, eigenGewichtAanbodVanToepassing,
@@ -470,6 +472,26 @@ function App() {
   // `reportData`: de constructieschets van het rapport volgt de laag
   // "Kipsteunen" (issue #40).
   const [displayFlags, setDisplayFlags] = useState<DisplayFlags>(DEFAULT_DISPLAY_FLAGS);
+  // Venster Zichtbaarheid (issue #47): alle weergave-instellingen bij elkaar.
+  const [zichtbaarheidOpen, setZichtbaarheidOpen] = useState(false);
+  // De model-lagen (knoopnummers, staafnummers, aanzicht, …) per gebruiker
+  // onthouden in de voorkeuren, niet in het projectbestand. Eerst lezen; pas
+  // daarna schrijven, anders overschrijft de standaard de bewaarde keuze.
+  const weergaveGeladen = useRef(false);
+  useEffect(() => {
+    let weg = false;
+    getSetting<unknown>(WEERGAVE_VOORKEUREN_SLEUTEL, null).then((opgeslagen) => {
+      if (weg) return;
+      weergaveGeladen.current = true;
+      setDisplayFlags((f) => metVoorkeuren(f, opgeslagen));
+    });
+    return () => { weg = true; };
+  }, []);
+  const weergaveVoorkeur = JSON.stringify(voorkeurenVan(displayFlags));
+  useEffect(() => {
+    if (!weergaveGeladen.current) return;
+    void setSetting(WEERGAVE_VOORKEUREN_SLEUTEL, JSON.parse(weergaveVoorkeur));
+  }, [weergaveVoorkeur]);
 
   // R5 — doorgeef-regels naar het live rapport (ReportDataContext): één
   // object voor het Rapport-tabblad én de snapshot-sync naar losgekoppelde
@@ -2478,6 +2500,7 @@ function App() {
           }
         }}
         onShowInsightsMode={(m) => { setInsightsMode(m); setActiveView("insights"); }}
+        onOpenZichtbaarheid={() => setZichtbaarheidOpen(true)}
         onExportMatrixCsv={async () => {
           try {
             const { exportMatricesAsCsv } = await import("./io/matrixExport");
@@ -2563,6 +2586,7 @@ function App() {
                     envelope={fem.envelope}
                     displayFlags={displayFlags}
                     setDisplayFlags={setDisplayFlags}
+                    onOpenZichtbaarheid={() => setZichtbaarheidOpen(true)}
                     hasResults={solverResult !== null || fem.envelope !== null}
                     activeTab={treeTab}
                     setActiveTab={setTreeTab}
@@ -2799,6 +2823,15 @@ function App() {
         addCombination={fem.addCombination}
         updateCombination={fem.updateCombination}
         removeCombination={fem.removeCombination}
+      />
+      <ZichtbaarheidVenster
+        open={zichtbaarheidOpen}
+        onClose={() => setZichtbaarheidOpen(false)}
+        displayFlags={displayFlags}
+        setDisplayFlags={setDisplayFlags}
+        stramienAan={fem.structuralGrid.enabled}
+        setStramienAan={(aan) => fem.setStructuralGrid(prev => ({ ...prev, enabled: aan }))}
+        hasPlates={fem.plates.length > 0}
       />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} theme={theme} onThemeChange={setTheme} />
       <LibraryDialog open={libraryOpen} onClose={() => setLibraryOpen(false)} initialTab={libraryTab} />
