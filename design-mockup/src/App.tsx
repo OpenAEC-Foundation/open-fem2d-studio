@@ -31,7 +31,7 @@ import type { TableDataset, TableViewApi } from "./components/table/tableTypes";
 import LoadCaseTabBar from "./components/fem/LoadCaseTabBar";
 import LoadCasesDialog from "./components/fem/LoadCasesDialog";
 import WindGeneratorDialog from "./lib/wind/WindGeneratorDialog";
-import { vrijstaandDakUitgangspunten } from "./lib/wind/windGenerator";
+import { windUitgangspunten } from "./lib/wind/windGenerator";
 import { useWindGenerator } from "./stores/windStore";
 import { pasRapportSnapshotToe, rapportSnapshot, useReportStore } from "./stores/reportStore";
 import { snoeiCheckFocus } from "./lib/verdwenenStaven";
@@ -461,10 +461,11 @@ function App() {
    * De omschrijving van de gegenereerde windlasten voor de PDF (issue #16):
    * dezelfde functie waarmee het live rapport haar bij de uitgangspunten zet
    * (ProjectSection), op dezelfde gevallen en lasten uit het model — scherm en
-   * papier zeggen zo hetzelfde. Leeg zonder gegenereerde windlast.
+   * papier zeggen zo hetzelfde. Vrijstaand dak (§7.3) en hellend dak met
+   * automatische c_pe (§7.2.4/§7.2.5, issue #49). Leeg zonder zulke windlast.
    */
   const windTekst = useMemo(
-    () => vrijstaandDakUitgangspunten(fem.loadCases, fem.loads),
+    () => windUitgangspunten(fem.loadCases, fem.loads),
     [fem.loadCases, fem.loads]);
 
   // Result display toggles — lifted so both the FemCanvas HUD and the
