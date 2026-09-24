@@ -1,14 +1,15 @@
 /**
- * Browserkant van test-eigenschappen-ui.mjs (issue #43): het echte
+ * Browserkant van test-eigenschappen-ui.mjs (issues #43 en #44): het echte
  * eigenschappenpaneel (FemProperties) en de echte staafdialoog
- * (BarPropertiesDialog), met een stalen en een houten ligger.
+ * (BarPropertiesDialog), met een stalen en een houten ligger; voor de
+ * undo-stap van #44 ook de echte modelstore (useFemStore).
  *
  * Zonder hash draait de testreeks en komt de uitslag als JSON in #uitslag. Met
  * `#beeld=staal-licht`, `#beeld=hout-licht`, `#beeld=staal-donker` of
  * `#beeld=tip-open` wordt alleen het beeld opgebouwd — daarvan maakt de test op
  * verzoek een schermafbeelding.
  */
-import React from "react";
+import React, { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import i18next from "i18next";
@@ -20,6 +21,8 @@ import "../src/App.css";
 import FemProperties from "../src/components/fem/FemProperties";
 import BarPropertiesDialog from "../src/components/fem/BarPropertiesDialog";
 import type { Beam, Node } from "../src/components/fem/femTypes";
+import { useFemStore } from "../src/hooks/useFemStore";
+import { kipsteunenVanStaaf } from "../src/lib/kipsteunen";
 
 const tests: { name: string; error?: string }[] = [];
 const container = document.getElementById("root")!;
@@ -89,6 +92,26 @@ function tipBij(label: string): string {
 /** De zichtbare korte statusregels in het paneel. */
 const zichtbareHints = () =>
   [...container.querySelectorAll<HTMLElement>(".fem-prop-hint:not(.fem-prop-let-op)")].map((e) => e.textContent ?? "");
+/** Typ in een veld zoals het toetsenbord dat doet (hetzelfde input-event voor React). */
+function typ(el: HTMLInputElement, waarde: string) {
+  el.focus();
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, waarde);
+  flushSync(() => el.dispatchEvent(new Event("input", { bubbles: true })));
+}
+/** De titels van de open en dichte secties in het paneel. */
+const sectieTitels = () => [...container.querySelectorAll(".fem-prop-section-header")].map((e) => e.textContent ?? "");
+const vinkje = () => veldBij("Onder en boven gelijk") as HTMLInputElement;
+/** Het paneel met de echte modelstore: elke wijziging is een snapshot in de undo-historie. */
+let store: ReturnType<typeof useFemStore>;
+function MetStore({ beam }: { beam: Beam }) {
+  const s = useFemStore();
+  store = s;
+  useEffect(() => {
+    s.loadProjectState({ nodes, beams: [beam], supports: [], plates: [], loads: [], loadCases: [], activeLoadCaseId: 1 });
+  }, []);
+  const b = s.beams.find((x) => x.id === beam.id);
+  return b ? <Paneel beam={b} update={s.updateBeam} /> : null;
+}
 /** Klik op het normtabblad (EN 1993 / EN 1995). */
 function naarNorm() {
   const knop = [...container.querySelectorAll<HTMLButtonElement>("button")]
@@ -268,6 +291,110 @@ async function run() {
   });
 }
 
+// ── #44: onder en boven gelijk ─────────────────────────────────────────────
+async function run44() {
+  await test("bij openen: vinkje aan als boven en onder gelijk zijn, één sectie voor beide flenzen", () => {
+    mount(<Paneel beam={staal} />);
+    naarNorm();
+    ok(vinkje().checked, "gelijke posities: vinkje aan");
+    const titels = sectieTitels();
+    ok(titels.includes(tekst("props.beam.bracingBothFlanges")), `één sectie voor beide: ${titels}`);
+    ok(!titels.includes(tekst("props.beam.bracingBottomFlange")) && !titels.includes(tekst("props.beam.bracingTopFlange")), "geen losse rijen");
+    ok(tipBij("Onder en boven gelijk").includes(tekst("props.beam.bracingEqualHint")), "uitleg bij het vinkje");
+    // Binnen afronding (0,3 mm op 8770 mm) telt ook als gelijk; verschillend niet.
+    mount(<Paneel beam={{ ...staal, checkConfig: { lateralRestraints: [1 / 3, 2 / 3], lateralRestraintsBottom: [0.3333, 0.6667] } }} />);
+    naarNorm();
+    ok(vinkje().checked, "binnen afronding gelijk");
+    mount(<Paneel beam={{ ...staal, checkConfig: { lateralRestraints: [0.25, 0.5, 0.75], lateralRestraintsBottom: [0.5] } }} />);
+    naarNorm();
+    ok(!vinkje().checked, "verschillend: vinkje uit");
+    const los = sectieTitels();
+    ok(los.includes(tekst("props.beam.bracingTopFlange")) && los.includes(tekst("props.beam.bracingBottomFlange")), `twee rijen: ${los}`);
+  });
+
+  await test("vinkje aan: één invoer zet beide flenzen in één wijziging; de toetsinvoer volgt", () => {
+    const patches: Partial<Beam>[] = [];
+    let beam = staal;
+    const Houder = () => {
+      const [b, setB] = React.useState(beam);
+      beam = b;
+      return <Paneel beam={b} update={(_id, u) => { patches.push(u); setB((x) => ({ ...x, ...u })); }} />;
+    };
+    mount(<Houder />);
+    naarNorm();
+    typ(veldBij("Aantal") as HTMLInputElement, "2");
+    gelijk(patches.length, 1, "één wijziging voor het aantal");
+    gelijk(beam.checkConfig?.lateralRestraints, [1 / 3, 2 / 3], "boven");
+    gelijk(beam.checkConfig?.lateralRestraintsBottom, [1 / 3, 2 / 3], "onder");
+    typ(veldBij("Posities") as HTMLInputElement, "0.2, 0.8");
+    gelijk(patches.length, 2, "één wijziging voor de posities");
+    const lb = kipsteunenVanStaaf(beam.checkConfig, 8770, "staal").lateral_bracing;
+    gelijk([lb.top_flange_positions, lb.bottom_flange_positions], [[0.2, 0.8], [0.2, 0.8]], "lateral_bracing boven en onder");
+    ok(zichtbareHints().includes("Op 1754 · 7016 mm vanaf de startknoop."), `posities in mm: ${zichtbareHints()}`);
+  });
+
+  await test("uitzetten wist niets: beide rijen staan er met dezelfde posities", () => {
+    const patches: Partial<Beam>[] = [];
+    mount(<Paneel beam={staal} update={(_id, u) => { patches.push(u); }} />);
+    naarNorm();
+    flushSync(() => vinkje().click());
+    ok(!vinkje().checked, "uit");
+    gelijk(patches.length, 0, "uitzetten schrijft niets");
+    const titels = sectieTitels();
+    ok(titels.includes(tekst("props.beam.bracingTopFlange")) && titels.includes(tekst("props.beam.bracingBottomFlange")), `twee rijen: ${titels}`);
+    // De onderflens klapt open en toont dezelfde posities.
+    const kop = [...container.querySelectorAll<HTMLButtonElement>(".fem-prop-section-header")]
+      .find((e) => e.textContent === tekst("props.beam.bracingBottomFlange"))!;
+    flushSync(() => kop.click());
+    const posities = [...container.querySelectorAll<HTMLInputElement>('input[placeholder="0.25, 0.5, 0.75"]')].map((i) => i.value);
+    gelijk(posities, ["0.25, 0.5, 0.75", "0.25, 0.5, 0.75"], "boven en onder ongewijzigd");
+  });
+
+  await test("aanzetten bij ongelijke rijen: de bovenflens gaat voor beide gelden, in één wijziging", () => {
+    const patches: Partial<Beam>[] = [];
+    mount(<Paneel beam={{ ...staal, checkConfig: { lateralRestraints: [0.25, 0.75], lateralRestraintsBottom: [0.5] } }}
+      update={(_id, u) => { patches.push(u); }} />);
+    naarNorm();
+    flushSync(() => vinkje().click());
+    gelijk(patches.length, 1, "één wijziging");
+    gelijk([patches[0].checkConfig?.lateralRestraints, patches[0].checkConfig?.lateralRestraintsBottom],
+      [[0.25, 0.75], [0.25, 0.75]], "beide = boven");
+    ok(vinkje().checked, "aan");
+  });
+
+  await test("één undo-stap in de echte modelstore", async () => {
+    mount(<MetStore beam={staal} />);
+    await wacht();
+    naarNorm();
+    ok(vinkje().checked, "vinkje aan");
+    typ(veldBij("Aantal") as HTMLInputElement, "1");
+    const na = store.beams[0].checkConfig;
+    gelijk([na?.lateralRestraints, na?.lateralRestraintsBottom], [[0.5], [0.5]], "beide flenzen op ½");
+    flushSync(() => store.undo());
+    const terug = store.beams[0].checkConfig;
+    gelijk([terug?.lateralRestraints, terug?.lateralRestraintsBottom], [[0.25, 0.5, 0.75], [0.25, 0.5, 0.75]],
+      "één undo zet beide flenzen terug");
+  });
+
+  await test("hout: ook twee randen, dus ook het vinkje; ongelijk opent met twee rijen", () => {
+    mount(<Paneel beam={hout} />);
+    naarNorm();
+    ok(!vinkje().checked, "alleen de bovenrand ingevuld: uit");
+    const titels = sectieTitels();
+    ok(titels.includes(tekst("cfg.bracingTopTimber")) && titels.includes(tekst("cfg.bracingBottomTimber")), `twee randen: ${titels}`);
+    const patches: Partial<Beam>[] = [];
+    mount(<Paneel beam={{ ...hout, checkConfig: { ...hout.checkConfig, lateralRestraintsBottom: [0.5] } }}
+      update={(_id, u) => { patches.push(u); }} />);
+    naarNorm();
+    ok(vinkje().checked, "gelijke randen: aan");
+    ok(sectieTitels().includes(tekst("cfg.bracingBothTimber")), "één sectie voor beide randen");
+    typ(veldBij("Posities") as HTMLInputElement, "0.4");
+    gelijk([patches[0].checkConfig?.lateralRestraints, patches[0].checkConfig?.lateralRestraintsBottom, patches[0].checkConfig?.ltbSupportSpacing_m],
+      [[0.4], [0.4], 2], "beide randen, de kipsteunafstand blijft");
+  });
+}
+
 run()
+  .then(() => (location.hash ? undefined : run44()))
   .then(() => { const el = document.getElementById("uitslag"); if (el) el.textContent = JSON.stringify({ tests, error: null }); })
   .catch((e) => { const el = document.getElementById("uitslag"); if (el) el.textContent = JSON.stringify({ tests, error: String(e?.stack ?? e) }); });

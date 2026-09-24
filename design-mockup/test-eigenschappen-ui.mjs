@@ -1,8 +1,10 @@
 // Het eigenschappenpaneel van een staaf in een lokale headless browser
-// (issue #43): uitleg in een InfoTip (hover, focus, klik/tik, Esc,
+// (issues #43 en #44): uitleg in een InfoTip (hover, focus, klik/tik, Esc,
 // aria-describedby), korte status en waarschuwingen blijven zichtbaar, geen
-// uitlegtekst verloren. De plaatsing van de tip bewaakt ook
-// test-infotip-plaats.mjs.
+// uitlegtekst verloren; en het vinkje "Onder en boven gelijk" bij de
+// kipsteunen (detectie bij openen, één invoer, één undo-stap, uitzetten wist
+// niets). De plaatsing van de tip bewaakt ook test-infotip-plaats.mjs, de
+// logica van het vinkje test-kipsteunen-gelijk.mjs.
 //
 // Schermafbeeldingen: zet EIGENSCHAPPEN_SCHERMAFBEELDINGEN op een bestaande map
 // en de test schrijft daar staal-licht.png, hout-licht.png, staal-donker.png en

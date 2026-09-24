@@ -56,6 +56,10 @@ import { isOverwegendVerticaal, VERTICAAL_VANAF_GRADEN, STEEL_GRADES } from "../
 // waarschuwing bij de kipsteunen en de korf; zie DE SPRONG BIJ 75° in
 // lib/referentierichting.ts.
 import { gradenTekst, richtingssprongNabij } from "../../lib/referentierichting";
+// Het vinkje "Onder en boven gelijk" bij de kipsteunen (issue #44).
+import {
+  gelijkTrekken, kipsteunenGelijk, kipsteunenPatch, type KipsteunRij,
+} from "../../lib/kipsteunenGelijk";
 import ProfielKiezer, { profielenInGebruik, type BetonKorfKeuze } from "./ProfielKiezer";
 // De doorsnedenaam van een staaf komt uit één plaats — dezelfde keuring als de
 // solver en de rekenkern gebruiken; zie lib/verloopKeuze.
@@ -561,14 +565,41 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
   const [kipsteunenOnderTekst, setKipsteunenOnderTekst] = useState(
     cfg.lateralRestraintsBottom?.join(", ") ?? "",
   );
+  // "Onder en boven gelijk" (issue #44): geen opgeslagen veld maar een
+  // afleiding uit de posities, bij het openen en bij een andere staaf. Aan =
+  // één invoer die beide velden in één wijziging zet; uit = twee rijen.
+  const [kipsteunenGelijkAan, setKipsteunenGelijkAan] = useState(() =>
+    kipsteunenGelijk(cfg.lateralRestraints, cfg.lateralRestraintsBottom, L),
+  );
   const vorigeBeamId = useRef(beam.id);
   useEffect(() => {
     if (vorigeBeamId.current !== beam.id) {
       vorigeBeamId.current = beam.id;
       setKipsteunenTekst(beam.checkConfig?.lateralRestraints?.join(", ") ?? "");
       setKipsteunenOnderTekst(beam.checkConfig?.lateralRestraintsBottom?.join(", ") ?? "");
+      setKipsteunenGelijkAan(kipsteunenGelijk(
+        beam.checkConfig?.lateralRestraints, beam.checkConfig?.lateralRestraintsBottom, L,
+      ));
     }
-  }, [beam.id, beam.checkConfig]);
+  }, [beam.id, beam.checkConfig, L]);
+  /**
+   * Vinkje aan: vanaf nu één invoer. Staan de rijen nog niet gelijk, dan gaan
+   * de posities van de bovenflens (of, als die leeg is, die van de onderflens)
+   * voor beide gelden — in één wijziging. Uit: niets schrijven, beide rijen
+   * blijven staan zoals ze zijn.
+   */
+  const zetKipsteunenGelijk = (aan: boolean) => {
+    setKipsteunenGelijkAan(aan);
+    if (!aan) return;
+    const boven = cfg.lateralRestraints;
+    const onder = cfg.lateralRestraintsBottom;
+    if (kipsteunenGelijk(boven, onder, L)) return;
+    const samen = gelijkTrekken(boven, onder);
+    const tekst = samen.join(", ");
+    setKipsteunenTekst(tekst);
+    setKipsteunenOnderTekst(tekst);
+    setCfg(kipsteunenPatch("beide", samen));
+  };
   const { t } = useTranslation("check");
 
   // Een naar links hellende staaf dicht bij 75°: daar springt "boven" van het
@@ -706,13 +737,48 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   verdeeld: vul het aantal in en de posities volgen. Wie een
                   onregelmatige verdeling nodig heeft, past het positieveld
                   daarna aan (het aantal volgt dan mee). */}
-              {([
-                ["boven", isHout ? t("cfg.bracingTopTimber") : t("props.beam.bracingTopFlange"), "lateralRestraints" as const, kipsteunenTekst, setKipsteunenTekst],
-                ["onder", isHout ? t("cfg.bracingBottomTimber") : t("props.beam.bracingBottomFlange"), "lateralRestraintsBottom" as const, kipsteunenOnderTekst, setKipsteunenOnderTekst],
-              ] as const).map(([sleutel, titel, veld, tekst, setTekst]) => {
-                const huidig = (cfg[veld] ?? []) as number[];
+              {/* ONDER EN BOVEN GELIJK (issue #44). Aan: één sectie voor
+                  beide flenzen; elke invoer zet `lateralRestraints` én
+                  `lateralRestraintsBottom` in één updateBeam, dus één
+                  undo-stap. Uit: de twee rijen zoals altijd. */}
+              {(kipsteunenGelijkAan
+                ? [{
+                    sleutel: "beide" as KipsteunRij,
+                    titel: isHout ? t("cfg.bracingBothTimber") : t("props.beam.bracingBothFlanges"),
+                    huidig: cfg.lateralRestraints ?? [],
+                    tekst: kipsteunenTekst,
+                    setTekst: (v: string) => { setKipsteunenTekst(v); setKipsteunenOnderTekst(v); },
+                  }]
+                : [
+                    {
+                      sleutel: "boven" as KipsteunRij,
+                      titel: isHout ? t("cfg.bracingTopTimber") : t("props.beam.bracingTopFlange"),
+                      huidig: cfg.lateralRestraints ?? [],
+                      tekst: kipsteunenTekst,
+                      setTekst: setKipsteunenTekst,
+                    },
+                    {
+                      sleutel: "onder" as KipsteunRij,
+                      titel: isHout ? t("cfg.bracingBottomTimber") : t("props.beam.bracingBottomFlange"),
+                      huidig: cfg.lateralRestraintsBottom ?? [],
+                      tekst: kipsteunenOnderTekst,
+                      setTekst: setKipsteunenOnderTekst,
+                    },
+                  ]
+              ).map(({ sleutel, titel, huidig, tekst, setTekst }) => {
                 return (
-                  <Section key={sleutel} title={titel} defaultOpen={sleutel === "boven"}>
+                  // Vaste sleutel voor de bovenste sectie: bij het omzetten van
+                  // het vinkje blijft hij (en de focus op het vinkje) staan.
+                  <Section key={sleutel === "onder" ? "onder" : "boven"} title={titel} defaultOpen={sleutel !== "onder"}>
+                    {sleutel !== "onder" && (
+                      <Row label={t("props.beam.bracingEqual")} info={t("props.beam.bracingEqualHint")}>
+                        <input
+                          type="checkbox" className="fem-prop-checkbox"
+                          checked={kipsteunenGelijkAan}
+                          onChange={(e) => zetKipsteunenGelijk(e.target.checked)}
+                        />
+                      </Row>
+                    )}
                     <Row label={t("props.beam.bracingCount")}>
                       <input
                         type="number" className="fem-prop-input" min="0" max="20" step="1"
@@ -724,7 +790,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                           // op 1/(n+1), 2/(n+1), … n/(n+1).
                           const posities = Array.from({ length: n }, (_, i) => (i + 1) / (n + 1));
                           setTekst(posities.map((f) => f.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")).join(", "));
-                          setCfg({ [veld]: posities } as Partial<BeamCheckConfig>);
+                          setCfg(kipsteunenPatch(sleutel, posities));
                         }}
                       />
                     </Row>
@@ -743,7 +809,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                           // Ruwe tekst in lokale state (zodat "0.25, " typen
                           // mag), geparseerde fracties meteen naar het model.
                           setTekst(e.target.value);
-                          setCfg({ [veld]: parseKipsteunen(e.target.value) } as Partial<BeamCheckConfig>);
+                          setCfg(kipsteunenPatch(sleutel, parseKipsteunen(e.target.value)));
                         }}
                         spellCheck={false}
                       />
@@ -760,9 +826,11 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         +y naar links. Zie lib/referentierichting.ts. */}
                     {isOverwegendVerticaal(beam, nodes) && (
                       <div className="fem-prop-hint">
-                        {sleutel === "boven"
-                          ? t("props.beam.standingTop")
-                          : t("props.beam.standingBottom")}
+                        {sleutel === "onder"
+                          ? t("props.beam.standingBottom")
+                          : sleutel === "boven"
+                            ? t("props.beam.standingTop")
+                            : `${t("props.beam.standingTop")} ${t("props.beam.standingBottom")}`}
                       </div>
                     )}
                     {sprong && (
