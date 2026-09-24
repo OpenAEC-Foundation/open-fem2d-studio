@@ -756,6 +756,10 @@ const ALLEEN_BRON = new Map([
     "tabbalk-ui",
     "issue #51: de echte tabbalk met twaalf gevallen in een te smal venster in een lokale headless browser — alleen de gevallen scrollen (pijlen, wiel, slepen, toetsenbord), het actieve geval schuift in beeld, de lijstknop kiest een geval, lange namen afgekort, vaste onderdelen zichtbaar, nl/en/de/fr. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
+  [
+    "wind-hellend-dak-ui",
+    "issue #49: het echte windvenster met de echte generator in een lokale headless browser — c_pe-velden leeg met “(automatisch, tabel 7.4a)”, de automatische waarden per zone, de gevallen per teken, overschrijven en leeg maken, lessenaarsdak 7.3a/7.3b en thema. React, DOM en CSS bestaan in de sidecarbundel niet; de rekenregels staan tegen de bundel in `wind-hellend-dak`",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

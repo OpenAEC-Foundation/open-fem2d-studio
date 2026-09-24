@@ -133,6 +133,17 @@
 }
 .wgd-getal input[inputmode="decimal"] { width: 84px; }
 .wgd-eenheid { color: var(--theme-text-faint); font-size: 10.5px; }
+/* Hellend dak (issue #49): de c_pe-velden onder elkaar, breed genoeg voor
+   "(automatisch, tabel 7.4a)", en de automatische waarden per zone. */
+.wgd-cpe-velden { flex-direction: column; align-items: flex-start; gap: 5px; }
+.wgd-cpe-velden .wgd-getal > span:first-child { min-width: 88px; }
+.wgd-getal.wgd-getal-breed input[type="number"] { width: 170px; }
+.wgd-cpe-auto { margin: 4px 0 8px; border-top: 1px solid var(--theme-border-subtle); }
+.wgd-cpe-rij { padding: 4px 0; border-bottom: 1px solid var(--theme-border-subtle); }
+.wgd-cpe-kop { font-size: 11px; color: var(--theme-text); }
+.wgd-cpe-zones { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; }
+.wgd-cpe-zone { font-size: 11px; color: var(--theme-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wgd-cpe-zone strong { color: var(--theme-text-secondary); font-weight: 600; margin-right: 3px; }
 .wgd-uitkomst { font-size: 11.5px; color: var(--theme-text); font-variant-numeric: tabular-nums; }
 .wgd-uitkomst-regel { font-size: 11px; color: var(--theme-text-secondary); margin-top: 2px; }
 .wgd-section-sub { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--theme-text-faint); margin-left: 6px; }

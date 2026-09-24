@@ -56,13 +56,15 @@ function Klapblok({ kop, standaardOpen = false, children }: { kop: string; stand
 
 /** Een klein getalveld met label ernaast — de invoer blijft één regel. */
 function Getal({
-  label, value, onChange, step = 0.1, min = 0, eenheid = "m", leeg, required = false,
+  label, value, onChange, step = 0.1, min = 0, eenheid = "m", leeg, required = false, breed = false,
 }: {
   label: string; value: number | null; onChange: (v: number | null) => void;
   step?: number; min?: number; eenheid?: string; leeg?: string; required?: boolean;
+  /** Breed invoerveld, zodat een tekst als "(automatisch, tabel 7.4a)" leesbaar past. */
+  breed?: boolean;
 }) {
   return (
-    <label className="wgd-getal">
+    <label className={`wgd-getal${breed ? " wgd-getal-breed" : ""}`}>
       <span>{label}</span>
       {eenheid === "m" || eenheid === "mm" ? (
         <LengthInput required={required} value={value} storedUnit={eenheid} min={min}
@@ -348,25 +350,69 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
               </div>
               )}
 
-              {!vrijstaand && geo?.heeftHellendDak && (
-                <div className="wgd-section">
-                  <div className="wgd-section-title">
-                    {t("wind.secSlopedRoof")}
-                    <span className="wgd-section-sub">{` α ≈ ${nl(geo.dakhelling_graden, 0)}°`}</span>
-                  </div>
-                  <div className="wgd-getallen">
-                    <Getal label={t("wind.cpeWindwardShort")} value={i.cpeDakLoef} step={0.05} min={-3} eenheid="7.4a"
-                      onChange={(v) => set({ cpeDakLoef: v })} />
-                    <Getal label={t("wind.cpeLeewardShort")} value={i.cpeDakLij} step={0.05} min={-3} eenheid="7.4a"
-                      onChange={(v) => set({ cpeDakLij: v })} />
-                    {i.richtingHaaks && (
-                      <Getal label={t("wind.cpePerpShort")} value={i.cpeDakHaaks} step={0.05} min={-3} eenheid="7.4b"
-                        onChange={(v) => set({ cpeDakHaaks: v })} />
+              {!vrijstaand && geo?.heeftHellendDak && (() => {
+                // Issue #49: c_pe,10 per zone automatisch uit tabel 7.3/7.4;
+                // een ingevulde waarde gaat voor (leeg maken = weer de tabel).
+                const hd = geo.hellendDak;
+                const opz = hd?.opzoeking ?? {};
+                const tabel0 = hd?.vorm === "lessenaar" ? "7.3a" : "7.4a";
+                const tabel90 = hd?.vorm === "lessenaar" ? "7.3b" : "7.4b";
+                const auto = (o: typeof opz.links) => (o?.ok ? t("wind.cpeAuto", { tabel: o.tabel }) : undefined);
+                // Lessenaarsdak: "loef" = wind op de lage dakrand (θ = 0°), "lij" = op de hoge (θ = 180°).
+                const opzLoef = hd?.vorm === "lessenaar" ? [opz.links, opz.rechts].find((o) => o?.theta === 0) : opz.links;
+                const opzLij = hd?.vorm === "lessenaar" ? [opz.links, opz.rechts].find((o) => o?.theta === 180) : opz.links;
+                const rijen = [opzLoef, ...(hd?.vorm === "lessenaar" ? [opzLij] : []), opz.haaks]
+                  .filter((o): o is NonNullable<typeof o> => !!o && o.ok);
+                const cel = (c: { neg?: number; pos?: number }) => [c.neg, c.pos]
+                  .filter((v): v is number => v !== undefined)
+                  .map((v) => (v < 0 || Object.is(v, -0) ? "−" : "+") + nl(Math.abs(v), 2)).join(" / ");
+                const zoneNaam = (z: string) => (z === "Fhoog" ? "F_hoog" : z === "Flaag" ? "F_laag" : z);
+                const reden = hd?.reden ?? [opz.links, opz.rechts, opz.haaks].find((o) => o && !o.ok)?.reden;
+                return (
+                  <div className="wgd-section">
+                    <div className="wgd-section-title">
+                      {t("wind.secSlopedRoof")}
+                      <span className="wgd-section-sub">
+                        {` α ≈ ${nl(Math.abs(hd?.alpha_graden ?? geo.dakhelling_graden), 0)}°`}
+                        {hd?.vorm ? ` · ${t(`wind.roofShape.${hd.vorm === "zadel" && hd.alpha_graden < 0 ? "kiel" : hd.vorm}`)}` : ""}
+                      </span>
+                    </div>
+                    <div className="wgd-getallen wgd-cpe-velden">
+                      <Getal breed label={t("wind.cpeWindwardShort")} value={i.cpeDakLoef} step={0.05} min={-3} eenheid={tabel0}
+                        leeg={auto(opzLoef)} onChange={(v) => set({ cpeDakLoef: v })} />
+                      <Getal breed label={t("wind.cpeLeewardShort")} value={i.cpeDakLij} step={0.05} min={-3} eenheid={tabel0}
+                        leeg={auto(opzLij)} onChange={(v) => set({ cpeDakLij: v })} />
+                      {i.richtingHaaks && (
+                        <Getal breed label={t("wind.cpePerpShort")} value={i.cpeDakHaaks} step={0.05} min={-3} eenheid={tabel90}
+                          leeg={auto(opz.haaks)} onChange={(v) => set({ cpeDakHaaks: v })} />
+                      )}
+                    </div>
+                    {rijen.length > 0 && (
+                      <div className="wgd-cpe-auto">
+                        {rijen.map((o) => (
+                          <div key={`${o.theta}`} className="wgd-cpe-rij">
+                            <div className="wgd-cpe-kop">
+                              {`θ = ${o.theta}° · ${o.tabel}`}
+                              <span className="wgd-bron">
+                                {` ${o.rijOnder === o.rijBoven
+                                  ? t("wind.cpeRow", { alpha: nl(o.rijOnder, 0) })
+                                  : t("wind.cpeInterp", { van: nl(o.rijOnder, 0), tot: nl(o.rijBoven, 0) })}`}
+                              </span>
+                            </div>
+                            <div className="wgd-cpe-zones">
+                              {Object.entries(o.zones).map(([z, c]) => (
+                                <span key={z} className="wgd-cpe-zone"><strong>{zoneNaam(z)}</strong> {cel(c)}</span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
+                    {reden && <div className="wgd-melding waarschuwing">{reden}</div>}
+                    <div className="wgd-hint">{t("wind.slopedRoofAuto")}</div>
                   </div>
-                  <div className="wgd-hint">{t("wind.slopedRoofShort")}</div>
-                </div>
-              )}
+                );
+              })()}
 
               <label className="wgd-check">
                 <input type="checkbox" checked={i.combinatiesGenereren}
