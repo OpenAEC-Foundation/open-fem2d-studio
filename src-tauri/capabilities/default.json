@@ -20,8 +20,14 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:default",
-    "fs:allow-read-text-file",
-    "fs:allow-write-text-file",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "**/*.ifcfem2d" }]
+    },
+    {
+      "identifier": "fs:allow-write-text-file",
+      "allow": [{ "path": "**/*.ifcfem2d" }]
+    },
     "fs:allow-write-file"
   ]
 }
