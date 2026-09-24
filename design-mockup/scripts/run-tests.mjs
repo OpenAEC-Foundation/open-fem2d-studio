@@ -378,6 +378,7 @@ const ALLEEN_BRON = new Map([
   ["reken-ui", "React-interactie voor resultaatselectie, meldingen en het toetsingspaneel; geen sidecarcode."],
   ["rekengang-generatie", "Asynchrone rekenregie van de app met afgeschermde React- en native IO-grenzen; niet beschikbaar in de sidecarbundel."],
   ["fs-scope", "Leest de Tauri-capability en de bestandsroutes van de app; geen solvercode en niet beschikbaar in de sidecarbundel."],
+  ["staaf-dialoog-config", "Configuratielogica van de staafdialoog; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["weergave-model", "Weergavelogica van de tabbalk (Model sluit de resultaten); geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["undo-route", "Sneltoetsgedrag van de app (Ctrl+Z vanuit een invoerveld); geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["selecteer-bij-focus", "Invoergedrag van de app (focus selecteert de waarde); geen solvercode en niet beschikbaar in de sidecarbundel."],

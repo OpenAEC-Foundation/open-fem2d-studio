@@ -15,6 +15,7 @@
  *  - Hout toont géén zeeg-veld: de EN 1995-kern consumeert geen zeeg, dus
  *    dat veld zou schijninvoer zijn.
  */
+import { dialoogBasis, onderflensNaDialoog } from "../../lib/staafDialoogConfig";
 import { useState, useId, isValidElement, cloneElement, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { parseLength, formatLength } from "../../lib/lengthInput";
@@ -239,7 +240,9 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
    * materiaal gooit geen configuratie weg.
    */
   const buildCheckConfig = (): BeamCheckConfig | undefined => {
-    const cfg: BeamCheckConfig = {};
+    // Uitgaan van de bestaande configuratie: velden die deze dialoog niet toont
+    // (kipsteunen onderflens, en wat er later nog bijkomt) blijven bewaard.
+    const cfg: BeamCheckConfig = dialoogBasis(cfg0);
     const lcy = parseLength(lcyStr, "m");
     if (lcyStr.trim() !== "" && Number.isFinite(lcy) && lcy > 0) {
       cfg.bucklingLengthY_m = lcyStr === formatLength(cfg0.bucklingLengthY_m, "m")
@@ -252,6 +255,13 @@ export default function BarPropertiesDialog({ beam, nodes, beams, beamForces, on
     }
     const restraints = sanitizeRestraintFractions(parseRestraintInput(restraintsStr));
     if (restraints.length > 0) cfg.lateralRestraints = restraints;
+    // Lengte hier zelf bepalen: `length` verderop in de component bestaat nog
+    // niet wanneer deze functie tijdens het renderen al wordt aangeroepen.
+    const kA = nodes.find(n => n.id === beam.from), kB = nodes.find(n => n.id === beam.to);
+    const staafLengte = kA && kB ? Math.hypot(kB.x - kA.x, kB.z - kA.z) : 0;
+    const onder = onderflensNaDialoog(cfg0, restraints, staafLengte);
+    if (onder && onder.length > 0) cfg.lateralRestraintsBottom = onder;
+    else delete cfg.lateralRestraintsBottom;
     if (deflClass !== "floor") cfg.deflectionClass = deflClass;
     if (deflClass === "custom") {
       const n = parseFloat(deflNStr.replace(",", "."));
