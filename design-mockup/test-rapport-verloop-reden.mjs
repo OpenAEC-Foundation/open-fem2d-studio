@@ -26,6 +26,7 @@
 //        of: node scripts/run-tests.mjs --filter=rapport-verloop-reden
 
 import { spawnSync } from "node:child_process";
+import { startBrowser } from "./scripts/headlessBrowser.mjs";
 import { register } from "node:module";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -204,7 +205,7 @@ if (!browser) {
     </script></body></html>`;
     const bestand = join(map, "blok.html");
     writeFileSync(bestand, pagina, "utf8");
-    const r = spawnSync(browser, [
+    const r = startBrowser(browser, [
       "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
       `--user-data-dir=${join(map, "profiel")}`, "--virtual-time-budget=3000", "--dump-dom",
       pathToFileURL(bestand).href,

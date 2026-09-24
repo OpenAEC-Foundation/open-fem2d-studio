@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { startBrowser } from "./scripts/headlessBrowser.mjs";
 
 const browser = [process.env.OPENAEC_BROWSER,
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -26,7 +27,7 @@ try {
   writeFileSync(html, '<!doctype html><meta charset="utf-8"><style>' + styles +
     '</style><div id="test-root"></div><pre id="uitslag"></pre><script>' +
     bundle.outputFiles[0].text.replace(/<\/script/gi, "<\\/script") + "</script>");
-  const result = spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+  const result = startBrowser(browser, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
     `--user-data-dir=${join(folder, "profiel")}`, "--window-size=1280,900", "--virtual-time-budget=12000",
     "--dump-dom", pathToFileURL(html).href], { encoding: "utf8", timeout: 180_000, maxBuffer: 32 * 1024 * 1024 });
   const match = /<pre id="uitslag">([^<]*)<\/pre>/.exec(result.stdout ?? "");

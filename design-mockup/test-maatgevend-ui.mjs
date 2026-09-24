@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { startBrowser } from "./scripts/headlessBrowser.mjs";
 
 const browser = [process.env.OPENAEC_BROWSER,
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -42,7 +43,7 @@ try {
     `--user-data-dir=${join(folder, "profiel-" + thema)}`, "--window-size=860,2000", "--virtual-time-budget=12000"];
 
   const html = await pagina("light");
-  const result = spawnSync(browser, [...vlaggen("light"), "--dump-dom", pathToFileURL(html).href],
+  const result = startBrowser(browser, [...vlaggen("light"), "--dump-dom", pathToFileURL(html).href],
     { encoding: "utf8", timeout: 180_000, maxBuffer: 32 * 1024 * 1024 });
   const match = /<pre id="uitslag">([^<]*)<\/pre>/.exec(result.stdout ?? "");
   assert.ok(match?.[1], result.error?.message ?? result.stderr?.slice(0, 1500) ?? "Geen browserresultaat");
@@ -55,7 +56,7 @@ try {
     mkdirSync(beeldmap, { recursive: true });
     for (const [thema, naam] of [["light", "toetsingspaneel-licht.png"], ["openaec", "toetsingspaneel-donker.png"]]) {
       const doel = join(beeldmap, naam);
-      spawnSync(browser, [...vlaggen(thema + "-beeld"), `--screenshot=${doel}`, pathToFileURL(await pagina(thema)).href],
+      startBrowser(browser, [...vlaggen(thema + "-beeld"), `--screenshot=${doel}`, pathToFileURL(await pagina(thema)).href],
         { encoding: "utf8", timeout: 180_000 });
       assert.ok(existsSync(doel), `schermafbeelding ontbreekt: ${doel}`);
       console.log(`  schermafbeelding: ${doel}`);

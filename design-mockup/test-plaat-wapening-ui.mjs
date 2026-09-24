@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, basename, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { startBrowser } from "./scripts/headlessBrowser.mjs";
 
 const browser = [process.env.OPENAEC_BROWSER,
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -27,7 +28,7 @@ try {
   writeFileSync(html, '<!doctype html><html><head><meta charset="utf-8">' +
     '<link rel="stylesheet" href="test.css"></head><body><div id="root"></div>' +
     '<pre id="uitslag"></pre><script src="test.js"></script></body></html>');
-  const result = spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run",
+  const result = startBrowser(browser, ["--headless=new", "--disable-gpu", "--no-first-run",
     "--no-default-browser-check", `--user-data-dir=${join(folder, "profiel")}`,
     "--virtual-time-budget=10000", "--dump-dom", pathToFileURL(html).href,
   ], { encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });

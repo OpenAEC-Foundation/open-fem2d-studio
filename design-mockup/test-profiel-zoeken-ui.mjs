@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { startBrowser } from "./scripts/headlessBrowser.mjs";
 
 const browser = [process.env.OPENAEC_BROWSER,
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -51,7 +52,7 @@ try {
   // de schermafbeelding een venster af dat in werkelijkheid breder is.
   let totaal = 0;
   for (const [stand, venster] of [["", "1280,900"], ["#smal", "560,760"]]) {
-    const result = spawnSync(browser, [...basisArgs(), `--window-size=${venster}`, "--virtual-time-budget=12000",
+    const result = startBrowser(browser, [...basisArgs(), `--window-size=${venster}`, "--virtual-time-budget=12000",
       "--dump-dom", url + stand], { encoding: "utf8", timeout: 90_000, maxBuffer: 64 * 1024 * 1024 });
     const match = /<pre id="uitslag">([^<]*)<\/pre>/.exec(result.stdout ?? "");
     assert.ok(match?.[1], result.error?.message ?? result.stderr?.slice(0, 1500) ?? "Geen browserresultaat");
@@ -69,7 +70,7 @@ try {
     for (const thema of ["licht", "donker"]) {
       for (const [toestand, venster] of [["start", "1100,760"], ["zoek", "1100,760"], ["leeg", "1100,760"], ["verlopend", "1100,760"], ["smal", "560,760"]]) {
         const bestand = resolve(beeldMap, `profielkiezer-${thema}-${toestand}.png`);
-        spawnSync(browser, [...basisArgs(), `--window-size=${venster}`, "--virtual-time-budget=6000",
+        startBrowser(browser, [...basisArgs(), `--window-size=${venster}`, "--virtual-time-budget=6000",
           `--screenshot=${bestand}`, `${url}#beeld-${thema}-${toestand}`], { encoding: "utf8", timeout: 90_000 });
         assert.ok(existsSync(bestand), `Schermafbeelding mislukt: ${bestand}`);
         console.log(`  beeld ${bestand}`);

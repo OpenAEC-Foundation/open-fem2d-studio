@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join, basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { startBrowser } from "./scripts/headlessBrowser.mjs";
 
 const browser = [process.env.OPENAEC_BROWSER,
   "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -24,7 +25,7 @@ const browser = [process.env.OPENAEC_BROWSER,
 ].filter(Boolean).find(existsSync);
 assert.ok(browser, "Chromium-browser vereist; stel eventueel OPENAEC_BROWSER in");
 const folder = mkdtempSync(join(tmpdir(), "eigen-gewicht-ui-"));
-const chromium = (extra, url) => spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run",
+const chromium = (extra, url) => startBrowser(browser, ["--headless=new", "--disable-gpu", "--no-first-run",
   "--no-default-browser-check", `--user-data-dir=${join(folder, "profiel")}`,
   "--virtual-time-budget=10000", ...extra, url,
 ], { encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
