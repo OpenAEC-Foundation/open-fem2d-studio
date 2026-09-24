@@ -18,7 +18,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import LengthInput from "../../components/LengthInput";
-import { formatLength } from "../lengthInput";
+import { toonMm } from "../lengthInput";
 import {
   TERREIN_CATEGORIEEN, WINDGEBIEDEN, berekenE,
   type TerreinCategorie, type Windgebied,
@@ -239,7 +239,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                       onChange={(v) => set({ afstandTotKopgevel_m: v ?? 0 })} />
                   )}
                   <Getal label={t("wind.loadWidthShort")} value={i.belastingbreedteOverride_m}
-                    leeg={s ? formatLength(s.belastingbreedte_m, "m") : "auto"}
+                    leeg={s ? toonMm(s.belastingbreedte_m, "m") : "auto"}
                     onChange={(v) => set({ belastingbreedteOverride_m: v })} />
                   {toonGevelhoogte && (
                     <Getal label={t("wind.gevelhoogte")} value={i.gevelhoogte_m} step={0.1}
@@ -270,7 +270,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                     <Getal label={t("wind.blockage")} value={i.blokkering_phi} step={0.1} eenheid=""
                       onChange={(v) => set({ blokkering_phi: v ?? 0 })} />
                     <Getal label={t("wind.canopyHeight")} value={i.vrijstaandHoogte_m} step={0.1}
-                      leeg={geo ? formatLength(geo.modelhoogte_m, "m") : t("wind.canopyHeightEmpty")}
+                      leeg={geo ? toonMm(geo.modelhoogte_m, "m") : t("wind.canopyHeightEmpty")}
                       onChange={(v) => set({ vrijstaandHoogte_m: v })} />
                   </div>
                   <div className="wgd-hint">{t("wind.blockageHint")}</div>
@@ -472,7 +472,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
                         loads: res?.lasten.length ?? 0,
                         combos: res?.combinaties.length ?? 0,
                       })}
-                      {` · h/d = ${nl(s.hOverD, 2)} · ${t("wind.loadWidthShort")} ${formatLength(s.belastingbreedte_m, "m")} mm`}
+                      {` · h/d = ${nl(s.hOverD, 2)} · ${t("wind.loadWidthShort")} ${toonMm(s.belastingbreedte_m, "m")} mm`}
                     </div>
                   )}
                 </div>
@@ -507,7 +507,7 @@ export default function WindGeneratorDialog({ open, onClose, wind }: Props) {
               )}
 
               {s && (
-                <Klapblok kop={`${t("wind.secDerivation")} — q_p = ${nl(s.stuwdruk.qp_kNm2, 3)} kN/m², z_e = ${formatLength(s.hoogte_m, "m")} mm`}>
+                <Klapblok kop={`${t("wind.secDerivation")} — q_p = ${nl(s.stuwdruk.qp_kNm2, 3)} kN/m², z_e = ${toonMm(s.hoogte_m, "m")} mm`}>
                   <table className="wgd-table">
                     <tbody>
                       {s.stuwdruk.afleiding.map((r, k) => (

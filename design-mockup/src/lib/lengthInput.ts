@@ -17,6 +17,19 @@ export function parseLength(text: string, storedUnit: LengthUnit = "mm"): number
   return Number.isFinite(mm) ? (storedUnit === "m" ? mmToMeters(mm) : mm) : NaN;
 }
 
+/**
+ * Een lengte in hele mm voor WEERGAVE (labels, tekening, placeholders). Niet
+ * voor invoervelden: die gebruiken `formatLength`, dat de opgeslagen waarde
+ * exact terugzet. Een afgeleide hoogte als 7,183821405597214 m werd anders
+ * letterlijk "7183.821405597214 mm" op het scherm.
+ */
+export function toonMm(value: number | null | undefined, storedUnit: LengthUnit = "mm"): string {
+  if (value == null || !Number.isFinite(value)) return "";
+  const mm = storedUnit === "mm" ? value : Number(formatLength(value, storedUnit));
+  const r = Math.round(mm);
+  return String(Object.is(r, -0) ? 0 : r);
+}
+
 /** Geen afronding van opgeslagen maten bij openen en ongewijzigd bevestigen. */
 export function formatLength(value: number | null | undefined, storedUnit: LengthUnit = "mm"): string {
   if (value == null || !Number.isFinite(value)) return "";

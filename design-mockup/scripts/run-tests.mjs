@@ -385,6 +385,7 @@ const ALLEEN_BRON = new Map([
   ["fs-scope", "Leest de Tauri-capability en de bestandsroutes van de app; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["staaf-dialoog-config", "Configuratielogica van de staafdialoog; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["aansluiting-standaard", "Aansluitingskeuze van een staafeinde (React-component en i18n); geen solvercode en niet beschikbaar in de sidecarbundel."],
+  ["toon-mm", "Weergave van lengtes in het windvenster; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["commando-reeks", "Toetsreeksen van het tekenvlak (MV, CO) en de kopieerregel voor lasten; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["klik-op-last", "Klikgedrag van het tekenvlak op lasten; geen solvercode en niet beschikbaar in de sidecarbundel."],
   ["weergave-model", "Weergavelogica van de tabbalk (Model sluit de resultaten); geen solvercode en niet beschikbaar in de sidecarbundel."],

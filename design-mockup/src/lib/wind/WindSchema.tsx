@@ -20,7 +20,7 @@
  * meters; het SVG-stelsel klapt z om.
  */
 import { useTranslation } from "react-i18next";
-import { formatLength, type LengthUnit } from "../lengthInput";
+import { toonMm, type LengthUnit } from "../lengthInput";
 import { BEAM_LOAD_ROLE_SLEUTEL, type BeamLoadRole } from "../../components/fem/femTypes";
 import type { VlakRegel, WindGeometrie, Windrichting } from "./windGenerator";
 import type { OverkappingDakvorm, OverkappingZone } from "./windEurocode";
@@ -84,7 +84,7 @@ export function DoorsnedeSchema({
   geometrie: g, richting, regels = [], gevelhoogte_m = null, resultanten = [], breedtePx = 440, lengthUnit = "m",
 }: DoorsnedeSchemaProps) {
   const { t } = useTranslation("common");
-  const maat = (m: number, d: number) => lengthUnit === "mm" ? formatLength(m, "m") : nl(m, d);
+  const maat = (m: number, d: number) => lengthUnit === "mm" ? toonMm(m, "m") : nl(m, d);
   const vrij = g.vrijstaand;
   // Onder het model: de gedachte gevel van een kap zonder gevel, of bij een
   // vrijstaand dak het stuk tussen het model en de opgegeven hoogte h.
@@ -352,7 +352,7 @@ export function PlattegrondSchema({
   e_m, vrijstaand, breedtePx = 440, lengthUnit = "m",
 }: PlattegrondSchemaProps) {
   const { t } = useTranslation("common");
-  const maat = (m: number, d: number) => lengthUnit === "mm" ? formatLength(m, "m") : nl(m, d);
+  const maat = (m: number, d: number) => lengthUnit === "mm" ? toonMm(m, "m") : nl(m, d);
   const M = { l: 40, r: 40, t: 26, b: 22 };
   const tekenW = breedtePx - M.l - M.r;
   const schaal = Math.min(tekenW / Math.max(b, 0.1), 110 / Math.max(d, 0.1));
