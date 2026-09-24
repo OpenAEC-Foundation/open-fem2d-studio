@@ -743,6 +743,14 @@ const ALLEEN_BRON = new Map([
     "projectgegevens-ui",
     "issue #50: het echte venster Projectgegevens in een lokale headless browser, op de standaardgrootte en in een smal venster (iframe van 360 px) — geen horizontale overloop, uitleg bij normen, gevolgklasse, windgebied en terreincategorie in een InfoTip (nl/en/de/fr, niets verloren), korte status als één grijze regel. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
+  [
+    "tabbalk-scroll",
+    "issue #51: de rekenregels van de scrollende strook met belastinggevallen (`lib/tabbalkScroll.ts`: overloop en pijlen, pijlstap, actief geval in beeld, pijltoetsen, muiswiel, sleepdrempel). Een weergavemodule buiten de barrel; de sidecar tekent geen tabbalk",
+  ],
+  [
+    "tabbalk-ui",
+    "issue #51: de echte tabbalk met twaalf gevallen in een te smal venster in een lokale headless browser — alleen de gevallen scrollen (pijlen, wiel, slepen, toetsenbord), het actieve geval schuift in beeld, de lijstknop kiest een geval, lange namen afgekort, vaste onderdelen zichtbaar, nl/en/de/fr. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────
