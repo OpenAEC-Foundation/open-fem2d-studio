@@ -488,6 +488,7 @@
     "grid": {
       "removeXAxis": "X-Achse \"{{label}}\" löschen",
       "removeLevel": "Ebene {{peil}} löschen",
+      "editLevelTitle": "Ebene {{peil}} — klicken, um die Höhe in mm zu ändern",
       "addXAxis": "X-Achse hinzufügen (vertikale Linie)",
       "addZAxis": "Z-Achse hinzufügen (horizontale Linie)"
     },
@@ -621,6 +622,10 @@
       "nodesMoveWithLevel_other": "{{count}} Knoten auf dieser Ebene werden mitverschoben.",
       "noNodesOnAxis": "Keine Knoten auf dieser Achse — nur die Achslinie wird verschoben.",
       "noNodesOnLevel": "Keine Knoten auf dieser Ebene — nur die Ebenenlinie wird verschoben.",
+      "editLevel": "Ebene {{peil}} ändern",
+      "level": "Höhe (mm)",
+      "levelInvalid": "Höhe als Zahl in mm eingeben, z. B. 5000 oder −1200.",
+      "levelTaken": "Auf dieser Höhe liegt bereits eine Ebene ({{peil}}).",
       "cancel": "Abbrechen"
     },
     "tool": {

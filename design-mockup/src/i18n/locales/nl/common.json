@@ -488,6 +488,7 @@
     "grid": {
       "removeXAxis": "X-stramien \"{{label}}\" verwijderen",
       "removeLevel": "Niveau {{peil}} verwijderen",
+      "editLevelTitle": "Niveau {{peil}} — klik om het niveau in mm te wijzigen",
       "addXAxis": "X-stramien toevoegen (verticale lijn)",
       "addZAxis": "Z-stramien toevoegen (horizontale lijn)"
     },
@@ -621,6 +622,10 @@
       "nodesMoveWithLevel_other": "{{count}} knopen op dit niveau schuiven mee.",
       "noNodesOnAxis": "Geen knopen op deze as — alleen de stramienlijn verschuift.",
       "noNodesOnLevel": "Geen knopen op dit niveau — alleen de niveaulijn verschuift.",
+      "editLevel": "Niveau {{peil}} wijzigen",
+      "level": "Niveau (mm)",
+      "levelInvalid": "Geef het niveau als getal in mm, bv. 5000 of −1200.",
+      "levelTaken": "Op deze hoogte ligt al een niveau ({{peil}}).",
       "cancel": "Annuleer"
     },
     "tool": {

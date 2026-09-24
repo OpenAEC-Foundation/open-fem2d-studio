@@ -722,6 +722,14 @@ const ALLEEN_BRON = new Map([
     "eigenschappen-ui",
     "issues #43 en #44: het echte eigenschappenpaneel en de echte staafdialoog in een lokale headless browser — uitleg in InfoTips (hover, focus, klik/tik, Esc, aria-describedby, binnen het venster, licht/donker), korte status en waarschuwingen zichtbaar, en het vinkje voor gelijke kipsteunen aan boven- en onderflens (één invoer, één undo-stap, detectie bij openen, uitzetten wist niets). React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
+  [
+    "peilmaat",
+    "issue #48: de peilmaat van een niveau (`lib/peilmaat.ts`): tekst, beginwaarde en het lezen van het ingetypte niveau in mm. Een tekenvlakmodule buiten de barrel; het verschuiven zelf doet `verplaatsStramienAs`, die test-stramien-verplaatsen.mjs bewaakt",
+  ],
+  [
+    "peilmaat-ui",
+    "issue #48: de klikbare peilmaat op het echte tekenvlak met de echte modelstore in een lokale headless browser — grootte, klikvlak, hover, invoer in mm, Enter/Esc, meldingen, niveau en knopen samen in één undo-stap, en de maatlijn vrij van de peilmaat. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

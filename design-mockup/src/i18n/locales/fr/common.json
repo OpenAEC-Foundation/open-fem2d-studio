@@ -488,6 +488,7 @@
     "grid": {
       "removeXAxis": "Supprimer la file X « {{label}} »",
       "removeLevel": "Supprimer le niveau {{peil}}",
+      "editLevelTitle": "Niveau {{peil}} — cliquez pour modifier le niveau en mm",
       "addXAxis": "Ajouter une file X (ligne verticale)",
       "addZAxis": "Ajouter une file Z (ligne horizontale)"
     },
@@ -621,6 +622,10 @@
       "nodesMoveWithLevel_other": "{{count}} nœuds sur ce niveau suivent le déplacement.",
       "noNodesOnAxis": "Aucun nœud sur cet axe — seule la ligne de file se déplace.",
       "noNodesOnLevel": "Aucun nœud sur ce niveau — seule la ligne de niveau se déplace.",
+      "editLevel": "Modifier le niveau {{peil}}",
+      "level": "Niveau (mm)",
+      "levelInvalid": "Saisissez le niveau en mm, p. ex. 5000 ou −1200.",
+      "levelTaken": "Un niveau existe déjà à cette hauteur ({{peil}}).",
       "cancel": "Annuler"
     },
     "tool": {

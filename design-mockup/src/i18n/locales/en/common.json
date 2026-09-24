@@ -488,6 +488,7 @@
     "grid": {
       "removeXAxis": "Delete X grid line \"{{label}}\"",
       "removeLevel": "Delete level {{peil}}",
+      "editLevelTitle": "Level {{peil}} — click to change the level in mm",
       "addXAxis": "Add X grid line (vertical line)",
       "addZAxis": "Add Z grid line (horizontal line)"
     },
@@ -621,6 +622,10 @@
       "nodesMoveWithLevel_other": "{{count}} nodes on this level move along.",
       "noNodesOnAxis": "No nodes on this axis — only the grid line moves.",
       "noNodesOnLevel": "No nodes on this level — only the level line moves.",
+      "editLevel": "Change level {{peil}}",
+      "level": "Level (mm)",
+      "levelInvalid": "Enter the level as a number in mm, e.g. 5000 or −1200.",
+      "levelTaken": "There is already a level at this height ({{peil}}).",
       "cancel": "Cancel"
     },
     "tool": {
