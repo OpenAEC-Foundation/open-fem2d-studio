@@ -339,10 +339,10 @@ function calculatePartialTrapezoidalLoadVector(L, qxStart, qyStart, qxEnd, qyEnd
   const Lb = endT * L;
   const span = Lb - La;
   if (span <= 0) return [0, 0, 0, 0, 0, 0];
-  const n = 20;
-  const h = span / n;
+  const n2 = 20;
+  const h = span / n2;
   const F = [0, 0, 0, 0, 0, 0];
-  for (let i = 0; i <= n; i++) {
+  for (let i = 0; i <= n2; i++) {
     const x = La + i * h;
     const t = span > 0 ? (x - La) / span : 0;
     const qy_x = qyStart + (qyEnd - qyStart) * t;
@@ -355,7 +355,7 @@ function calculatePartialTrapezoidalLoadVector(L, qxStart, qyStart, qxEnd, qyEnd
     const L1 = 1 - xi;
     const L2 = xi;
     let w;
-    if (i === 0 || i === n) w = 1;
+    if (i === 0 || i === n2) w = 1;
     else if (i % 2 === 1) w = 4;
     else w = 2;
     F[0] += w * qx_x * L1;
@@ -1093,7 +1093,7 @@ var Mesh = class _Mesh {
    */
   createVerticesForPlate(plateId, polygon) {
     this.removeVerticesForPlate(plateId);
-    return polygon.map((p, index) => this.addPlateVertex(plateId, p.x, p.y, index));
+    return polygon.map((p2, index) => this.addPlateVertex(plateId, p2.x, p2.y, index));
   }
   /**
    * Sync plate polygon from vertices. Call after moving vertices.
@@ -1125,7 +1125,7 @@ var Mesh = class _Mesh {
     this.nextVertexId = 1;
   }
   getElementNodes(element) {
-    return element.nodeIds.map((id) => this.nodes.get(id)).filter((n) => n !== void 0);
+    return element.nodeIds.map((id) => this.nodes.get(id)).filter((n2) => n2 !== void 0);
   }
   findNodeAt(x, y, tolerance = 0.1) {
     for (const node of this.nodes.values()) {
@@ -1163,9 +1163,9 @@ var Mesh = class _Mesh {
     };
     const anglesEqual = (a1, a2) => {
       const norm = (a) => {
-        let n = a % Math.PI;
-        if (n < 0) n += Math.PI;
-        return n;
+        let n2 = a % Math.PI;
+        if (n2 < 0) n2 += Math.PI;
+        return n2;
       };
       return Math.abs(norm(a1) - norm(a2)) < 0.01;
     };
@@ -1228,28 +1228,28 @@ var Mesh = class _Mesh {
       mesh.sections.clear();
       data.sections.forEach((s) => mesh.sections.set(s.name, s.section));
     }
-    data.nodes.forEach((n) => {
+    data.nodes.forEach((n2) => {
       const node = {
-        ...n,
+        ...n2,
         constraints: {
-          x: n.constraints.x,
-          y: n.constraints.y,
-          rotation: n.constraints.rotation ?? false
+          x: n2.constraints.x,
+          y: n2.constraints.y,
+          rotation: n2.constraints.rotation ?? false
         },
         loads: {
-          fx: n.loads.fx,
-          fy: n.loads.fy,
-          moment: n.loads.moment ?? 0
+          fx: n2.loads.fx,
+          fy: n2.loads.fy,
+          moment: n2.loads.moment ?? 0
         }
       };
-      mesh.nodes.set(n.id, node);
+      mesh.nodes.set(n2.id, node);
     });
     data.elements.forEach((e) => mesh.elements.set(e.id, e));
     if (data.beamElements) {
       data.beamElements.forEach((b) => mesh.beamElements.set(b.id, b));
     }
     if (data.plateRegions) {
-      data.plateRegions.forEach((p) => mesh.plateRegions.set(p.id, p));
+      data.plateRegions.forEach((p2) => mesh.plateRegions.set(p2.id, p2));
     }
     if (data.subNodes) {
       data.subNodes.forEach((sn) => mesh.subNodes.set(sn.id, sn));
@@ -1268,14 +1268,14 @@ var Mesh = class _Mesh {
       ...data.elements.map((e) => e.id),
       ...(data.beamElements || []).map((b) => b.id)
     ];
-    const allPlateIds = (data.plateRegions || []).map((p) => p.id);
+    const allPlateIds = (data.plateRegions || []).map((p2) => p2.id);
     const allSubNodeIds = (data.subNodes || []).map((sn) => sn.id);
     const allEdgeIds = (data.edges || []).map((e) => e.id);
     const plaatKnoopIds = /* @__PURE__ */ new Set();
-    for (const p of data.plateRegions || []) {
-      for (const id of p.nodeIds) if (id >= 1e3) plaatKnoopIds.add(id);
+    for (const p2 of data.plateRegions || []) {
+      for (const id of p2.nodeIds) if (id >= 1e3) plaatKnoopIds.add(id);
     }
-    const regularNodeIds = data.nodes.filter((n) => !plaatKnoopIds.has(n.id)).map((n) => n.id);
+    const regularNodeIds = data.nodes.filter((n2) => !plaatKnoopIds.has(n2.id)).map((n2) => n2.id);
     mesh.nextNodeId = Math.max(...regularNodeIds, 0) + 1;
     mesh.nextElementId = Math.max(...allElementIds, 0) + 1;
     mesh.nextMaterialId = Math.max(...data.materials.map((m) => m.id), 10) + 1;
@@ -1286,7 +1286,7 @@ var Mesh = class _Mesh {
     mesh.nextLayerId = Math.max(...allLayerIds, 0) + 1;
     const allVertexIds = (data.plateVertices || []).map((v) => v.id);
     mesh.nextVertexId = Math.max(...allVertexIds, 0) + 1;
-    const plateNodeIds = data.nodes.filter((n) => plaatKnoopIds.has(n.id)).map((n) => n.id);
+    const plateNodeIds = data.nodes.filter((n2) => plaatKnoopIds.has(n2.id)).map((n2) => n2.id);
     mesh.nextPlateNodeId = Math.max(1e3, mesh.nextNodeId, ...plateNodeIds.map((id) => id + 1));
     return mesh;
   }
@@ -1539,10 +1539,10 @@ function calculateTriangleGeometricStiffness(n1, n2, n3, stress, thickness) {
   }
   return multiplyGtSG(G2, stress, thickness * area, 6);
 }
-function multiplyGtSG(G2, stress, c, n) {
+function multiplyGtSG(G2, stress, c, n2) {
   const { sigmaX, sigmaY, tauXY } = stress;
-  const SG = new Matrix(4, n);
-  for (let j = 0; j < n; j++) {
+  const SG = new Matrix(4, n2);
+  for (let j = 0; j < n2; j++) {
     const gux = G2.get(0, j), guy = G2.get(1, j);
     const gvx = G2.get(2, j), gvy = G2.get(3, j);
     SG.set(0, j, sigmaX * gux + tauXY * guy);
@@ -1550,9 +1550,9 @@ function multiplyGtSG(G2, stress, c, n) {
     SG.set(2, j, sigmaX * gvx + tauXY * gvy);
     SG.set(3, j, tauXY * gvx + sigmaY * gvy);
   }
-  const Kg = new Matrix(n, n);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
+  const Kg = new Matrix(n2, n2);
+  for (let i = 0; i < n2; i++) {
+    for (let j = 0; j < n2; j++) {
       let s = 0;
       for (let k = 0; k < 4; k++) s += G2.get(k, i) * SG.get(k, j);
       Kg.set(i, j, c * s);
@@ -1560,8 +1560,8 @@ function multiplyGtSG(G2, stress, c, n) {
   }
   return Kg;
 }
-function membraneGeometricFromGradients(G2, stress, c, n) {
-  return multiplyGtSG(G2, stress, c, n);
+function membraneGeometricFromGradients(G2, stress, c, n2) {
+  return multiplyGtSG(G2, stress, c, n2);
 }
 function expandTriangleGeometricStiffness(Kg6) {
   const Kg9 = new Matrix(9, 9);
@@ -1901,10 +1901,10 @@ function calculateElementShearForces(n1, n2, n3, material, thickness, elemDisp) 
     mGP.push({ mx: m[0], my: m[1], mxy: m[2], x, y });
   }
   function fitLinear(vals, coords2) {
-    const n = coords2.length;
+    const n4 = coords2.length;
     let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
     let sv = 0, svx = 0, svy = 0;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n4; i++) {
       const { x, y } = coords2[i];
       sx += x;
       sy += y;
@@ -1916,7 +1916,7 @@ function calculateElementShearForces(n1, n2, n3, material, thickness, elemDisp) 
       svy += vals[i] * y;
     }
     const A = [
-      [n, sx, sy],
+      [n4, sx, sy],
       [sx, sxx, sxy],
       [sy, sxy, syy]
     ];
@@ -1928,10 +1928,10 @@ function calculateElementShearForces(n1, n2, n3, material, thickness, elemDisp) 
     const detC = A[0][0] * (A[1][1] * rhs[2] - rhs[1] * A[2][1]) - A[0][1] * (A[1][0] * rhs[2] - rhs[1] * A[2][0]) + rhs[0] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
     return { a: detA / det, b: detB / det, c: detC / det };
   }
-  const coords = mGP.map((p) => ({ x: p.x, y: p.y }));
-  const mxFit = fitLinear(mGP.map((p) => p.mx), coords);
-  const myFit = fitLinear(mGP.map((p) => p.my), coords);
-  const mxyFit = fitLinear(mGP.map((p) => p.mxy), coords);
+  const coords = mGP.map((p2) => ({ x: p2.x, y: p2.y }));
+  const mxFit = fitLinear(mGP.map((p2) => p2.mx), coords);
+  const myFit = fitLinear(mGP.map((p2) => p2.my), coords);
+  const mxyFit = fitLinear(mGP.map((p2) => p2.mxy), coords);
   const vx = mxFit.b + mxyFit.c;
   const vy = mxyFit.b + myFit.c;
   return { vx, vy };
@@ -2393,12 +2393,12 @@ function getConstrainedDofs(mesh, analysisType = "plane_stress") {
   return { dofs, nodeIdToIndex };
 }
 function applyEndReleases(Ke, releasedDofs, F) {
-  const n = 6;
+  const n2 = 6;
   const eliminated = /* @__PURE__ */ new Set();
   for (const c of releasedDofs) {
     const kcc = Ke.get(c, c);
     if (Math.abs(kcc) < 1e-20) {
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < n2; i++) {
         Ke.set(i, c, 0);
         Ke.set(c, i, 0);
       }
@@ -2407,7 +2407,7 @@ function applyEndReleases(Ke, releasedDofs, F) {
       continue;
     }
     const active = [];
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n2; i++) {
       if (i !== c && !eliminated.has(i)) active.push(i);
     }
     const col = active.map((i) => Ke.get(i, c));
@@ -2424,7 +2424,7 @@ function applyEndReleases(Ke, releasedDofs, F) {
         Ke.addAt(active[a], active[b], -col[a] * row[b] / kcc);
       }
     }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n2; i++) {
       Ke.set(i, c, 0);
       Ke.set(c, i, 0);
     }
@@ -2432,7 +2432,7 @@ function applyEndReleases(Ke, releasedDofs, F) {
   }
 }
 function applyEndConnections(Ke, hingedDofs, springs, F) {
-  const n = 6;
+  const n2 = 6;
   const stappen = [
     ...hingedDofs.map((dof) => ({ dof, k: 0 })),
     ...springs.filter((s) => !hingedDofs.includes(s.dof))
@@ -2440,7 +2440,7 @@ function applyEndConnections(Ke, hingedDofs, springs, F) {
   for (const { dof: c, k } of stappen) {
     const kcc = Ke.get(c, c) + k;
     if (Math.abs(kcc) < 1e-20) {
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < n2; i++) {
         Ke.set(i, c, 0);
         Ke.set(c, i, 0);
       }
@@ -2449,7 +2449,7 @@ function applyEndConnections(Ke, hingedDofs, springs, F) {
     }
     const kcc0 = Ke.get(c, c);
     const anderen = [];
-    for (let i = 0; i < n; i++) if (i !== c) anderen.push(i);
+    for (let i = 0; i < n2; i++) if (i !== c) anderen.push(i);
     const col = anderen.map((i) => Ke.get(i, c));
     const row = anderen.map((j) => Ke.get(c, j));
     if (F) {
@@ -2474,12 +2474,12 @@ function applyEndConnections(Ke, hingedDofs, springs, F) {
 // src/core/fem/BeamForces.ts
 var NUM_STATIONS = 21;
 function solveKleinStelsel(Ain, bin) {
-  const n = bin.length;
+  const n2 = bin.length;
   const A = Ain.map((row) => row.slice());
   const b = bin.slice();
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < n2; col++) {
     let piv = col;
-    for (let r = col + 1; r < n; r++) {
+    for (let r = col + 1; r < n2; r++) {
       if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
     }
     if (Math.abs(A[piv][col]) < 1e-20) return null;
@@ -2487,17 +2487,17 @@ function solveKleinStelsel(Ain, bin) {
       [A[piv], A[col]] = [A[col], A[piv]];
       [b[piv], b[col]] = [b[col], b[piv]];
     }
-    for (let r = col + 1; r < n; r++) {
+    for (let r = col + 1; r < n2; r++) {
       const f = A[r][col] / A[col][col];
       if (f === 0) continue;
-      for (let c = col; c < n; c++) A[r][c] -= f * A[col][c];
+      for (let c = col; c < n2; c++) A[r][c] -= f * A[col][c];
       b[r] -= f * b[col];
     }
   }
-  const x = new Array(n).fill(0);
-  for (let r = n - 1; r >= 0; r--) {
+  const x = new Array(n2).fill(0);
+  for (let r = n2 - 1; r >= 0; r--) {
     let s = b[r];
-    for (let c = r + 1; c < n; c++) s -= A[r][c] * x[c];
+    for (let c = r + 1; c < n2; c++) s -= A[r][c] * x[c];
     x[r] = s / A[r][r];
   }
   return x;
@@ -2546,8 +2546,8 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
   const angle = calculateBeamAngle(n1, n2);
   const localDisp = transformGlobalToLocal(globalDisplacements, angle);
   const dLoads = getBeamDistributedLoads(element).map((dl) => {
-    const p = projectDistributedLoadToLocal(dl, angle);
-    return { qxS: p.qxS, qyS: p.qyS, qxE: p.qxE, qyE: p.qyE, startT: p.startT, endT: p.endT };
+    const p2 = projectDistributedLoadToLocal(dl, angle);
+    return { qxS: p2.qxS, qyS: p2.qyS, qxE: p2.qxE, qyE: p2.qyE, startT: p2.startT, endT: p2.endT };
   });
   const Kl = calculateBeamLocalStiffness(L, material.E, element.section.A, element.section.I);
   const equivalentNodalForces = [0, 0, 0, 0, 0, 0];
@@ -2683,9 +2683,9 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
     const G3 = L > 0 ? 6 * xi * (1 - xi) / L : 0;
     const G4 = 3 * xi * xi - 2 * xi;
     let th = G1 * v1L + G2 * t1L + G3 * v2L + G4 * t2L;
-    for (const p of particulars) {
-      if (p.kind === "full" && EI > 0 && EA > 0) {
-        const dl = p.dl;
+    for (const p2 of particulars) {
+      if (p2.kind === "full" && EI > 0 && EA > 0) {
+        const dl = p2.dl;
         const dqy = dl.qyE - dl.qyS;
         const dqx = dl.qxE - dl.qxS;
         w += dl.qyS * x * x * (L - x) * (L - x) / (24 * EI);
@@ -2694,10 +2694,10 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
         u += dqx * x * (L * L - x * x) / (6 * L * EA);
         th += dl.qyS * x * (L - x) * (L - 2 * x) / (12 * EI);
         th += dqy * (Math.pow(x, 4) / (24 * L) - 3 * L * x * x / 40 + L * L * x / 30) / EI;
-      } else if (p.kind === "partial" && p.partial) {
-        w += p.partial.wAt(x);
-        u += p.partial.uAt(x);
-        th += p.partial.dwAt(x);
+      } else if (p2.kind === "partial" && p2.partial) {
+        w += p2.partial.wAt(x);
+        u += p2.partial.uAt(x);
+        th += p2.partial.dwAt(x);
       }
     }
     deflection.push(w);
@@ -2730,24 +2730,24 @@ function calculateBeamInternalForces(element, n1, n2, material, globalDisplaceme
 
 // src/core/math/GaussElimination.ts
 function solveLinearSystem(A, b) {
-  const n = A.rows;
+  const n2 = A.rows;
   if (A.rows !== A.cols) {
     throw new Error("Matrix must be square");
   }
-  if (b.length !== n) {
+  if (b.length !== n2) {
     throw new Error("Vector length must match matrix size");
   }
-  const aug = new Matrix(n, n + 1);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
+  const aug = new Matrix(n2, n2 + 1);
+  for (let i = 0; i < n2; i++) {
+    for (let j = 0; j < n2; j++) {
       aug.set(i, j, A.get(i, j));
     }
-    aug.set(i, n, b[i]);
+    aug.set(i, n2, b[i]);
   }
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < n2; col++) {
     let maxRow = col;
     let maxVal = Math.abs(aug.get(col, col));
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < n2; row++) {
       const val = Math.abs(aug.get(row, col));
       if (val > maxVal) {
         maxVal = val;
@@ -2758,23 +2758,23 @@ function solveLinearSystem(A, b) {
       throw new Error(`Matrix is singular or nearly singular at column ${col}`);
     }
     if (maxRow !== col) {
-      for (let j = col; j <= n; j++) {
+      for (let j = col; j <= n2; j++) {
         const temp = aug.get(col, j);
         aug.set(col, j, aug.get(maxRow, j));
         aug.set(maxRow, j, temp);
       }
     }
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < n2; row++) {
       const factor = aug.get(row, col) / aug.get(col, col);
-      for (let j = col; j <= n; j++) {
+      for (let j = col; j <= n2; j++) {
         aug.set(row, j, aug.get(row, j) - factor * aug.get(col, j));
       }
     }
   }
-  const x = new Array(n).fill(0);
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = aug.get(i, n);
-    for (let j = i + 1; j < n; j++) {
+  const x = new Array(n2).fill(0);
+  for (let i = n2 - 1; i >= 0; i--) {
+    let sum = aug.get(i, n2);
+    for (let j = i + 1; j < n2; j++) {
       sum -= aug.get(i, j) * x[j];
     }
     x[i] = sum / aug.get(i, i);
@@ -2789,13 +2789,13 @@ var PIVOT_REL_DREMPEL = 1e-12;
 var laagstePivotRatio = Number.POSITIVE_INFINITY;
 var terugvalTeller = 0;
 function analyzeMatrix(A) {
-  const n = A.rows;
-  const first = new Int32Array(n);
+  const n2 = A.rows;
+  const first = new Int32Array(n2);
   let profileSize = 0;
   let halfBandwidth = 0;
   let maxAsymmetry = 0;
   let maxMagnitude = 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n2; i++) {
     const rij = A.data[i];
     let fi = i;
     for (let j = 0; j < i; j++) {
@@ -2819,21 +2819,21 @@ function analyzeMatrix(A) {
     first,
     profileSize,
     halfBandwidth,
-    meanHeight: n > 0 ? profileSize / n : 0,
+    meanHeight: n2 > 0 ? profileSize / n2 : 0,
     maxAsymmetry,
     maxMagnitude,
     relAsymmetry: maxMagnitude > 0 ? maxAsymmetry / maxMagnitude : 0
   };
 }
 function solveSkyline(A, b) {
-  const n = A.rows;
+  const n2 = A.rows;
   if (A.rows !== A.cols) {
     throw new Error("Matrix must be square");
   }
-  if (b.length !== n) {
+  if (b.length !== n2) {
     throw new Error("Vector length must match matrix size");
   }
-  if (n === 0) return [];
+  if (n2 === 0) return [];
   const profiel = analyzeMatrix(A);
   if (profiel.relAsymmetry > ASYMMETRIE_GRENS) {
     terugvalTeller++;
@@ -2842,23 +2842,23 @@ function solveSkyline(A, b) {
   return solveWithProfile(A, b, profiel.first);
 }
 function solveWithProfile(A, b, first) {
-  const n = A.rows;
-  if (n === 0) return [];
-  const start = new Int32Array(n);
+  const n2 = A.rows;
+  if (n2 === 0) return [];
+  const start = new Int32Array(n2);
   let offset = 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n2; i++) {
     start[i] = offset - first[i];
     offset += i - first[i] + 1;
   }
   const vals = new Float64Array(offset);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n2; i++) {
     const rij = A.data[i];
     const s = start[i];
     for (let j = first[i]; j <= i; j++) vals[s + j] = rij[j];
   }
-  const d = new Float64Array(n);
-  const t = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
+  const d = new Float64Array(n2);
+  const t = new Float64Array(n2);
+  for (let i = 0; i < n2; i++) {
     const fi = first[i];
     const si = start[i];
     for (let j = fi; j < i; j++) {
@@ -2881,15 +2881,15 @@ function solveWithProfile(A, b, first) {
     }
     d[i] = diag;
   }
-  const x = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
+  const x = new Float64Array(n2);
+  for (let i = 0; i < n2; i++) {
     const si = start[i];
     let som = b[i];
     for (let k = first[i]; k < i; k++) som -= vals[si + k] * x[k];
     x[i] = som;
   }
-  for (let i = 0; i < n; i++) x[i] /= d[i];
-  for (let i = n - 1; i > 0; i--) {
+  for (let i = 0; i < n2; i++) x[i] /= d[i];
+  for (let i = n2 - 1; i > 0; i--) {
     const si = start[i];
     const xi = x[i];
     if (xi === 0) continue;
@@ -3008,10 +3008,10 @@ function concreteStress(epsilon, concrete) {
   }
   const epsC = -epsilon;
   if (epsC <= epsilonC2) {
-    const n = 2;
+    const n2 = 2;
     const ratio = epsC / epsilonC2;
-    const sigma = -fcd * (1 - Math.pow(1 - ratio, n));
-    const Et = fcd * n * Math.pow(1 - ratio, n - 1) / epsilonC2;
+    const sigma = -fcd * (1 - Math.pow(1 - ratio, n2));
+    const Et = fcd * n2 * Math.pow(1 - ratio, n2 - 1) / epsilonC2;
     return { sigma, Et };
   } else if (epsC <= epsilonCU2) {
     return { sigma: -fcd, Et: 0 };
@@ -3656,26 +3656,26 @@ function calculateAllInternalForces(mesh, displacements) {
   return { beamForces, axialForces };
 }
 function countNonPositivePivots(K) {
-  const n = K.rows;
+  const n2 = K.rows;
   const a = [];
   const diag0 = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n2; i++) {
     const row = [];
-    for (let j = 0; j < n; j++) row.push(K.get(i, j));
+    for (let j = 0; j < n2; j++) row.push(K.get(i, j));
     a.push(row);
     diag0.push(Math.abs(K.get(i, i)) || 1);
   }
   let nonPositive = 0;
-  for (let col = 0; col < n; col++) {
+  for (let col = 0; col < n2; col++) {
     const piv = a[col][col];
     if (!Number.isFinite(piv) || Math.abs(piv) < 1e-10 * diag0[col]) {
       return nonPositive + 1;
     }
     if (piv < 0) nonPositive++;
-    for (let row = col + 1; row < n; row++) {
+    for (let row = col + 1; row < n2; row++) {
       const factor = a[row][col] / piv;
       if (factor === 0) continue;
-      for (let j = col; j < n; j++) {
+      for (let j = col; j < n2; j++) {
         a[row][j] -= factor * a[col][j];
       }
     }
@@ -4366,22 +4366,22 @@ function solveMixed(mesh, opts) {
     const C = M.clone();
     if (slaafDofs.length === 0) return C;
     const a = C.data;
-    const n = C.rows;
+    const n2 = C.rows;
     for (const sl of slaafDofs) {
       for (const m of sl.meesters) {
         if (m.w === 0) continue;
-        for (let i = 0; i < n; i++) a[i][m.dof] += m.w * a[i][sl.dof];
+        for (let i = 0; i < n2; i++) a[i][m.dof] += m.w * a[i][sl.dof];
       }
-      for (let i = 0; i < n; i++) a[i][sl.dof] = 0;
+      for (let i = 0; i < n2; i++) a[i][sl.dof] = 0;
     }
     for (const sl of slaafDofs) {
       const rij = a[sl.dof];
       for (const m of sl.meesters) {
         if (m.w === 0) continue;
         const doel = a[m.dof];
-        for (let j = 0; j < n; j++) doel[j] += m.w * rij[j];
+        for (let j = 0; j < n2; j++) doel[j] += m.w * rij[j];
       }
-      for (let j = 0; j < n; j++) rij[j] = 0;
+      for (let j = 0; j < n2; j++) rij[j] = 0;
       rij[sl.dof] = 1;
     }
     return C;
@@ -4836,10 +4836,10 @@ function pairTrianglesToQuads(input) {
 
 // src/core/fem/PlaatMesher.ts
 var PLAAT_OPENING_MIN_AFSTAND_MM = 10;
-function getekendeOppervlakte2(p) {
+function getekendeOppervlakte2(p2) {
   let s = 0;
-  for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
-    s += p[j].x * p[i].z - p[i].x * p[j].z;
+  for (let i = 0, j = p2.length - 1; i < p2.length; j = i++) {
+    s += p2[j].x * p2[i].z - p2[i].x * p2[j].z;
   }
   return s;
 }
@@ -4851,13 +4851,13 @@ function puntInPolygoon(x, z, poly) {
   }
   return binnen;
 }
-function afstandTotLijnstuk(p, a, b) {
+function afstandTotLijnstuk(p2, a, b) {
   const dx = b.x - a.x, dz = b.z - a.z;
   const l2 = dx * dx + dz * dz;
-  if (l2 === 0) return Math.hypot(p.x - a.x, p.z - a.z);
-  let t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / l2;
+  if (l2 === 0) return Math.hypot(p2.x - a.x, p2.z - a.z);
+  let t = ((p2.x - a.x) * dx + (p2.z - a.z) * dz) / l2;
   t = Math.max(0, Math.min(1, t));
-  return Math.hypot(p.x - (a.x + t * dx), p.z - (a.z + t * dz));
+  return Math.hypot(p2.x - (a.x + t * dx), p2.z - (a.z + t * dz));
 }
 function zoekPuntenOpLijnstuk(points, a, b, tolMm) {
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -4871,7 +4871,7 @@ function zoekPuntenOpLijnstuk(points, a, b, tolMm) {
     const d = Math.abs((q.x - a.x) * dz - (q.z - a.z) * dx) / L;
     if (d <= tolMm) rij.push({ i, t });
   }
-  rij.sort((p, q) => p.t - q.t);
+  rij.sort((p2, q) => p2.t - q.t);
   return rij.map((r) => r.i);
 }
 function dwingendeLijnenUitKnopen(knopen, r, tolMm) {
@@ -4888,8 +4888,8 @@ function rasterLijnen(lo, hi, dwingend, meshSize) {
   const uit = [];
   for (let k = 0; k + 1 < vast.length; k++) {
     const a = vast[k], b = vast[k + 1];
-    const n = Math.max(1, Math.round((b - a) / meshSize));
-    for (let i = 0; i < n; i++) uit.push(a + i / n * (b - a));
+    const n2 = Math.max(1, Math.round((b - a) / meshSize));
+    for (let i = 0; i < n2; i++) uit.push(a + i / n2 * (b - a));
   }
   uit.push(hi);
   return uit;
@@ -4905,8 +4905,8 @@ function knoopLijnenBuitenTol(lo, hi, openingLijnen, knoopLijnen) {
   }
   return uit;
 }
-function bbox(p) {
-  const xs = p.map((q) => q.x), zs = p.map((q) => q.z);
+function bbox(p2) {
+  const xs = p2.map((q) => q.x), zs = p2.map((q) => q.z);
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) };
 }
 function genereerRasterMesh(inv) {
@@ -4973,7 +4973,7 @@ function genereerRasterMesh(inv) {
 }
 function koppelTotVierhoeken(points, triangles) {
   const r = pairTrianglesToQuads({
-    points: points.map((p) => ({ x: p.x, y: p.z })),
+    points: points.map((p2) => ({ x: p2.x, y: p2.z })),
     triangles
   });
   const meshSoort = r.quads.length === 0 ? "driehoeken" : r.remainingTriangles.length === 0 ? "vierhoeken" : "gemengd";
@@ -4985,9 +4985,9 @@ function splitsVierhoekenInDriehoeken(quads) {
   return uit;
 }
 function keurPlatMesh(points, triangles, quads) {
-  const n = points.length;
-  if (n < 3) throw new Error("het mesh heeft minder dan drie punten");
-  const geldigeIndex = (i) => Number.isInteger(i) && i >= 0 && i < n;
+  const n2 = points.length;
+  if (n2 < 3) throw new Error("het mesh heeft minder dan drie punten");
+  const geldigeIndex = (i) => Number.isInteger(i) && i >= 0 && i < n2;
   const tris = [];
   if (triangles !== void 0) {
     if (!Array.isArray(triangles)) throw new Error("`triangles` is geen lijst");
@@ -5011,10 +5011,10 @@ function keurPlatMesh(points, triangles, quads) {
       }
       const ids = q;
       if (new Set(ids).size !== 4) throw new Error(`vierhoek ${k + 1} heeft twee gelijke hoekpunten`);
-      const p = ids.map((i) => points[i]);
+      const p2 = ids.map((i) => points[i]);
       let pos = 0, neg = 0;
       for (let i = 0; i < 4; i++) {
-        const a = p[i], b = p[(i + 1) % 4], c = p[(i + 2) % 4];
+        const a = p2[i], b = p2[(i + 1) % 4], c = p2[(i + 2) % 4];
         const kr = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
         if (kr > 1e-9) pos++;
         else if (kr < -1e-9) neg++;
@@ -5032,8 +5032,8 @@ function keurPlatMesh(points, triangles, quads) {
   return { triangles: tris, quads: qs, meshSoort };
 }
 function keurRandKnopen(points, rand, a, b, tolMm, wat) {
-  const n = points.length;
-  if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => Number.isInteger(k) && k >= 0 && k < n)) {
+  const n2 = points.length;
+  if (!Array.isArray(rand) || rand.length < 2 || !rand.every((k) => Number.isInteger(k) && k >= 0 && k < n2)) {
     throw new Error(`${wat} heeft geen geldige lijst randknopen (minstens de twee hoeken)`);
   }
   const L = Math.hypot(b.x - a.x, b.z - a.z);
@@ -5056,7 +5056,7 @@ function keurRandKnopen(points, rand, a, b, tolMm, wat) {
 // src/core/fem/PlateRegion.ts
 function convertEdgeNodeIdsToNodalForces(mesh, nodeIds, px, py) {
   if (nodeIds.length < 2) return [];
-  const nodes = nodeIds.map((id) => mesh.getNode(id)).filter((n) => n !== void 0);
+  const nodes = nodeIds.map((id) => mesh.getNode(id)).filter((n2) => n2 !== void 0);
   if (nodes.length < 2) return [];
   const cumDist = [0];
   for (let i = 1; i < nodes.length; i++) {
@@ -5088,12 +5088,12 @@ function convertEdgeNodeIdsToNodalForces(mesh, nodeIds, px, py) {
 var STANDARD_GRAVITY = 9.81;
 function computeElementArea(mesh, element) {
   const nodes = element.nodeIds.map((nid) => mesh.getNode(nid));
-  if (nodes.some((n2) => n2 === void 0)) return 0;
+  if (nodes.some((n3) => n3 === void 0)) return 0;
   let sum = 0;
-  const n = nodes.length;
-  for (let i = 0; i < n; i++) {
+  const n2 = nodes.length;
+  for (let i = 0; i < n2; i++) {
     const a = nodes[i];
-    const b = nodes[(i + 1) % n];
+    const b = nodes[(i + 1) % n2];
     sum += a.x * b.y - b.x * a.y;
   }
   return Math.abs(sum) / 2;
@@ -5166,10 +5166,10 @@ function verdeelRandlastConsistent(nodeIds, s, sA, sB, pxA, pyA, pxB, pyB) {
   return nodeIds.filter((id) => perKnoop.has(id)).map((id) => ({ nodeId: id, ...perKnoop.get(id) }));
 }
 function verdeelRandpuntlastConsistent(nodeIds, s, sP, fx, fy) {
-  const n = nodeIds.length;
-  if (n === 0) return [];
-  const x = Math.min(s[n - 1], Math.max(s[0], sP));
-  for (let j = 0; j + 1 < n; j++) {
+  const n2 = nodeIds.length;
+  if (n2 === 0) return [];
+  const x = Math.min(s[n2 - 1], Math.max(s[0], sP));
+  for (let j = 0; j + 1 < n2; j++) {
     const s0 = s[j], s1 = s[j + 1];
     if (x < s0 || x > s1) continue;
     const l = s1 - s0;
@@ -5225,10 +5225,10 @@ var BEAM_LOAD_ROLES = [
 var BEAM_LOAD_ROLE_LABEL = Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, r.label]));
 var BEAM_LOAD_ROLE_SLEUTEL = Object.fromEntries(BEAM_LOAD_ROLES.map((r) => [r.id, `common:beamLoadRole.${r.id}`]));
 function bepaalStandaardRol(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b || nodes.length === 0) return "binnen";
-  const xs = nodes.map((n) => n.x), zs = nodes.map((n) => n.z);
+  const xs = nodes.map((n2) => n2.x), zs = nodes.map((n2) => n2.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const dx = b.x - a.x, dz = b.z - a.z;
@@ -5263,22 +5263,22 @@ var PLATE_DEFAULTS = {
   meshSize: 500
   // mm
 };
-function withPlateDefaults(p) {
-  const heeftMateriaal = (p.materiaal ?? "").trim() !== "";
+function withPlateDefaults(p2) {
+  const heeftMateriaal = (p2.materiaal ?? "").trim() !== "";
   return {
-    ...p,
-    thickness: p.thickness ?? PLATE_DEFAULTS.thickness,
+    ...p2,
+    thickness: p2.thickness ?? PLATE_DEFAULTS.thickness,
     ...heeftMateriaal ? {} : {
-      E: p.E ?? PLATE_DEFAULTS.E,
-      nu: p.nu ?? PLATE_DEFAULTS.nu,
-      rho: p.rho ?? PLATE_DEFAULTS.rho
+      E: p2.E ?? PLATE_DEFAULTS.E,
+      nu: p2.nu ?? PLATE_DEFAULTS.nu,
+      rho: p2.rho ?? PLATE_DEFAULTS.rho
     },
-    meshSize: p.meshSize ?? PLATE_DEFAULTS.meshSize
+    meshSize: p2.meshSize ?? PLATE_DEFAULTS.meshSize
   };
 }
 function isAsgelijndeRechthoek(punten, tolMm = 1) {
   if (punten.length !== 4) return false;
-  const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+  const xs = punten.map((p2) => p2.x), zs = punten.map((p2) => p2.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   if (maxX - minX < tolMm || maxZ - minZ < tolMm) return false;
@@ -5289,8 +5289,8 @@ function isAsgelijndeRechthoek(punten, tolMm = 1) {
     [minX, maxZ]
   ];
   const bezet = [false, false, false, false];
-  for (const p of punten) {
-    const hit = doelen.findIndex(([tx, tz], i) => !bezet[i] && Math.abs(p.x - tx) <= tolMm && Math.abs(p.z - tz) <= tolMm);
+  for (const p2 of punten) {
+    const hit = doelen.findIndex(([tx, tz], i) => !bezet[i] && Math.abs(p2.x - tx) <= tolMm && Math.abs(p2.z - tz) <= tolMm);
     if (hit < 0) return false;
     bezet[hit] = true;
   }
@@ -5317,34 +5317,34 @@ function segmentenSnijden(a, b, c, d) {
   return false;
 }
 function valideerPlaatPolygoon(punten, tolMm = 1) {
-  const n = punten.length;
-  if (n < 3) return "Een plaat heeft minstens drie hoeken nodig.";
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
+  const n2 = punten.length;
+  if (n2 < 3) return "Een plaat heeft minstens drie hoeken nodig.";
+  for (let i = 0; i < n2; i++) {
+    for (let j = i + 1; j < n2; j++) {
       if (Math.abs(punten[i].x - punten[j].x) <= tolMm && Math.abs(punten[i].z - punten[j].z) <= tolMm) {
         return `Hoek ${i + 1} en hoek ${j + 1} vallen (vrijwel) samen \u2014 kies verschillende hoekpunten.`;
       }
     }
   }
-  for (let i = 0; i < n; i++) {
-    const a = punten[i], b = punten[(i + 1) % n];
-    for (let j = i + 1; j < n; j++) {
-      if (j === i || (j + 1) % n === i || (i + 1) % n === j) continue;
-      const c = punten[j], d = punten[(j + 1) % n];
+  for (let i = 0; i < n2; i++) {
+    const a = punten[i], b = punten[(i + 1) % n2];
+    for (let j = i + 1; j < n2; j++) {
+      if (j === i || (j + 1) % n2 === i || (i + 1) % n2 === j) continue;
+      const c = punten[j], d = punten[(j + 1) % n2];
       if (segmentenSnijden(a, b, c, d)) {
         return `De omtrek snijdt zichzelf (rand ${i + 1} kruist rand ${j + 1}) \u2014 teken een enkelvoudige polygoon.`;
       }
     }
   }
   let opp2 = 0;
-  for (let i = 0, j = n - 1; i < n; j = i++) {
+  for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     opp2 += punten[j].x * punten[i].z - punten[i].x * punten[j].z;
   }
   if (Math.abs(opp2) / 2 < 1e3) {
     return "De hoeken liggen (vrijwel) op \xE9\xE9n lijn \u2014 de plaat heeft geen oppervlakte.";
   }
-  for (let i = 0; i < n; i++) {
-    const p0 = punten[(i + n - 1) % n], p1 = punten[i], p2 = punten[(i + 1) % n];
+  for (let i = 0; i < n2; i++) {
+    const p0 = punten[(i + n2 - 1) % n2], p1 = punten[i], p2 = punten[(i + 1) % n2];
     const cr = kruis(p1, p0, p2);
     const dot = (p0.x - p1.x) * (p2.x - p1.x) + (p0.z - p1.z) * (p2.z - p1.z);
     const l1 = Math.hypot(p0.x - p1.x, p0.z - p1.z);
@@ -5356,31 +5356,31 @@ function valideerPlaatPolygoon(punten, tolMm = 1) {
   return null;
 }
 function berekenPlaatMeshSignatuur(punten, meshSizeMm, opties) {
-  let s = `m${meshSizeMm}|${punten.map((p) => `${p.x},${p.z}`).join(";")}`;
+  let s = `m${meshSizeMm}|${punten.map((p2) => `${p2.x},${p2.z}`).join(";")}`;
   if (opties?.openingen && opties.openingen.length > 0) {
-    s += `|o${opties.openingen.map((o) => o.map((p) => `${p.x},${p.z}`).join(";")).join("/")}`;
+    s += `|o${opties.openingen.map((o) => o.map((p2) => `${p2.x},${p2.z}`).join(";")).join("/")}`;
   }
   if (opties?.meshType) s += `|t${opties.meshType}`;
   return s;
 }
-function plaatMeshSignatuurVan(p, punten) {
-  const meshSize = (p.meshSize ?? 0) > 0 ? p.meshSize : PLATE_DEFAULTS.meshSize;
+function plaatMeshSignatuurVan(p2, punten) {
+  const meshSize = (p2.meshSize ?? 0) > 0 ? p2.meshSize : PLATE_DEFAULTS.meshSize;
   return berekenPlaatMeshSignatuur(punten, meshSize, {
-    openingen: (p.openingen ?? []).map((o) => o.punten),
-    meshType: p.meshType
+    openingen: (p2.openingen ?? []).map((o) => o.punten),
+    meshType: p2.meshType
   });
 }
 function plaatRekentAlsRaster(punten, openingen = [], tolMm = 1) {
   if (punten.length !== 4 || !isAsgelijndeRechthoek(punten, tolMm)) return false;
   return openingen.every((o) => o.length === 4 && isAsgelijndeRechthoek(o, tolMm));
 }
-function effectiefPlaatMeshType(p, punten, tolMm = 1) {
-  if (p.meshType) return p.meshType;
-  return plaatRekentAlsRaster(punten, (p.openingen ?? []).map((o) => o.punten), tolMm) ? "vierhoeken" : "driehoeken";
+function effectiefPlaatMeshType(p2, punten, tolMm = 1) {
+  if (p2.meshType) return p2.meshType;
+  return plaatRekentAlsRaster(punten, (p2.openingen ?? []).map((o) => o.punten), tolMm) ? "vierhoeken" : "driehoeken";
 }
 function valideerPlaatOpeningen(omtrek, openingen, tolMm = 1) {
   const minAfstand = PLAAT_OPENING_MIN_AFSTAND_MM;
-  const n = omtrek.length;
+  const n2 = omtrek.length;
   const randen = (poly) => poly.map((a, i) => [a, poly[(i + 1) % poly.length]]);
   const omtrekRanden = randen(omtrek);
   for (let k = 0; k < openingen.length; k++) {
@@ -5389,24 +5389,24 @@ function valideerPlaatOpeningen(omtrek, openingen, tolMm = 1) {
     const vormFout = valideerPlaatPolygoon(op, tolMm);
     if (vormFout) return `${naam}: ${vormFout}`;
     for (let h = 0; h < op.length; h++) {
-      const p = op[h];
-      if (!puntInPolygoon(p.x, p.z, omtrek)) {
-        return `${naam} ligt niet binnen de plaat: hoek ${h + 1} (${p.x}, ${p.z}) ligt buiten of op de omtrek.`;
+      const p2 = op[h];
+      if (!puntInPolygoon(p2.x, p2.z, omtrek)) {
+        return `${naam} ligt niet binnen de plaat: hoek ${h + 1} (${p2.x}, ${p2.z}) ligt buiten of op de omtrek.`;
       }
-      for (let r = 0; r < n; r++) {
-        const d = afstandTotLijnstuk(p, omtrekRanden[r][0], omtrekRanden[r][1]);
+      for (let r = 0; r < n2; r++) {
+        const d = afstandTotLijnstuk(p2, omtrekRanden[r][0], omtrekRanden[r][1]);
         if (d < minAfstand) {
           return `${naam} raakt de omtrek van de plaat: hoek ${h + 1} ligt ${Math.round(d)} mm van rand ${r + 1}. Houd minstens ${minAfstand} mm afstand tot de rand.`;
         }
       }
     }
-    for (let r = 0; r < n; r++) {
+    for (let r = 0; r < n2; r++) {
       if (puntInPolygoon(omtrek[r].x, omtrek[r].z, op)) {
         return `${naam} omsluit hoek ${r + 1} van de plaat \u2014 een opening moet binnen de omtrek liggen.`;
       }
     }
     for (const [a, b] of randen(op)) {
-      for (let r = 0; r < n; r++) {
+      for (let r = 0; r < n2; r++) {
         if (segmentenSnijden(a, b, omtrekRanden[r][0], omtrekRanden[r][1])) {
           return `${naam} snijdt rand ${r + 1} van de plaat \u2014 een opening moet binnen de omtrek liggen.`;
         }
@@ -5417,7 +5417,7 @@ function valideerPlaatOpeningen(omtrek, openingen, tolMm = 1) {
     for (let m = k + 1; m < openingen.length; m++) {
       const A = openingen[k], B = openingen[m];
       const paar = `Opening ${k + 1} en opening ${m + 1}`;
-      if (A.some((p) => puntInPolygoon(p.x, p.z, B)) || B.some((p) => puntInPolygoon(p.x, p.z, A))) {
+      if (A.some((p2) => puntInPolygoon(p2.x, p2.z, B)) || B.some((p2) => puntInPolygoon(p2.x, p2.z, A))) {
         return `${paar} overlappen elkaar \u2014 voeg ze samen tot \xE9\xE9n opening of schuif ze uit elkaar.`;
       }
       for (const [a, b] of randen(A)) {
@@ -5428,8 +5428,8 @@ function valideerPlaatOpeningen(omtrek, openingen, tolMm = 1) {
         }
       }
       let dMin = Infinity;
-      for (const p of A) for (const [c, d] of randen(B)) dMin = Math.min(dMin, afstandTotLijnstuk(p, c, d));
-      for (const p of B) for (const [a, b] of randen(A)) dMin = Math.min(dMin, afstandTotLijnstuk(p, a, b));
+      for (const p2 of A) for (const [c, d] of randen(B)) dMin = Math.min(dMin, afstandTotLijnstuk(p2, c, d));
+      for (const p2 of B) for (const [a, b] of randen(A)) dMin = Math.min(dMin, afstandTotLijnstuk(p2, a, b));
       if (dMin < minAfstand) {
         return `${paar} raken elkaar (${Math.round(dMin)} mm tussenruimte) \u2014 houd minstens ${minAfstand} mm afstand of voeg ze samen tot \xE9\xE9n opening.`;
       }
@@ -5448,8 +5448,8 @@ function randFout(sleutel, tekst, waarden) {
   return { ok: false, reden: tekst, redenTekst: vt(`common:canvas.modelCheck.plateEdge.${sleutel}`, tekst, waarden) };
 }
 function bepaalPlaatRand(punten, adres, tolMm = 1) {
-  const n = punten.length;
-  const rechthoek = n === 4 && isAsgelijndeRechthoek(punten, tolMm);
+  const n2 = punten.length;
+  const rechthoek = n2 === 4 && isAsgelijndeRechthoek(punten, tolMm);
   const soort = rechthoek ? "rechthoek" : "polygoon";
   const heeftNaam = adres.edge !== void 0;
   const heeftIndex = adres.edgeIndex !== void 0;
@@ -5471,25 +5471,25 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
       "de last noemt geen rand. Geef `edgeIndex` (rand i loopt van hoek i naar hoek i+1) of, bij een asgelijnde rechthoek, `edge`."
     );
   }
-  if (n < 3) {
-    return randFout("plateTooFewCorners", `de plaat heeft ${n} hoeken; een rand bestaat pas vanaf drie.`, { n });
+  if (n2 < 3) {
+    return randFout("plateTooFewCorners", `de plaat heeft ${n2} hoeken; een rand bestaat pas vanaf drie.`, { n: n2 });
   }
   if (heeftIndex) {
     const i = adres.edgeIndex;
-    if (!Number.isInteger(i) || i < 0 || i >= n) {
+    if (!Number.isInteger(i) || i < 0 || i >= n2) {
       return randFout(
         "indexMissing",
-        `rand-index ${i} bestaat niet: de plaat heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
-        { i, n, max: n - 1 }
+        `rand-index ${i} bestaat niet: de plaat heeft ${n2} randen (edgeIndex 0 t/m ${n2 - 1}).`,
+        { i, n: n2, max: n2 - 1 }
       );
     }
-    const j = (i + 1) % n;
+    const j = (i + 1) % n2;
     const van2 = punten[i], naar2 = punten[j];
     const lengte = Math.hypot(naar2.x - van2.x, naar2.z - van2.z);
     if (!rechthoek) {
       return { ok: true, soort, hoekVan: i, hoekNaar: j, van: van2, naar: naar2, lengte, edgeIndex: i };
     }
-    const xs2 = punten.map((p) => p.x), zs2 = punten.map((p) => p.z);
+    const xs2 = punten.map((p2) => p2.x), zs2 = punten.map((p2) => p2.z);
     const minX2 = Math.min(...xs2), maxX2 = Math.max(...xs2);
     const minZ2 = Math.min(...zs2), maxZ2 = Math.max(...zs2);
     const op = (a, b) => Math.abs(a - b) <= tolMm;
@@ -5518,15 +5518,15 @@ function bepaalPlaatRand(punten, adres, tolMm = 1) {
   if (!rechthoek) {
     return randFout(
       "nameOnPolygon",
-      `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een asgelijnde rechthoek; deze plaat heeft ${n} hoeken die geen asgelijnde rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een rand-index (\`edgeIndex\`: rand i loopt van hoek i naar hoek i+1).`,
-      { naam: vt(`common:canvas.edge.${naam}`, PLAAT_RAND_NAAM_NL[naam]), n }
+      `een benoemde rand ("${PLAAT_RAND_NAAM_NL[naam]}") bestaat alleen bij een asgelijnde rechthoek; deze plaat heeft ${n2} hoeken die geen asgelijnde rechthoek vormen en rekent als polygoon. Kies de rand opnieuw met een rand-index (\`edgeIndex\`: rand i loopt van hoek i naar hoek i+1).`,
+      { naam: vt(`common:canvas.edge.${naam}`, PLAAT_RAND_NAAM_NL[naam]), n: n2 }
     );
   }
-  const xs = punten.map((p) => p.x), zs = punten.map((p) => p.z);
+  const xs = punten.map((p2) => p2.x), zs = punten.map((p2) => p2.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const [doelVan, doelNaar] = naam === "bottom" ? [{ x: minX, z: minZ }, { x: maxX, z: minZ }] : naam === "top" ? [{ x: minX, z: maxZ }, { x: maxX, z: maxZ }] : naam === "left" ? [{ x: minX, z: minZ }, { x: minX, z: maxZ }] : [{ x: maxX, z: minZ }, { x: maxX, z: maxZ }];
-  const zoek = (d) => punten.findIndex((p) => Math.abs(p.x - d.x) <= tolMm && Math.abs(p.z - d.z) <= tolMm);
+  const zoek = (d) => punten.findIndex((p2) => Math.abs(p2.x - d.x) <= tolMm && Math.abs(p2.z - d.z) <= tolMm);
   const hoekVan = zoek(doelVan), hoekNaar = zoek(doelNaar);
   const van = punten[hoekVan], naar = punten[hoekNaar];
   return {
@@ -5579,30 +5579,30 @@ function bepaalPlaatlastRand(punten, openingen, adres, tolMm = 1) {
     );
   }
   const { o: opening, i: openingIndex } = treffers[0];
-  const n = opening.punten.length;
-  if (n < 3) {
+  const n2 = opening.punten.length;
+  if (n2 < 3) {
     return randFout(
       "openingTooFewCorners",
-      `opening ${adres.openingId} heeft ${n} hoeken; een rand bestaat pas vanaf drie.`,
-      { opening: adres.openingId, n }
+      `opening ${adres.openingId} heeft ${n2} hoeken; een rand bestaat pas vanaf drie.`,
+      { opening: adres.openingId, n: n2 }
     );
   }
   if (adres.edgeIndex === void 0) {
     return randFout(
       "openingNoEdge",
-      `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef \`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n - 1}).`,
-      { opening: adres.openingId, max: n - 1 }
+      `de last noemt opening ${adres.openingId} maar geen rand daarvan. Geef \`edgeIndex\` (rand j loopt van openingshoek j naar hoek j+1; 0 t/m ${n2 - 1}).`,
+      { opening: adres.openingId, max: n2 - 1 }
     );
   }
   const i = adres.edgeIndex;
-  if (!Number.isInteger(i) || i < 0 || i >= n) {
+  if (!Number.isInteger(i) || i < 0 || i >= n2) {
     return randFout(
       "openingIndexMissing",
-      `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening heeft ${n} randen (edgeIndex 0 t/m ${n - 1}).`,
-      { i, opening: adres.openingId, n, max: n - 1 }
+      `rand-index ${i} bestaat niet op opening ${adres.openingId}: die opening heeft ${n2} randen (edgeIndex 0 t/m ${n2 - 1}).`,
+      { i, opening: adres.openingId, n: n2, max: n2 - 1 }
     );
   }
-  const j = (i + 1) % n;
+  const j = (i + 1) % n2;
   const van = opening.punten[i], naar = opening.punten[j];
   const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
   if (!(lengte > tolMm)) {
@@ -12195,9 +12195,9 @@ function grootsteVerplaatsing(displacements, elements) {
     if (u > max) max = u;
   }
   for (const ef of elements) {
-    const n = ef.stations_mm?.length ?? 0;
-    if (n < 2 || ef.deflection?.length !== n || ef.axialDisp?.length !== n) continue;
-    for (let k = 0; k < n; k++) {
+    const n2 = ef.stations_mm?.length ?? 0;
+    if (n2 < 2 || ef.deflection?.length !== n2 || ef.axialDisp?.length !== n2) continue;
+    for (let k = 0; k < n2; k++) {
       const u = Math.hypot(ef.axialDisp[k], ef.deflection[k]);
       if (u > max) max = u;
     }
@@ -12373,9 +12373,9 @@ function bouw(naam, type, termen, bron, herkomst) {
   };
 }
 function aantalBits(m) {
-  let n = 0;
-  for (let x = m; x > 0; x >>= 1) n += x & 1;
-  return n;
+  let n2 = 0;
+  for (let x = m; x > 0; x >>= 1) n2 += x & 1;
+  return n2;
 }
 function opstellingen(bijdragen, perGeval) {
   const eenheden = [];
@@ -12587,12 +12587,12 @@ var EINDTOESTAND_COMBO_OFFSET = 1e7;
 var BGT_EINDTOESTAND_VEELVOUD = 101;
 var EINDTOESTAND_KEY = "__femEindtoestand";
 function zetEindtoestandGevallen(perCase, psi2, gevallen) {
-  const p = perCase;
-  (p[EINDTOESTAND_KEY] ??= /* @__PURE__ */ new Map()).set(psi2, gevallen);
+  const p2 = perCase;
+  (p2[EINDTOESTAND_KEY] ??= /* @__PURE__ */ new Map()).set(psi2, gevallen);
 }
 function getEindtoestandGevallen(perCase, psi2) {
-  const p = perCase;
-  return p[EINDTOESTAND_KEY]?.get(psi2);
+  const p2 = perCase;
+  return p2[EINDTOESTAND_KEY]?.get(psi2);
 }
 var SCHEEFSTAND_COMBO_OFFSET = 1e6;
 function scheefstandRichtingLabel(richting2) {
@@ -12773,7 +12773,7 @@ function combineResults(combo, perCase) {
   }
   const plateIds = /* @__PURE__ */ new Set();
   for (const [caseId] of combo.factors) {
-    perCase.get(idVan(caseId))?.plateElements?.forEach((p) => plateIds.add(p.plateId));
+    perCase.get(idVan(caseId))?.plateElements?.forEach((p2) => plateIds.add(p2.plateId));
   }
   let plateElements;
   if (plateIds.size > 0) {
@@ -12781,7 +12781,7 @@ function combineResults(combo, perCase) {
     for (const pid of plateIds) {
       let referentie;
       for (const [caseId] of combo.factors) {
-        referentie = perCase.get(idVan(caseId))?.plateElements?.find((p) => p.plateId === pid);
+        referentie = perCase.get(idVan(caseId))?.plateElements?.find((p2) => p2.plateId === pid);
         if (referentie) break;
       }
       if (!referentie) continue;
@@ -12789,10 +12789,10 @@ function combineResults(combo, perCase) {
       let volledigeMesh = !!expectedIds?.length && new Set(expectedIds).size === expectedIds.length;
       for (const [caseId, factor] of combo.factors) {
         if (factor === 0) continue;
-        const bron = perCase.get(idVan(caseId))?.plateElements?.find((p) => p.plateId === pid);
+        const bron = perCase.get(idVan(caseId))?.plateElements?.find((p2) => p2.plateId === pid);
         if (!expectedIds || !bron || bron.expectedElementIds?.length !== expectedIds.length || bron.elements.length !== expectedIds.length || referentie.elements.length !== expectedIds.length || expectedIds.some((id, i) => bron.expectedElementIds?.[i] !== id || bron.elements[i]?.elementId !== id || referentie.elements[i]?.elementId !== id)) volledigeMesh = false;
       }
-      const n = referentie.elements.length;
+      const n2 = referentie.elements.length;
       const gecombineerd = referentie.elements.map((el) => ({
         elementId: el.elementId,
         corners: el.corners,
@@ -12808,9 +12808,9 @@ function combineResults(combo, perCase) {
         nxy: 0
       }));
       for (const [caseId, factor] of combo.factors) {
-        const bron = perCase.get(idVan(caseId))?.plateElements?.find((p) => p.plateId === pid);
+        const bron = perCase.get(idVan(caseId))?.plateElements?.find((p2) => p2.plateId === pid);
         if (!bron) continue;
-        for (let i = 0; i < n && i < bron.elements.length; i++) {
+        for (let i = 0; i < n2 && i < bron.elements.length; i++) {
           const s = bron.elements[i];
           const d = gecombineerd[i];
           d.sigmaX += factor * s.sigmaX;
@@ -12869,8 +12869,8 @@ function combineResults(combo, perCase) {
   return { displacements, reactions, elements, maxDisplacement: maxDisp, plateElements };
 }
 function staafExtremen(ef) {
-  const n = ef.stations_mm.length;
-  if (n === 0) {
+  const n2 = ef.stations_mm.length;
+  if (n2 === 0) {
     const absStart = Math.abs(ef.M_start);
     const absEnd = Math.abs(ef.M_end);
     return {
@@ -12888,7 +12888,7 @@ function staafExtremen(ef) {
   let V_min = Infinity, V_max = -Infinity;
   let M_min = Infinity, M_max = -Infinity;
   let mAbs = -Infinity, mPos_mm = ef.stations_mm[0] ?? 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n2; i++) {
     const nx = ef.normalForce[i] ?? 0;
     const vx = ef.shearForce[i] ?? 0;
     const mx = ef.bendingMoment[i] ?? 0;
@@ -13074,20 +13074,20 @@ function leidAf(combinatie, gevallen, gevuld) {
   const alleenBlijvend = dragend.length > 0 && dragend.every((d) => d.duur.klasse === "Permanent");
   return { klasse, basis, alleenBlijvend };
 }
-function belastingduurPerCombinatie(p) {
-  const gevallen = new Map(p.loadCases.map((lc) => [lc.id, lc]));
+function belastingduurPerCombinatie(p2) {
+  const gevallen = new Map(p2.loadCases.map((lc) => [lc.id, lc]));
   const uit = [];
-  for (const c of p.combinaties) {
+  for (const c of p2.combinaties) {
     if (c.type !== "uls") continue;
-    const a = leidAf(c, gevallen, p.gevuld);
+    const a = leidAf(c, gevallen, p2.gevuld);
     let klasse = a.klasse;
     let basis = a.basis;
-    if (p.ondergrens !== void 0) {
-      const naam = DUURKLASSE_NAAM[p.ondergrens];
-      if (rang(p.ondergrens) < rang(klasse)) {
-        klasse = p.ondergrens;
+    if (p2.ondergrens !== void 0) {
+      const naam = DUURKLASSE_NAAM[p2.ondergrens];
+      if (rang(p2.ondergrens) < rang(klasse)) {
+        klasse = p2.ondergrens;
         basis += `; verlengd tot ${naam} door de opgegeven belastingduur van de staaf (een opgegeven klasse werkt als ondergrens)`;
-      } else if (rang(p.ondergrens) > rang(klasse)) {
+      } else if (rang(p2.ondergrens) > rang(klasse)) {
         basis += `; de opgegeven belastingduur "${naam}" van de staaf is korter en telt niet: een opgegeven klasse mag de duur nooit korter maken dan de belasting in de combinatie (3.1.3(2))`;
       }
     }
@@ -13095,13 +13095,13 @@ function belastingduurPerCombinatie(p) {
   }
   return uit;
 }
-function ontbrekendeBlijvendeCombinatie(p) {
-  const gevallen = new Map(p.loadCases.map((lc) => [lc.id, lc]));
-  const blijvend = p.loadCases.filter((lc) => lc.type === "dead" && (!p.gevuld || p.gevuld(lc.id)));
+function ontbrekendeBlijvendeCombinatie(p2) {
+  const gevallen = new Map(p2.loadCases.map((lc) => [lc.id, lc]));
+  const blijvend = p2.loadCases.filter((lc) => lc.type === "dead" && (!p2.gevuld || p2.gevuld(lc.id)));
   if (blijvend.length === 0) return null;
-  const uls = p.combinaties.filter((c) => c.type === "uls");
+  const uls = p2.combinaties.filter((c) => c.type === "uls");
   if (uls.length === 0) return null;
-  const heeft = uls.some((c) => leidAf(c, gevallen, p.gevuld).alleenBlijvend);
+  const heeft = uls.some((c) => leidAf(c, gevallen, p2.gevuld).alleenBlijvend);
   return heeft ? null : blijvend;
 }
 
@@ -13289,8 +13289,8 @@ function naarCustomSection(d) {
 
 // src/lib/referentierichting.ts
 function referentieVanStaaf(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b) return { gespiegeld: false, staafstand: "Liggend" };
   const staand = isOverwegendVerticaal(beam, nodes);
   return {
@@ -13423,8 +13423,8 @@ function nl2(v) {
 }
 var SPRONGBAND_GRADEN = 10;
 function richtingssprongNabij(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   const helling = hellingGradenVanStaaf(beam, nodes);
   if (!a || !b || helling === null) return null;
   const voet = a.z <= b.z ? a : b;
@@ -13543,8 +13543,8 @@ var SPIEGELREGELS_TOETSCONFIG = {
 // src/lib/doorgaandeLijn.ts
 var nl3 = (v, d = 3) => v.toFixed(d).replace(".", ",");
 function richting(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b) return null;
   const l = Math.hypot(b.x - a.x, b.z - a.z);
   if (l <= 0) return null;
@@ -13576,8 +13576,8 @@ function vindDoorgaandeLijnen(beams, nodes, alleBeams, supports) {
     const dir = richting(start, nodes);
     if (!dir) continue;
     const proj = (id) => {
-      const n = nodes.find((k) => k.id === id);
-      return n.x * dir.x + n.z * dir.z;
+      const n2 = nodes.find((k) => k.id === id);
+      return n2.x * dir.x + n2.z * dir.z;
     };
     const geordend = leden.map((beam) => {
       const pa = proj(beam.from);
@@ -13611,13 +13611,13 @@ function vindDoorgaandeLijnen(beams, nodes, alleBeams, supports) {
 function eindVelden(obj, van, naar) {
   if (!obj) return void 0;
   const uit = {};
-  let n = 0;
+  let n2 = 0;
   for (const [k, v] of Object.entries(obj)) {
     if (!k.startsWith(van) || v === void 0) continue;
     uit[`${naar}${k.slice(van.length)}`] = v;
-    n++;
+    n2++;
   }
-  return n > 0 ? uit : void 0;
+  return n2 > 0 ? uit : void 0;
 }
 function fractiesNaarLijn(fracties, deel, lengteMm) {
   if (!Array.isArray(fracties) || lengteMm <= 0) return [];
@@ -13810,7 +13810,7 @@ function bepaalStaafeinden(beam, nodes, alleBeams, supports, ledenVanLijn, plate
   if (!supports) return { begin: "Gaffel", eind: "Gaffel" };
   const dir = richting(beam, nodes);
   const opgelegd = new Set(supports.map((s) => s.nodeId));
-  const inPlaat = new Set((plates ?? []).flatMap((p) => p.nodeIds));
+  const inPlaat = new Set((plates ?? []).flatMap((p2) => p2.nodeIds));
   const eind = (knoop) => {
     if (opgelegd.has(knoop) || inPlaat.has(knoop)) return "Gaffel";
     const anderen = alleBeams.filter(
@@ -13883,9 +13883,9 @@ function bepaalAlphaCr(input, combinaties, combinationResults, opties = {}) {
       if (!ef) continue;
       const segs = gebouwd.beamSegments.get(uiId) ?? [{ meshId: eersteMeshId, t0: 0, t1: 1 }];
       for (const seg of segs) {
-        const n = normaalkrachtOp(ef, (seg.t0 + seg.t1) / 2 * ef.L_mm);
-        if (n < -1e-9) druk = true;
-        axiaal.set(seg.meshId, -n);
+        const n2 = normaalkrachtOp(ef, (seg.t0 + seg.t1) / 2 * ef.L_mm);
+        if (n2 < -1e-9) druk = true;
+        axiaal.set(seg.meshId, -n2);
       }
     }
     if (!druk) {
@@ -13894,7 +13894,7 @@ function bepaalAlphaCr(input, combinaties, combinationResults, opties = {}) {
     }
     const instabiel = (alpha) => {
       const geschaald = /* @__PURE__ */ new Map();
-      for (const [id, n] of axiaal) geschaald.set(id, n * alpha);
+      for (const [id, n2] of axiaal) geschaald.set(id, n2 * alpha);
       const k = assembleGlobalStiffnessWithGeometric(mesh, geschaald, true);
       const { K } = applyBoundaryConditions(k, nul, mesh);
       return countNonPositivePivots(K) > 0;
@@ -14118,8 +14118,8 @@ function profileLookupKey(name) {
   return name.replace(/[\s\-.]/g, "").toUpperCase();
 }
 function beamDirection(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b) return null;
   const dx = b.x - a.x;
   const dz = b.z - a.z;
@@ -14135,7 +14135,7 @@ function collinearContinuations(beam, nodes, beams, supports) {
   for (const other of beams) {
     if (other.id === beam.id) continue;
     const gedeeld = [beam.from, beam.to].filter(
-      (n) => n === other.from || n === other.to
+      (n2) => n2 === other.from || n2 === other.to
     );
     if (gedeeld.length !== 1) continue;
     if (opgelegd.has(gedeeld[0])) continue;
@@ -14162,8 +14162,8 @@ function deflectionNotesFor(beam, nodes, beams, supports) {
   return notes;
 }
 function beamLengthMm(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b) return 0;
   return Math.hypot(b.x - a.x, b.z - a.z);
 }
@@ -14227,16 +14227,16 @@ function extractFieldDeflectionMm(beam, result) {
   return chordRelativeMaxMm(stations, ef.stations_mm);
 }
 function chordRelativeMaxMm(w, stationsMm) {
-  const n = w.length;
-  if (n === 0) return 0;
+  const n2 = w.length;
+  if (n2 === 0) return 0;
   const wStart = w[0];
-  const wEnd = w[n - 1];
+  const wEnd = w[n2 - 1];
   const koordeBruikbaar = Number.isFinite(wStart) && Number.isFinite(wEnd);
-  const xOk = Array.isArray(stationsMm) && stationsMm.length === n && Number.isFinite(stationsMm[0]) && Number.isFinite(stationsMm[n - 1]) && stationsMm[n - 1] !== stationsMm[0];
+  const xOk = Array.isArray(stationsMm) && stationsMm.length === n2 && Number.isFinite(stationsMm[0]) && Number.isFinite(stationsMm[n2 - 1]) && stationsMm[n2 - 1] !== stationsMm[0];
   const x0 = xOk ? stationsMm[0] : 0;
-  const span = xOk ? stationsMm[n - 1] - x0 : n - 1;
+  const span = xOk ? stationsMm[n2 - 1] - x0 : n2 - 1;
   let max = 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n2; i++) {
     const v = w[i];
     if (!Number.isFinite(v)) continue;
     let d = v;
@@ -14255,8 +14255,8 @@ function equivalentUdlFromMoments(env, lengthMm) {
   const mEnd = sorted[sorted.length - 1].forces.my_ed;
   const mid = lengthMm / 2;
   let best = sorted[0];
-  for (const p of sorted) {
-    if (Math.abs(p.position_mm - mid) < Math.abs(best.position_mm - mid)) best = p;
+  for (const p2 of sorted) {
+    if (Math.abs(p2.position_mm - mid) < Math.abs(best.position_mm - mid)) best = p2;
   }
   const pijlKnm = best.forces.my_ed - (mStart + mEnd) / 2;
   const qKnPerM = 8 * pijlKnm / Math.pow(lengthMm / 1e3, 2);
@@ -14273,8 +14273,8 @@ function isOverwegendVerticaal(beam, nodes) {
   return helling !== null && helling >= VERTICAAL_VANAF_GRADEN;
 }
 function zijdelingseVerplaatsingMm(beam, nodes, result) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b || !result) return null;
   const boven = a.z >= b.z ? a : b;
   const onder = a.z >= b.z ? b : a;
@@ -14323,8 +14323,8 @@ function bepaalDoorbuigingsInvoer(beam, data) {
   return vloerDakEis(beam, data, slsCombos);
 }
 function zijdelingseEis(beam, data, slsCombos) {
-  const a = data.nodes.find((n) => n.id === beam.from);
-  const b = data.nodes.find((n) => n.id === beam.to);
+  const a = data.nodes.find((n2) => n2.id === beam.from);
+  const b = data.nodes.find((n2) => n2.id === beam.to);
   const lengteMm = beamLengthMm(beam, data.nodes);
   const hoogteMm = a && b ? Math.abs(b.z - a.z) : 0;
   const helling = hellingGradenVanStaaf(beam, data.nodes) ?? 90;
@@ -14441,7 +14441,7 @@ function vloerDakEis(beam, data, slsCombos) {
     );
     if (nietHerkend.length > 0) {
       notes.push(
-        "Ook meegewogen, veilig-zijdig: " + nietHerkend.map((n) => `"${n}"`).join(", ") + '. Deze BGT-combinatie(s) zijn niet als 6.14b, 6.15b of 6.16b herkend (geen kenmerk, en de naam bevat geen "karakter", "frequent" of "quasi"); welke uitdrukking ze zijn is niet af te lezen, en weglaten zou een grotere zakking stil laten vallen. Is een ervan een van de drie, geef haar dan een herkenbare naam.'
+        "Ook meegewogen, veilig-zijdig: " + nietHerkend.map((n2) => `"${n2}"`).join(", ") + '. Deze BGT-combinatie(s) zijn niet als 6.14b, 6.15b of 6.16b herkend (geen kenmerk, en de naam bevat geen "karakter", "frequent" of "quasi"); welke uitdrukking ze zijn is niet af te lezen, en weglaten zou een grotere zakking stil laten vallen. Is een ervan een van de drie, geef haar dan een herkenbare naam.'
       );
     }
     if (ontbreekt.length > 0) {
@@ -14564,13 +14564,13 @@ function buildSteelCheckInputs(ruweData) {
     const forcesEnvelope = buildForcesEnvelope(beam.id, ulsCombos, data.combinationResults);
     let govComboId = forcesEnvelope[0].combination_id;
     let govAbsMy = 0;
-    for (const p of forcesEnvelope) {
-      if (Math.abs(p.forces.my_ed) > govAbsMy) {
-        govAbsMy = Math.abs(p.forces.my_ed);
-        govComboId = p.combination_id;
+    for (const p2 of forcesEnvelope) {
+      if (Math.abs(p2.forces.my_ed) > govAbsMy) {
+        govAbsMy = Math.abs(p2.forces.my_ed);
+        govComboId = p2.combination_id;
       }
     }
-    const govPoints = forcesEnvelope.filter((p) => p.combination_id === govComboId);
+    const govPoints = forcesEnvelope.filter((p2) => p2.combination_id === govComboId);
     const cfg = zeegVoorToets(beam, data.nodes);
     const doorbuiging = bepaalDoorbuigingsInvoer(beam, data);
     const ledenVanLijn = new Set(lijn.lijnen.get(beam.id)?.delen.map((d) => d.beam.id) ?? []);
@@ -14578,7 +14578,7 @@ function buildSteelCheckInputs(ruweData) {
     const staafNotities = [...lijn.notities.get(beam.id) ?? []];
     const alphaNotitie = alphaCrStaafNotitie(
       ruweData.stabiliteit,
-      Math.min(...forcesEnvelope.map((p) => p.forces.n_ed)),
+      Math.min(...forcesEnvelope.map((p2) => p2.forces.n_ed)),
       Number.isFinite(cfg.bucklingLengthY_m) && cfg.bucklingLengthY_m > 0
     );
     if (alphaNotitie) staafNotities.push(alphaNotitie);
@@ -14699,8 +14699,8 @@ function mapLoadDuration(d) {
       return "MediumTerm";
   }
 }
-function mapLtbLoadPosition(p) {
-  switch (p) {
+function mapLtbLoadPosition(p2) {
+  switch (p2) {
     case "compressionEdge":
       return "CompressionEdge";
     case "tensionEdge":
@@ -14730,8 +14730,8 @@ function timberDeflectionNumerators(cls, customN) {
     case "cantilever":
       return { fin: 125, add: 167 };
     case "custom": {
-      const n = customN ?? 333;
-      return { fin: n, add: n };
+      const n2 = customN ?? 333;
+      return { fin: n2, add: n2 };
     }
     case "floor":
     default:
@@ -15026,7 +15026,7 @@ function buildTimberCheckInputs(ruweData) {
     const staafNotities = [...lijn.notities.get(beam.id) ?? []];
     const alphaNotitie = alphaCrStaafNotitie(
       ruweData.stabiliteit,
-      Math.min(...forcesEnvelope.map((p) => p.forces.n_ed)),
+      Math.min(...forcesEnvelope.map((p2) => p2.forces.n_ed)),
       Number.isFinite(cfg.bucklingLengthY_m) && cfg.bucklingLengthY_m > 0
     );
     if (alphaNotitie) staafNotities.push(alphaNotitie);
@@ -16090,8 +16090,8 @@ function herkenPlaatBasis(naam, nu) {
     fout: `materiaal "${naam}" wordt niet herkend. Bekend zijn: ${plaatMateriaalVoorbeelden()}. Laat het veld leeg om met de losse E, \u03BD en \u03C1 te rekenen; er wordt geen materiaal aangenomen.`
   };
 }
-function heeftCltG12Invoer(p) {
-  return p.cltG12 !== void 0 || p.cltG12Bron !== void 0 && p.cltG12Bron.trim() !== "" || p.cltG12Bovengrens === true;
+function heeftCltG12Invoer(p2) {
+  return p2.cltG12 !== void 0 || p2.cltG12Bron !== void 0 && p2.cltG12Bron.trim() !== "" || p2.cltG12Bovengrens === true;
 }
 function plaatMateriaalSoort(materiaal) {
   const naam = (materiaal ?? "").trim();
@@ -16099,19 +16099,19 @@ function plaatMateriaalSoort(materiaal) {
   const basis = herkenPlaatBasis(naam, void 0);
   return "fout" in basis ? "onbekend" : basis.soort;
 }
-function bepaalPlaatStijfheid(p) {
-  const hoekGraden = gegeven(p.hoofdrichting) ? p.hoofdrichting : 0;
-  const naam = (p.materiaal ?? "").trim();
+function bepaalPlaatStijfheid(p2) {
+  const hoekGraden = gegeven(p2.hoofdrichting) ? p2.hoofdrichting : 0;
+  const naam = (p2.materiaal ?? "").trim();
   if (naam === "") {
-    if (heeftCltG12Invoer(p)) {
+    if (heeftCltG12Invoer(p2)) {
       return {
         ok: false,
         reden: `cltG12, cltG12Bron en cltG12Bovengrens horen alleen bij kruislaaghout, maar deze plaat heeft geen materiaal. Kies een kruislaaghoutopbouw ("CLT C24 40/20/40") of laat de G\u2081\u2082-velden leeg; ze worden niet stil genegeerd.`
       };
     }
-    const E = gegeven(p.E) ? p.E : eStandaard();
-    const nu = gegeven(p.nu) ? p.nu : nuStandaard();
-    const rho2 = gegeven(p.rho) ? p.rho : rhoStandaard();
+    const E = gegeven(p2.E) ? p2.E : eStandaard();
+    const nu = gegeven(p2.nu) ? p2.nu : nuStandaard();
+    const rho2 = gegeven(p2.rho) ? p2.rho : rhoStandaard();
     return {
       ok: true,
       stijfheid: {
@@ -16124,38 +16124,38 @@ function bepaalPlaatStijfheid(p) {
         G12: gIsotroop(E, nu),
         rho: rho2,
         hoekGraden,
-        bronE: gegeven(p.E) ? "handmatig" : "standaard",
-        bronNu: gegeven(p.nu) ? "handmatig" : "standaard",
-        bronRho: gegeven(p.rho) ? "handmatig" : "standaard",
+        bronE: gegeven(p2.E) ? "handmatig" : "standaard",
+        bronNu: gegeven(p2.nu) ? "handmatig" : "standaard",
+        bronRho: gegeven(p2.rho) ? "handmatig" : "standaard",
         // Isotroop: G = E/(2(1+ν)) volgt uit E, dus ook de herkomst.
-        bronG12: gegeven(p.E) ? "handmatig" : "standaard",
+        bronG12: gegeven(p2.E) ? "handmatig" : "standaard",
         herkomst: "Geen materiaal gekozen: de plaat rekent isotroop met de ingevoerde E, \u03BD en \u03C1 (standaard staal 210 000 N/mm\xB2, 0,3 en 7850 kg/m\xB3).",
         waarschuwingen: []
       }
     };
   }
-  const basis = herkenPlaatBasis(naam, p.nu);
+  const basis = herkenPlaatBasis(naam, p2.nu);
   if ("fout" in basis) return { ok: false, reden: basis.fout };
-  const nuOverschreven = gegeven(p.nu);
-  const eOverschreven = gegeven(p.E);
-  const rhoOverschreven = gegeven(p.rho);
-  const nu12 = nuOverschreven ? p.nu : basis.nu12;
-  const E1 = eOverschreven ? p.E : basis.E1;
-  const E2 = eOverschreven ? p.E : basis.E2;
+  const nuOverschreven = gegeven(p2.nu);
+  const eOverschreven = gegeven(p2.E);
+  const rhoOverschreven = gegeven(p2.rho);
+  const nu12 = nuOverschreven ? p2.nu : basis.nu12;
+  const E1 = eOverschreven ? p2.E : basis.E1;
+  const E2 = eOverschreven ? p2.E : basis.E2;
   const orthotroop = eOverschreven ? false : basis.orthotroop;
-  const rho = rhoOverschreven ? p.rho : basis.rho;
+  const rho = rhoOverschreven ? p2.rho : basis.rho;
   const waarschuwingen = [];
   const g12Aanvulling = [];
   let G12;
   let bronG12;
-  if (heeftCltG12Invoer(p) && basis.soort !== "clt") {
+  if (heeftCltG12Invoer(p2) && basis.soort !== "clt") {
     return {
       ok: false,
       reden: `cltG12, cltG12Bron en cltG12Bovengrens horen alleen bij kruislaaghout; materiaal "${naam}" is dat niet. Laat de G\u2081\u2082-velden leeg; ze worden niet stil genegeerd.`
     };
   }
   if (eOverschreven || !basis.orthotroop) {
-    if (heeftCltG12Invoer(p)) {
+    if (heeftCltG12Invoer(p2)) {
       return {
         ok: false,
         reden: `E is handmatig gezet, dus de plaat rekent isotroop met G = E/(2(1+\u03BD)); de G\u2081\u2082-invoer van kruislaaghout zou dan niets doen. Laat \xF3f E \xF3f de G\u2081\u2082-velden leeg.`
@@ -16164,9 +16164,9 @@ function bepaalPlaatStijfheid(p) {
     G12 = gIsotroop(E1, nu12);
     bronG12 = eOverschreven ? "handmatig" : "materiaal";
   } else if (basis.soort === "clt") {
-    const heeftWaarde = p.cltG12 !== void 0;
-    const bron = (p.cltG12Bron ?? "").trim();
-    const bovengrens = p.cltG12Bovengrens === true;
+    const heeftWaarde = p2.cltG12 !== void 0;
+    const bron = (p2.cltG12Bron ?? "").trim();
+    const bovengrens = p2.cltG12Bovengrens === true;
     const bovengrensTekst = Math.round(basis.G12 * 10) / 10;
     if (heeftWaarde && bovengrens) {
       return {
@@ -16175,26 +16175,26 @@ function bepaalPlaatStijfheid(p) {
       };
     }
     if (heeftWaarde) {
-      if (!gegeven(p.cltG12) || !(p.cltG12 > 0)) {
+      if (!gegeven(p2.cltG12) || !(p2.cltG12 > 0)) {
         return {
           ok: false,
-          reden: `kruislaaghout "${naam}": cltG12 moet een positief getal in N/mm\xB2 zijn (kreeg ${String(p.cltG12)}).`
+          reden: `kruislaaghout "${naam}": cltG12 moet een positief getal in N/mm\xB2 zijn (kreeg ${String(p2.cltG12)}).`
         };
       }
       if (bron === "") {
         return {
           ok: false,
-          reden: `kruislaaghout "${naam}": cltG12 = ${p.cltG12} N/mm\xB2 is opgegeven zonder cltG12Bron. Een waarde zonder herkomst is in het rapport niet van een aanname te onderscheiden; noem de productverklaring of de ETA met tabel, bijvoorbeeld "ETA-00/0000, tabel 3".`
+          reden: `kruislaaghout "${naam}": cltG12 = ${p2.cltG12} N/mm\xB2 is opgegeven zonder cltG12Bron. Een waarde zonder herkomst is in het rapport niet van een aanname te onderscheiden; noem de productverklaring of de ETA met tabel, bijvoorbeeld "ETA-00/0000, tabel 3".`
         };
       }
-      G12 = p.cltG12;
+      G12 = p2.cltG12;
       bronG12 = "handmatig";
       g12Aanvulling.push(
-        `G\u2081\u2082 = ${p.cltG12} N/mm\xB2 in het vlak, volgens ${bron}.`
+        `G\u2081\u2082 = ${p2.cltG12} N/mm\xB2 in het vlak, volgens ${bron}.`
       );
-      if (p.cltG12 > basis.G12) {
+      if (p2.cltG12 > basis.G12) {
         waarschuwingen.push(
-          `G\u2081\u2082 = ${p.cltG12} N/mm\xB2 is groter dan de uitgesmeerde G_mean van de lamellen (${bovengrensTekst} N/mm\xB2), terwijl de afschuiving in het vlak van kruislaaghout daaronder hoort te liggen. Controleer de waarde in ${bron}.`
+          `G\u2081\u2082 = ${p2.cltG12} N/mm\xB2 is groter dan de uitgesmeerde G_mean van de lamellen (${bovengrensTekst} N/mm\xB2), terwijl de afschuiving in het vlak van kruislaaghout daaronder hoort te liggen. Controleer de waarde in ${bron}.`
         );
       }
     } else if (bron !== "") {
@@ -16233,19 +16233,19 @@ function bepaalPlaatStijfheid(p) {
   const aanvullingen = [...g12Aanvulling];
   if (eOverschreven) {
     aanvullingen.push(
-      `E is handmatig op ${p.E} N/mm\xB2 gezet: die waarde geldt in BEIDE richtingen, dus de plaat rekent isotroop en de richtingsafhankelijkheid van het materiaal vervalt.`
+      `E is handmatig op ${p2.E} N/mm\xB2 gezet: die waarde geldt in BEIDE richtingen, dus de plaat rekent isotroop en de richtingsafhankelijkheid van het materiaal vervalt.`
     );
   }
   const nuAanname = basis.soort === "hout" || basis.soort === "clt";
   if (nuOverschreven && nuAanname) {
     aanvullingen.push(
-      `\u03BD\u2081\u2082 is handmatig op ${p.nu} gezet in plaats van de aanname \u03BD\u2081\u2082 = 0; de plaat blijft richtingsafhankelijk (\u03BD\u2082\u2081 = \u03BD\u2081\u2082\xB7E\u2082/E\u2081).`
+      `\u03BD\u2081\u2082 is handmatig op ${p2.nu} gezet in plaats van de aanname \u03BD\u2081\u2082 = 0; de plaat blijft richtingsafhankelijk (\u03BD\u2082\u2081 = \u03BD\u2081\u2082\xB7E\u2082/E\u2081).`
     );
   } else if (nuOverschreven && basis.nuUitMateriaal) {
-    aanvullingen.push(`\u03BD is handmatig op ${p.nu} gezet in plaats van de materiaalwaarde.`);
+    aanvullingen.push(`\u03BD is handmatig op ${p2.nu} gezet in plaats van de materiaalwaarde.`);
   }
   if (rhoOverschreven) {
-    aanvullingen.push(`\u03C1 is handmatig op ${p.rho} kg/m\xB3 gezet; het eigen gewicht volgt die waarde.`);
+    aanvullingen.push(`\u03C1 is handmatig op ${p2.rho} kg/m\xB3 gezet; het eigen gewicht volgt die waarde.`);
   }
   return {
     ok: true,
@@ -16269,8 +16269,8 @@ function bepaalPlaatStijfheid(p) {
   };
 }
 function keurPlaatMateriaal(invoer) {
-  const p = typeof invoer === "object" && invoer !== null ? invoer : { materiaal: invoer };
-  const uit = bepaalPlaatStijfheid(p);
+  const p2 = typeof invoer === "object" && invoer !== null ? invoer : { materiaal: invoer };
+  const uit = bepaalPlaatStijfheid(p2);
   return uit.ok ? null : uit.reden;
 }
 function plaatMateriaalLabel(s) {
@@ -16452,14 +16452,14 @@ function buildMesh(input, loadFactor) {
     materialIdByE.set(E_Nmm2, created.id);
     return created.id;
   };
-  for (const n of input.nodes) {
-    if (nodeIdMap.has(n.id)) {
+  for (const n2 of input.nodes) {
+    if (nodeIdMap.has(n2.id)) {
       throw new Error(
-        `Knoop ${n.id} komt tweemaal voor in het model. Elke knoop hoort een eigen nummer te hebben; anders is niet te zeggen op welke van de twee een staaf, oplegging of last aangrijpt.`
+        `Knoop ${n2.id} komt tweemaal voor in het model. Elke knoop hoort een eigen nummer te hebben; anders is niet te zeggen op welke van de twee een staaf, oplegging of last aangrijpt.`
       );
     }
-    const meshNode = mesh.addNode(n.x / 1e3, n.z / 1e3);
-    nodeIdMap.set(n.id, meshNode.id);
+    const meshNode = mesh.addNode(n2.x / 1e3, n2.z / 1e3);
+    nodeIdMap.set(n2.id, meshNode.id);
   }
   for (const s of input.supports) {
     const meshNid = nodeIdMap.get(s.nodeId);
@@ -16467,22 +16467,22 @@ function buildMesh(input, loadFactor) {
     applySupportToMesh(mesh, meshNid, s);
   }
   const nodeById = /* @__PURE__ */ new Map();
-  for (const n of input.nodes) nodeById.set(n.id, { x: n.x, z: n.z });
+  for (const n2 of input.nodes) nodeById.set(n2.id, { x: n2.x, z: n2.z });
   const TOL_MM = 1;
   const plateInputs = input.plates;
   const plateRects = [];
   const plaatPolygonen = [];
   const plaatStijfheden = /* @__PURE__ */ new Map();
-  const plaatStijfheid = (p) => {
-    const bewaard = plaatStijfheden.get(p.id);
+  const plaatStijfheid = (p2) => {
+    const bewaard = plaatStijfheden.get(p2.id);
     if (bewaard) return bewaard;
-    const uit = bepaalPlaatStijfheid(p);
-    if (!uit.ok) throw new Error(`Plaat ${p.id}: ${uit.reden}`);
-    plaatStijfheden.set(p.id, uit.stijfheid);
+    const uit = bepaalPlaatStijfheid(p2);
+    if (!uit.ok) throw new Error(`Plaat ${p2.id}: ${uit.reden}`);
+    plaatStijfheden.set(p2.id, uit.stijfheid);
     return uit.stijfheid;
   };
-  const materiaalHoek = (p) => {
-    const st = plaatStijfheid(p);
+  const materiaalHoek = (p2) => {
+    const st = plaatStijfheid(p2);
     return st.orthotroop ? { materiaalHoekGraden: st.hoekGraden } : {};
   };
   const verwezenKnopen = /* @__PURE__ */ new Set();
@@ -16493,35 +16493,35 @@ function buildMesh(input, loadFactor) {
   for (const s of input.supports) verwezenKnopen.add(s.nodeId);
   for (const pl of input.pointLoads ?? []) verwezenKnopen.add(pl.nodeId);
   if (plateInputs && plateInputs.length > 0) {
-    for (const p of plateInputs) {
-      if (!Array.isArray(p.nodeIds) || p.nodeIds.length < 3) {
+    for (const p2 of plateInputs) {
+      if (!Array.isArray(p2.nodeIds) || p2.nodeIds.length < 3) {
         throw new Error(
-          `Plaat ${p.id}: verwacht minstens 3 hoekknopen, maar kreeg er ${p.nodeIds?.length ?? 0}.`
+          `Plaat ${p2.id}: verwacht minstens 3 hoekknopen, maar kreeg er ${p2.nodeIds?.length ?? 0}.`
         );
       }
-      const corners = p.nodeIds.map((id) => nodeById.get(id));
+      const corners = p2.nodeIds.map((id) => nodeById.get(id));
       if (corners.some((c) => !c)) {
-        throw new Error(`Plaat ${p.id}: \xE9\xE9n of meer hoekknopen bestaan niet meer.`);
+        throw new Error(`Plaat ${p2.id}: \xE9\xE9n of meer hoekknopen bestaan niet meer.`);
       }
       const punten = corners.map((c) => ({ x: c.x, z: c.z }));
-      plaatStijfheid(p);
-      const meshSize = p.meshSize > 0 ? p.meshSize : 500;
-      if (p.meshType !== void 0 && !PLAAT_MESH_TYPEN.includes(p.meshType)) {
+      plaatStijfheid(p2);
+      const meshSize = p2.meshSize > 0 ? p2.meshSize : 500;
+      if (p2.meshType !== void 0 && !PLAAT_MESH_TYPEN.includes(p2.meshType)) {
         throw new Error(
-          `Plaat ${p.id}: onbekende elementkeuze "${String(p.meshType)}" \u2014 toegestaan: ${PLAAT_MESH_TYPEN.join(", ")}.`
+          `Plaat ${p2.id}: onbekende elementkeuze "${String(p2.meshType)}" \u2014 toegestaan: ${PLAAT_MESH_TYPEN.join(", ")}.`
         );
       }
-      const openingen = (p.openingen ?? []).map((o) => o.punten);
+      const openingen = (p2.openingen ?? []).map((o) => o.punten);
       const openingFout = valideerPlaatOpeningen(punten, openingen, TOL_MM);
-      if (openingFout) throw new Error(`Plaat ${p.id}: ${openingFout}`);
-      const meshType = effectiefPlaatMeshType(p, punten, TOL_MM);
+      if (openingFout) throw new Error(`Plaat ${p2.id}: ${openingFout}`);
+      const meshType = effectiefPlaatMeshType(p2, punten, TOL_MM);
       if (plaatRekentAlsRaster(punten, openingen, TOL_MM)) {
         const xsH = punten.map((c) => c.x);
         const zsH = punten.map((c) => c.z);
         const minX = Math.min(...xsH), maxX = Math.max(...xsH);
         const minZ = Math.min(...zsH), maxZ = Math.max(...zsH);
         const dwingend = openingen.length > 0 ? dwingendeLijnenUitKnopen(
-          [...verwezenKnopen].map((id) => nodeById.get(id)).filter((n) => !!n),
+          [...verwezenKnopen].map((id) => nodeById.get(id)).filter((n2) => !!n2),
           { minX, maxX, minZ, maxZ },
           TOL_MM
         ) : { x: [], z: [] };
@@ -16536,27 +16536,27 @@ function buildMesh(input, loadFactor) {
           dwingendX: dwingend.x,
           dwingendZ: dwingend.z
         });
-        plateRects.push({ p, minX, maxX, minZ, maxZ, xs: raster.xs, zs: raster.zs, raster, punten });
+        plateRects.push({ p: p2, minX, maxX, minZ, maxZ, xs: raster.xs, zs: raster.zs, raster, punten });
         continue;
       }
       const vormFout = valideerPlaatPolygoon(punten, TOL_MM);
       if (vormFout) {
-        throw new Error(`Plaat ${p.id}: ${vormFout}`);
+        throw new Error(`Plaat ${p2.id}: ${vormFout}`);
       }
       const handtekening = berekenPlaatMeshSignatuur(punten, meshSize, {
         openingen,
-        meshType: p.meshType
+        meshType: p2.meshType
       });
-      const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : void 0;
+      const cache = p2.meshCache && p2.meshCache.signature === handtekening ? p2.meshCache : void 0;
       if (!cache) {
         const waarom = openingen.length > 0 && punten.length === 4 ? "heeft een opening die geen asgelijnde rechthoek is en rekent daarom via de CDT" : "is geen asgelijnde rechthoek en rekent daarom als polygonplaat";
         throw new Error(
-          `Plaat ${p.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. Open het canvas (het mesh wordt daar automatisch gegenereerd) en reken daarna opnieuw.`
+          `Plaat ${p2.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. Open het canvas (het mesh wordt daar automatisch gegenereerd) en reken daarna opnieuw.`
         );
       }
       const beschadigd = (waarom) => {
         throw new Error(
-          `Plaat ${p.id}: de meshcache is beschadigd \u2014 ${waarom}. Wijzig de plaat (bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`
+          `Plaat ${p2.id}: de meshcache is beschadigd \u2014 ${waarom}. Wijzig de plaat (bijv. de meshSize) zodat het mesh opnieuw wordt gegenereerd.`
         );
       };
       if (!Array.isArray(cache.points) || cache.points.length < 3) {
@@ -16600,7 +16600,7 @@ function buildMesh(input, loadFactor) {
       } catch (e) {
         beschadigd(e instanceof Error ? e.message : String(e));
       }
-      plaatPolygonen.push({ p, cache, punten, gekeurd });
+      plaatPolygonen.push({ p: p2, cache, punten, gekeurd });
     }
   }
   const pasReleasesToe = (meshBeamId, b, metStartzijde, metEindzijde) => {
@@ -16712,7 +16712,7 @@ function buildMesh(input, loadFactor) {
     const ruweSplits = [
       ...plateRects.length > 0 ? berekenPlaatrandSplitsFracties(nA, nB, plateRects, TOL_MM) : [],
       ...puntlastFracties.get(b.id) ?? []
-    ].sort((p, q) => p - q);
+    ].sort((p2, q) => p2 - q);
     const splitsT = [];
     for (const t of ruweSplits) {
       if (splitsT.length === 0 || Math.abs(t - splitsT[splitsT.length - 1]) > 1e-9) splitsT.push(t);
@@ -16726,11 +16726,11 @@ function buildMesh(input, loadFactor) {
         if (dwingend.some((t) => Math.abs(t - s.t0) < minFrac)) continue;
         splitsT.push(s.t0);
       }
-      splitsT.sort((p, q) => p - q);
+      splitsT.sort((p2, q) => p2 - q);
     }
     if (!modelHeeftPlaten) {
       const minFracSnede = L_mm > 0 ? MIN_SEGMENT_MM / L_mm : Infinity;
-      const kandidaten = [...extraSnedeFracties.get(b.id) ?? []].sort((p, q) => p - q);
+      const kandidaten = [...extraSnedeFracties.get(b.id) ?? []].sort((p2, q) => p2 - q);
       let iets = false;
       for (const t of kandidaten) {
         if (!(t > minFracSnede) || !(t < 1 - minFracSnede)) continue;
@@ -16741,7 +16741,7 @@ function buildMesh(input, loadFactor) {
         splitsT.push(t);
         iets = true;
       }
-      if (iets) splitsT.sort((p, q) => p - q);
+      if (iets) splitsT.sort((p2, q) => p2 - q);
     }
     const doorsnedeVoor = (t0, t1) => {
       if (!segDef) return { sec: section, I_mm4: 0, segmentIndex: -1 };
@@ -16824,9 +16824,9 @@ function buildMesh(input, loadFactor) {
   const sch = input.scheefstand;
   const schFactor = sch ? sch.richting * sch.phi : 0;
   const plateInfo = [];
-  const pasPlaatEigengewichtToe = (p, elementIds) => {
-    if (p.selfWeightCaseId === void 0) return;
-    const f = loadFactor ? loadFactor(p.selfWeightCaseId) : 1;
+  const pasPlaatEigengewichtToe = (p2, elementIds) => {
+    if (p2.selfWeightCaseId === void 0) return;
+    const f = loadFactor ? loadFactor(p2.selfWeightCaseId) : 1;
     if (f === 0) return;
     const gewicht = computeSelfWeightNodalForces(mesh, { elementIds });
     applyNodalForces(mesh, gewicht.map((kr) => ({
@@ -16835,10 +16835,10 @@ function buildMesh(input, loadFactor) {
       fy: kr.fy * f
     })));
   };
-  const zetPlatMeshInKern = (p, plat) => {
-    const st = plaatStijfheid(p);
+  const zetPlatMeshInKern = (p2, plat) => {
+    const st = plaatStijfheid(p2);
     const mat = mesh.addMaterial({
-      name: `Plaat ${p.id}`,
+      name: `Plaat ${p2.id}`,
       E: st.E1 * 1e6,
       nu: st.nu12,
       rho: st.rho,
@@ -16854,7 +16854,7 @@ function buildMesh(input, loadFactor) {
         }
       } : {}
     });
-    const dikte_m = p.thickness / 1e3;
+    const dikte_m = p2.thickness / 1e3;
     const knoopIdPerPunt = plat.points.map((pt) => {
       const mx = pt.x / 1e3, my = pt.z / 1e3;
       const bestaand = mesh.findNodeAt(mx, my, 1e-3);
@@ -16880,7 +16880,7 @@ function buildMesh(input, loadFactor) {
     }
     return { knoopIdPerPunt, nodeIds, elementIds, materialId: mat.id };
   };
-  const maakRegion = (p, plat, k, edges, isPolygon) => {
+  const maakRegion = (p2, plat, k, edges, isPolygon) => {
     const xs = plat.points.map((pt) => pt.x);
     const zs = plat.points.map((pt) => pt.z);
     const minX = Math.min(...xs), minZ = Math.min(...zs);
@@ -16894,7 +16894,7 @@ function buildMesh(input, loadFactor) {
       divisionsX: 0,
       divisionsY: 0,
       materialId: k.materialId,
-      thickness: p.thickness / 1e3,
+      thickness: p2.thickness / 1e3,
       elementType: plat.quads.length > 0 ? "quad" : "triangle",
       nodeIds: k.nodeIds,
       // Niet gebruikt in het adapterpad (alleen door remesh-/edge-helpers
@@ -16908,14 +16908,14 @@ function buildMesh(input, loadFactor) {
         right: { nodeIds: edges.right }
       },
       isPolygon,
-      meshSize: (p.meshSize > 0 ? p.meshSize : 500) / 1e3
+      meshSize: (p2.meshSize > 0 ? p2.meshSize : 500) / 1e3
     };
   };
   if (plateRects.length > 0) {
-    for (const { p, raster, punten } of plateRects) {
-      const k = zetPlatMeshInKern(p, raster);
+    for (const { p: p2, raster, punten } of plateRects) {
+      const k = zetPlatMeshInKern(p2, raster);
       const naarIds = (lijst) => lijst.map((i) => k.knoopIdPerPunt[i]);
-      const region = maakRegion(p, raster, k, {
+      const region = maakRegion(p2, raster, k, {
         bottom: naarIds(raster.randen.bottom),
         top: naarIds(raster.randen.top),
         left: naarIds(raster.randen.left),
@@ -16923,23 +16923,23 @@ function buildMesh(input, loadFactor) {
       }, false);
       mesh.addPlateRegion(region);
       plateInfo.push({
-        plateId: p.id,
+        plateId: p2.id,
         region,
         hoeken: punten,
-        ...materiaalHoek(p),
-        openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
+        ...materiaalHoek(p2),
+        openingen: (p2.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
         // Het raster levert de knopen per openingsrand zelf (gridlijnen lopen
         // door elke openingsrand); omzetten naar mesh-knoop-ids.
         openingEdgeNodeIds: raster.openingEdgeNodeIndices.map((randen) => randen.map((rand) => naarIds(rand)))
       });
-      pasPlaatEigengewichtToe(p, k.elementIds);
+      pasPlaatEigengewichtToe(p2, k.elementIds);
     }
   }
   if (plaatPolygonen.length > 0) {
-    for (const { p, cache, punten, gekeurd } of plaatPolygonen) {
-      const k = zetPlatMeshInKern(p, { points: cache.points, triangles: gekeurd.triangles, quads: gekeurd.quads });
+    for (const { p: p2, cache, punten, gekeurd } of plaatPolygonen) {
+      const k = zetPlatMeshInKern(p2, { points: cache.points, triangles: gekeurd.triangles, quads: gekeurd.quads });
       const region = maakRegion(
-        p,
+        p2,
         { points: cache.points, quads: gekeurd.quads },
         k,
         { bottom: [], top: [], left: [], right: [] },
@@ -16948,17 +16948,17 @@ function buildMesh(input, loadFactor) {
       mesh.addPlateRegion(region);
       const edgeNodeIds = cache.edgeNodeIndices.map((rand) => rand.map((i) => k.knoopIdPerPunt[i]));
       plateInfo.push({
-        plateId: p.id,
+        plateId: p2.id,
         region,
         edgeNodeIds,
         hoeken: punten,
-        ...materiaalHoek(p),
-        openingen: (p.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
+        ...materiaalHoek(p2),
+        openingen: (p2.openingen ?? []).map((o) => ({ id: o.id, punten: o.punten })),
         // De cache is hierboven al gekeurd (één lijst per openingsrand, van
         // hoek tot hoek); zonder openingen blijft de lijst leeg.
         openingEdgeNodeIds: (cache.openingEdgeNodeIndices ?? []).map((randen) => randen.map((rand) => rand.map((i) => k.knoopIdPerPunt[i])))
       });
-      pasPlaatEigengewichtToe(p, k.elementIds);
+      pasPlaatEigengewichtToe(p2, k.elementIds);
     }
   }
   const infoByPlateId = new Map(plateInfo.map((pi) => [pi.plateId, pi]));
@@ -16982,10 +16982,10 @@ function buildMesh(input, loadFactor) {
       }
       kandidaten = lijst;
     } else if (info.edgeNodeIds) {
-      const n = info.hoeken.length;
+      const n2 = info.hoeken.length;
       let k = rand.edgeIndex;
       if (k === void 0) {
-        k = info.hoeken.findIndex((_, i) => i === rand.hoekVan && (i + 1) % n === rand.hoekNaar || i === rand.hoekNaar && (i + 1) % n === rand.hoekVan);
+        k = info.hoeken.findIndex((_, i) => i === rand.hoekVan && (i + 1) % n2 === rand.hoekNaar || i === rand.hoekNaar && (i + 1) % n2 === rand.hoekVan);
       }
       if (k < 0 || !info.edgeNodeIds[k]) {
         throw new Error(
@@ -17034,8 +17034,8 @@ function buildMesh(input, loadFactor) {
         rijen.push({ plateId: info.plateId, nodeIds: randKnopenVan(info.plateId, adres, "een plaatrand").nodeIds });
       }
       info.openingen.forEach((o, oi) => {
-        const n = o.punten.length;
-        for (let j = 0; j < n; j++) {
+        const n2 = o.punten.length;
+        for (let j = 0; j < n2; j++) {
           const wat = `rand ${j + 1} van opening ${o.id}`;
           const lijst = info.openingEdgeNodeIds[oi]?.[j];
           if (!lijst) {
@@ -17043,7 +17043,7 @@ function buildMesh(input, loadFactor) {
               `Plaat ${info.plateId}: ${wat} heeft geen rekenknopen in het rekenmesh. Wijzig de plaat zodat het mesh opnieuw wordt gemaakt.`
             );
           }
-          const van = o.punten[j], naar = o.punten[(j + 1) % n];
+          const van = o.punten[j], naar = o.punten[(j + 1) % n2];
           const lengte = Math.hypot(naar.x - van.x, naar.z - van.z);
           rijen.push({ plateId: info.plateId, nodeIds: ordenOpRand(info.plateId, lijst, van, naar, lengte, wat).nodeIds });
         }
@@ -17367,7 +17367,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
   } else {
     const meshNodes = Array.from(mesh.nodes.values());
     indexById = /* @__PURE__ */ new Map();
-    meshNodes.forEach((n, i) => indexById.set(n.id, i));
+    meshNodes.forEach((n2, i) => indexById.set(n2.id, i));
   }
   for (const [uiId, meshId] of nodeIdMap) {
     const idx = indexById.get(meshId);
@@ -17488,7 +17488,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
       M_end: bf.M2 * 1e3,
       L_mm: L_m * 1e3,
       stations_mm: stations_m.map((x) => x * 1e3),
-      normalForce: (bf.normalForce ?? []).map((n) => -n),
+      normalForce: (bf.normalForce ?? []).map((n2) => -n2),
       shearForce: bf.shearForce ?? [],
       bendingMoment: (bf.bendingMoment ?? []).map((m) => m * 1e3),
       // N·m → N·mm
@@ -17534,7 +17534,7 @@ function convertResult(mesh, engineResult, nodeIdMap, beamIdMap, supports, plate
         const st = engineResult.elementStresses?.get(eid);
         const el = mesh.getElement(eid);
         if (!st || !el) continue;
-        const corners = el.nodeIds.map((nid) => mesh.getNode(nid)).filter((n) => !!n).map((n) => ({ x: n.x * 1e3, z: n.y * 1e3 }));
+        const corners = el.nodeIds.map((nid) => mesh.getNode(nid)).filter((n2) => !!n2).map((n2) => ({ x: n2.x * 1e3, z: n2.y * 1e3 }));
         const item = {
           elementId: eid,
           corners,
@@ -17593,9 +17593,9 @@ function beddingSplitsFracties(L_mm, E_nmm2, I_mm4, kLijn) {
   if (!(L_mm > 0) || !(kLijn > 0) || !(E_nmm2 > 0) || !(I_mm4 > 0)) return [];
   const lambda = Math.pow(kLijn / (4 * E_nmm2 * I_mm4), 0.25);
   const maxLengte = 0.15 / lambda;
-  const n = Math.min(200, Math.max(8, Math.ceil(L_mm / maxLengte)));
+  const n2 = Math.min(200, Math.max(8, Math.ceil(L_mm / maxLengte)));
   const uit = [];
-  for (let i = 1; i < n; i++) uit.push(i / n);
+  for (let i = 1; i < n2; i++) uit.push(i / n2);
   return uit;
 }
 var actieveLogOpvanger;
@@ -17722,7 +17722,7 @@ function meshHeeftLasten(mesh) {
     const d = beam.distributedLoad;
     if (d && (d.qx !== 0 || d.qy !== 0 || (d.qxEnd ?? 0) !== 0 || (d.qyEnd ?? 0) !== 0)) return true;
     const dArr = beam.distributedLoads;
-    if (dArr && dArr.some((p) => p.qx !== 0 || p.qy !== 0 || (p.qxEnd ?? 0) !== 0 || (p.qyEnd ?? 0) !== 0)) return true;
+    if (dArr && dArr.some((p2) => p2.qx !== 0 || p2.qy !== 0 || (p2.qxEnd ?? 0) !== 0 || (p2.qyEnd ?? 0) !== 0)) return true;
     const t = beam.thermalLoad;
     if (t && ((t.deltaT ?? 0) !== 0 || t.deltaTTop !== void 0 || t.deltaTBottom !== void 0)) return true;
   }
@@ -17912,25 +17912,25 @@ function buildMatrices(input) {
 }
 
 // src/lib/plaatPlooi.ts
-function plaatPlooiGeometrieFout(p, nodes) {
-  if (!p.plooi) return void 0;
-  if (p.openingen?.length) return "openingen zijn niet ondersteund bij plaatplooi";
-  const punten = p.nodeIds.map((id) => nodes?.find((n) => n.id === id));
-  if (punten.length !== 4 || punten.some((n) => !n || !Number.isFinite(n.x) || !Number.isFinite(n.z))) {
+function plaatPlooiGeometrieFout(p2, nodes) {
+  if (!p2.plooi) return void 0;
+  if (p2.openingen?.length) return "openingen zijn niet ondersteund bij plaatplooi";
+  const punten = p2.nodeIds.map((id) => nodes?.find((n2) => n2.id === id));
+  if (punten.length !== 4 || punten.some((n2) => !n2 || !Number.isFinite(n2.x) || !Number.isFinite(n2.z))) {
     return "plaatplooi vraagt vier bekende hoekknopen van het volledige veld";
   }
   const hoeken = punten;
   if (!isAsgelijndeRechthoek(hoeken, 1e-7)) return "plaatplooi ondersteunt alleen een asgelijnde rechthoek";
-  if (hoeken.some((p2, i) => {
+  if (hoeken.some((p3, i) => {
     const q = hoeken[(i + 1) % 4];
-    return Math.abs(p2.x - q.x) > 1e-7 && Math.abs(p2.z - q.z) > 1e-7;
+    return Math.abs(p3.x - q.x) > 1e-7 && Math.abs(p3.z - q.z) > 1e-7;
   })) return "plaatplooi vraagt hoekknopen in omtrekvolgorde, zonder kruisende randen";
-  const a = Math.max(...hoeken.map((n) => n.x)) - Math.min(...hoeken.map((n) => n.x));
-  const b = Math.max(...hoeken.map((n) => n.z)) - Math.min(...hoeken.map((n) => n.z));
-  if (Math.abs(a - p.plooi.a_mm) > 1e-7 || Math.abs(b - p.plooi.b_mm) > 1e-7) {
+  const a = Math.max(...hoeken.map((n2) => n2.x)) - Math.min(...hoeken.map((n2) => n2.x));
+  const b = Math.max(...hoeken.map((n2) => n2.z)) - Math.min(...hoeken.map((n2) => n2.z));
+  if (Math.abs(a - p2.plooi.a_mm) > 1e-7 || Math.abs(b - p2.plooi.b_mm) > 1e-7) {
     return "a_mm en b_mm moeten overeenkomen met de volledige plaat in x en z; deelvelden of aangenomen tussensteunen zijn niet ondersteund";
   }
-  if (p.E !== void 0 && p.E !== 21e4 || p.nu !== void 0 && p.nu !== 0.3) {
+  if (p2.E !== void 0 && p2.E !== 21e4 || p2.nu !== void 0 && p2.nu !== 0.3) {
     return "plaatplooi ondersteunt geen overschreven E of nu (vereist 210000 N/mm\xB2 en 0,3)";
   }
   return void 0;
@@ -17948,8 +17948,8 @@ var SOORT_MET_SPANNINGEN = /* @__PURE__ */ new Set(["Staal", "Hout", "Beton"]);
 function klimaatklasse(k) {
   return k === 2 ? "Sc2" : k === 3 ? "Sc3" : "Sc1";
 }
-function plaatHeeftMateriaal(p) {
-  return (p.materiaal ?? "").trim() !== "";
+function plaatHeeftMateriaal(p2) {
+  return (p2.materiaal ?? "").trim() !== "";
 }
 function buildPlaatCheckInputs(data) {
   const inputs = [];
@@ -18114,12 +18114,12 @@ function redenZuiverStaal(combo) {
 function isZuivereStaalconstructie(beams, plates = []) {
   if (beams.length === 0) return false;
   if (!beams.every((b) => materiaalVanStaaf(b) === "staal")) return false;
-  return plates.every((p) => {
-    if ((p.materiaal ?? "").trim() !== "") {
-      const uit = bepaalPlaatStijfheid(p);
+  return plates.every((p2) => {
+    if ((p2.materiaal ?? "").trim() !== "") {
+      const uit = bepaalPlaatStijfheid(p2);
       return uit.ok && uit.stijfheid.soort === "staal" && uit.stijfheid.bronE === "materiaal";
     }
-    return (p.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E;
+    return (p2.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E;
   });
 }
 function zelfdeFactoren(a, b) {
@@ -18428,11 +18428,11 @@ var FIGUUR_723_CF0 = [
   [10, 0.9]
 ];
 function cf0Rechthoekig(dOverB) {
-  const p = FIGUUR_723_CF0;
-  if (dOverB <= p[0][0]) return p[0][1];
-  if (dOverB >= p[p.length - 1][0]) return p[p.length - 1][1];
-  for (let k = 0; k < p.length - 1; k++) {
-    const [x0, y0] = p[k], [x1, y1] = p[k + 1];
+  const p2 = FIGUUR_723_CF0;
+  if (dOverB <= p2[0][0]) return p2[0][1];
+  if (dOverB >= p2[p2.length - 1][0]) return p2[p2.length - 1][1];
+  for (let k = 0; k < p2.length - 1; k++) {
+    const [x0, y0] = p2[k], [x1, y1] = p2[k + 1];
     if (dOverB === x0) return y0;
     if (dOverB === x1) return y1;
     if (dOverB > x0 && dOverB < x1) {
@@ -18440,7 +18440,7 @@ function cf0Rechthoekig(dOverB) {
       return y0 + (y1 - y0) * f;
     }
   }
-  return p[p.length - 1][1];
+  return p2[p2.length - 1][1];
 }
 var PLAATACHTIG_GRENS_DB = 0.2;
 var PLAATACHTIG_TOESLAG = 1.25;
@@ -18448,6 +18448,119 @@ var KOLOM_BRON = {
   scherphoekig: "NEN-EN 1991-1-4 \xA77.7(1), (7.11), figuur 7.25; c_f,0 = 2,0 (NB)",
   rechthoekig: "NEN-EN 1991-1-4 \xA77.6(1), (7.9), figuur 7.23"
 };
+var n = (neg) => ({ neg });
+var p = (pos) => ({ pos });
+var np = (neg, pos) => ({ neg, pos });
+var TABEL_NB8_73A = {
+  0: [
+    { alpha: 5, zones: { F: np(-1.7, 0), G: np(-1.2, 0), H: np(-0.6, 0) } },
+    { alpha: 15, zones: { F: np(-0.9, 0.2), G: np(-0.8, 0.2), H: np(-0.3, 0.2) } },
+    { alpha: 30, zones: { F: np(-0.5, 0.7), G: np(-0.5, 0.7), H: np(-0.2, 0.4) } },
+    { alpha: 45, zones: { F: np(0, 0.7), G: np(0, 0.7), H: np(0, 0.6) } },
+    { alpha: 60, zones: { F: p(0.7), G: p(0.7), H: p(0.7) } },
+    { alpha: 75, zones: { F: p(0.8), G: p(0.8), H: p(0.8) } }
+  ],
+  180: [
+    { alpha: 5, zones: { F: n(-2.3), G: n(-1.3), H: n(-0.8) } },
+    { alpha: 15, zones: { F: n(-2.5), G: n(-1.3), H: n(-0.9) } },
+    { alpha: 30, zones: { F: n(-1.1), G: n(-0.8), H: n(-0.8) } },
+    { alpha: 45, zones: { F: n(-0.6), G: n(-0.5), H: n(-0.7) } },
+    { alpha: 60, zones: { F: n(-0.5), G: n(-0.5), H: n(-0.5) } },
+    { alpha: 75, zones: { F: n(-0.5), G: n(-0.5), H: n(-0.5) } }
+  ]
+};
+var TABEL_NB9_73B = [
+  { alpha: 5, zones: { Fhoog: n(-2.1), Flaag: n(-2.1), G: n(-1.8), H: n(-0.6), I: n(-0.5) } },
+  { alpha: 15, zones: { Fhoog: n(-2.4), Flaag: n(-1.6), G: n(-1.9), H: n(-0.8), I: n(-0.7) } },
+  { alpha: 30, zones: { Fhoog: n(-2.1), Flaag: n(-1.3), G: n(-1.5), H: n(-1), I: n(-0.8) } },
+  { alpha: 45, zones: { Fhoog: n(-1.5), Flaag: n(-1.3), G: n(-1.4), H: n(-1), I: n(-0.9) } },
+  { alpha: 60, zones: { Fhoog: n(-1.2), Flaag: n(-1.2), G: n(-1.2), H: n(-1), I: n(-0.7) } },
+  { alpha: 75, zones: { Fhoog: n(-1.2), Flaag: n(-1.2), G: n(-1.2), H: n(-1), I: n(-0.5) } }
+];
+var TABEL_NB10_74A = [
+  { alpha: -45, zones: { F: n(-0.6), G: n(-0.6), H: n(-0.8), I: n(-0.7), J: n(-1) } },
+  { alpha: -30, zones: { F: n(-1.1), G: n(-0.8), H: n(-0.8), I: n(-0.6), J: n(-0.8) } },
+  { alpha: -15, zones: { F: n(-2.5), G: n(-1.3), H: n(-0.9), I: n(-0.5), J: n(-0.7) } },
+  { alpha: -5, zones: { F: n(-2.3), G: n(-1.2), H: n(-0.8), I: np(-0.6, 0.2), J: np(-0.6, 0.2) } },
+  { alpha: 5, zones: { F: np(-1.7, 0), G: np(-1.2, 0), H: np(-0.6, 0), I: n(-0.6), J: np(-0.6, 0.2) } },
+  { alpha: 15, zones: { F: np(-0.9, 0.2), G: np(-0.8, 0.2), H: np(-0.3, 0.2), I: np(-0.4, 0), J: np(-1, 0) } },
+  { alpha: 30, zones: { F: np(-0.5, 0.7), G: np(-0.5, 0.7), H: np(-0.2, 0.4), I: np(-0.4, 0), J: np(-0.5, 0) } },
+  { alpha: 45, zones: { F: np(0, 0.7), G: np(0, 0.7), H: np(0, 0.6), I: np(-0.2, 0), J: np(-0.3, 0) } },
+  { alpha: 60, zones: { F: p(0.7), G: p(0.7), H: p(0.7), I: n(-0.2), J: n(-0.3) } },
+  { alpha: 75, zones: { F: p(0.8), G: p(0.8), H: p(0.8), I: n(-0.2), J: n(-0.3) } }
+];
+var TABEL_NB11_74B = [
+  { alpha: -45, zones: { F: n(-1.4), G: n(-1.2), H: n(-1), I: n(-0.9) } },
+  { alpha: -30, zones: { F: n(-1.5), G: n(-1.2), H: n(-1), I: n(-0.9) } },
+  { alpha: -15, zones: { F: n(-1.9), G: n(-1.2), H: n(-0.8), I: n(-0.8) } },
+  { alpha: -5, zones: { F: n(-1.8), G: n(-1.2), H: n(-0.7), I: n(-0.6) } },
+  { alpha: 5, zones: { F: n(-1.6), G: n(-1.3), H: n(-0.7), I: n(-0.6) } },
+  { alpha: 15, zones: { F: n(-1.3), G: n(-1.3), H: n(-0.6), I: n(-0.5) } },
+  { alpha: 30, zones: { F: n(-1.1), G: n(-1.4), H: n(-0.8), I: n(-0.5) } },
+  { alpha: 45, zones: { F: n(-1.1), G: n(-1.4), H: n(-0.9), I: n(-0.5) } },
+  { alpha: 60, zones: { F: n(-1.1), G: n(-1.2), H: n(-0.8), I: n(-0.5) } },
+  { alpha: 75, zones: { F: n(-1.1), G: n(-1.2), H: n(-0.8), I: n(-0.5) } }
+];
+function hellendDakTabel(vorm, theta) {
+  if (vorm === "lessenaar") return theta === 90 ? "7.3b" : "7.3a";
+  return theta === 90 ? "7.4b" : "7.4a";
+}
+var NB_TABEL = {
+  "7.3a": "NB.8 \u2013 7.3a",
+  "7.3b": "NB.9 \u2013 7.3b",
+  "7.4a": "NB.10 \u2013 7.4a",
+  "7.4b": "NB.11 \u2013 7.4b"
+};
+function hellendDakParagraaf(vorm) {
+  return vorm === "lessenaar" ? "\xA77.2.4" : "\xA77.2.5";
+}
+function hellendDakBron(vorm, theta) {
+  return `NEN-EN 1991-1-4+NB ${hellendDakParagraaf(vorm)}, tabel ${NB_TABEL[hellendDakTabel(vorm, theta)]} (\u03B8 = ${theta}\xB0, c_pe,10)`;
+}
+function hellendDakCpe(vorm, theta, alpha_graden) {
+  const tabel = hellendDakTabel(vorm, theta);
+  const bron = hellendDakBron(vorm, theta);
+  const graden = (x) => `${x.toFixed(1).replace(".", ",").replace("-", "\u2212")}\xB0`;
+  const weiger = (reden) => ({ ok: false, reden, vorm, theta, tabel, bron, rijOnder: NaN, rijBoven: NaN, zones: {}, vervallen: [] });
+  if (vorm === "zadel" && theta === 180) return weiger("\u03B8 = 180\xB0 bestaat alleen bij een lessenaarsdak.");
+  const rijen = vorm === "lessenaar" ? theta === 90 ? TABEL_NB9_73B : TABEL_NB8_73A[theta] : theta === 90 ? TABEL_NB11_74B : TABEL_NB10_74A;
+  const a = Math.abs(alpha_graden - Math.round(alpha_graden)) < 1e-6 ? Math.round(alpha_graden) : alpha_graden;
+  const min = rijen[0].alpha, max = rijen[rijen.length - 1].alpha;
+  if (!(a >= min && a <= max) || a > -5 && a < 5) {
+    return weiger(vorm === "lessenaar" ? `Tabel ${tabel} geeft dakhellingen van 5\xB0 tot 75\xB0; deze helling is ${graden(a)}.` + (a < 5 ? " Onder 5\xB0 gelden de platte daken van \xA77.2.3: geef de dakstaven het belastingtype plat dak." : "") : `Tabel ${tabel} geeft dakhellingen van \u221245\xB0 tot \u22125\xB0 en van +5\xB0 tot +75\xB0; deze helling is ${graden(a)}.` + (a > -5 && a < 5 ? " Tussen \u22125\xB0 en +5\xB0 wordt niet ge\xEFnterpoleerd; daar gelden de platte daken van \xA77.2.3 (opmerking 2 bij tabel 7.4a): geef de dakstaven het belastingtype plat dak." : ""));
+  }
+  let i = 0;
+  while (i < rijen.length - 2 && !(a >= rijen[i].alpha && a <= rijen[i + 1].alpha)) i++;
+  const onder = rijen[i], boven = rijen[i + 1];
+  const f = (a - onder.alpha) / (boven.alpha - onder.alpha);
+  const zones = {};
+  const vervallen = [];
+  for (const zone of Object.keys(onder.zones)) {
+    const o = onder.zones[zone], b = boven.zones[zone];
+    const cel = {};
+    for (const teken of ["neg", "pos"]) {
+      const vo = o[teken], vb = b[teken];
+      if (f === 0) {
+        if (vo !== void 0) cel[teken] = vo;
+        continue;
+      }
+      if (f === 1) {
+        if (vb !== void 0) cel[teken] = vb;
+        continue;
+      }
+      if (vo !== void 0 && vb !== void 0) cel[teken] = vo + (vb - vo) * f;
+      else if (vo !== void 0 || vb !== void 0) vervallen.push({ zone, teken });
+    }
+    if (cel.neg === void 0 && cel.pos === void 0) {
+      return weiger(`Tabel ${tabel} geeft voor zone ${zone} bij ${graden(a)} geen waarde met hetzelfde teken in de rijen ${graden(onder.alpha)} en ${graden(boven.alpha)}; interpoleren mag dan niet.`);
+    }
+    zones[zone] = cel;
+  }
+  const rijOnder = f === 1 ? boven.alpha : onder.alpha;
+  const rijBoven = f === 0 ? onder.alpha : boven.alpha;
+  return { ok: true, vorm, theta, tabel, bron, rijOnder, rijBoven, zones, vervallen };
+}
+var HELLEND_DAK_UITGANGSPUNT = "Wind op een hellend dak volgens NEN-EN 1991-1-4+NB \xA77.2.4 (lessenaarsdak, tabel NB.8 \u2013 7.3a en NB.9 \u2013 7.3b) en \xA77.2.5 (zadeldak, tabel NB.10 \u2013 7.4a en NB.11 \u2013 7.4b): zones volgens figuur 7.7/7.8 met e = min(b; 2h), b loodrecht op de wind, en z_e = h. Gebruikt is c_pe,10: de belaste oppervlakte van een spant is groter dan 10 m\xB2 (\xA77.2.1(1)). Tussen de tabelhellingen is lineair ge\xEFnterpoleerd tussen waarden met hetzelfde teken; waar de tabel een positieve en een negatieve waarde geeft, zijn beide als eigen geval genomen en nooit op hetzelfde vlak gecombineerd.";
 
 // src/lib/wind/windGenerator.ts
 var STANDAARD_WIND_INSTELLINGEN = {
@@ -18489,8 +18602,8 @@ var RICHTING_LABEL = {
   alle: "alle windrichtingen"
 };
 function staafGeo(beam, nodes) {
-  const a = nodes.find((n) => n.id === beam.from);
-  const b = nodes.find((n) => n.id === beam.to);
+  const a = nodes.find((n2) => n2.id === beam.from);
+  const b = nodes.find((n2) => n2.id === beam.to);
   if (!a || !b) return null;
   const dx = b.x - a.x, dz = b.z - a.z;
   const L = Math.hypot(dx, dz);
@@ -18531,6 +18644,57 @@ function platDakBanden(e_m, d_m, randzoneF) {
   }
   return banden;
 }
+function analyseerHellendDak(dak) {
+  const graden = (a) => `${nl7(a, 1).replace("-", "\u2212")}\xB0`;
+  const stijging = (g) => {
+    const [xa, za, xb, zb] = g.x1 <= g.x2 ? [g.x1, g.z1, g.x2, g.z2] : [g.x2, g.z2, g.x1, g.z1];
+    return Math.atan2(zb - za, xb - xa) * 180 / Math.PI;
+  };
+  const TOL = 0.5, SPREIDING = 2;
+  const hellingen = dak.map((g) => Math.abs(stijging(g)));
+  const onbekend2 = (reden) => ({ vorm: null, alpha: Math.max(0, ...hellingen), xNok: null, hoogKant: null, reden });
+  if (dak.length === 0) return onbekend2("Er is geen staaf met belastingtype hellend dak.");
+  if (Math.max(...hellingen) - Math.min(...hellingen) > SPREIDING) {
+    return onbekend2(`De staven "hellend dak" hebben hellingen van ${graden(Math.min(...hellingen))} tot ${graden(Math.max(...hellingen))}. Tabel 7.3/7.4 gaat uit van \xE9\xE9n dakhelling \u03B1; een geknikt of ongelijk dak staat er niet in.`);
+  }
+  const alpha = Math.max(...hellingen);
+  const op = dak.filter((g) => stijging(g) > TOL);
+  const af = dak.filter((g) => stijging(g) < -TOL);
+  if (af.length === 0 && op.length > 0) return { vorm: "lessenaar", alpha, xNok: null, hoogKant: "rechts" };
+  if (op.length === 0 && af.length > 0) return { vorm: "lessenaar", alpha, xNok: null, hoogKant: "links" };
+  if (op.length === 0 && af.length === 0) return onbekend2('De staven "hellend dak" liggen vlak.');
+  const hoogste = (gs) => Math.max(...gs.flatMap((g) => [g.x1, g.x2]));
+  const laagste = (gs) => Math.min(...gs.flatMap((g) => [g.x1, g.x2]));
+  if (hoogste(op) <= laagste(af) + 1) {
+    return { vorm: "zadel", alpha, xNok: (hoogste(op) + laagste(af)) / 2, hoogKant: null };
+  }
+  if (hoogste(af) <= laagste(op) + 1) {
+    return { vorm: "zadel", alpha: -alpha, xNok: (hoogste(af) + laagste(op)) / 2, hoogKant: null };
+  }
+  return onbekend2('De staven "hellend dak" vormen geen lessenaarsdak (\xE9\xE9n kant op) en geen zadeldak (twee dakvlakken naar \xE9\xE9n nok of goot).');
+}
+function kiesCpe(cel, teken) {
+  const twee = cel.neg !== void 0 && cel.pos !== void 0;
+  if (!twee) return { cpe: cel.neg ?? cel.pos, teken: null };
+  const t = teken ?? "neg";
+  return { cpe: cel[t], teken: t };
+}
+function heeftTweeWaarden(opz, zones) {
+  return zones.some((z) => opz.zones[z]?.neg !== void 0 && opz.zones[z]?.pos !== void 0);
+}
+function deelInBand(g, xAccent, van, tot) {
+  const p1 = xAccent(g.x1), p2 = xAccent(g.x2);
+  const lo = Math.min(p1, p2), hi = Math.max(p1, p2);
+  if (hi - lo < 1e-9) return lo >= van && lo < tot ? { a: 0, b: 1, vol: true } : null;
+  const v = Math.max(lo, van), t = Math.min(hi, tot);
+  if (t - v <= 1e-9) return null;
+  const fracVan = p1 <= p2 ? (v - p1) / (p2 - p1) : (p1 - t) / (p1 - p2);
+  const fracTot = p1 <= p2 ? (t - p1) / (p2 - p1) : (p1 - v) / (p1 - p2);
+  const a = Math.max(0, Math.min(1, fracVan));
+  const b = Math.max(0, Math.min(1, fracTot));
+  if (b - a <= 1e-9) return null;
+  return { a, b, vol: a <= 1e-9 && b >= 1 - 1e-9 };
+}
 var WIND_COMBI_PREFIX = "Wind-gen \xB7 ";
 function genereerWindbelasting(model, inst) {
   const meldingen = [];
@@ -18544,13 +18708,13 @@ function genereerWindbelasting(model, inst) {
   }
   const geos = model.beams.map((b) => staafGeo(b, model.nodes)).filter((g) => g !== null).sort((a, b) => a.beam.id - b.beam.id);
   if (inst.vorm === "vrijstaandDak") return genereerVrijstaandDak(model, inst, geos, meldingen);
-  const zs = model.nodes.map((n) => n.z);
+  const zs = model.nodes.map((n2) => n2.z);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const modelhoogte_m = (maxZ - minZ) / 1e3;
   if (modelhoogte_m <= 0) return fout("De constructie heeft geen hoogte \u2014 wind is niet te bepalen.");
   const gevelL = geos.filter((g) => g.rol === "gevelLinks");
   const gevelR = geos.filter((g) => g.rol === "gevelRechts");
-  const xsAlles = model.nodes.map((n) => n.x);
+  const xsAlles = model.nodes.map((n2) => n2.x);
   const xLinks = gevelL.length > 0 ? Math.min(...gevelL.flatMap((g) => [g.x1, g.x2])) : Math.min(...xsAlles);
   const xRechts = gevelR.length > 0 ? Math.max(...gevelR.flatMap((g) => [g.x1, g.x2])) : Math.max(...xsAlles);
   const d_m = (xRechts - xLinks) / 1e3;
@@ -18559,6 +18723,26 @@ function genereerWindbelasting(model, inst) {
   const kapZonderGevel = !heeftGevels && inst.gevelhoogte_m !== null && inst.gevelhoogte_m > 0;
   const h_m = modelhoogte_m + (kapZonderGevel ? inst.gevelhoogte_m : 0);
   const heeftHellendDak = geos.some((g) => g.rol === "dakHellend");
+  const hellend = heeftHellendDak ? analyseerHellendDak(geos.filter((g) => g.rol === "dakHellend")) : null;
+  let hellendGeo;
+  if (hellend) {
+    const opzoeking = {};
+    if (hellend.vorm !== null) {
+      const vorm = hellend.vorm;
+      const thetaVan = (r) => vorm === "zadel" ? 0 : hellend.hoogKant === r ? 180 : 0;
+      opzoeking.links = hellendDakCpe(vorm, thetaVan("links"), hellend.alpha);
+      opzoeking.rechts = hellendDakCpe(vorm, thetaVan("rechts"), hellend.alpha);
+      opzoeking.haaks = hellendDakCpe(vorm, 90, hellend.alpha);
+    }
+    hellendGeo = {
+      vorm: hellend.vorm,
+      alpha_graden: hellend.alpha,
+      xNok_m: hellend.xNok !== null ? hellend.xNok / 1e3 : null,
+      hoogKant: hellend.hoogKant,
+      opzoeking,
+      ...hellend.reden ? { reden: hellend.reden } : {}
+    };
+  }
   geometrie = {
     h_m,
     modelhoogte_m,
@@ -18576,7 +18760,8 @@ function genereerWindbelasting(model, inst) {
       z1: g.z1 / 1e3,
       x2: g.x2 / 1e3,
       z2: g.z2 / 1e3
-    }))
+    })),
+    ...hellendGeo ? { hellendDak: hellendGeo } : {}
   };
   if (kapZonderGevel) {
     meldingen.push({
@@ -18595,15 +18780,19 @@ function genereerWindbelasting(model, inst) {
     return fout("Kies minstens \xE9\xE9n windrichting.");
   }
   const breedte_m = inst.belastingbreedteOverride_m !== null && inst.belastingbreedteOverride_m > 0 ? inst.belastingbreedteOverride_m : inst.positieSpant === "kopgevelspant" ? inst.hohSpant_m / 2 : inst.hohSpant_m;
+  const automatisch = (r) => heeftHellendDak && (r === "haaks" ? inst.cpeDakHaaks === null : inst.cpeDakLoef === null || inst.cpeDakLij === null);
   if (heeftHellendDak) {
-    if (inst.cpeDakLoef === null || inst.cpeDakLij === null) {
+    const nodig = [
+      ...inst.richtingLinks ? ["links"] : [],
+      ...inst.richtingRechts ? ["rechts"] : [],
+      ...inst.richtingHaaks ? ["haaks"] : []
+    ].filter(automatisch);
+    for (const r of nodig) {
+      const opz = hellendGeo?.opzoeking[r];
+      if (opz?.ok) continue;
+      const tabel = r === "haaks" ? "7.4b (of 7.3b)" : "7.4a (of 7.3a)";
       return fout(
-        "Er zijn staven met belastingtype \u201Chellend dak\u201D, maar de vormfactoren voor het loef- en lijdakvlak zijn niet ingevuld. Deze generator vult tabel 7.4a van NEN-EN 1991-1-4 niet zelf in: de waarden hangen af van de dakhelling en de windrichting. Lees c_pe,10 op in tabel 7.4a en vul beide velden in."
-      );
-    }
-    if (inst.richtingHaaks && inst.cpeDakHaaks === null) {
-      return fout(
-        "Wind haaks op het spant met een hellend dak vraagt de vormfactor uit NEN-EN 1991-1-4 tabel 7.4b (\u03B8 = 90\xB0). Vul die in, of zet de windrichting \u201Chaaks\u201D uit."
+        `Er zijn staven met belastingtype \u201Chellend dak\u201D, maar de vormfactoren zijn niet automatisch te bepalen: ${opz?.reden ?? hellendGeo?.reden ?? "de dakvorm is niet te herkennen."} Lees c_pe,10 zelf af in NEN-EN 1991-1-4 tabel ${tabel} en vul de velden in` + (r === "haaks" ? ", of zet de windrichting \u201Chaaks\u201D uit." : ".")
       );
     }
   }
@@ -18646,9 +18835,120 @@ function genereerWindbelasting(model, inst) {
     const toppen = dakGeos.flatMap((g) => [
       { x: g.x1, z: g.z1 },
       { x: g.x2, z: g.z2 }
-    ]).filter((p) => Math.abs(p.z - hoogsteZ) < 1);
-    if (toppen.length > 0) xNok = toppen.reduce((s, p) => s + p.x, 0) / toppen.length;
+    ]).filter((p2) => Math.abs(p2.z - hoogsteZ) < 1);
+    if (toppen.length > 0) xNok = toppen.reduce((s, p2) => s + p2.x, 0) / toppen.length;
   }
+  const hVorm = hellend?.vorm ?? null;
+  const hXNok = hellend?.xNok ?? null;
+  const yKop = inst.positieSpant === "kopgevelspant" ? 0 : inst.afstandTotKopgevel_m;
+  const randzoneFDak = inst.positieSpant === "kopgevelspant" || inst.afstandTotKopgevel_m <= e_inVlak / 4;
+  const mm = (m) => `${Math.round(m * 1e3)}`;
+  const tekenTxt = (v) => (v < 0 || Object.is(v, -0) ? "\u2212" : "+") + nl7(Math.abs(v), 2);
+  const rijTekst = (o) => o.rijOnder === o.rijBoven ? `rij \u03B1 = ${nl7(o.rijOnder, 0).replace("-", "\u2212")}\xB0` : `lineair tussen \u03B1 = ${nl7(o.rijOnder, 0).replace("-", "\u2212")}\xB0 en ${nl7(o.rijBoven, 0).replace("-", "\u2212")}\xB0`;
+  const graadTxt = (a) => `${nl7(a, 1).replace("-", "\u2212")}\xB0`;
+  const EEN_VARIANT = [{ code: "", naam: "", loef: null, lij: null }];
+  const dakVarianten = (r) => {
+    if (!automatisch(r) || r === "haaks" || r === "alle" || hVorm === null) return EEN_VARIANT;
+    const opz = hellendGeo.opzoeking[r];
+    const sgn = (t) => t === "neg" ? "\u2212" : "+";
+    const code = (t) => t === "neg" ? "-" : "+";
+    if (hVorm === "lessenaar") {
+      if (opz.theta !== 0 || inst.cpeDakLoef !== null || !heeftTweeWaarden(opz, ["F", "G", "H"])) return EEN_VARIANT;
+      return ["neg", "pos"].map((t) => ({ code: `dak${code(t)}`, naam: `dak ${sgn(t)}`, loef: t, lij: null }));
+    }
+    const loefOpties = inst.cpeDakLoef === null && heeftTweeWaarden(opz, ["F", "G", "H"]) ? ["neg", "pos"] : [null];
+    const lijOpties = inst.cpeDakLij === null && heeftTweeWaarden(opz, ["I", "J"]) ? ["neg", "pos"] : [null];
+    if (loefOpties.length === 1 && lijOpties.length === 1) return EEN_VARIANT;
+    const uit = [];
+    for (const loef of loefOpties) {
+      for (const lij of lijOpties) {
+        const delen = [...loef ? [`loef ${sgn(loef)}`] : [], ...lij ? [`lij ${sgn(lij)}`] : []];
+        uit.push({
+          code: `${loef ? `loef${code(loef)}` : ""}${lij ? `lij${code(lij)}` : ""}`,
+          naam: `dak ${delen.join(", ")}`,
+          loef,
+          lij
+        });
+      }
+    }
+    return uit;
+  };
+  const dakPlan = (r, v) => {
+    if (!automatisch(r) || r === "alle" || hVorm === null) return null;
+    const opz = hellendGeo.opzoeking[r];
+    const par = hellendDakParagraaf(hVorm);
+    const e = r === "haaks" ? e_haaks : e_inVlak;
+    const kop = `${par} tabel ${opz.tabel} (\u03B8 = ${opz.theta}\xB0, \u03B1 = ${graadTxt(hellend.alpha)}, ${rijTekst(opz)}), e = ${mm(e)} mm`;
+    const band = (van, tot, zone, teken, ref2) => {
+      const k = kiesCpe(opz.zones[zone], teken);
+      const naam = zone === "Fhoog" ? "F_hoog" : zone === "Flaag" ? "F_laag" : zone;
+      const vanT = Math.max(0, van), totT = Math.min(d_m, tot);
+      return {
+        van_m: van,
+        tot_m: tot,
+        zone: naam,
+        cpe: k.cpe,
+        bron: `${opz.bron}, zone ${naam}, ${rijTekst(opz)}` + (k.teken ? `, ${k.teken === "neg" ? "negatieve" : "positieve"} waarde (opmerking 1)` : ""),
+        omschrijving: `${kop}: zone ${naam} ${mm(vanT)}\u2013${mm(totT)} mm vanaf de ${ref2}, c_pe,10 = ${tekenTxt(k.cpe)}` + (k.teken ? ` (${k.teken === "neg" ? "negatieve" : "positieve"} waarde)` : "")
+      };
+    };
+    const hand = (van, tot, label, cpe) => ({
+      van_m: van,
+      tot_m: tot,
+      zone: label,
+      cpe,
+      bron: `NEN-EN 1991-1-4 tabel ${opz.tabel} (door de gebruiker ingevuld)`,
+      omschrijving: `${par} tabel ${opz.tabel} (\u03B8 = ${opz.theta}\xB0): ${label}, c_pe,10 = ${tekenTxt(cpe)} door de gebruiker ingevuld`
+    });
+    const INF = Number.POSITIVE_INFINITY;
+    if (r === "haaks") {
+      const xAccent2 = (xMm) => (xMm - xLinks) / 1e3;
+      const ref2 = "linkergevel";
+      if (yKop < e / 10) {
+        const links = hVorm === "lessenaar" ? hellend.hoogKant === "links" ? "Fhoog" : "Flaag" : "F";
+        const rechts = hVorm === "lessenaar" ? hellend.hoogKant === "rechts" ? "Fhoog" : "Flaag" : "F";
+        return {
+          xAccent: xAccent2,
+          banden: [
+            band(-INF, e / 4, links, null, ref2),
+            band(e / 4, d_m - e / 4, "G", null, ref2),
+            band(d_m - e / 4, INF, rechts, null, ref2)
+          ]
+        };
+      }
+      return { xAccent: xAccent2, banden: [band(-INF, INF, yKop < e / 2 ? "H" : "I", null, ref2)] };
+    }
+    const xAccent = (xMm) => r === "links" ? (xMm - xLinks) / 1e3 : (xRechts - xMm) / 1e3;
+    const ref = "loefgevel";
+    const rand = randzoneFDak ? "F" : "G";
+    if (hVorm === "lessenaar") {
+      const handwaarde = opz.theta === 0 ? inst.cpeDakLoef : inst.cpeDakLij;
+      if (handwaarde !== null) return { xAccent, banden: [hand(-INF, INF, opz.theta === 0 ? "loefdakvlak" : "lijdakvlak", handwaarde)] };
+      const g1 = Math.min(e / 10, d_m);
+      return {
+        xAccent,
+        banden: [
+          band(-INF, g1, rand, v.loef, ref),
+          ...d_m > g1 ? [band(g1, INF, "H", v.loef, ref)] : []
+        ].map((b, k, alle) => k === alle.length - 1 ? { ...b, tot_m: INF } : b)
+      };
+    }
+    const xn = xAccent(hXNok);
+    const banden = [];
+    if (inst.cpeDakLoef !== null) banden.push(hand(-INF, xn, "loefdakvlak", inst.cpeDakLoef));
+    else {
+      const g1 = Math.min(e / 10, xn);
+      banden.push(band(-INF, g1, rand, v.loef, ref));
+      if (xn > g1) banden.push(band(g1, xn, "H", v.loef, ref));
+    }
+    if (inst.cpeDakLij !== null) banden.push(hand(xn, INF, "lijdakvlak", inst.cpeDakLij));
+    else {
+      const j1 = Math.min(xn + e / 10, d_m);
+      banden.push(band(xn, j1 < d_m ? j1 : INF, "J", v.lij, ref));
+      if (j1 < d_m) banden.push(band(j1, INF, "I", v.lij, ref));
+    }
+    return { xAccent, banden };
+  };
   const cpiWaarden = inst.cpiKeuze === "beide" ? [...CPI_ONBEKEND] : inst.cpiKeuze === "plus" ? [0.2] : inst.cpiKeuze === "min" ? [-0.3] : [inst.cpiHandmatig];
   if (inst.cpiKeuze === "beide") {
     meldingen.push({ niveau: "info", tekst: `Inwendige druk: beide waarden \xB1. ${CPI_BRON}` });
@@ -18669,23 +18969,60 @@ function genereerWindbelasting(model, inst) {
       tekst: "Wind haaks op het spant belast het spant uitsluitend met ZUIGING op beide gevels (zones A/B/C, tabel 7.1) en op het dak. De zone-indeling loopt daarbij in de lengterichting van het gebouw; de generator houdt per vlak de ongunstigste zone aan die het spant raakt en verdeelt niet verder over de spanwijdte. Dat is de veilige kant, maar grover dan de norm."
     });
   }
+  if (hellend && hVorm !== null) {
+    const vormNaam = hVorm === "lessenaar" ? "lessenaarsdak" : hellend.alpha < 0 ? "zadeldak met een goot in het midden (\u03B1 < 0)" : "zadeldak";
+    let eenmaal = false;
+    for (const r of richtingen) {
+      if (!automatisch(r)) continue;
+      const opz = hellendGeo.opzoeking[r];
+      const varianten = dakVarianten(r);
+      const plan = dakPlan(r, varianten[0]);
+      const e = r === "haaks" ? e_haaks : e_inVlak;
+      const bLoodrecht = r === "haaks" ? d_m : inst.gebouwlengte_m;
+      const cel = (z) => {
+        const c = opz.zones[z];
+        return [c.neg, c.pos].filter((v) => v !== void 0).map(tekenTxt).join(" / ");
+      };
+      const naamZone = (z) => z === "Fhoog" ? "F_hoog" : z === "Flaag" ? "F_laag" : z;
+      const zones = plan.banden.map((b) => `${b.zone} ${mm(Math.max(0, b.van_m))}\u2013${mm(Math.min(d_m, b.tot_m))} mm`);
+      const hand = r === "haaks" ? [] : [
+        ...inst.cpeDakLoef !== null ? [`c_pe loef = ${tekenTxt(inst.cpeDakLoef)}`] : [],
+        ...inst.cpeDakLij !== null ? [`c_pe lij = ${tekenTxt(inst.cpeDakLij)}`] : []
+      ];
+      meldingen.push({
+        niveau: "info",
+        tekst: `Hellend dak, ${RICHTING_LABEL[r]}: ${vormNaam}, \u03B1 = ${graadTxt(hellend.alpha)}; ${opz.bron}, ${rijTekst(opz)}${opz.rijOnder !== opz.rijBoven ? " (tussen waarden met hetzelfde teken, opmerking 2)" : ""}. c_pe,10: ${Object.keys(opz.zones).map((z) => `${naamZone(z)} ${cel(z)}`).join("; ")}. e = min(b; 2h) = min(${nl7(bLoodrecht, 2)}; ${nl7(2 * h_m, 2)}) = ${nl7(e, 2)} m. ` + (r === "haaks" ? `Spant op y = ${mm(yKop)} mm van de kopgevel (${yKop < e / 10 ? `binnen e/10 = ${mm(e / 10)} mm` : yKop < e / 2 ? `tussen e/10 en e/2 = ${mm(e / 2)} mm` : `voorbij e/2 = ${mm(e / 2)} mm`}); zones vanaf de linkergevel: ${zones.join(", ")}.` : `Zones vanaf de loefgevel: ${zones.join(", ")}${randzoneFDak ? " (F: het spant ligt binnen e/4 van de kopgevel)" : " (G: het spant ligt verder dan e/4 van de kopgevel)"}.`) + (hand.length > 0 ? ` Door de gebruiker ingevuld en voor de tabel gaand, over het hele dakvlak: ${hand.join(", ")}.` : "") + (varianten.length > 1 ? ` De tabel geeft hier positieve en negatieve waarden (opmerking 1): ${varianten.length} gevallen per c_pi (${varianten.map((v) => v.naam).join("; ")}), nooit beide tekens op \xE9\xE9n vlak.` : "") + (eenmaal ? "" : " Gebruikt is c_pe,10: een spant belast per dakvlak meer dan 10 m\xB2 (\xA77.2.1(1)); kleinere vlakken staan in een aparte waarschuwing.")
+      });
+      eenmaal = true;
+      for (const v of opz.vervallen) {
+        meldingen.push({
+          niveau: "waarschuwing",
+          tekst: `Hellend dak, ${RICHTING_LABEL[r]}: zone ${naamZone(v.zone)} heeft in tabel ${opz.tabel} alleen in \xE9\xE9n van de rijen \u03B1 = ${nl7(opz.rijOnder, 0)}\xB0 en ${nl7(opz.rijBoven, 0)}\xB0 een ${v.teken === "neg" ? "negatieve" : "positieve"} waarde. Interpoleren mag alleen tussen waarden met hetzelfde teken (opmerking 2); die waarde is tussen de rijen niet gebruikt.`
+        });
+      }
+    }
+  }
   const gevallen = [];
   const lasten = [];
   const perGeval = [];
   let zoneIGebruikt = false;
   let kleinOppervlak = false;
   for (const richting2 of richtingen) {
-    for (const cpi of cpiWaarden) {
-      const sleutel = `wind:${richting2}:cpi${cpi >= 0 ? "+" : ""}${cpi.toFixed(2)}`;
-      const naam = `Wind ${RICHTING_LABEL[richting2].replace("wind ", "")} (c_pi = ${nl7(cpi, 2)})`;
+    const varianten = dakVarianten(richting2);
+    for (const [cpi, variant] of cpiWaarden.flatMap((c) => varianten.map((v) => [c, v]))) {
+      const basisSleutel2 = `wind:${richting2}:cpi${cpi >= 0 ? "+" : ""}${cpi.toFixed(2)}`;
+      const basisNaam = `Wind ${RICHTING_LABEL[richting2].replace("wind ", "")} (c_pi = ${nl7(cpi, 2)})`;
+      const sleutel = variant.code ? `${basisSleutel2}:${variant.code}` : basisSleutel2;
+      const naam = variant.naam ? `${basisNaam}, ${variant.naam}` : basisNaam;
       gevallen.push({ sleutel, naam, richting: richting2, cpi });
       const regels = [];
+      const plan = dakPlan(richting2, variant);
       for (const g of geos) {
         const opp_m2 = breedte_m * (g.L_mm / 1e3);
         if (opp_m2 < CPE10_MIN_OPPERVLAK_M2 && g.rol !== "vloer" && g.rol !== "binnen") {
           kleinOppervlak = true;
         }
-        const push = (zone, cpe, bron, nx, nz, cpiHier, startFrac, endFrac) => {
+        const push = (zone, cpe, bron, nx, nz, cpiHier, startFrac, endFrac, omschrijving) => {
           const w = stuwdruk.qp_kNm2 * (cpe - cpiHier);
           const q = drukNaarLokaleLijnlast(w, breedte_m, g, nx, nz);
           const deel = startFrac !== void 0 ? ` (${nl7(startFrac, 2)}\u2013${nl7(endFrac ?? 1, 2)} van de staaf)` : "";
@@ -18706,7 +19043,11 @@ function genereerWindbelasting(model, inst) {
             beamId: g.beam.id,
             q,
             ...startFrac !== void 0 ? { startFrac, endFrac } : {},
-            toelichting: `Staaf ${g.beam.id}, zone ${zone}${deel}: c_pe = ${nl7(cpe, 2)}, c_pi = ${nl7(cpiHier, 2)}, w = ${nl7(stuwdruk.qp_kNm2, 3)}\xB7(${nl7(cpe, 2)} \u2212 ${nl7(cpiHier, 2)}) = ${nl7(w, 3)} kN/m\xB2, q = w\xB7${nl7(breedte_m, 2)} m = ${nl7(Math.abs(q), 3)} kN/m`
+            toelichting: `Staaf ${g.beam.id}, zone ${zone}${deel}: c_pe = ${nl7(cpe, 2)}, c_pi = ${nl7(cpiHier, 2)}, w = ${nl7(stuwdruk.qp_kNm2, 3)}\xB7(${nl7(cpe, 2)} \u2212 ${nl7(cpiHier, 2)}) = ${nl7(w, 3)} kN/m\xB2, q = w\xB7${nl7(breedte_m, 2)} m = ${nl7(Math.abs(q), 3)} kN/m`,
+            // Alleen bij een hellend dak met automatische c_pe (issue #49):
+            // tabel, α, e, zone en grenzen voor de uitgangspunten. Alle andere
+            // gebouwlasten dragen hem niet, zodat hun uitvoer ongewijzigd blijft.
+            ...omschrijving !== void 0 ? { omschrijving } : {}
           });
         };
         if (g.rol === "gevelLinks" || g.rol === "gevelRechts") {
@@ -18733,15 +19074,40 @@ function genereerWindbelasting(model, inst) {
           continue;
         }
         if (g.rol === "dakPlat" || g.rol === "dakHellend") {
-          const n = dakNormaal(g);
+          const n2 = dakNormaal(g);
+          if (g.rol === "dakHellend" && plan) {
+            for (const b of plan.banden) {
+              const d = deelInBand(g, plan.xAccent, b.van_m, b.tot_m);
+              if (!d) continue;
+              push(
+                b.zone,
+                b.cpe,
+                b.bron,
+                n2.nx,
+                n2.nz,
+                cpi,
+                d.vol ? void 0 : d.a,
+                d.vol ? void 0 : d.b,
+                b.omschrijving
+              );
+            }
+            continue;
+          }
           if (richting2 === "haaks") {
             if (g.rol === "dakHellend") {
-              push("dak \u03B8=90\xB0", inst.cpeDakHaaks, "NEN-EN 1991-1-4 tabel 7.4b (door de gebruiker ingevuld)", n.nx, n.nz, cpi);
+              push(
+                "dak \u03B8=90\xB0",
+                inst.cpeDakHaaks,
+                `NEN-EN 1991-1-4 tabel ${hVorm === "lessenaar" ? "7.3b" : "7.4b"} (door de gebruiker ingevuld)`,
+                n2.nx,
+                n2.nz,
+                cpi
+              );
             } else {
               const y = inst.afstandTotKopgevel_m;
               const zone = y < e_haaks / 10 ? "F" : y < e_haaks / 2 ? "H" : "I";
               if (zone === "I") zoneIGebruikt = true;
-              push(zone, CPE_PLAT_DAK[zone], CPE_PLAT_DAK_BRON, n.nx, n.nz, cpi);
+              push(zone, CPE_PLAT_DAK[zone], CPE_PLAT_DAK_BRON, n2.nx, n2.nz, cpi);
             }
             continue;
           }
@@ -18753,9 +19119,9 @@ function genereerWindbelasting(model, inst) {
             push(
               loef ? "loefdakvlak" : "lijdakvlak",
               cpe,
-              "NEN-EN 1991-1-4 tabel 7.4a (door de gebruiker ingevuld)",
-              n.nx,
-              n.nz,
+              `NEN-EN 1991-1-4 tabel ${hVorm === "lessenaar" ? "7.3a" : "7.4a"} (door de gebruiker ingevuld)`,
+              n2.nx,
+              n2.nz,
               cpi
             );
             continue;
@@ -18768,7 +19134,7 @@ function genereerWindbelasting(model, inst) {
           if (hi - lo < 1e-9) {
             const zone = banden.find((b) => lo >= b.van_m && lo <= b.tot_m)?.zone ?? "H";
             if (zone === "I") zoneIGebruikt = true;
-            push(zone, CPE_PLAT_DAK[zone], CPE_PLAT_DAK_BRON, n.nx, n.nz, cpi);
+            push(zone, CPE_PLAT_DAK[zone], CPE_PLAT_DAK_BRON, n2.nx, n2.nz, cpi);
             continue;
           }
           for (const band of banden) {
@@ -18785,8 +19151,8 @@ function genereerWindbelasting(model, inst) {
               band.zone,
               CPE_PLAT_DAK[band.zone],
               CPE_PLAT_DAK_BRON,
-              n.nx,
-              n.nz,
+              n2.nx,
+              n2.nz,
               cpi,
               vol ? void 0 : a,
               vol ? void 0 : b
@@ -18795,10 +19161,22 @@ function genereerWindbelasting(model, inst) {
           continue;
         }
         if (g.rol === "overstek") {
-          const n = dakNormaal(g);
+          const n2 = dakNormaal(g);
           const midX = (g.x1 + g.x2) / 2;
           let cpeBoven, zoneBoven, bronBoven;
-          if (g.helling > 5 && heeftHellendDak) {
+          let omschrijvingBoven;
+          if (g.helling > 5 && heeftHellendDak && plan) {
+            const xAcc = plan.xAccent(midX);
+            const b = plan.banden.find((z) => xAcc >= z.van_m && xAcc < z.tot_m) ?? plan.banden[plan.banden.length - 1];
+            cpeBoven = b.cpe;
+            zoneBoven = b.zone;
+            bronBoven = b.bron;
+            omschrijvingBoven = b.omschrijving;
+          } else if (g.helling > 5 && heeftHellendDak && richting2 === "haaks" && inst.cpeDakLij === null) {
+            cpeBoven = inst.cpeDakHaaks;
+            zoneBoven = "dak \u03B8=90\xB0";
+            bronBoven = `NEN-EN 1991-1-4 tabel ${hVorm === "lessenaar" ? "7.3b" : "7.4b"} (door de gebruiker ingevuld)`;
+          } else if (g.helling > 5 && heeftHellendDak) {
             const linkervlak = midX < xNok;
             const loef = richting2 === "links" && linkervlak || richting2 === "rechts" && !linkervlak;
             cpeBoven = loef ? inst.cpeDakLoef : inst.cpeDakLij;
@@ -18837,9 +19215,12 @@ function genereerWindbelasting(model, inst) {
             `overstek ${zoneBoven} boven / ${zoneOnder} onder`,
             cpeBoven - cpeOnder,
             `NEN-EN 1991-1-4 \xA77.2.6 (onderzijde = wanddruk) met ${bronBoven}`,
-            n.nx,
-            n.nz,
-            0
+            n2.nx,
+            n2.nz,
+            0,
+            void 0,
+            void 0,
+            omschrijvingBoven !== void 0 ? `${omschrijvingBoven} (bovenzijde overstek); onderzijde zone ${zoneOnder} (tabel 7.1), c_pe,10 = ${tekenTxt(cpeOnder)}` : void 0
           );
           continue;
         }
@@ -18894,6 +19275,19 @@ function vrijstaandDakUitgangspunten(loadCases, loads) {
   }
   return regels.join("\n");
 }
+var HELLEND_DAK_OMSCHRIJVING = /^§7\.2\.[45] tabel 7\.[34][ab] /;
+function hellendDakUitgangspunten(loadCases, loads) {
+  const regels = [];
+  for (const c of loadCases) {
+    if (c.gegenereerd?.bron !== "wind" || c.gegenereerd.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX)) continue;
+    const teksten = [...new Set(loads.filter((l) => l.caseId === c.id && l.gegenereerdDoor === "wind" && HELLEND_DAK_OMSCHRIJVING.test(l.omschrijving ?? "")).map((l) => l.omschrijving.trim()))];
+    if (teksten.length > 0) regels.push(`${c.name}: ${teksten.join("; ")}`);
+  }
+  return regels.length > 0 ? [HELLEND_DAK_UITGANGSPUNT, ...regels].join("\n") : "";
+}
+function windUitgangspunten(loadCases, loads) {
+  return [vrijstaandDakUitgangspunten(loadCases, loads), hellendDakUitgangspunten(loadCases, loads)].filter((t) => t !== "").join("\n");
+}
 function genereerVrijstaandDak(model, inst, geos, meldingen) {
   let geometrie = null;
   const fout = (tekst) => {
@@ -18927,7 +19321,7 @@ function genereerVrijstaandDak(model, inst, geos, meldingen) {
   const xR = Math.max(...dak.flatMap((g) => [g.x1, g.x2]));
   const d_m = (xR - xL) / 1e3;
   if (d_m <= 0) return fout("Het dak heeft geen breedte \u2014 wind is niet te bepalen.");
-  const zs = model.nodes.map((n) => n.z);
+  const zs = model.nodes.map((n2) => n2.z);
   const minZ = Math.min(...zs), maxZ = Math.max(...zs);
   const modelhoogte_m = (maxZ - minZ) / 1e3;
   const stijging = (g) => {
@@ -18956,11 +19350,11 @@ function genereerVrijstaandDak(model, inst, geos, meldingen) {
     alpha = Math.max(...hellingen);
   } else {
     const punten = dak.flatMap((g) => [{ x: g.x1, z: g.z1 }, { x: g.x2, z: g.z2 }]);
-    const zTop = Math.max(...punten.map((p) => p.z));
-    const zBodem = Math.min(...punten.map((p) => p.z));
-    const gemX = (ps) => ps.reduce((s, p) => s + p.x, 0) / ps.length;
-    const xTop = gemX(punten.filter((p) => Math.abs(p.z - zTop) < 1));
-    const xBodem = gemX(punten.filter((p) => Math.abs(p.z - zBodem) < 1));
+    const zTop = Math.max(...punten.map((p2) => p2.z));
+    const zBodem = Math.min(...punten.map((p2) => p2.z));
+    const gemX = (ps) => ps.reduce((s, p2) => s + p2.x, 0) / ps.length;
+    const xTop = gemX(punten.filter((p2) => Math.abs(p2.z - zTop) < 1));
+    const xBodem = gemX(punten.filter((p2) => Math.abs(p2.z - zBodem) < 1));
     const rand = (xR - xL) * 0.05;
     const vlakken = (x) => ({
       links: dak.filter((g) => midX(g) < x),
@@ -19012,7 +19406,7 @@ function genereerVrijstaandDak(model, inst, geos, meldingen) {
     xL + d_mm / 10,
     xR - d_mm / 10,
     ...xNok !== null ? [xNok - d_mm / 10, xNok + d_mm / 10] : []
-  ].filter((x) => x >= xL && x <= xR))].sort((p, q) => p - q);
+  ].filter((x) => x >= xL && x <= xR))].sort((p2, q) => p2 - q);
   const zones = [];
   for (let k = 0; k < grenzen.length - 1; k++) {
     if (grenzen[k + 1] - grenzen[k] < 1e-6) continue;
@@ -19181,9 +19575,9 @@ function genereerVrijstaandDak(model, inst, geos, meldingen) {
       if (!fr) continue;
       const [a, b] = fr;
       const vol = a <= 1e-9 && b >= 1 - 1e-9;
-      const n = dakNormaal(s.g);
+      const n2 = dakNormaal(s.g);
       const w = qp * s.c * s.factor;
-      const q = drukNaarLokaleLijnlast(w, breedte_m, s.g, n.nx, n.nz);
+      const q = drukNaarLokaleLijnlast(w, breedte_m, s.g, n2.nx, n2.nz);
       const deelTekst = vol ? "" : ` (${nl7(a, 2)}\u2013${nl7(b, 2)} van de staaf)`;
       regels.push({
         beamId: s.g.beam.id,
@@ -19215,7 +19609,7 @@ function genereerVrijstaandDak(model, inst, geos, meldingen) {
         omschrijving: s.omschrijving
       });
     }
-    const resultanten = [...res.values()].filter((r) => Math.abs(r.F) > 1e-12).map((r) => ({ x_m: r.Fx / r.F, z_m: r.Fz / r.F, F_kN: r.F })).sort((p, q) => p.x_m - q.x_m);
+    const resultanten = [...res.values()].filter((r) => Math.abs(r.F) > 1e-12).map((r) => ({ x_m: r.Fx / r.F, z_m: r.Fz / r.F, F_kN: r.F })).sort((p2, q) => p2.x_m - q.x_m);
     perGeval.push({
       sleutel,
       naam,
@@ -19577,7 +19971,7 @@ function handtekeningVanGeneratie(gevallen, lasten, combinaties) {
   const r = (v) => Number(v.toPrecision(12)).toString();
   const g = gevallen.map((c2) => `${c2.sleutel}|${c2.naam}`).join(";");
   const l = lasten.map((x) => `${x.gevalSleutel}|${x.beamId}|${r(x.q)}|${x.startFrac !== void 0 ? r(x.startFrac) : "-"}|${x.endFrac !== void 0 ? r(x.endFrac) : "-"}${x.omschrijving !== void 0 ? `|${x.omschrijving}` : ""}${x.richting !== void 0 ? `|${x.richting}` : ""}`).join(";");
-  const c = combinaties.map((x) => `${x.naam}|${x.type}|${[x.windSleutel, ...x.windMeeSleutels ?? []].sort().join("+")}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p, q) => p[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`).join(";");
+  const c = combinaties.map((x) => `${x.naam}|${x.type}|${[x.windSleutel, ...x.windMeeSleutels ?? []].sort().join("+")}|${r(x.windFactor)}|${[...x.factorenPerCaseId].sort((p2, q) => p2[0] - q[0]).map(([id, f]) => `${id}:${r(f)}`).join(",")}`).join(";");
   return `G[${g}]L[${l}]C[${c}]`;
 }
 function handtekeningVanModel(loadCases, loads, combinaties) {
@@ -19591,10 +19985,11 @@ function handtekeningVanModel(loadCases, loads, combinaties) {
     startFrac: l.startFrac,
     endFrac: l.endFrac,
     toelichting: "",
-    // Alleen bij de gevallen van een vrijstaand dak — daar schrijft de
-    // generator zelf een omschrijving; een omschrijving die de gebruiker bij
-    // een gegenereerde gebouwlast zette, verandert de handtekening niet.
-    ...l.omschrijving !== void 0 && (sleutelVanId.get(l.caseId) ?? "").startsWith(VRIJSTAAND_SLEUTEL_PREFIX) ? { omschrijving: l.omschrijving } : {},
+    // Alleen bij de gevallen van een vrijstaand dak en bij de automatische
+    // c_pe van een hellend dak (issue #49) — daar schrijft de generator zelf
+    // een omschrijving; een andere omschrijving die de gebruiker bij een
+    // gegenereerde gebouwlast zette, verandert de handtekening niet.
+    ...l.omschrijving !== void 0 && ((sleutelVanId.get(l.caseId) ?? "").startsWith(VRIJSTAAND_SLEUTEL_PREFIX) || HELLEND_DAK_OMSCHRIJVING.test(l.omschrijving)) ? { omschrijving: l.omschrijving } : {},
     // Een axiale windlast (wrijving langs het dak) is een andere last dan
     // een loodrechte met hetzelfde getal.
     ...l.qDir === "x" ? { richting: "axiaal" } : {}
@@ -19652,16 +20047,16 @@ function standaardBelastinggevallen() {
 }
 var EIGEN_GEWICHT_STANDAARD_AAN = true;
 var STANDAARD_ACTIEF_GEVAL_ID = 1;
-function eigenGewichtNaGevalWijziging(p) {
-  if (!p.selfWeightEnabled) return null;
-  const voor = eigenGewichtDoel(p.voor);
+function eigenGewichtNaGevalWijziging(p2) {
+  if (!p2.selfWeightEnabled) return null;
+  const voor = eigenGewichtDoel(p2.voor);
   if (voor.soort !== "kenmerk") return null;
-  if (eigenGewichtDoel(p.na).soort === "kenmerk") return null;
-  const staatErNog = p.na.some((c) => c.id === voor.geval.id);
+  if (eigenGewichtDoel(p2.na).soort === "kenmerk") return null;
+  const staatErNog = p2.na.some((c) => c.id === voor.geval.id);
   return { uitzetten: true, reden: staatErNog ? "typeGewijzigd" : "verwijderd", geval: voor.geval };
 }
-function eigenGewichtAanbodVanToepassing(p) {
-  return p.selfWeightEnabled === true && eigenGewichtDoel(p.loadCases).soort === "eersteBlijvend";
+function eigenGewichtAanbodVanToepassing(p2) {
+  return p2.selfWeightEnabled === true && eigenGewichtDoel(p2.loadCases).soort === "eersteBlijvend";
 }
 
 // src/lib/combinatieBeheer.ts
@@ -19758,12 +20153,12 @@ function bijlageUitKenmerk(combinations) {
   );
   return bijlagen.size === 1 ? [...bijlagen][0] : null;
 }
-function gevolgklasseBijOpenen(p) {
-  if (p.bestand) return { klasse: p.bestand, bron: "bestand" };
-  if (p.verzoek) return { klasse: p.verzoek, bron: "verzoek" };
-  const kenmerk = klasseUitKenmerk(p.combinations);
+function gevolgklasseBijOpenen(p2) {
+  if (p2.bestand) return { klasse: p2.bestand, bron: "bestand" };
+  if (p2.verzoek) return { klasse: p2.verzoek, bron: "verzoek" };
+  const kenmerk = klasseUitKenmerk(p2.combinations);
   if (kenmerk) return { klasse: kenmerk, bron: "kenmerk" };
-  return { klasse: p.terugval, bron: "terugval" };
+  return { klasse: p2.terugval, bron: "terugval" };
 }
 function windCombinatiesVoor(loadCases, gevolgklasse, bijlage = STANDAARD_BIJLAGE) {
   const wind = loadCases.filter((c) => c.gegenereerd?.bron === "wind");
@@ -19876,8 +20271,8 @@ function vervangVerouderdeCombinaties(staat) {
     volgend.combinations.filter((c) => c.standaard !== void 0).map((c) => [c.id, c])
   );
   const bijgewerkt = metKenmerk.filter((c) => {
-    const n = naStandaard.get(c.id);
-    return !n || !gelijkeInhoud(c, n);
+    const n2 = naStandaard.get(c.id);
+    return !n2 || !gelijkeInhoud(c, n2);
   });
   const windVoor = staat.combinations.filter(isWindgeneratorCombinatie);
   const windNa = volgend.combinations.filter(isWindgeneratorCombinatie);
@@ -19910,40 +20305,40 @@ function herstelCombinaties(staat, voor) {
     volgendCombinatieId: Math.max(staat.volgendCombinatieId, volgendVrijId(combinations, 1))
   };
 }
-function openCombinatieStaat(p) {
-  const gevalTeller = volgendVrijId(p.loadCases, p.idTellers?.belastinggeval ?? 1);
-  const bijlage = p.bijlage ?? STANDAARD_BIJLAGE;
-  if (!p.combinations) {
-    const combinations = defaultCombinations(p.loadCases, p.gevolgklasse, bijlage);
+function openCombinatieStaat(p2) {
+  const gevalTeller = volgendVrijId(p2.loadCases, p2.idTellers?.belastinggeval ?? 1);
+  const bijlage = p2.bijlage ?? STANDAARD_BIJLAGE;
+  if (!p2.combinations) {
+    const combinations = defaultCombinations(p2.loadCases, p2.gevolgklasse, bijlage);
     return {
       staat: {
-        loadCases: p.loadCases,
+        loadCases: p2.loadCases,
         combinations,
-        gevolgklasse: p.gevolgklasse,
+        gevolgklasse: p2.gevolgklasse,
         bijlage,
         volgendGevalId: gevalTeller,
-        volgendCombinatieId: volgendVrijId(combinations, p.idTellers?.combinatie ?? 1)
+        volgendCombinatieId: volgendVrijId(combinations, p2.idTellers?.combinatie ?? 1)
       },
       afwijking: null,
       vervanging: null
     };
   }
-  const { combinaties, wees } = verwijderWeesFactoren(p.combinations, p.loadCases);
-  const hoogsteFactorSleutel = p.combinations.flatMap((c) => [...c.factors.keys()]).filter((id) => Number.isFinite(id)).reduce((m, id) => Math.max(m, id), 0);
+  const { combinaties, wees } = verwijderWeesFactoren(p2.combinations, p2.loadCases);
+  const hoogsteFactorSleutel = p2.combinations.flatMap((c) => [...c.factors.keys()]).filter((id) => Number.isFinite(id)).reduce((m, id) => Math.max(m, id), 0);
   const { staat, vervanging } = vervangVerouderdeCombinaties({
-    loadCases: p.loadCases,
+    loadCases: p2.loadCases,
     combinations: combinaties,
-    gevolgklasse: p.gevolgklasse,
+    gevolgklasse: p2.gevolgklasse,
     bijlage,
     volgendGevalId: Math.max(gevalTeller, hoogsteFactorSleutel + 1),
-    volgendCombinatieId: volgendVrijId(combinaties, p.idTellers?.combinatie ?? 1)
+    volgendCombinatieId: volgendVrijId(combinaties, p2.idTellers?.combinatie ?? 1)
   });
   return {
     staat,
     vervanging,
     afwijking: beoordeelCombinatiesBijOpenen({
       combinations: staat.combinations,
-      loadCases: p.loadCases,
+      loadCases: p2.loadCases,
       weesFactoren: wees
     })
   };
@@ -19960,9 +20355,9 @@ function synchroniseerStandaard(staat, vorig) {
   const eigen = [];
   for (const c of staat.combinations) {
     if (c.standaard) {
-      const n = nieuwPerSleutel.get(c.standaard.sleutel);
-      if (!n || aanwezig.has(c.standaard.sleutel)) continue;
-      const bijgewerkt = { ...n, id: c.id };
+      const n2 = nieuwPerSleutel.get(c.standaard.sleutel);
+      if (!n2 || aanwezig.has(c.standaard.sleutel)) continue;
+      const bijgewerkt = { ...n2, id: c.id };
       aanwezig.set(c.standaard.sleutel, gelijkeCombinatie(c, bijgewerkt) ? c : bijgewerkt);
     } else {
       eigen.push(zonderOnbekendeGevallen(c, geldigeIds));
@@ -19970,15 +20365,15 @@ function synchroniseerStandaard(staat, vorig) {
   }
   const volledigInSet = /* @__PURE__ */ new Set();
   const volledigInLijst = /* @__PURE__ */ new Set();
-  for (const n of nieuweSet) {
-    const s = n.standaard.sleutel;
+  for (const n2 of nieuweSet) {
+    const s = n2.standaard.sleutel;
     if (basisSleutel(s) !== s) continue;
     volledigInSet.add(s);
     if (aanwezig.has(s) || !vorigeSleutels.has(s)) volledigInLijst.add(s);
   }
   const standaard = [];
-  for (const n of nieuweSet) {
-    const s = n.standaard.sleutel;
+  for (const n2 of nieuweSet) {
+    const s = n2.standaard.sleutel;
     const bestaand = aanwezig.get(s);
     if (bestaand) {
       standaard.push(bestaand);
@@ -19987,7 +20382,7 @@ function synchroniseerStandaard(staat, vorig) {
     if (vorigeSleutels.has(s)) continue;
     const basis = basisSleutel(s);
     if (basis !== s && volledigInSet.has(basis) && !volledigInLijst.has(basis)) continue;
-    standaard.push({ ...n, id: volgendId++ });
+    standaard.push({ ...n2, id: volgendId++ });
   }
   const combinations = [...standaard, ...eigen];
   return synchroniseerWindCombinaties({
@@ -20048,7 +20443,7 @@ function verplaatsEigenGewichtNaarEigenGeval(staat) {
 function vrijeNaam(gevallen, naam) {
   const bezet = new Set(gevallen.map((c) => c.name));
   if (!bezet.has(naam)) return naam;
-  for (let n = 2; ; n++) if (!bezet.has(`${naam} (${n})`)) return `${naam} (${n})`;
+  for (let n2 = 2; ; n2++) if (!bezet.has(`${naam} (${n2})`)) return `${naam} (${n2})`;
 }
 function verwijderBelastinggeval(staat, id) {
   if (!staat.loadCases.some((c) => c.id === id)) return staat;
@@ -20122,17 +20517,17 @@ function isAfgeleidVanStandaard(c) {
   if (isWindgeneratorCombinatie(c)) return false;
   return c.standaard !== void 0 || Object.values(PSI_BRON).some((b) => c.formula.includes(b));
 }
-function ontbrekendeStandaardcombinaties(p) {
-  const gevuld = p.gevuld ?? (() => true);
+function ontbrekendeStandaardcombinaties(p2) {
+  const gevuld = p2.gevuld ?? (() => true);
   const inhoud = (factors) => [...factors].filter(([id, f]) => f !== 0 && gevuld(id)).sort((a, b) => a[0] - b[0]).map(([id, f]) => `${id}:${Math.round(f * 1e9) / 1e9}`).join(",");
   const soortDeel = (type, soort) => type === "sls" ? soort ?? "?" : "";
   const aanwezig = new Set(
-    p.combinations.map((c) => `${c.type}|${soortDeel(c.type, soortVanCombinatie(c))}|${inhoud(c.factors)}`)
+    p2.combinations.map((c) => `${c.type}|${soortDeel(c.type, soortVanCombinatie(c))}|${inhoud(c.factors)}`)
   );
-  return genereerStandaardCombinaties(p.loadCases, p.gevolgklasse, p.bijlage).filter((n) => {
-    const eigen = inhoud(n.factors);
+  return genereerStandaardCombinaties(p2.loadCases, p2.gevolgklasse, p2.bijlage).filter((n2) => {
+    const eigen = inhoud(n2.factors);
     if (eigen === "") return false;
-    return !aanwezig.has(`${n.type}|${soortDeel(n.type, n.standaard.soort)}|${eigen}`);
+    return !aanwezig.has(`${n2.type}|${soortDeel(n2.type, n2.standaard.soort)}|${eigen}`);
   });
 }
 function tekstOntbrekend(ontbrekend, klasse) {
@@ -20140,10 +20535,10 @@ function tekstOntbrekend(ontbrekend, klasse) {
   const namen = ontbrekend.slice(0, MAX).map((c) => `"${c.name}" (${c.formula.split("   [")[0]})`).join(", ") + (ontbrekend.length > MAX ? ` en nog ${ontbrekend.length - MAX}` : "");
   return `${ontbrekend.length} standaardcombinatie(s) ontbreken, dus de omhullende kan te laag zijn. Ze horen bij deze belastinggevallen en ${klasse}, en geen andere combinatie in dit project heeft dezelfde factoren voor de gevallen met last: ${namen}. Een combinatieset die een deel van de standaardset mist, geeft een lagere omhullende zonder dat een getal dat verraadt. Dat gebeurt als een standaardcombinatie is verwijderd, hernoemd of aangepast \u2014 dan is ze een eigen combinatie en volgt ze de belastinggevallen niet meer \u2014 en er daarna een belastinggeval bij kwam of van type of categorie veranderde. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of voeg de ontbrekende combinaties als eigen combinatie toe.`;
 }
-function veranderlijkeFactorVerschillen(p) {
-  const gevuld = p.gevuld ?? (() => true);
+function veranderlijkeFactorVerschillen(p2) {
+  const gevuld = p2.gevuld ?? (() => true);
   const groepen = /* @__PURE__ */ new Map();
-  for (const c of p.loadCases) {
+  for (const c of p2.loadCases) {
     if (c.type !== "live" || c.gegenereerd?.bron === "wind" || !gevuld(c.id)) continue;
     const cat = c.categorie ?? STANDAARD_CATEGORIE;
     groepen.set(cat, [...groepen.get(cat) ?? [], c.id]);
@@ -20152,7 +20547,7 @@ function veranderlijkeFactorVerschillen(p) {
   for (const [categorie, ids] of groepen) {
     if (ids.length < 2) continue;
     const combinaties = [];
-    for (const c of p.combinations) {
+    for (const c of p2.combinations) {
       const factoren = ids.map((id) => [id, c.factors.get(id) ?? 0]).filter(([, f]) => f !== 0);
       if (new Set(factoren.map(([, f]) => Math.round(f * 1e9) / 1e9)).size > 1) {
         combinaties.push({ combinatieId: c.id, naam: c.name, factoren });
@@ -20170,10 +20565,10 @@ function tekstVerschil(v, naamVan) {
 var GAMMA_Q_MIN = Math.min(
   ...Object.values(PARTIELE_FACTOREN).flatMap((rij) => GEVOLGKLASSEN.map((k) => rij[k].gQ))
 );
-function veranderlijkeBelastingenZonderLeiding(p) {
-  const gevuld = p.gevuld ?? (() => true);
+function veranderlijkeBelastingenZonderLeiding(p2) {
+  const gevuld = p2.gevuld ?? (() => true);
   const acties = [];
-  const live = p.loadCases.filter((c) => c.type === "live" && gevuld(c.id));
+  const live = p2.loadCases.filter((c) => c.type === "live" && gevuld(c.id));
   for (const cat of [...new Set(live.map((c) => c.categorie ?? STANDAARD_CATEGORIE))]) {
     const leden = live.filter((c) => (c.categorie ?? STANDAARD_CATEGORIE) === cat);
     acties.push({
@@ -20181,12 +20576,12 @@ function veranderlijkeBelastingenZonderLeiding(p) {
       caseIds: leden.map((c) => c.id)
     });
   }
-  for (const c of p.loadCases) {
+  for (const c of p2.loadCases) {
     if ((c.type === "snow" || c.type === "wind") && gevuld(c.id)) {
       acties.push({ label: `"${c.name}"`, caseIds: [c.id] });
     }
   }
-  const ugt = p.combinations.filter((c) => c.type === "uls");
+  const ugt = p2.combinations.filter((c) => c.type === "uls");
   const uit = [];
   for (const a of acties) {
     let hoogste = 0;
@@ -20219,10 +20614,10 @@ function gelijkeRekeninhoudSet(a, b) {
   }
   return true;
 }
-function verouderdeWindCombinaties(p) {
-  const huidig = p.combinations.filter(isWindgeneratorCombinatie);
+function verouderdeWindCombinaties(p2) {
+  const huidig = p2.combinations.filter(isWindgeneratorCombinatie);
   if (huidig.length === 0) return null;
-  const verwacht = windCombinatiesVoor(p.loadCases, p.gevolgklasse, p.bijlage);
+  const verwacht = windCombinatiesVoor(p2.loadCases, p2.gevolgklasse, p2.bijlage);
   if (verwacht !== null && gelijkeRekeninhoudSet(huidig, verwacht)) return null;
   return { aantal: huidig.length, verwacht: verwacht?.length ?? null };
 }
@@ -20247,12 +20642,12 @@ function oudeKolomVan(caseId, combinations) {
   if (oud.length < 3) return null;
   return oud.every(({ c, o }) => gelijk(c.factors.get(caseId) ?? 0, o.factoren[caseId] ?? 0)) ? caseId : null;
 }
-function blijvendeFactorAfwijkingen(p) {
-  const blijvend = p.loadCases.filter((c) => c.type === "dead");
+function blijvendeFactorAfwijkingen(p2) {
+  const blijvend = p2.loadCases.filter((c) => c.type === "dead");
   const uit = [];
   for (const g of blijvend) {
     const regels = [];
-    for (const c of p.combinations) {
+    for (const c of p2.combinations) {
       const f = c.factors.get(g.id) ?? 0;
       const ander = blijvend.find((o) => {
         const fo = c.factors.get(o.id) ?? 0;
@@ -20274,7 +20669,7 @@ function blijvendeFactorAfwijkingen(p) {
       });
     }
     if (regels.some((r) => r.pastNiet)) {
-      uit.push({ caseId: g.id, naam: g.name, regels, oudeKolom: oudeKolomVan(g.id, p.combinations) });
+      uit.push({ caseId: g.id, naam: g.name, regels, oudeKolom: oudeKolomVan(g.id, p2.combinations) });
     }
   }
   return uit;
@@ -20289,33 +20684,33 @@ function tekstBlijvendeAfwijking(a) {
   const { lijst, herkomst } = regelsEnHerkomst(a);
   return `Belastinggeval ${a.caseId} ("${a.naam}") is van type blijvend, maar draagt factoren die niet bij een blijvende belasting passen: ${lijst}. Alle blijvende gevallen samen zijn \xE9\xE9n blijvende belasting G, met in elke combinatie dezelfde factor: \u03B3_G uit NEN-EN 1990 NB tabel NB.4/NB.5 in de UGT (0,9 waar zij gunstig werkt), 1,0 in de BGT (6.14b\u20136.16b). ${herkomst} De last van dit geval telt daardoor met de verkeerde factoren. Kies "Vervang door standaardcombinaties" in Belastinggevallen & combinaties, of corrigeer de factoren van dit geval.`;
 }
-function meldingenBelastinggevallen(p) {
+function meldingenBelastinggevallen(p2) {
   const meldingen = [];
-  const egDoel = eigenGewichtDoel(p.loadCases);
-  const egGeval = eigenGewichtGeval(p.loadCases, p.selfWeightEnabled === true);
-  const gevuld = (id) => p.loads === void 0 || p.loads.some((l) => l.caseId === id) || egGeval?.id === id;
-  const heeftFactor = (id, type) => p.combinations.some((c) => c.type === type && (c.factors.get(id) ?? 0) !== 0);
-  const heeftBgt = p.combinations.some((c) => c.type === "sls");
+  const egDoel = eigenGewichtDoel(p2.loadCases);
+  const egGeval = eigenGewichtGeval(p2.loadCases, p2.selfWeightEnabled === true);
+  const gevuld = (id) => p2.loads === void 0 || p2.loads.some((l) => l.caseId === id) || egGeval?.id === id;
+  const heeftFactor = (id, type) => p2.combinations.some((c) => c.type === type && (c.factors.get(id) ?? 0) !== 0);
+  const heeftBgt = p2.combinations.some((c) => c.type === "sls");
   const naamVan = (id) => {
-    const c = p.loadCases.find((x) => x.id === id);
+    const c = p2.loadCases.find((x) => x.id === id);
     return c ? `${id} ("${c.name}")` : String(id);
   };
-  if (p.selfWeightEnabled && egDoel.soort === "geen") {
+  if (p2.selfWeightEnabled && egDoel.soort === "geen") {
     meldingen.push({
       niveau: "fout",
       caseId: null,
       tekst: 'Eigen gewicht staat aan, maar er is geen belastinggeval van type "blijvend". Het eigen gewicht wordt daarom NIET meegerekend. Tot september 2026 kwam het stil in het eerste belastinggeval terecht, met de factoren van d\xE1t type \u2014 bij een veranderlijk geval \u03C8\u2082 = 0,3 in de quasi-blijvende combinatie in plaats van 1,0. Maak een belastinggeval van type "blijvend" aan.'
     });
   }
-  if (p.selfWeightEnabled && egDoel.soort === "kenmerkNietBlijvend") {
+  if (p2.selfWeightEnabled && egDoel.soort === "kenmerkNietBlijvend") {
     meldingen.push({
       niveau: "fout",
       caseId: egDoel.geval.id,
       tekst: `Belastinggeval ${naamVan(egDoel.geval.id)} draagt het kenmerk van het automatische eigen gewicht, maar is niet van type "blijvend". Het eigen gewicht wordt daarom NIET meegerekend: in een veranderlijk geval zou het \u03C8\u2082 = 0,3 krijgen in de quasi-blijvende combinatie in plaats van 1,0, en \u03B3_Q in de UGT. Er wordt ook niet stil op het eerste blijvende geval teruggevallen. Zet het type van dit geval op "blijvend", of haal het kenmerk weg.`
     });
   }
-  if (egDoel.soort === "kenmerk" && p.loads) {
-    const aantal = p.loads.filter((l) => l.caseId === egDoel.geval.id).length;
+  if (egDoel.soort === "kenmerk" && p2.loads) {
+    const aantal = p2.loads.filter((l) => l.caseId === egDoel.geval.id).length;
     if (aantal > 0) {
       meldingen.push({
         niveau: "waarschuwing",
@@ -20324,16 +20719,16 @@ function meldingenBelastinggevallen(p) {
       });
     }
   }
-  const alle = p.alleCombinaties ?? p.combinations;
+  const alle = p2.alleCombinaties ?? p2.combinations;
   const eenStandaard = alle.find((c) => c.standaard);
-  const klasse = p.gevolgklasse ?? eenStandaard?.standaard?.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
-  const bijlage = p.bijlage ?? eenStandaard?.standaard?.bijlage ?? STANDAARD_BIJLAGE;
-  const gevalIds = new Set(p.loadCases.map((c) => c.id));
+  const klasse = p2.gevolgklasse ?? eenStandaard?.standaard?.gevolgklasse ?? STANDAARD_GEVOLGKLASSE;
+  const bijlage = p2.bijlage ?? eenStandaard?.standaard?.bijlage ?? STANDAARD_BIJLAGE;
+  const gevalIds = new Set(p2.loadCases.map((c) => c.id));
   const oud = alle.filter((c) => isOudeStandaardcombinatie(c, gevalIds));
   if (oud.length > 0 || alle.some(isAfgeleidVanStandaard)) {
     const ontbrekend = ontbrekendeStandaardcombinaties({
       combinations: alle,
-      loadCases: p.loadCases,
+      loadCases: p2.loadCases,
       gevolgklasse: klasse,
       bijlage,
       gevuld
@@ -20347,20 +20742,20 @@ function meldingenBelastinggevallen(p) {
       });
     }
   }
-  for (const v of veranderlijkeFactorVerschillen({ loadCases: p.loadCases, combinations: p.combinations, gevuld })) {
+  for (const v of veranderlijkeFactorVerschillen({ loadCases: p2.loadCases, combinations: p2.combinations, gevuld })) {
     meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstVerschil(v, naamVan) });
   }
   for (const a of veranderlijkeBelastingenZonderLeiding({
-    loadCases: p.loadCases,
-    combinations: p.combinations,
+    loadCases: p2.loadCases,
+    combinations: p2.combinations,
     gevuld
   })) {
     meldingen.push({ niveau: "fout", caseId: null, vervangAdvies: true, tekst: tekstZonderLeiding(a, bijlage) });
   }
-  if (p.metHout) {
+  if (p2.metHout) {
     const zonder = ontbrekendeBlijvendeCombinatie({
-      combinaties: p.combinations,
-      loadCases: p.loadCases,
+      combinaties: p2.combinations,
+      loadCases: p2.loadCases,
       gevuld
     });
     if (zonder) {
@@ -20372,7 +20767,7 @@ function meldingenBelastinggevallen(p) {
       });
     }
   }
-  const nietHerkendeBgt = p.combinations.filter((c) => c.type === "sls" && soortVanCombinatie(c) === null);
+  const nietHerkendeBgt = p2.combinations.filter((c) => c.type === "sls" && soortVanCombinatie(c) === null);
   if (nietHerkendeBgt.length > 0) {
     meldingen.push({
       niveau: "waarschuwing",
@@ -20380,11 +20775,11 @@ function meldingenBelastinggevallen(p) {
       tekst: `BGT-combinatie ${nietHerkendeBgt.map((c) => `${c.id} ("${c.name}")`).join(", ")} ${nietHerkendeBgt.length === 1 ? "is" : "zijn"} niet herkend als karakteristiek (6.14b), frequent (6.15b) of quasi-blijvend (6.16b): het kenmerk ontbreekt en de naam bevat geen "karakter", "frequent" of "quasi". De doorbuigingstoets van staal en hout weegt ${nietHerkendeBgt.length === 1 ? "haar" : "ze"} veilig-zijdig mee in de omhullende; de betontoetsing gebruikt ${nietHerkendeBgt.length === 1 ? "haar" : "ze"} NIET (de scheurwijdte van \xA77.3 vraagt 6.15b, de kruip van \xA75.8.4 vraagt 6.16b). Is de combinatie een van de drie, geef haar dan een herkenbare naam.`
     });
   }
-  if (p.gevolgklasse !== void 0) {
+  if (p2.gevolgklasse !== void 0) {
     const wind = verouderdeWindCombinaties({
-      loadCases: p.loadCases,
+      loadCases: p2.loadCases,
       combinations: alle,
-      gevolgklasse: p.gevolgklasse,
+      gevolgklasse: p2.gevolgklasse,
       bijlage
     });
     if (wind) {
@@ -20392,15 +20787,15 @@ function meldingenBelastinggevallen(p) {
         niveau: "fout",
         caseId: null,
         windOpnieuwAdvies: true,
-        tekst: tekstWindVerouderd(wind, p.gevolgklasse)
+        tekst: tekstWindVerouderd(wind, p2.gevolgklasse)
       });
     }
   }
   const blijvendAfwijkend = new Map(
-    blijvendeFactorAfwijkingen({ loadCases: p.loadCases, combinations: p.combinations }).map((a) => [a.caseId, a])
+    blijvendeFactorAfwijkingen({ loadCases: p2.loadCases, combinations: p2.combinations }).map((a) => [a.caseId, a])
   );
-  if (p.combinations.some((c) => c.standaard)) {
-    const eigen = p.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
+  if (p2.combinations.some((c) => c.standaard)) {
+    const eigen = p2.loadCases.filter((c) => c.gegenereerd?.bron !== "wind");
     const aantal = aantalGebruiksgevallen(eigen);
     if (aantal > MAX_VRIJE_GEVALLEN) {
       meldingen.push({
@@ -20423,7 +20818,7 @@ function meldingenBelastinggevallen(p) {
       });
     }
   }
-  for (const c of p.loadCases) {
+  for (const c of p2.loadCases) {
     const naam = `Belastinggeval ${c.id} ("${c.name}")`;
     const metLast = gevuld(c.id);
     if (!heeftFactor(c.id, "uls")) {
@@ -20456,9 +20851,9 @@ function meldingenBelastinggevallen(p) {
   }
   return meldingen;
 }
-function beoordeelCombinatiesBijOpenen(p) {
-  const weesFactoren = [...p.weesFactoren ?? []];
-  const blijvend = blijvendeFactorAfwijkingen({ loadCases: p.loadCases, combinations: p.combinations });
+function beoordeelCombinatiesBijOpenen(p2) {
+  const weesFactoren = [...p2.weesFactoren ?? []];
+  const blijvend = blijvendeFactorAfwijkingen({ loadCases: p2.loadCases, combinations: p2.combinations });
   if (weesFactoren.length === 0 && blijvend.length === 0) return null;
   const weesIds = [...new Set(weesFactoren.flatMap((w) => w.caseIds))].sort((a, b) => a - b);
   const samenvatting = blijvend.map((a) => {
@@ -20495,7 +20890,7 @@ function zoneSnedeFracties(zones, lengteMm) {
   return zoneGrenzenMm(zones).filter((x) => x > ZONE_TOLERANTIE_MM && x < lengteMm - ZONE_TOLERANTIE_MM).map((x) => x / lengteMm);
 }
 function zoneSnedenUitStaven(beams, nodes) {
-  const knoop = new Map(nodes.map((n) => [n.id, n]));
+  const knoop = new Map(nodes.map((n2) => [n2.id, n2]));
   const uit = /* @__PURE__ */ new Map();
   for (const b of beams) {
     const zones = b.checkConfig?.betonZones;
@@ -20555,11 +20950,11 @@ function aantalVerloopSegmenten(L_mm, aantal = VERLOOP_SEGMENTEN) {
   return Math.max(1, Math.min(aantal, Math.floor(L_mm / MIN_SEGMENT_MM)));
 }
 function segmentenVoorVerloop(verloop, L_mm, aantal = VERLOOP_SEGMENTEN) {
-  const n = aantalVerloopSegmenten(L_mm, aantal);
+  const n2 = aantalVerloopSegmenten(L_mm, aantal);
   const uit = [];
-  for (let i = 0; i < n; i++) {
-    const t0 = i / n;
-    const t1 = (i + 1) / n;
+  for (let i = 0; i < n2; i++) {
+    const t0 = i / n2;
+    const t1 = (i + 1) / n2;
     const d = doorsnedeOpPositie(verloop, (t0 + t1) / 2);
     uit.push({ tStart: t0, tEnd: t1, I: d.I, A: d.A });
   }
@@ -20568,9 +20963,9 @@ function segmentenVoorVerloop(verloop, L_mm, aantal = VERLOOP_SEGMENTEN) {
 function staafLengteMm(b, nodes) {
   let nA;
   let nB;
-  for (const n of nodes) {
-    if (n.id === b.from) nA = n;
-    if (n.id === b.to) nB = n;
+  for (const n2 of nodes) {
+    if (n2.id === b.from) nA = n2;
+    if (n2.id === b.to) nB = n2;
   }
   return nA && nB ? Math.hypot(nB.x - nA.x, nB.z - nA.z) : 0;
 }
@@ -20604,8 +20999,8 @@ function eigenGewichtLasten(b, L_mm, caseId) {
     caseId
   }));
 }
-function plaatNaarSolverInput(p) {
-  const d = withPlateDefaults(p);
+function plaatNaarSolverInput(p2) {
+  const d = withPlateDefaults(p2);
   return {
     id: d.id,
     nodeIds: d.nodeIds,
@@ -20674,7 +21069,7 @@ function bouwMultiInput(model) {
   controleerDoorsneden(model.beams, { heeftPlaten: model.plates.length > 0 });
   const zoneSneden = zoneSnedenUitStaven(model.beams, model.nodes);
   const multiInput = {
-    nodes: model.nodes.map((n) => ({ id: n.id, x: n.x, z: n.z })),
+    nodes: model.nodes.map((n2) => ({ id: n2.id, x: n2.x, z: n2.z })),
     beams: model.beams.map((b) => {
       const sneden = zoneSneden.get(b.id);
       return {
@@ -20720,7 +21115,7 @@ function bouwMultiInput(model) {
       for (const b of model.beams) {
         multiInput.loads.push(...eigenGewichtLasten(b, staafLengteMm(b, model.nodes), deadCase.id));
       }
-      for (const p of multiInput.plates ?? []) p.selfWeightCaseId = deadCase.id;
+      for (const p2 of multiInput.plates ?? []) p2.selfWeightCaseId = deadCase.id;
     }
   }
   for (const l of model.loads) {
@@ -20789,11 +21184,11 @@ var REACTIECOMPONENTEN = {
 function releaseAantal(beam) {
   const r = beam.releases;
   if (!r) return 0;
-  let n = 0;
+  let n2 = 0;
   for (const v of [r.startTx, r.startTz, r.startRy, r.endTx, r.endTz, r.endRy]) {
-    if (v) n++;
+    if (v) n2++;
   }
-  return n;
+  return n2;
 }
 function bepaalOnbepaaldheidVanModel(knopen, staven, opleggingen, metPlaten) {
   const m = staven.length;
@@ -20802,7 +21197,7 @@ function bepaalOnbepaaldheidVanModel(knopen, staven, opleggingen, metPlaten) {
     gebruikt.add(b.from);
     gebruikt.add(b.to);
   }
-  const bestaande = new Set(knopen.map((n) => n.id));
+  const bestaande = new Set(knopen.map((n2) => n2.id));
   for (const s of opleggingen ?? []) {
     if (bestaande.has(s.nodeId)) gebruikt.add(s.nodeId);
   }
@@ -20946,11 +21341,11 @@ function heeftVeren(b) {
   if (!v) return false;
   return [v.startTx, v.startTz, v.startRy, v.endTx, v.endTz, v.endRy].some((x) => typeof x === "number" && x > 0);
 }
-function kruipgedragVanPlaat(p) {
-  if ((p.materiaal ?? "").trim() === "") {
-    return (p.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E ? { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" } : { soort: "onbekend", kDef: null, sleutel: `plaat-E:${p.E}`, omschrijving: "wandschijf met een eigen E zonder materiaal (kruipgedrag onbekend)" };
+function kruipgedragVanPlaat(p2) {
+  if ((p2.materiaal ?? "").trim() === "") {
+    return (p2.E ?? PLATE_DEFAULTS.E) === PLATE_DEFAULTS.E ? { soort: "geen", kDef: 0, sleutel: "staal", omschrijving: "staal (kruipt niet)" } : { soort: "onbekend", kDef: null, sleutel: `plaat-E:${p2.E}`, omschrijving: "wandschijf met een eigen E zonder materiaal (kruipgedrag onbekend)" };
   }
-  const soort = plaatMateriaalSoort(p.materiaal);
+  const soort = plaatMateriaalSoort(p2.materiaal);
   if (soort === "onbekend" || soort === null) {
     return { soort: "onbekend", kDef: null, sleutel: "onbekend", omschrijving: "wandschijf met een niet herkend materiaal" };
   }
@@ -20968,7 +21363,7 @@ function kruipgedragVanPlaat(p) {
         omschrijving: "houten wandschijf (zonder klimaatklasse, dus zonder bekende k_def)"
       };
     default:
-      return { soort: "onbekend", kDef: null, sleutel: `vrij:${p.materiaal}`, omschrijving: "vrij materiaal (kruipgedrag onbekend)" };
+      return { soort: "onbekend", kDef: null, sleutel: `vrij:${p2.materiaal}`, omschrijving: "vrij materiaal (kruipgedrag onbekend)" };
   }
 }
 var NVT_LEEG = {
@@ -21015,8 +21410,8 @@ function bepaalEindstijfheidHout(model) {
       }).verbindingen.push(b.id);
     }
   }
-  plates.forEach((p, i) => {
-    const k = kruipgedragVanPlaat(p);
+  plates.forEach((p2, i) => {
+    const k = kruipgedragVanPlaat(p2);
     if (k.soort === "hout") metHout = true;
     groep(k).platen.push(i);
   });
@@ -21269,8 +21664,8 @@ function getal3(x, decimalen) {
 }
 function leidScheefstandGeometrieAf(model) {
   const afleiding = [];
-  const knoopById = new Map(model.nodes.map((n) => [n.id, n]));
-  const alleZ = model.nodes.map((n) => n.z);
+  const knoopById = new Map(model.nodes.map((n2) => [n2.id, n2]));
+  const alleZ = model.nodes.map((n2) => n2.z);
   const topZ = alleZ.length > 0 ? Math.max(...alleZ) : 0;
   const opleggingZ = model.supports.map((s) => knoopById.get(s.nodeId)?.z).filter((z) => typeof z === "number");
   const heeftOpleggingen = opleggingZ.length > 0;
@@ -21311,7 +21706,7 @@ function leidScheefstandGeometrieAf(model) {
     return r;
   };
   for (const b of verticaal) {
-    for (const n of [b.from, b.to]) if (!ouder.has(n)) ouder.set(n, n);
+    for (const n2 of [b.from, b.to]) if (!ouder.has(n2)) ouder.set(n2, n2);
   }
   for (const b of verticaal) {
     const ra = wortel(b.from);
@@ -21333,13 +21728,13 @@ function leidScheefstandGeometrieAf(model) {
       knopen.add(b.from);
       knopen.add(b.to);
     }
-    const pts = [...knopen].map((n) => knoopById.get(n)).filter((n) => !!n);
+    const pts = [...knopen].map((n2) => knoopById.get(n2)).filter((n2) => !!n2);
     if (pts.length === 0) continue;
-    const voet2 = pts.reduce((laagste, p) => p.z < laagste.z ? p : laagste, pts[0]);
+    const voet2 = pts.reduce((laagste, p2) => p2.z < laagste.z ? p2 : laagste, pts[0]);
     kolomlijnen.push({
       staafIds: [...staafIds].sort((a, b) => a - b),
       voetZmm: voet2.z,
-      topZmm: Math.max(...pts.map((p) => p.z)),
+      topZmm: Math.max(...pts.map((p2) => p2.z)),
       voetXmm: voet2.x
     });
   }
@@ -21488,7 +21883,7 @@ function phiVolgensNorm(norm, hoogteM, aantalElementen) {
 }
 function toepasselijkeScheefstandNormen(beams) {
   const vlaggen = normenInModel(beams);
-  return SCHEEFSTAND_NORMEN.filter((n) => vlaggen[n]);
+  return SCHEEFSTAND_NORMEN.filter((n2) => vlaggen[n2]);
 }
 function bepaalScheefstand(keuze, geometrie, toepasselijk) {
   const noemer = Number.isFinite(keuze.noemer) && keuze.noemer > 0 ? keuze.noemer : 200;
@@ -21551,7 +21946,7 @@ function bepaalScheefstand(keuze, geometrie, toepasselijk) {
   } else {
     normen = [bron];
     if (toepasselijk.length > 0 && !toepasselijk.includes(bron)) {
-      const wel = toepasselijk.map((n) => SCHEEFSTAND_BRON_LABEL[n]).join(", ");
+      const wel = toepasselijk.map((n2) => SCHEEFSTAND_BRON_LABEL[n2]).join(", ");
       waarschuwingen.push(vt(
         `${S}warn.normWithoutMaterial`,
         `${SCHEEFSTAND_BRON_LABEL[bron]} is gekozen, maar dit model bevat geen materiaal dat onder die norm valt (wel: ${wel}).`,
@@ -21559,7 +21954,7 @@ function bepaalScheefstand(keuze, geometrie, toepasselijk) {
       ));
     }
   }
-  const vergelijking = normen.map((n) => phiVolgensNorm(n, hoogteM, aantalElementen));
+  const vergelijking = normen.map((n2) => phiVolgensNorm(n2, hoogteM, aantalElementen));
   const gekozen = vergelijking.reduce((a, b) => b.phi > a.phi ? b : a);
   if (bron === "ongunstigste" && vergelijking.length > 1) {
     const lijst = vergelijking.map((v) => `${SCHEEFSTAND_BRON_LABEL[v.norm]} \u2192 1/${getal3(1 / v.phi, 0)}`).join(", ");
@@ -21966,7 +22361,7 @@ function dubbelzinnigMateriaalTekst(beamId, d, metKorf) {
 var CONTROLE_TOL_MM = 1;
 function knoopGraden(model) {
   const graad = /* @__PURE__ */ new Map();
-  for (const n of model.nodes) graad.set(n.id, 0);
+  for (const n2 of model.nodes) graad.set(n2.id, 0);
   for (const b of model.beams) {
     graad.set(b.from, (graad.get(b.from) ?? 0) + 1);
     graad.set(b.to, (graad.get(b.to) ?? 0) + 1);
@@ -22005,36 +22400,36 @@ function zoekDubbeleKnopen(model, tolMm = CONTROLE_TOL_MM) {
   return uit;
 }
 function zoekStaafeindenBijPlaatrand(model, tolMm = CONTROLE_TOL_MM) {
-  const platen = (model.plates ?? []).flatMap((p) => {
-    const hoeken = (p.nodeIds ?? []).map((id) => model.nodes.find((k) => k.id === id));
+  const platen = (model.plates ?? []).flatMap((p2) => {
+    const hoeken = (p2.nodeIds ?? []).map((id) => model.nodes.find((k) => k.id === id));
     if (hoeken.length < 3 || hoeken.some((h) => !h)) return [];
-    const openingen = (Array.isArray(p.openingen) ? p.openingen : []).filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten) && o.punten.length >= 3);
-    return [{ id: p.id, hoeken: hoeken.map((h) => ({ x: h.x, z: h.z })), openingen }];
+    const openingen = (Array.isArray(p2.openingen) ? p2.openingen : []).filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten) && o.punten.length >= 3);
+    return [{ id: p2.id, hoeken: hoeken.map((h) => ({ x: h.x, z: h.z })), openingen }];
   });
   if (platen.length === 0) return [];
   const graad = knoopGraden(model);
   const gesteund = new Set((model.supports ?? []).map((s) => s.nodeId));
   const uit = [];
-  for (const n of model.nodes) {
-    const g = graad.get(n.id) ?? 0;
+  for (const n2 of model.nodes) {
+    const g = graad.get(n2.id) ?? 0;
     if (g === 0) continue;
     let dichtst = null;
     for (const plaat2 of platen) {
-      const rand2 = dichtstbijzijndePlaatrand({ x: n.x, z: n.z }, plaat2.hoeken, plaat2.openingen);
+      const rand2 = dichtstbijzijndePlaatrand({ x: n2.x, z: n2.z }, plaat2.hoeken, plaat2.openingen);
       if (rand2 && (!dichtst || rand2.afstand < dichtst.rand.afstand)) dichtst = { plaat: plaat2, rand: rand2 };
     }
     if (!dichtst || !(dichtst.rand.afstand > tolMm && dichtst.rand.afstand < STAAFEINDE_BIJ_RAND_MM)) continue;
     const { plaat, rand } = dichtst;
-    const inMateriaal = puntInPolygoon(n.x, n.z, plaat.hoeken) && !plaat.openingen.some((o) => puntInPolygoon(n.x, n.z, o.punten));
-    const vrij = g === 1 && !gesteund.has(n.id);
-    const staaf = model.beams.find((b) => b.from === n.id || b.to === n.id);
+    const inMateriaal = puntInPolygoon(n2.x, n2.z, plaat.hoeken) && !plaat.openingen.some((o) => puntInPolygoon(n2.x, n2.z, o.punten));
+    const vrij = g === 1 && !gesteund.has(n2.id);
+    const staaf = model.beams.find((b) => b.from === n2.id || b.to === n2.id);
     const mm = String(Math.round(rand.afstand * 10) / 10).replace(".", ",");
     uit.push({
       soort: "staafeindeBijPlaatrand",
       ernst: vrij && !inMateriaal ? "fout" : "waarschuwing",
-      nodeIds: [n.id],
+      nodeIds: [n2.id],
       beamId: staaf?.id,
-      tekst: vrij ? staafeindeBijPlaatrandTekst(plaat.id, `knoop ${n.id}`, rand) : `Plaat ${plaat.id}: knoop ${n.id} ligt ${mm} mm van ${rand.naam} en wordt niet aan die rand gekoppeld (dat gebeurt alleen binnen 1 mm). Bedoeld als aansluiting? Leg de knoop op de rand. Zo niet, dan is ${STAAFEINDE_BIJ_RAND_MM} mm of meer afstand duidelijker.`
+      tekst: vrij ? staafeindeBijPlaatrandTekst(plaat.id, `knoop ${n2.id}`, rand) : `Plaat ${plaat.id}: knoop ${n2.id} ligt ${mm} mm van ${rand.naam} en wordt niet aan die rand gekoppeld (dat gebeurt alleen binnen 1 mm). Bedoeld als aansluiting? Leg de knoop op de rand. Zo niet, dan is ${STAAFEINDE_BIJ_RAND_MM} mm of meer afstand duidelijker.`
     });
   }
   return uit;
@@ -22766,13 +23161,13 @@ function controleerVelden(rauw) {
     fouten.push("model.scheefstandAantalElementen: moet een geheel getal van minstens 1 zijn, of null.");
   }
   const nodes = leesArray(rauw, "nodes", fouten);
-  nodes.forEach((n, i) => {
+  nodes.forEach((n2, i) => {
     const pad = `model.nodes[${i}]`;
-    if (!isObject2(n)) return void fouten.push(`${pad}: moet een object zijn.`);
-    keurVelden(n, NODE_VELDEN, pad, fouten);
-    eisGeheel(n.id, `${pad}.id`, fouten);
-    if (!isGetal(n.x)) fouten.push(`${pad}.x: verplicht getal (mm).`);
-    if (!isGetal(n.z)) fouten.push(`${pad}.z: verplicht getal (mm).`);
+    if (!isObject2(n2)) return void fouten.push(`${pad}: moet een object zijn.`);
+    keurVelden(n2, NODE_VELDEN, pad, fouten);
+    eisGeheel(n2.id, `${pad}.id`, fouten);
+    if (!isGetal(n2.x)) fouten.push(`${pad}.x: verplicht getal (mm).`);
+    if (!isGetal(n2.z)) fouten.push(`${pad}.z: verplicht getal (mm).`);
   });
   const beams = leesArray(rauw, "beams", fouten);
   beams.forEach((b, i) => {
@@ -22820,55 +23215,55 @@ function controleerVelden(rauw) {
     keurGetal(s.k, `${pad}.k`, fouten);
   });
   const plates = leesArray(rauw, "plates", fouten);
-  plates.forEach((p, i) => {
+  plates.forEach((p2, i) => {
     const pad = `model.plates[${i}]`;
-    if (!isObject2(p)) return void fouten.push(`${pad}: moet een object zijn.`);
-    keurVelden(p, PLATE_VELDEN, pad, fouten);
-    eisGeheel(p.id, `${pad}.id`, fouten);
-    if (!Array.isArray(p.nodeIds) || !p.nodeIds.every(isGeheel)) {
+    if (!isObject2(p2)) return void fouten.push(`${pad}: moet een object zijn.`);
+    keurVelden(p2, PLATE_VELDEN, pad, fouten);
+    eisGeheel(p2.id, `${pad}.id`, fouten);
+    if (!Array.isArray(p2.nodeIds) || !p2.nodeIds.every(isGeheel)) {
       fouten.push(`${pad}.nodeIds: verplichte array van knoop-id's.`);
-    } else if (p.nodeIds.length < 3) {
+    } else if (p2.nodeIds.length < 3) {
       fouten.push(`${pad}.nodeIds: een plaat heeft minstens drie hoekknopen nodig.`);
     }
-    keurGetal(p.thickness, `${pad}.thickness`, fouten, { positief: true });
-    keurGetal(p.E, `${pad}.E`, fouten, { positief: true });
-    keurGetal(p.nu, `${pad}.nu`, fouten);
-    keurGetal(p.rho, `${pad}.rho`, fouten, { positief: true });
-    keurGetal(p.meshSize, `${pad}.meshSize`, fouten, { positief: true });
-    keurGetal(p.cltG12, `${pad}.cltG12`, fouten, { positief: true });
-    if (p.cltG12Bron !== void 0 && typeof p.cltG12Bron !== "string") {
+    keurGetal(p2.thickness, `${pad}.thickness`, fouten, { positief: true });
+    keurGetal(p2.E, `${pad}.E`, fouten, { positief: true });
+    keurGetal(p2.nu, `${pad}.nu`, fouten);
+    keurGetal(p2.rho, `${pad}.rho`, fouten, { positief: true });
+    keurGetal(p2.meshSize, `${pad}.meshSize`, fouten, { positief: true });
+    keurGetal(p2.cltG12, `${pad}.cltG12`, fouten, { positief: true });
+    if (p2.cltG12Bron !== void 0 && typeof p2.cltG12Bron !== "string") {
       fouten.push(`${pad}.cltG12Bron: tekst verwacht (de herkomst van cltG12).`);
     }
-    if (p.cltG12Bovengrens !== void 0 && typeof p.cltG12Bovengrens !== "boolean") {
+    if (p2.cltG12Bovengrens !== void 0 && typeof p2.cltG12Bovengrens !== "boolean") {
       fouten.push(`${pad}.cltG12Bovengrens: true of false verwacht.`);
     }
-    if (p.materiaal !== void 0 && typeof p.materiaal !== "string") {
+    if (p2.materiaal !== void 0 && typeof p2.materiaal !== "string") {
       fouten.push(`${pad}.materiaal: tekst verwacht (een materiaalnaam).`);
     } else {
       const reden = keurPlaatMateriaal({
-        materiaal: p.materiaal,
-        E: typeof p.E === "number" ? p.E : void 0,
-        nu: typeof p.nu === "number" ? p.nu : void 0,
-        cltG12: typeof p.cltG12 === "number" ? p.cltG12 : void 0,
-        cltG12Bron: typeof p.cltG12Bron === "string" ? p.cltG12Bron : void 0,
-        cltG12Bovengrens: typeof p.cltG12Bovengrens === "boolean" ? p.cltG12Bovengrens : void 0
+        materiaal: p2.materiaal,
+        E: typeof p2.E === "number" ? p2.E : void 0,
+        nu: typeof p2.nu === "number" ? p2.nu : void 0,
+        cltG12: typeof p2.cltG12 === "number" ? p2.cltG12 : void 0,
+        cltG12Bron: typeof p2.cltG12Bron === "string" ? p2.cltG12Bron : void 0,
+        cltG12Bovengrens: typeof p2.cltG12Bovengrens === "boolean" ? p2.cltG12Bovengrens : void 0
       });
       if (reden) fouten.push(`${pad}.materiaal: ${reden}`);
     }
-    if (p.klimaatklasse !== void 0) {
-      if (p.klimaatklasse !== 1 && p.klimaatklasse !== 2 && p.klimaatklasse !== 3) {
+    if (p2.klimaatklasse !== void 0) {
+      if (p2.klimaatklasse !== 1 && p2.klimaatklasse !== 2 && p2.klimaatklasse !== 3) {
         fouten.push(`${pad}.klimaatklasse: 1, 2 of 3 verwacht (NEN-EN 1995-1-1 2.3.1.3).`);
-      } else if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : void 0) !== "hout") {
+      } else if (plaatMateriaalSoort(typeof p2.materiaal === "string" ? p2.materiaal : void 0) !== "hout") {
         fouten.push(
           `${pad}.klimaatklasse: hoort alleen bij een houten plaat (massief of gelijmd gelamineerd); bij dit materiaal wordt hij geweigerd in plaats van stil genegeerd.`
         );
       }
     }
-    if (p.plooi !== void 0) {
-      if (!isObject2(p.plooi)) {
+    if (p2.plooi !== void 0) {
+      if (!isObject2(p2.plooi)) {
         fouten.push(`${pad}.plooi: een object met expliciete veldmaten en randvoorwaarden is vereist.`);
       } else {
-        const q = p.plooi;
+        const q = p2.plooi;
         keurVelden(q, PLOOI_VELDEN, `${pad}.plooi`, fouten);
         for (const key of ["a_mm", "b_mm"]) {
           if (!isEindig(q[key]) || q[key] <= 0) fouten.push(`${pad}.plooi.${key}: positief eindig getal in mm vereist.`);
@@ -22878,29 +23273,29 @@ function controleerVelden(rauw) {
         for (const key of ["onverstijfd", "uniforme_spanning"]) {
           if (q[key] !== true) fouten.push(`${pad}.plooi.${key}: moet expliciet true zijn voor deze methode.`);
         }
-        if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : void 0) !== "staal") fouten.push(`${pad}.plooi: alleen ondersteund voor staal.`);
-        if (Array.isArray(p.nodeIds) && (p.openingen === void 0 || Array.isArray(p.openingen))) {
-          const reden = plaatPlooiGeometrieFout(p, nodes.filter(isObject2));
+        if (plaatMateriaalSoort(typeof p2.materiaal === "string" ? p2.materiaal : void 0) !== "staal") fouten.push(`${pad}.plooi: alleen ondersteund voor staal.`);
+        if (Array.isArray(p2.nodeIds) && (p2.openingen === void 0 || Array.isArray(p2.openingen))) {
+          const reden = plaatPlooiGeometrieFout(p2, nodes.filter(isObject2));
           if (reden) fouten.push(`${pad}.plooi: ${reden}`);
         }
       }
     }
-    if (p.wapening !== void 0) {
-      if (plaatMateriaalSoort(typeof p.materiaal === "string" ? p.materiaal : void 0) !== "beton") {
+    if (p2.wapening !== void 0) {
+      if (plaatMateriaalSoort(typeof p2.materiaal === "string" ? p2.materiaal : void 0) !== "beton") {
         fouten.push(
           `${pad}.wapening: hoort alleen bij een betonplaat; bij dit materiaal wordt zij geweigerd in plaats van stil genegeerd.`
         );
       } else {
-        fouten.push(...keurPlaatWapening(p.wapening, `${pad}.wapening`, typeof p.thickness === "number" ? p.thickness : PLATE_DEFAULTS.thickness));
+        fouten.push(...keurPlaatWapening(p2.wapening, `${pad}.wapening`, typeof p2.thickness === "number" ? p2.thickness : PLATE_DEFAULTS.thickness));
       }
     }
-    keurGetal(p.hoofdrichting, `${pad}.hoofdrichting`, fouten);
-    keurEnum(p.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
-    if (p.openingen !== void 0) {
-      if (!Array.isArray(p.openingen)) {
+    keurGetal(p2.hoofdrichting, `${pad}.hoofdrichting`, fouten);
+    keurEnum(p2.meshType, PLAAT_MESH_TYPEN, `${pad}.meshType`, fouten);
+    if (p2.openingen !== void 0) {
+      if (!Array.isArray(p2.openingen)) {
         fouten.push(`${pad}.openingen: moet een array van openingen zijn.`);
       } else {
-        p.openingen.forEach((o, k) => {
+        p2.openingen.forEach((o, k) => {
           const opad = `${pad}.openingen[${k}]`;
           if (!isObject2(o)) return void fouten.push(`${opad}: moet een object zijn.`);
           keurVelden(o, OPENING_VELDEN, opad, fouten);
@@ -22911,39 +23306,39 @@ function controleerVelden(rauw) {
         });
       }
     }
-    if (p.meshCache !== void 0) {
-      if (!isObject2(p.meshCache)) {
+    if (p2.meshCache !== void 0) {
+      if (!isObject2(p2.meshCache)) {
         fouten.push(`${pad}.meshCache: moet een object zijn.`);
       } else {
-        keurVelden(p.meshCache, MESHCACHE_VELDEN, `${pad}.meshCache`, fouten);
-        if (typeof p.meshCache.signature !== "string") {
+        keurVelden(p2.meshCache, MESHCACHE_VELDEN, `${pad}.meshCache`, fouten);
+        if (typeof p2.meshCache.signature !== "string") {
           fouten.push(`${pad}.meshCache.signature: verplichte tekst (geometrie-handtekening).`);
         }
-        if (!Array.isArray(p.meshCache.points) || !Array.isArray(p.meshCache.triangles)) {
+        if (!Array.isArray(p2.meshCache.points) || !Array.isArray(p2.meshCache.triangles)) {
           fouten.push(`${pad}.meshCache: \`points\` en \`triangles\` zijn verplichte arrays.`);
         }
-        if (p.meshCache.quads !== void 0) {
-          const qs = p.meshCache.quads;
+        if (p2.meshCache.quads !== void 0) {
+          const qs = p2.meshCache.quads;
           if (!Array.isArray(qs) || !qs.every((q) => Array.isArray(q) && q.length === 4 && q.every((i2) => isGeheel(i2) && i2 >= 0))) {
             fouten.push(`${pad}.meshCache.quads: moet een lijst van viertallen puntindices (gehele getallen \u2265 0) zijn.`);
           }
         }
-        keurEnum(p.meshCache.meshSoort, MESHSOORTEN, `${pad}.meshCache.meshSoort`, fouten);
-        if (p.meshCache.openingEdgeNodeIndices !== void 0) {
-          const oe = p.meshCache.openingEdgeNodeIndices;
+        keurEnum(p2.meshCache.meshSoort, MESHSOORTEN, `${pad}.meshCache.meshSoort`, fouten);
+        if (p2.meshCache.openingEdgeNodeIndices !== void 0) {
+          const oe = p2.meshCache.openingEdgeNodeIndices;
           if (!Array.isArray(oe) || !oe.every((randen2) => Array.isArray(randen2) && randen2.every((r) => Array.isArray(r) && r.every((i2) => isGeheel(i2) && i2 >= 0)))) {
             fouten.push(`${pad}.meshCache.openingEdgeNodeIndices: moet per opening een lijst van randen (elk een lijst puntindices) zijn.`);
           }
         }
-        const randen = p.meshCache.edgeNodeIndices;
+        const randen = p2.meshCache.edgeNodeIndices;
         if (!Array.isArray(randen)) {
           fouten.push(
             `${pad}.meshCache.edgeNodeIndices: verplichte array met per plaatrand (rand i loopt van hoek i naar hoek i+1) de indices van de meshknopen op die rand. Zonder die lijsten vindt geen randlast, randpuntlast of staafaansluiting zijn rand.`
           );
         } else {
-          if (Array.isArray(p.nodeIds) && randen.length !== p.nodeIds.length) {
+          if (Array.isArray(p2.nodeIds) && randen.length !== p2.nodeIds.length) {
             fouten.push(
-              `${pad}.meshCache.edgeNodeIndices: beschrijft ${randen.length} ${randen.length === 1 ? "rand" : "randen"}, maar de plaat heeft ${p.nodeIds.length} hoeken en dus ${p.nodeIds.length} randen.`
+              `${pad}.meshCache.edgeNodeIndices: beschrijft ${randen.length} ${randen.length === 1 ? "rand" : "randen"}, maar de plaat heeft ${p2.nodeIds.length} hoeken en dus ${p2.nodeIds.length} randen.`
             );
           }
           randen.forEach((rand, r) => {
@@ -23089,7 +23484,7 @@ function gevallenMetLast(model) {
   for (const l of mi.thermalLoads ?? []) noteer(l.caseId);
   for (const l of mi.edgeLoads ?? []) noteer(l.caseId);
   for (const l of mi.edgePointLoads ?? []) noteer(l.caseId);
-  for (const p of mi.plates ?? []) noteer(p.selfWeightCaseId);
+  for (const p2 of mi.plates ?? []) noteer(p2.selfWeightCaseId);
   return ids;
 }
 function samenhangendeDelen(knoopIds, verbindingen) {
@@ -23143,10 +23538,10 @@ function valideerModel(rauw, opties = {}) {
   meldDubbeleIds(loadCases, "belastinggevallen", errors);
   meldDubbeleIds(loads, "lasten", errors);
   const knoopById = /* @__PURE__ */ new Map();
-  for (const n of nodes) knoopById.set(n.id, { x: n.x, z: n.z });
+  for (const n2 of nodes) knoopById.set(n2.id, { x: n2.x, z: n2.z });
   const caseIds = new Set(loadCases.map((lc) => lc.id));
   const beamIds = new Set(beams.map((b) => b.id));
-  const plateIds = new Set(plates.map((p) => p.id));
+  const plateIds = new Set(plates.map((p2) => p2.id));
   if (nodes.length === 0) errors.push("Het model bevat geen knopen.");
   if (beams.length === 0 && plates.length === 0) {
     errors.push("Het model bevat geen staven en geen platen \u2014 er valt niets te rekenen.");
@@ -23200,29 +23595,29 @@ function valideerModel(rauw, opties = {}) {
     actief2.add(b.from);
     actief2.add(b.to);
   }
-  for (const p of plates) for (const id of p.nodeIds ?? []) actief2.add(id);
-  const plaatOmtrekken = plates.map((p) => {
-    const h = (p.nodeIds ?? []).map((id) => knoopById.get(id));
+  for (const p2 of plates) for (const id of p2.nodeIds ?? []) actief2.add(id);
+  const plaatOmtrekken = plates.map((p2) => {
+    const h = (p2.nodeIds ?? []).map((id) => knoopById.get(id));
     return h.every((q) => q !== void 0) && h.length >= 3 ? h : void 0;
   });
-  const opLus = (n, lus) => lus.some((a, i) => afstandTotLijnstuk(n, a, lus[(i + 1) % lus.length]) <= 1);
-  const inOfOpPlaatK = (n, k) => {
+  const opLus = (n2, lus) => lus.some((a, i) => afstandTotLijnstuk(n2, a, lus[(i + 1) % lus.length]) <= 1);
+  const inOfOpPlaatK = (n2, k) => {
     const omtrek = plaatOmtrekken[k];
     if (!omtrek) return false;
-    if (opLus(n, omtrek)) return true;
-    if (!puntInPolygoon(n.x, n.z, omtrek)) return false;
+    if (opLus(n2, omtrek)) return true;
+    if (!puntInPolygoon(n2.x, n2.z, omtrek)) return false;
     const openingen = (Array.isArray(plates[k].openingen) ? plates[k].openingen : []).filter((o) => o && Array.isArray(o.punten) && o.punten.length >= 3);
-    return openingen.every((o) => opLus(n, o.punten) || !puntInPolygoon(n.x, n.z, o.punten));
+    return openingen.every((o) => opLus(n2, o.punten) || !puntInPolygoon(n2.x, n2.z, o.punten));
   };
-  const inOfOpPlaat = (n) => plates.some((_, k) => inOfOpPlaatK(n, k));
-  for (const n of nodes) if (!actief2.has(n.id) && inOfOpPlaat(n)) actief2.add(n.id);
-  for (const n of nodes) {
-    if (!actief2.has(n.id)) {
+  const inOfOpPlaat = (n2) => plates.some((_, k) => inOfOpPlaatK(n2, k));
+  for (const n2 of nodes) if (!actief2.has(n2.id) && inOfOpPlaat(n2)) actief2.add(n2.id);
+  for (const n2 of nodes) {
+    if (!actief2.has(n2.id)) {
       warnings.push(
         // "Telt niet mee" klopte niet: in het raamwerkpad krijgt elke knoop
         // drie vrijheidsgraden, en een losse knoop maakt het stelsel dan
         // singulier (gemeten: de berekening faalt op die knoop).
-        `Knoop ${n.id} hangt aan geen enkele staaf of plaat. Zo'n losse knoop draagt niets en maakt het stelsel singulier zodra hij kan bewegen of draaien \u2014 verwijder hem, of verbind hem met de constructie.`
+        `Knoop ${n2.id} hangt aan geen enkele staaf of plaat. Zo'n losse knoop draagt niets en maakt het stelsel singulier zodra hij kan bewegen of draaien \u2014 verwijder hem, of verbind hem met de constructie.`
       );
     }
   }
@@ -23281,9 +23676,9 @@ function valideerModel(rauw, opties = {}) {
   if (actief2.size > 0) {
     const verbindingen = [
       ...beams.map((b) => [b.from, b.to]),
-      ...plates.map((p, k) => {
-        const erbij = nodes.filter((n) => inOfOpPlaatK(n, k)).map((n) => n.id);
-        return [...p.nodeIds ?? [], ...erbij];
+      ...plates.map((p2, k) => {
+        const erbij = nodes.filter((n2) => inOfOpPlaatK(n2, k)).map((n2) => n2.id);
+        return [...p2.nodeIds ?? [], ...erbij];
       })
     ];
     for (const deel of samenhangendeDelen([...actief2], verbindingen)) {
@@ -23294,23 +23689,23 @@ function valideerModel(rauw, opties = {}) {
       }
     }
   }
-  for (const p of plates) {
-    const hoeken = (p.nodeIds ?? []).map((id) => knoopById.get(id));
+  for (const p2 of plates) {
+    const hoeken = (p2.nodeIds ?? []).map((id) => knoopById.get(id));
     if (hoeken.some((h) => !h)) {
-      errors.push(`Plaat ${p.id}: \xE9\xE9n of meer hoekknopen bestaan niet.`);
+      errors.push(`Plaat ${p2.id}: \xE9\xE9n of meer hoekknopen bestaan niet.`);
       continue;
     }
     const punten = hoeken.map((h) => ({ x: h.x, z: h.z }));
-    const openingen = (p.openingen ?? []).map((o) => o.punten);
+    const openingen = (p2.openingen ?? []).map((o) => o.punten);
     const openingFout = valideerPlaatOpeningen(punten, openingen, 1);
     if (openingFout) {
-      errors.push(`Plaat ${p.id}: ${openingFout}`);
+      errors.push(`Plaat ${p2.id}: ${openingFout}`);
       continue;
     }
     const meldDubbeleOpeningIds = /* @__PURE__ */ new Set();
-    for (const o of p.openingen ?? []) {
+    for (const o of p2.openingen ?? []) {
       if (meldDubbeleOpeningIds.has(o.id)) {
-        errors.push(`Plaat ${p.id}: opening-id ${o.id} komt meer dan \xE9\xE9n keer voor.`);
+        errors.push(`Plaat ${p2.id}: opening-id ${o.id} komt meer dan \xE9\xE9n keer voor.`);
         break;
       }
       meldDubbeleOpeningIds.add(o.id);
@@ -23318,15 +23713,15 @@ function valideerModel(rauw, opties = {}) {
     if (plaatRekentAlsRaster(punten, openingen, 1)) continue;
     const vormFout = valideerPlaatPolygoon(punten, 1);
     if (vormFout) {
-      errors.push(`Plaat ${p.id}: ${vormFout}`);
+      errors.push(`Plaat ${p2.id}: ${vormFout}`);
       continue;
     }
-    const handtekening = plaatMeshSignatuurVan(p, punten);
-    const cache = p.meshCache && p.meshCache.signature === handtekening ? p.meshCache : void 0;
+    const handtekening = plaatMeshSignatuurVan(p2, punten);
+    const cache = p2.meshCache && p2.meshCache.signature === handtekening ? p2.meshCache : void 0;
     if (!cache) {
       const waarom = openingen.length > 0 && punten.length === 4 ? "heeft een opening die geen asgelijnde rechthoek is en rekent daarom via de CDT" : "is geen asgelijnde rechthoek en rekent daarom als polygoonplaat";
       errors.push(
-        `Plaat ${p.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. Reken via een projectbestand waarin het mesh is opgeslagen; de MCP-server genereert zelf geen meshes.`
+        `Plaat ${p2.id} ${waarom}, maar het CDT-rekenmesh ontbreekt of is verouderd. Reken via een projectbestand waarin het mesh is opgeslagen; de MCP-server genereert zelf geen meshes.`
       );
     }
   }
@@ -23343,7 +23738,7 @@ function valideerModel(rauw, opties = {}) {
     if (l.plateId !== void 0 && !plateIds.has(l.plateId)) {
       errors.push(`Last ${id} verwijst naar plaat ${l.plateId}, die niet bestaat.`);
     } else if (l.plateId !== void 0) {
-      const plaat = plates.find((p) => p.id === l.plateId);
+      const plaat = plates.find((p2) => p2.id === l.plateId);
       const hoeken = (plaat?.nodeIds ?? []).map((nid) => knoopById.get(nid));
       if (plaat && hoeken.every((h) => h !== void 0)) {
         const openingen = (Array.isArray(plaat.openingen) ? plaat.openingen : []).filter((o) => o && typeof o.id === "number" && Array.isArray(o.punten));
@@ -23566,22 +23961,22 @@ function mapNaarObject(bron, vorm) {
 function telNietEindig(waarde) {
   if (typeof waarde === "number") return Number.isFinite(waarde) ? 0 : 1;
   if (Array.isArray(waarde)) {
-    let n = 0;
-    for (const item of waarde) n += telNietEindig(item);
-    return n;
+    let n2 = 0;
+    for (const item of waarde) n2 += telNietEindig(item);
+    return n2;
   }
   if (typeof waarde === "object" && waarde !== null) {
-    let n = 0;
+    let n2 = 0;
     for (const item of Object.values(waarde)) {
-      n += telNietEindig(item);
+      n2 += telNietEindig(item);
     }
-    return n;
+    return n2;
   }
   return 0;
 }
 
 // src/mcp/sidecar.ts
-var naarKN = (n) => n / 1e3;
+var naarKN = (n2) => n2 / 1e3;
 var naarKNm = (nmm) => nmm / 1e6;
 var EENHEDEN = {
   kracht: "kN",
@@ -24564,13 +24959,13 @@ function eigenGewichtOverzicht(model) {
     });
   }
   const platen = [];
-  for (const p of model.plates) {
-    const invoer = plaatNaarSolverInput(p);
+  for (const p2 of model.plates) {
+    const invoer = plaatNaarSolverInput(p2);
     const st = bepaalPlaatStijfheid(invoer);
     if (!st.ok) continue;
     platen.push({
-      plateId: p.id,
-      materiaal: (p.materiaal ?? "").trim(),
+      plateId: p2.id,
+      materiaal: (p2.materiaal ?? "").trim(),
       rho: st.stijfheid.rho,
       dikteMm: invoer.thickness,
       p: -(st.stijfheid.rho * STANDARD_GRAVITY * (invoer.thickness / 1e3)) / 1e3
@@ -24627,6 +25022,7 @@ export {
   GESCHAKELD_BRON,
   GEVOLGKLASSEN,
   HANDMATIGE_STANDAARDGEVALLEN,
+  HELLEND_DAK_UITGANGSPUNT,
   HORIZONTAAL_COMBINATIE_UITLEG,
   KOLOM_BRON,
   K_CR_STANDAARD,
@@ -24681,6 +25077,10 @@ export {
   TABEL_76,
   TABEL_77,
   TABEL_78_PSI_MC,
+  TABEL_NB10_74A,
+  TABEL_NB11_74B,
+  TABEL_NB8_73A,
+  TABEL_NB9_73B,
   TERREIN_CATEGORIEEN,
   TIMBER_E90_MEAN,
   TIMBER_E_MEAN,
@@ -24788,6 +25188,11 @@ export {
   handmatigeStuwdruk,
   handtekeningVanGeneratie,
   handtekeningVanModel,
+  hellendDakBron,
+  hellendDakCpe,
+  hellendDakParagraaf,
+  hellendDakTabel,
+  hellendDakUitgangspunten,
   hellingGradenVanStaaf,
   herstelCombinaties,
   houtDoorbuigingsInvoer,
@@ -24909,6 +25314,7 @@ export {
   wijzigBelastinggeval,
   wijzigCombinatie,
   windCombinatiesVoor,
+  windUitgangspunten,
   windVarianten,
   withPlateDefaults,
   zeegNotities,
