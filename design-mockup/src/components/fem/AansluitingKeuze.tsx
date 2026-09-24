@@ -1,6 +1,8 @@
 /**
- * AansluitingKeuze — per staafeinde de aansluiting van N, V en M kiezen:
- * star, scharnier (los) of veer met een stijfheid.
+ * AansluitingKeuze — per staafeinde de aansluiting kiezen. Bovenaan de twee
+ * standaardgevallen, Momentvast (N, V en M vast) en Scharnier (M los, N en V
+ * vast); onder "Anders…" per N, V en M: star, scharnier (los) of veer met een
+ * stijfheid.
  *
  * Eén component voor het eigenschappenpaneel en de staafdialoog. Hij kent
  * de twee velden van de staaf waar dit in landt: `releases` (de scharnieren,
@@ -12,69 +14,19 @@
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import i18next from "i18next";
 import type { BeamEindVeren, BeamReleases } from "./femTypes";
 import "./AansluitingKeuze.css";
 
-export type AansluitDof = "Tx" | "Tz" | "Ry";
-export type AansluitSoort = "vast" | "scharnier" | "veer";
-
-/** `titel` is een i18n-sleutel (naamruimte check), vertaald bij het tonen. */
-export const AANSLUIT_DOFS: { dof: AansluitDof; label: string; titel: string; eenheid: string; stap: number; standaard: number }[] = [
-  { dof: "Tx", label: "N", titel: "connection.dof.Tx", eenheid: "kN/mm", stap: 10, standaard: 100 },
-  { dof: "Tz", label: "V", titel: "connection.dof.Tz", eenheid: "kN/mm", stap: 10, standaard: 100 },
-  { dof: "Ry", label: "M", titel: "connection.dof.Ry", eenheid: "kNm/rad", stap: 100, standaard: 5000 },
-];
-
-type Sleutel = keyof BeamReleases & keyof BeamEindVeren;
-const sleutel = (zijde: "start" | "end", dof: AansluitDof): Sleutel => `${zijde}${dof}` as Sleutel;
-
-/** Wat er nu op één DOF staat, uit de twee velden van de staaf. */
-export function aansluitingVan(
-  releases: BeamReleases | undefined,
-  veren: BeamEindVeren | undefined,
-  zijde: "start" | "end",
-  dof: AansluitDof,
-): { soort: AansluitSoort; k: number | null } {
-  const s = sleutel(zijde, dof);
-  if (releases?.[s]) return { soort: "scharnier", k: null };
-  const k = veren?.[s];
-  if (k !== undefined && k > 0) return { soort: "veer", k };
-  return { soort: "vast", k: null };
-}
-
-/** Eén DOF zetten; geeft de twee velden terug zoals ze op de staaf horen. */
-export function zetAansluiting(
-  releases: BeamReleases | undefined,
-  veren: BeamEindVeren | undefined,
-  zijde: "start" | "end",
-  dof: AansluitDof,
-  soort: AansluitSoort,
-  k: number | null,
-): { releases: BeamReleases | undefined; veren: BeamEindVeren | undefined } {
-  const s = sleutel(zijde, dof);
-  const rel: BeamReleases = { ...releases };
-  const v: BeamEindVeren = { ...veren };
-  delete rel[s];
-  delete v[s];
-  if (soort === "scharnier") rel[s] = true;
-  if (soort === "veer" && k !== null && k > 0) v[s] = k;
-  const relUit = Object.values(rel).some(Boolean) ? rel : undefined;
-  const vUit = Object.values(v).some((x) => x !== undefined && x > 0) ? v : undefined;
-  return { releases: relUit, veren: vUit };
-}
-
-/** Korte samenvatting van een einde: "N vast · V vast · M veer 5000 kNm/rad". */
-export function aansluitingSamenvatting(
-  releases: BeamReleases | undefined,
-  veren: BeamEindVeren | undefined,
-  zijde: "start" | "end",
-): string {
-  return AANSLUIT_DOFS.map((d) => {
-    const a = aansluitingVan(releases, veren, zijde, d.dof);
-    return `${d.label} ${a.soort === "veer" ? i18next.t("check:connection.springSummary", { k: a.k, eenheid: d.eenheid }) : i18next.t(`check:connection.type.${a.soort}`)}`;
-  }).join(" · ");
-}
+export {
+  AANSLUIT_DOFS, aansluitingVan, zetAansluiting, aansluitingSamenvatting,
+  standaardAansluitingVan, zetStandaardAansluiting,
+} from "../../lib/aansluiting";
+export type { AansluitDof, AansluitSoort, StandaardAansluiting } from "../../lib/aansluiting";
+import {
+  AANSLUIT_DOFS, aansluitingVan, zetAansluiting,
+  standaardAansluitingVan, zetStandaardAansluiting,
+  type AansluitDof, type AansluitSoort, type StandaardAansluiting,
+} from "../../lib/aansluiting";
 
 export default function AansluitingKeuze({
   zijde, releases, veren, onChange,
@@ -89,9 +41,38 @@ export default function AansluitingKeuze({
   // niet meteen terugvalt op "vast" (een veer zonder getal IS star, maar dat
   // hoort de gebruiker pas te merken als hij het veld leeg laat).
   const [tekst, setTekst] = useState<Partial<Record<AansluitDof, string>>>({});
+  const standaard = standaardAansluitingVan(releases, veren, zijde);
+  // De regels per N/V/M staan open bij een afwijkende aansluiting, of als de
+  // gebruiker "Anders…" koos; bij Momentvast en Scharnier blijven ze dicht.
+  const [verfijnen, setVerfijnen] = useState(standaard === "anders");
+  const toonRegels = verfijnen || standaard === "anders" || Object.keys(tekst).length > 0;
+  const kies = (keuze: Exclude<StandaardAansluiting, "anders">) => {
+    setTekst({});
+    setVerfijnen(false);
+    onChange(zetStandaardAansluiting(releases, veren, zijde, keuze));
+  };
   return (
     <div className="aansluiting-keuze">
-      {AANSLUIT_DOFS.map((d) => {
+      <div className="aansluiting-standaard" role="group" aria-label={t("connection.standaard.label")}>
+        {(["momentvast", "scharnier"] as const).map((k) => (
+          <button
+            key={k} type="button"
+            className={`aansluiting-knop${standaard === k && !verfijnen ? " actief" : ""}`}
+            aria-pressed={standaard === k && !verfijnen}
+            title={t(`connection.standaard.${k}Titel`)}
+            onClick={() => kies(k)}
+          >{t(`connection.standaard.${k}`)}</button>
+        ))}
+        <button
+          type="button"
+          className={`aansluiting-knop aansluiting-anders${toonRegels ? " actief" : ""}`}
+          aria-pressed={toonRegels}
+          aria-expanded={toonRegels}
+          title={t("connection.standaard.andersTitel")}
+          onClick={() => setVerfijnen((v) => !v || standaard === "anders")}
+        >{t("connection.standaard.anders")}</button>
+      </div>
+      {toonRegels && AANSLUIT_DOFS.map((d) => {
         const a = aansluitingVan(releases, veren, zijde, d.dof);
         const bezig = tekst[d.dof] !== undefined;
         const soort: AansluitSoort = bezig ? "veer" : a.soort;

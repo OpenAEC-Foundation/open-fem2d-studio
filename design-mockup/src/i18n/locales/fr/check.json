@@ -271,7 +271,16 @@
       "scharnier": "rotule",
       "veer": "ressort"
     },
-    "springSummary": "ressort {{k}} {{eenheid}}"
+    "springSummary": "ressort {{k}} {{eenheid}}",
+    "standaard": {
+      "label": "Liaison standard",
+      "momentvast": "Encastré",
+      "scharnier": "Articulé",
+      "anders": "Autre…",
+      "momentvastTitel": "N, V et M bloqués : la barre est encastrée dans le nœud.",
+      "scharnierTitel": "M libéré, N et V bloqués : la barre ne transmet aucun moment au nœud.",
+      "andersTitel": "Choisir pour N, V et M : bloqué, rotule ou ressort avec rigidité."
+    }
   },
   "profileEditor": {
     "properties": {

@@ -271,7 +271,16 @@
       "scharnier": "Gelenk",
       "veer": "Feder"
     },
-    "springSummary": "Feder {{k}} {{eenheid}}"
+    "springSummary": "Feder {{k}} {{eenheid}}",
+    "standaard": {
+      "label": "Standardanschluss",
+      "momentvast": "Biegesteif",
+      "scharnier": "Gelenk",
+      "anders": "Andere…",
+      "momentvastTitel": "N, V und M starr: der Stab ist biegesteif mit dem Knoten verbunden.",
+      "scharnierTitel": "M gelöst, N und V starr: der Stab überträgt kein Moment auf den Knoten.",
+      "andersTitel": "Je N, V und M wählen: starr, Gelenk oder Feder mit Steifigkeit."
+    }
   },
   "profileEditor": {
     "properties": {

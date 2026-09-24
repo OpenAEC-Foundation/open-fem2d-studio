@@ -271,7 +271,16 @@
       "scharnier": "scharnier",
       "veer": "veer"
     },
-    "springSummary": "veer {{k}} {{eenheid}}"
+    "springSummary": "veer {{k}} {{eenheid}}",
+    "standaard": {
+      "label": "Standaardaansluiting",
+      "momentvast": "Momentvast",
+      "scharnier": "Scharnier",
+      "anders": "Anders…",
+      "momentvastTitel": "N, V en M vast: de staaf is momentvast met de knoop verbonden.",
+      "scharnierTitel": "M los, N en V vast: de staaf draagt geen moment over naar de knoop.",
+      "andersTitel": "Per N, V en M kiezen: vast, scharnier of veer met stijfheid."
+    }
   },
   "profileEditor": {
     "properties": {

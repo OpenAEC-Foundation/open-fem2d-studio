@@ -271,7 +271,16 @@
       "scharnier": "hinge",
       "veer": "spring"
     },
-    "springSummary": "spring {{k}} {{eenheid}}"
+    "springSummary": "spring {{k}} {{eenheid}}",
+    "standaard": {
+      "label": "Standard connection",
+      "momentvast": "Moment-fixed",
+      "scharnier": "Pinned",
+      "anders": "Other…",
+      "momentvastTitel": "N, V and M fixed: the member is rigidly connected to the node.",
+      "scharnierTitel": "M released, N and V fixed: the member transfers no moment to the node.",
+      "andersTitel": "Choose per N, V and M: fixed, hinge or spring with stiffness."
+    }
   },
   "profileEditor": {
     "properties": {
