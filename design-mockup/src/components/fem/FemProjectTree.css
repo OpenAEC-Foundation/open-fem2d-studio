@@ -320,3 +320,31 @@
   color: var(--theme-accent);
   font-weight: 600;
 }
+
+/* Titel "Weergave op canvas" met het tandwiel naar het venster Zichtbaarheid
+   (issue #47). */
+.fem-results-section-title-met-knop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.fem-results-title-knop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: -4px -6px -4px 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--theme-text-secondary);
+  cursor: pointer;
+}
+.fem-results-title-knop:hover {
+  background: var(--theme-hover);
+  border-color: var(--theme-border);
+  color: var(--theme-accent);
+}

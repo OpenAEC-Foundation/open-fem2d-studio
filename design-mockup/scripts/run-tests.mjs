@@ -730,6 +730,14 @@ const ALLEEN_BRON = new Map([
     "peilmaat-ui",
     "issue #48: de klikbare peilmaat op het echte tekenvlak met de echte modelstore in een lokale headless browser — grootte, klikvlak, hover, invoer in mm, Enter/Esc, meldingen, niveau en knopen samen in één undo-stap, en de maatlijn vrij van de peilmaat. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
+  [
+    "zichtbaarheid",
+    "issue #47: het venster Zichtbaarheid (`lib/zichtbaarheid.ts`: groepen, één bron met de verkenner, onthouden per gebruiker), de labels op het staafmidden (`lib/staafLabels.ts`) en de profielbreedte uit `lib/aanzichtGeometrie.ts`. Weergavemodules buiten de barrel; de sidecar tekent niets",
+  ],
+  [
+    "zichtbaarheid-ui",
+    "issue #47: het echte venster Zichtbaarheid, de echte weergavelijst en het echte tekenvlak op dezelfde displayFlags in een lokale headless browser — elke schakelaar zet dezelfde vlag als de verkenner, het tekenvlak volgt (knoop- en staafnummers, lagen, profielbreedte), Standaard, tandwiel, lintknop en thema. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

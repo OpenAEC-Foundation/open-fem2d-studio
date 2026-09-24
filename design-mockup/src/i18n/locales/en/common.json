@@ -13,6 +13,35 @@
   "cancel": "Cancel",
   "save": "Save",
   "close": "Close",
+  "zichtbaarheid": {
+    "titel": "Visibility",
+    "groepLabels": "Labels",
+    "groepGeometrie": "Geometry",
+    "groepResultaten": "Results",
+    "knoopnummers": "Node numbers",
+    "knoopnummersHint": "The number next to each node.",
+    "staafnummers": "Member numbers",
+    "staafnummersHint": "The member number, e.g. (3), at mid-member next to the section name — as in the structural sketch of the report.",
+    "lastWaarden": "Load values",
+    "lastWaardenHint": "The numbers at the loads (kN, kN/m, kNm, ΔT). The arrows remain.",
+    "peilmaten": "Level marks",
+    "peilmatenHint": "The level mark of each grid level (+5.00 m). Click a level mark to change the level.",
+    "maatlijnen": "Dimension lines",
+    "maatlijnenHint": "The dimensions between grid axes and levels (mm).",
+    "aanzichtBreedte": "Section width (b)",
+    "aanzichtBreedteHint": "The section width b as a label at the elevation: the elevation shows the depth h, the width is perpendicular to the drawing.",
+    "opleggingen": "Supports",
+    "opleggingenHint": "The support symbols.",
+    "scharnieren": "Hinges and springs",
+    "scharnierenHint": "The hinges and springs at the member ends.",
+    "stramien": "Structural grid",
+    "stramienHint": "Grid axes and levels.",
+    "stramienProject": "Belongs to the project (also in the grid dialog).",
+    "alleenMetAanzicht": "Visible once the elevation is on.",
+    "resultatenNoot": "The same switches as in the explorer, Results tab.",
+    "onthouden": "Labels and geometry are remembered for you, not in the project.",
+    "standaard": "Defaults"
+  },
   "infoTip": {
     "label": "Explanation"
   },
@@ -459,6 +488,10 @@
       "springStart": "Rotational spring connection at the start end: k = {{k}} kNm/rad (member {{staaf}})",
       "springEnd": "Rotational spring connection at the end: k = {{k}} kNm/rad (member {{staaf}})"
     },
+    "aanzicht": {
+      "breedte": "b = {{b}} mm",
+      "breedteVerloop": "b = {{b1}} → {{b2}} mm"
+    },
     "kipsteun": {
       "support": "Lateral restraint: {{zijde}}, {{x}} mm {{vanaf}} (member {{staaf}})",
       "supportSpacing": "Lateral restraint from the restraint spacing: {{zijde}}, {{x}} mm {{vanaf}} (member {{staaf}})",
@@ -855,6 +888,7 @@
     "other": "Other",
     "envelopeOption": "Envelope (min/max all combinations)",
     "canvasDisplay": "Canvas display",
+    "openZichtbaarheid": "Visibility: all display settings",
     "scaleTitle": "Scale factor — adjust the visual size of this diagram",
     "nodeValuesTitle": "Show the displacement ux / uz in mm at each node",
     "nodeValues": "Nodal values",

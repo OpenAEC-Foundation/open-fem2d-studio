@@ -204,6 +204,8 @@
     "diagnostics": "Diagnostiek",
     "logs": "Logs",
     "errors": "Fouten",
+    "view": "Weergave",
+    "visibility": "Zichtbaarheid",
     "info": "Info",
     "matrixEmpty": "— leeg —",
     "truncated": "Matrix is {{totaalRijen}}×{{totaalKolommen}}, eerste {{rijen}}×{{kolommen}} getoond. Gebruik Inzicht → Export matrix voor de volledige CSV.",

@@ -13,6 +13,35 @@
   "cancel": "Abbrechen",
   "save": "Speichern",
   "close": "Schließen",
+  "zichtbaarheid": {
+    "titel": "Sichtbarkeit",
+    "groepLabels": "Beschriftungen",
+    "groepGeometrie": "Geometrie",
+    "groepResultaten": "Ergebnisse",
+    "knoopnummers": "Knotennummern",
+    "knoopnummersHint": "Die Nummer neben jedem Knoten.",
+    "staafnummers": "Stabnummern",
+    "staafnummersHint": "Die Stabnummer, z. B. (3), in Stabmitte neben dem Profilnamen — wie in der Systemskizze des Berichts.",
+    "lastWaarden": "Lastwerte",
+    "lastWaardenHint": "Die Zahlen an den Lasten (kN, kN/m, kNm, ΔT). Die Pfeile bleiben.",
+    "peilmaten": "Höhenkoten",
+    "peilmatenHint": "Die Höhenkote jeder Ebene des Rasters (+5,00 m). Auf eine Höhenkote klicken, um die Ebene zu ändern.",
+    "maatlijnen": "Maßlinien",
+    "maatlijnenHint": "Die Maße zwischen Rasterachsen und Ebenen (mm).",
+    "aanzichtBreedte": "Profilbreite (b)",
+    "aanzichtBreedteHint": "Die Profilbreite b als Beschriftung an der Ansicht: die Ansicht zeigt die Höhe h, die Breite steht senkrecht zur Zeichnung.",
+    "opleggingen": "Auflager",
+    "opleggingenHint": "Die Auflagersymbole.",
+    "scharnieren": "Gelenke und Federn",
+    "scharnierenHint": "Die Gelenke und Federn an den Stabenden.",
+    "stramien": "Raster",
+    "stramienHint": "Rasterachsen und Ebenen.",
+    "stramienProject": "Gehört zum Projekt (auch im Rasterdialog).",
+    "alleenMetAanzicht": "Sichtbar, sobald die Ansicht eingeschaltet ist.",
+    "resultatenNoot": "Dieselben Schalter wie im Explorer, Registerkarte Ergebnisse.",
+    "onthouden": "Beschriftungen und Geometrie werden für Sie gespeichert, nicht im Projekt.",
+    "standaard": "Standard"
+  },
   "infoTip": {
     "label": "Erläuterung"
   },
@@ -459,6 +488,10 @@
       "springStart": "Federnder Momentenanschluss am Stabanfang: k = {{k}} kNm/rad (Stab {{staaf}})",
       "springEnd": "Federnder Momentenanschluss am Stabende: k = {{k}} kNm/rad (Stab {{staaf}})"
     },
+    "aanzicht": {
+      "breedte": "b = {{b}} mm",
+      "breedteVerloop": "b = {{b1}} → {{b2}} mm"
+    },
     "kipsteun": {
       "support": "Kipphalterung: {{zijde}}, {{x}} mm {{vanaf}} (Stab {{staaf}})",
       "supportSpacing": "Kipphalterung aus dem Halterungsabstand: {{zijde}}, {{x}} mm {{vanaf}} (Stab {{staaf}})",
@@ -855,6 +888,7 @@
     "other": "Sonstige",
     "envelopeOption": "Umhüllende (min/max aller Kombinationen)",
     "canvasDisplay": "Darstellung auf der Zeichenfläche",
+    "openZichtbaarheid": "Sichtbarkeit: alle Darstellungseinstellungen",
     "scaleTitle": "Skalierungsfaktor — passen Sie die visuelle Größe dieses Diagramms an",
     "nodeValuesTitle": "An jedem Knoten die Verschiebung ux / uz in mm anzeigen",
     "nodeValues": "Knotenwerte",

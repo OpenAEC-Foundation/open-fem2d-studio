@@ -13,6 +13,35 @@
   "cancel": "Annuler",
   "save": "Enregistrer",
   "close": "Fermer",
+  "zichtbaarheid": {
+    "titel": "Visibilité",
+    "groepLabels": "Étiquettes",
+    "groepGeometrie": "Géométrie",
+    "groepResultaten": "Résultats",
+    "knoopnummers": "Numéros de nœuds",
+    "knoopnummersHint": "Le numéro à côté de chaque nœud.",
+    "staafnummers": "Numéros de barres",
+    "staafnummersHint": "Le numéro de barre, p. ex. (3), au milieu de la barre à côté du nom du profil — comme dans le schéma de la note de calcul.",
+    "lastWaarden": "Valeurs des charges",
+    "lastWaardenHint": "Les nombres aux charges (kN, kN/m, kNm, ΔT). Les flèches restent.",
+    "peilmaten": "Cotes de niveau",
+    "peilmatenHint": "La cote de chaque niveau de la trame (+5,00 m). Cliquez sur une cote pour modifier le niveau.",
+    "maatlijnen": "Lignes de cote",
+    "maatlijnenHint": "Les cotes entre les axes et les niveaux de la trame (mm).",
+    "aanzichtBreedte": "Largeur du profil (b)",
+    "aanzichtBreedteHint": "La largeur b du profil en étiquette sur l’élévation : l’élévation montre la hauteur h, la largeur est perpendiculaire au dessin.",
+    "opleggingen": "Appuis",
+    "opleggingenHint": "Les symboles d’appui.",
+    "scharnieren": "Articulations et ressorts",
+    "scharnierenHint": "Les articulations et ressorts aux extrémités des barres.",
+    "stramien": "Trame",
+    "stramienHint": "Axes et niveaux de la trame.",
+    "stramienProject": "Appartient au projet (aussi dans la fenêtre de trame).",
+    "alleenMetAanzicht": "Visible dès que l’élévation est activée.",
+    "resultatenNoot": "Les mêmes interrupteurs que dans l’explorateur, onglet Résultats.",
+    "onthouden": "Les étiquettes et la géométrie sont mémorisées pour vous, pas dans le projet.",
+    "standaard": "Par défaut"
+  },
   "infoTip": {
     "label": "Explication"
   },
@@ -459,6 +488,10 @@
       "springStart": "Liaison élastique en rotation à l'origine : k = {{k}} kNm/rad (barre {{staaf}})",
       "springEnd": "Liaison élastique en rotation à l'extrémité : k = {{k}} kNm/rad (barre {{staaf}})"
     },
+    "aanzicht": {
+      "breedte": "b = {{b}} mm",
+      "breedteVerloop": "b = {{b1}} → {{b2}} mm"
+    },
     "kipsteun": {
       "support": "Maintien latéral : {{zijde}}, {{x}} mm {{vanaf}} (barre {{staaf}})",
       "supportSpacing": "Maintien latéral issu de l'entraxe des maintiens : {{zijde}}, {{x}} mm {{vanaf}} (barre {{staaf}})",
@@ -855,6 +888,7 @@
     "other": "Autre",
     "envelopeOption": "Enveloppe (min/max de toutes les combinaisons)",
     "canvasDisplay": "Affichage sur le canevas",
+    "openZichtbaarheid": "Visibilité : tous les réglages d’affichage",
     "scaleTitle": "Facteur d'échelle — ajustez la taille visuelle de ce diagramme",
     "nodeValuesTitle": "Afficher à chaque nœud le déplacement ux / uz en mm",
     "nodeValues": "Valeurs aux nœuds",

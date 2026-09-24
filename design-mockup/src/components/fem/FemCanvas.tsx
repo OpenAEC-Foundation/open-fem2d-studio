@@ -92,6 +92,10 @@ import {
 // samenvallende knopen en vrije uiteinden — mét knoopnummers en herstelactie,
 // zodat de solver niet als eerste met "singuliere matrix" hoeft te komen.
 import { CONTROLE_TOL_MM, controleerModel, type Bevinding } from "../../lib/modelControle";
+// Profielnaam, staafnummer en profielbreedte op het staafmidden, zonder
+// overlap (issue #47); de weergavevlaggen lezen zoals verkenner en venster.
+import { staafLabelPlaatsen, type LabelPlaats } from "../../lib/staafLabels";
+import { vlagAan } from "../../lib/zichtbaarheid";
 // Peilmaat van een niveau (issue #48): tekst, klikvlak en het lezen van de
 // niveau-invoer in mm. Horizontale assen zijn NIVEAUS met een peilmaat, geen
 // genummerd stramien — alleen de verticale assen dragen een stramienletter.
@@ -180,6 +184,11 @@ function fmtLegenda(v: number): string {
   if (a >= 100)  return v.toFixed(1);
   if (a >= 1)    return v.toFixed(2);
   return v.toFixed(3);
+}
+
+/** Een maat in mm voor een label, op 0,1 mm (bv. de profielbreedte "135" of "60.3"). */
+function fmtMaat(mm: number): string {
+  return formatLength(Math.round(mm * 10) / 10);
 }
 
 /**
@@ -549,8 +558,6 @@ const DIM_LABEL_DY = 13;
 const SCHARNIER_R_PX = 3.5;
 /** Afstand van het scharnierbolletje tot de knoop (px, schermruimte). */
 const SCHARNIER_AFSTAND_PX = 11;
-/** Loodrechte verspringing van de profielnaam t.o.v. de staafas (px). */
-const PROFIEL_LABEL_OFFSET_PX = 9;
 /**
  * Hoogte van een kipsteunsymbool. Het schaalt mee met de zoom — 150 mm in het
  * model — maar blijft tussen deze grenzen: kleiner dan 6 px is een stip zonder
@@ -632,6 +639,11 @@ export default function FemCanvas(props: FemCanvasProps) {
   // toetsinvoer en voor deze laag, zie lib/kipsteunBeeld.ts. Alleen van het
   // model afhankelijk, dus niet opnieuw bij pannen, zoomen of hover.
   const toonKipsteunen = displayFlags.kipsteunen !== false;
+  // Weergavevlaggen van het venster Zichtbaarheid (issue #47).
+  const toonKnoopnummers = vlagAan(displayFlags, "knoopnummers");
+  const toonStaafnummers = vlagAan(displayFlags, "staafnummers");
+  const toonPeilmaten = vlagAan(displayFlags, "peilmaten");
+  const toonMaatlijnen = vlagAan(displayFlags, "maatlijnen");
   const kipBeelden = useMemo(
     () => (toonKipsteunen ? kipsteunBeelden({ nodes, beams, supports, plates }) : []),
     [toonKipsteunen, nodes, beams, supports, plates],
@@ -3115,52 +3127,54 @@ export default function FemCanvas(props: FemCanvasProps) {
   };
 
   /**
-   * Profielnaam klein langs de staaf, meegedraaid met de staafrichting en
-   * altijd leesbaar (nooit ondersteboven). Uit te zetten met het vinkje
-   * "Profielnaam" in de weergavelijst.
-   *
-   * Op een staaf die op het scherm korter is dan het label zelf wordt niets
-   * getekend: een naam die over drie staven heen loopt hoort bij geen van
-   * drieën meer.
+   * De labels op het staafmidden (lib/staafLabels.ts): de profielnaam klein
+   * langs de staaf (vinkje "Profielnaam"), het staafnummer "(3)" een regel
+   * verder naar buiten (vinkje "Staafnummers", issue #47) en, met het aanzicht
+   * aan, de profielbreedte b aan de andere kant van het aanzicht (vinkje
+   * "Profielbreedte in het aanzicht"). Meegedraaid met de staaf en altijd
+   * leesbaar; een label dat niet op de staaf past, vervalt.
    */
-  const renderProfielLabel = (
+  const renderStaafLabels = (
     b: Beam,
     p1: { x: number; y: number },
     p2: { x: number; y: number },
   ) => {
-    if (displayFlags.profielLabels === false) return null;
-    if (!b.profile) return null;
     // VERLOPEND PROFIEL: het label draagt begin én eind ("IPE 300 → IPE 200
     // (verlopend)"), dezelfde schrijfwijze als het eigenschappenpaneel en het
     // rapport. Alleen het beginprofiel tonen zou de staaf op de tekening
     // prismatisch laten lijken.
-    const naam = doorsnedeNaamVertaald(b, tCommon);
-    const dx = p2.x - p1.x, dy = p2.y - p1.y;
-    const len = Math.hypot(dx, dy);
-    // Ruwe schatting van de labelbreedte bij 9 px letterhoogte.
-    if (len < naam.length * 5.5 + 10) return null;
-    let hoek = (Math.atan2(dy, dx) * 180) / Math.PI;
-    if (hoek > 90) hoek -= 180;
-    if (hoek < -90) hoek += 180;
-    // Loodrecht verschuiven zodat de tekst NAAST de staaf staat; de kant die
-    // op het scherm omhoog wijst, zodat het label niet op de diagrammen valt.
-    const nx = -dy / len, ny = dx / len;
-    const teken = ny > 0 ? -1 : 1;
-    // Met het aanzicht aan: naast het aanzicht, niet erin.
+    const naam = displayFlags.profielLabels !== false && b.profile ? doorsnedeNaamVertaald(b, tCommon) : null;
+    const nummer = toonStaafnummers ? `(${b.id})` : null;
     const half = aanzichtHalf.get(b.id);
-    const afstand = half !== undefined
-      ? Math.max(PROFIEL_LABEL_OFFSET_PX, half * view.scale + 7)
-      : PROFIEL_LABEL_OFFSET_PX;
-    const tx = p1.x + dx / 2 + nx * afstand * teken;
-    const ty = p1.y + dy / 2 + ny * afstand * teken;
+    const bMaat = toonAanzichtBreedte ? aanzichtBreedte.get(b.id) : undefined;
+    const breedte = bMaat
+      ? (Math.abs(bMaat.begin - bMaat.eind) < 0.05
+        ? tCommon("canvas.aanzicht.breedte", { b: fmtMaat(bMaat.begin) })
+        : tCommon("canvas.aanzicht.breedteVerloop", { b1: fmtMaat(bMaat.begin), b2: fmtMaat(bMaat.eind) }))
+      : null;
+    if (!naam && !nummer && !breedte) return null;
+    // Met het aanzicht aan: naast het aanzicht, niet erin.
+    const plek = staafLabelPlaatsen(p1, p2, {
+      profiel: naam, nummer, breedte,
+      aanzichtHalfPx: half !== undefined ? half * view.scale : undefined,
+    });
+    const tekst = (pl: LabelPlaats | null, inhoud: string | null, klasse: string, extra?: Record<string, string>) =>
+      pl && inhoud ? (
+        <text
+          x={pl.x} y={pl.y}
+          className={klasse}
+          textAnchor="middle"
+          transform={`rotate(${pl.hoek.toFixed(2)} ${pl.x.toFixed(2)} ${pl.y.toFixed(2)})`}
+          pointerEvents="none"
+          {...extra}
+        >{inhoud}</text>
+      ) : null;
     return (
-      <text
-        x={tx} y={ty}
-        className="fem-beam-profiel"
-        textAnchor="middle"
-        transform={`rotate(${hoek.toFixed(2)} ${tx.toFixed(2)} ${ty.toFixed(2)})`}
-        pointerEvents="none"
-      >{naam}</text>
+      <>
+        {tekst(plek.profiel, naam, "fem-beam-profiel", { "data-staafprofiel": String(b.id) })}
+        {tekst(plek.nummer, nummer, "fem-beam-nummer", { "data-staafnummer": String(b.id) })}
+        {tekst(plek.breedte, breedte, "fem-aanzicht-breedte", { "data-staafbreedte": String(b.id) })}
+      </>
     );
   };
 
@@ -3337,6 +3351,12 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
     return m;
   }, [aanzichten]);
+  /** Profielbreedte b (mm) per staaf in het aanzicht, voor het breedtelabel (issue #47). */
+  const toonAanzichtBreedte = toonAanzicht && vlagAan(displayFlags, "aanzichtBreedte");
+  const aanzichtBreedte = useMemo(
+    () => new Map(aanzichten.map((a) => [a.staafId, a.breedte] as const)),
+    [aanzichten],
+  );
 
   // ── Beschikbaarheid van de EI-weergave doorgeven ────────────────────────
   // De weergavelijst (FemProjectTree) moet de EI-stand kunnen uitgrijzen als
@@ -3762,7 +3782,9 @@ export default function FemCanvas(props: FemCanvasProps) {
                 return (
                   <g key={`zax${az.id}`}>
                     <line x1={pL.x} y1={pL.y} x2={pR.x} y2={pR.y} className="fem-stramien-line" />
-                    {/* Links: het bouwkundige peildriehoekje op de lijn + de peilmaat. */}
+                    {/* Links: het bouwkundige peildriehoekje op de lijn + de peilmaat.
+                        Uit te zetten met "Peilmaten" (Zichtbaarheid, issue #47). */}
+                    {toonPeilmaten && <>
                     <g
                       className={klasse} data-peilmaat={az.id} data-zijde="links"
                       onMouseDown={houdMuis}
@@ -3797,6 +3819,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                         {labelTekst}
                       </text>
                     </g>
+                    </>}
                     {/* Minus button — verwijder dit niveau; náást de peilmaat,
                         ook als die een eigen niveaunaam draagt. */}
                     {setStructuralGrid && (
@@ -3821,7 +3844,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                   Opmaak: op het snijpunt met de stramienlijn een open cirkeltje (gevuld met
                   de achtergrondkleur, zodat de maatlijn er niet doorheen loopt) en de maat
                   BOVEN de maatlijn. */}
-              {xSorted.length > 1 && (() => {
+              {toonMaatlijnen && xSorted.length > 1 && (() => {
                 const dimZ = zLo - DIM_PAD;
                 const items: React.ReactNode[] = [];
                 for (let i = 0; i < xSorted.length - 1; i++) {
@@ -3866,7 +3889,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                   snijpunt met de niveaulijn en de maat NAAST de maatlijn in plaats van
                   eróp. De tekst gaat naar de buitenzijde (rechts van de lijn) — de
                   binnenzijde is bezet door de peilmaten van de niveaus. */}
-              {zSorted.length > 1 && (() => {
+              {toonMaatlijnen && zSorted.length > 1 && (() => {
                 const dimX = xHi + DIM_PAD;
                 // Uitgezoomd ligt DIM_PAD op het scherm maar een paar pixel
                 // van de niveaulijn, en dan liep de maatlijn dwars door de
@@ -4065,8 +4088,8 @@ export default function FemCanvas(props: FemCanvasProps) {
                 onMouseLeave={() => setHoverBeamId((id) => (id === b.id ? null : id))}
               />
               {renderVerloopVorm(b, p1, p2)}
-              {renderScharnieren(b, p1, p2)}
-              {renderProfielLabel(b, p1, p2)}
+              {displayFlags.scharnieren !== false && renderScharnieren(b, p1, p2)}
+              {renderStaafLabels(b, p1, p2)}
             </g>
           );
         })}
@@ -4165,7 +4188,11 @@ export default function FemCanvas(props: FemCanvasProps) {
         })()}
 
         {/* Loads */}
-        <g className="fem-loads-layer">{activeLoads.map(renderLoad)}</g>
+        {/* Zonder "Belastingwaarden" (issue #47) blijven de pijlen staan en
+            verdwijnen alleen de getallen (CSS: .zonder-waarden). */}
+        <g className={`fem-loads-layer${vlagAan(displayFlags, "lastWaarden") ? "" : " zonder-waarden"}`}>
+          {activeLoads.map(renderLoad)}
+        </g>
         {/* Automatisch eigen gewicht (issue #42) — alleen-lezen, eigen component. */}
         {showLoads && !resultsMode && eigenGewicht && eigenGewicht.caseId === activeLoadCaseId && (
           <EigenGewichtLaag overzicht={eigenGewicht} nodes={nodes} beams={beams} plates={plates}
@@ -4173,7 +4200,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         )}
 
         {/* Supports */}
-        {supports.map(renderSupport)}
+        {vlagAan(displayFlags, "opleggingen") && supports.map(renderSupport)}
 
         {/* Nodes */}
         {nodes.map(n => {
@@ -4195,7 +4222,7 @@ export default function FemCanvas(props: FemCanvasProps) {
                     setSelection({ type: "node", id: n.id });
                   }
                 }} />
-              <text x={p.x + 8} y={p.y - 8} className="fem-node-label">{n.id}</text>
+              {toonKnoopnummers && <text x={p.x + 8} y={p.y - 8} className="fem-node-label">{n.id}</text>}
             </g>
           );
         })}

@@ -204,6 +204,8 @@
     "diagnostics": "Diagnose",
     "logs": "Protokolle",
     "errors": "Fehler",
+    "view": "Ansicht",
+    "visibility": "Sichtbarkeit",
     "info": "Info",
     "matrixEmpty": "— leer —",
     "truncated": "Matrix ist {{totaalRijen}}×{{totaalKolommen}}, die ersten {{rijen}}×{{kolommen}} werden angezeigt. Verwenden Sie Einblick → Matrix exportieren für die vollständige CSV.",

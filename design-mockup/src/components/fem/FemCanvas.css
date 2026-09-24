@@ -979,3 +979,28 @@
 .fem-member.systeemlijn:hover { stroke-width: 2; }
 .fem-member.systeemlijn.selected,
 .fem-member.systeemlijn.snap { stroke-width: 2.2; }
+
+/* ── Venster Zichtbaarheid (issue #47) ──────────────────────────────────── */
+/* Staafnummer "(3)" naast de profielnaam: cursief en gedempt, zoals in de
+   constructieschets van het rapport. */
+.fem-beam-nummer {
+  fill: var(--theme-text-secondary);
+  font: italic 600 10px/1 "Inter", system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: var(--theme-bg);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+/* Profielbreedte b bij het aanzicht, aan de andere kant dan de profielnaam. */
+.fem-aanzicht-breedte {
+  fill: var(--theme-text-secondary);
+  font: 500 9px/1 "JetBrains Mono", monospace;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: var(--theme-bg);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+/* "Belastingwaarden" uit: de pijlen blijven, de getallen niet. */
+.fem-loads-layer.zonder-waarden .fem-load-text,
+.fem-loads-layer.zonder-waarden .fem-load-text-static { display: none; }

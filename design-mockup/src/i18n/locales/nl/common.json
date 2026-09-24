@@ -13,6 +13,35 @@
   "cancel": "Annuleren",
   "save": "Opslaan",
   "close": "Sluiten",
+  "zichtbaarheid": {
+    "titel": "Zichtbaarheid",
+    "groepLabels": "Labels",
+    "groepGeometrie": "Geometrie",
+    "groepResultaten": "Resultaten",
+    "knoopnummers": "Knoopnummers",
+    "knoopnummersHint": "Het nummer naast elke knoop.",
+    "staafnummers": "Staafnummers",
+    "staafnummersHint": "Het staafnummer, bv. (3), op het staafmidden naast de profielnaam — zoals in de constructieschets van het rapport.",
+    "lastWaarden": "Belastingwaarden",
+    "lastWaardenHint": "De getallen bij de lasten (kN, kN/m, kNm, ΔT). De pijlen blijven staan.",
+    "peilmaten": "Peilmaten",
+    "peilmatenHint": "De peilmaat van elk niveau van het stramien (+5,00 m). Klik op een peilmaat om het niveau te wijzigen.",
+    "maatlijnen": "Maatlijnen",
+    "maatlijnenHint": "De maten tussen de stramienassen en niveaus (mm).",
+    "aanzichtBreedte": "Profielbreedte (b)",
+    "aanzichtBreedteHint": "De breedte b van het profiel als label bij het aanzicht: het aanzicht toont de hoogte h, de breedte staat loodrecht op de tekening.",
+    "opleggingen": "Opleggingen",
+    "opleggingenHint": "De oplegsymbolen.",
+    "scharnieren": "Scharnieren en veren",
+    "scharnierenHint": "De scharnieren en veren aan de staafeinden.",
+    "stramien": "Stramien",
+    "stramienHint": "Stramienassen en niveaus.",
+    "stramienProject": "Hoort bij het project (ook in het stramienvenster).",
+    "alleenMetAanzicht": "Zichtbaar zodra het aanzicht aan staat.",
+    "resultatenNoot": "Dezelfde schakelaars als in de verkenner, tab Resultaten.",
+    "onthouden": "Labels en geometrie worden voor u onthouden, niet in het project.",
+    "standaard": "Standaard"
+  },
   "infoTip": {
     "label": "Uitleg"
   },
@@ -459,6 +488,10 @@
       "springStart": "Verende momentaansluiting aan de startzijde: k = {{k}} kNm/rad (staaf {{staaf}})",
       "springEnd": "Verende momentaansluiting aan de eindzijde: k = {{k}} kNm/rad (staaf {{staaf}})"
     },
+    "aanzicht": {
+      "breedte": "b = {{b}} mm",
+      "breedteVerloop": "b = {{b1}} → {{b2}} mm"
+    },
     "kipsteun": {
       "support": "Kipsteun: {{zijde}}, {{x}} mm {{vanaf}} (staaf {{staaf}})",
       "supportSpacing": "Kipsteun uit de kipsteunafstand: {{zijde}}, {{x}} mm {{vanaf}} (staaf {{staaf}})",
@@ -855,6 +888,7 @@
     "other": "Overig",
     "envelopeOption": "Envelope (min/max alle combinaties)",
     "canvasDisplay": "Weergave op canvas",
+    "openZichtbaarheid": "Zichtbaarheid: alle weergave-instellingen",
     "scaleTitle": "Schaalfactor — pas de visuele grootte van dit diagram aan",
     "nodeValuesTitle": "Toon bij elke knoop de verplaatsing ux / uz in mm",
     "nodeValues": "Knoopwaarden",

@@ -1,0 +1,52 @@
+/* Venster Zichtbaarheid (issue #47): drie kolommen met dezelfde schakelaars
+   als de verkenner (fem-results-toggle, fem-switch uit FemProjectTree.css). */
+.zichtbaarheid-groepen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  overflow: auto;
+  user-select: none;
+}
+.zichtbaarheid-groep {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--theme-border-subtle);
+}
+.zichtbaarheid-groep:last-child { border-right: none; }
+.zichtbaarheid-venster .fem-results-toggle { font-size: 12px; padding: 6px 12px; }
+/* Subinstelling (profielbreedte onder het aanzicht): ingesprongen. */
+.zichtbaarheid-sub .fem-results-toggle { padding-left: 26px; }
+.zichtbaarheid-gedempt { opacity: 0.6; }
+.zichtbaarheid-noot {
+  padding: 0 12px 6px 12px;
+  font: 400 10.5px/1.35 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-faint);
+}
+.zichtbaarheid-sub .zichtbaarheid-noot { padding-left: 26px; }
+.zichtbaarheid-groep > .zichtbaarheid-noot { padding-top: 6px; }
+.zichtbaarheid-onthouden {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--theme-text-faint);
+}
+.zichtbaarheid-knop {
+  padding: 5px 16px;
+  min-width: 75px;
+  border: 1px solid var(--theme-dialog-input-border);
+  border-radius: 2px;
+  background: var(--theme-btn-secondary-bg);
+  color: var(--theme-btn-secondary-text);
+  font-size: 11px;
+  font-family: inherit;
+}
+.zichtbaarheid-knop:hover { background: var(--theme-btn-secondary-hover-bg); }
+.zichtbaarheid-knop.primair {
+  background: var(--theme-btn-primary-bg);
+  color: var(--theme-btn-primary-text);
+  border-color: var(--theme-btn-primary-border);
+}
+.zichtbaarheid-knop.primair:hover {
+  background: var(--theme-btn-primary-hover-bg);
+  color: var(--theme-btn-primary-hover-text);
+}

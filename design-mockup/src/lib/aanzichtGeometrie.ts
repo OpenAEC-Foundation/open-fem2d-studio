@@ -424,6 +424,26 @@ export function aanzichtDoorsnede(material: string | undefined, profile: string 
   }
 }
 
+/**
+ * Breedte van een doorsnede (mm): de omhullende van de delen in de
+ * y-richting, loodrecht op de tekening.
+ */
+export function doorsnedeBreedte(delen: readonly Doorsnededeel[]): number {
+  let lo = Infinity, hi = -Infinity;
+  for (const d of delen) {
+    if (d.soort === "ring") {
+      lo = Math.min(lo, d.y - d.R);
+      hi = Math.max(hi, d.y + d.R);
+    } else {
+      for (const [y] of d.punten) {
+        lo = Math.min(lo, y);
+        hi = Math.max(hi, y);
+      }
+    }
+  }
+  return hi > lo ? hi - lo : 0;
+}
+
 /** Soort materiaal, alleen voor de kleur van het vlak. */
 export function aanzichtMateriaal(material: string | undefined): AanzichtMateriaal {
   const m = (material ?? "").trim();
@@ -470,6 +490,13 @@ export interface StaafAanzicht {
   boven: Punt;
   /** Onder- en bovenrand (v, mm) aan begin en eind. */
   randen: { begin: { onder: number; boven: number }; eind: { onder: number; boven: number } };
+  /**
+   * Breedte van de doorsnede (mm) aan begin en eind: de maat LOODRECHT op de
+   * tekening, die het zijaanzicht niet toont (issue #47). De omhullende in de
+   * y-richting van de doorsnede; bij een eigen doorsnede die om de zwakke as
+   * staat, is dat dus de profielhoogte.
+   */
+  breedte: { begin: number; eind: number };
   /** Het vlak van het aanzicht: vier hoekpunten, wereld (mm). */
   omtrek: Punt[];
   lijnen: AanzichtLijn[];
@@ -664,6 +691,7 @@ export function staafAanzicht(beam: Beam, nodes: Node[]): StaafAanzicht | null {
     eind: { x: b.x, z: b.z },
     boven,
     randen: { begin: { onder: nB.onder, boven: nB.boven }, eind: { onder: nE.onder, boven: nE.boven } },
+    breedte: { begin: doorsnedeBreedte(dBegin.delen), eind: doorsnedeBreedte(dEind.delen) },
     omtrek: [P(0, nB.onder), P(L, nE.onder), P(L, nE.boven), P(0, nB.boven)],
     lijnen,
   };

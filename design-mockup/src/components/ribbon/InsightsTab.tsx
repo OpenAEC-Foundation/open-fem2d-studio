@@ -10,6 +10,7 @@ import {
   logsIcon,
   errorsIcon,
   exportCsvIcon,
+  zichtbaarheidIcon,
 } from "./icons";
 
 interface Props {
@@ -19,11 +20,13 @@ interface Props {
   onShowInsightsMode?: (mode: "element" | "system" | "dof" | "logs" | "errors") => void;
   /** Export K matrices as CSV. */
   onExportMatrixCsv?: () => void;
+  /** Opent het venster Zichtbaarheid (issue #47). */
+  onOpenZichtbaarheid?: () => void;
 }
 
 const stub = (label: string) => () => console.log(`TODO: ${label}`);
 
-export default function InsightsTab({ onShowInsights, onShowInsightsMode, onExportMatrixCsv }: Props) {
+export default function InsightsTab({ onShowInsights, onShowInsightsMode, onExportMatrixCsv, onOpenZichtbaarheid }: Props) {
   const { t } = useTranslation("ribbon");
   const openInsights = () => onShowInsights?.();
   const goto = (mode: "element" | "system" | "dof" | "logs" | "errors") => () => {
@@ -33,6 +36,19 @@ export default function InsightsTab({ onShowInsights, onShowInsightsMode, onExpo
   return (
     <div className="ribbon-content">
       <div className="ribbon-groups">
+        {/* Weergave: het venster Zichtbaarheid (issue #47) — wat er op het
+            tekenvlak staat, alles bij elkaar. */}
+        {onOpenZichtbaarheid && (
+          <RibbonGroup label={t("insights.view")}>
+            <RibbonButton
+              icon={zichtbaarheidIcon}
+              label={t("insights.visibility")}
+              size="large"
+              onClick={onOpenZichtbaarheid}
+            />
+          </RibbonGroup>
+        )}
+
         {/* Matrices */}
         <RibbonGroup label={t("insights.matrices")}>
           <RibbonButton
