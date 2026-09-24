@@ -97,6 +97,9 @@ const GELIJK_MAG = new Set([
   "backstage.aboutPanel.tagline", "backstage.aboutPanel.stichting",
   "common.wind.case.buildingTab", "common.loadCases.swayDerivation.alphaM",
   "common.loadCases.swayDerivation.product",
+  // Issue #49: hetzelfde tablabel met het dakdeel erachter; de woorden
+  // ("dak", "loef", "lij") staan in de geneste sleutels roofSign/roofSides.
+  "common.wind.case.buildingTabRoof",
 ]);
 // Woorden die in een Duitse of Franse tekst alleen kunnen betekenen dat de
 // Nederlandse tekst is blijven staan. Plaatshouders ({{staaf}}) worden eerst

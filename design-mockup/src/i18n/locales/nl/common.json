@@ -279,9 +279,23 @@
       "frictionColumns": "wrijving + kolommen",
       "horizontal": "{{delen}}, {{richting}}",
       "buildingName": "Wind {{deel}}",
-      "canopyName": "Wind vrijstaand dak {{deel}}"
+      "canopyName": "Wind vrijstaand dak {{deel}}",
+      "buildingTabRoof": "{{richting}} (c_pi = {{cpi}}), {{dak}}",
+      "roofSign": "dak {{teken}}",
+      "roofWindward": "loef {{teken}}",
+      "roofLeeward": "lij {{teken}}",
+      "roofSides": "dak {{delen}}"
     },
-    "regionSource": "NEN-EN 1991-1-4/NB tabel NB.1"
+    "regionSource": "NEN-EN 1991-1-4/NB tabel NB.1",
+    "cpeAuto": "(automatisch, tabel {{tabel}})",
+    "cpeRow": "rij α = {{alpha}}°",
+    "cpeInterp": "lineair tussen {{van}}° en {{tot}}°",
+    "slopedRoofAuto": "c_pe,10 per zone automatisch uit tabel 7.3/7.4 (NB) bij deze dakhelling. Een ingevulde waarde gaat voor en geldt dan voor het hele dakvlak; maak het veld leeg voor de tabel.",
+    "roofShape": {
+      "zadel": "zadeldak",
+      "lessenaar": "lessenaarsdak",
+      "kiel": "zadeldak met goot (α < 0)"
+    }
   },
   "app": {
     "view": {

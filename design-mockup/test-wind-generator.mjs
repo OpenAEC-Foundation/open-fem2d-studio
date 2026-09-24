@@ -233,12 +233,23 @@ log("\n[6] Weigeringen — de generator verzint geen vormfactoren");
     { id: 1, from: 1, to: 3 }, { id: 2, from: 2, to: 5 },
     { id: 3, from: 3, to: 4 }, { id: 4, from: 4, to: 5 },
   ];
+  // Tot issue #49 weigerde de generator een hellend dak zonder ingevulde
+  // c_pe. Nu vult hij tabel 7.4a zelf in (α = atan(2/6) = 18,43°); de
+  // rekenregels bewaakt test-wind-hellend-dak.mjs.
   const zonder = genereerWindbelasting(
     { nodes: zadelNodes, beams: zadelBeams, loadCases: basisGevallen }, basis);
-  checkExact("hellend dak zonder c_pe → geweigerd", zonder.ok, false);
-  checkExact("geen lasten aangemaakt", zonder.lasten.length, 0);
+  checkExact("hellend dak zonder c_pe → automatisch (issue #49)", zonder.ok, true);
+  checkTrue("de lasten noemen tabel 7.4a",
+    zonder.lasten.some((l) => /tabel 7\.4a/.test(l.omschrijving ?? "")));
+  // Weigeren blijft waar de tabel niets geeft: een "hellend dak" van 1,9°
+  // (tussen −5° en +5° geldt §7.2.3, plat dak).
+  const vlakNodes = zadelNodes.map((n) => (n.id === 4 ? { ...n, z: 5200 } : n));
+  const vlakBeams = zadelBeams.map((b) => (b.id >= 3 ? { ...b, loadRole: "dakHellend" } : b));
+  const vlak = genereerWindbelasting({ nodes: vlakNodes, beams: vlakBeams, loadCases: basisGevallen }, basis);
+  checkExact("hellend dak van 1,9° zonder c_pe → geweigerd", vlak.ok, false);
+  checkExact("geen lasten aangemaakt", vlak.lasten.length, 0);
   checkTrue("de melding verwijst naar tabel 7.4a",
-    zonder.meldingen.some((m) => m.niveau === "fout" && /7\.4a/.test(m.tekst)));
+    vlak.meldingen.some((m) => m.niveau === "fout" && /7\.4a/.test(m.tekst)));
 
   const metWaarden = genereerWindbelasting(
     { nodes: zadelNodes, beams: zadelBeams, loadCases: basisGevallen },
@@ -253,13 +264,19 @@ log("\n[6] Weigeringen — de generator verzint geen vormfactoren");
     metWaarden.samenvatting.perGeval[0].regels
       .some((r) => /door de gebruiker ingevuld/.test(r.bron)));
 
-  // Haaks + hellend dak zonder tabel 7.4b → weigeren.
+  // Haaks + hellend dak zonder c_pe haaks: sinds issue #49 tabel 7.4b.
   const haaks = genereerWindbelasting(
     { nodes: zadelNodes, beams: zadelBeams, loadCases: basisGevallen },
     { ...basis, cpeDakLoef: 0.3, cpeDakLij: -0.6, richtingHaaks: true });
-  checkExact("haaks zonder 7.4b → geweigerd", haaks.ok, false);
+  checkExact("haaks zonder c_pe haaks → automatisch uit 7.4b (issue #49)", haaks.ok, true);
+  checkTrue("de haakse lasten noemen tabel 7.4b",
+    haaks.lasten.some((l) => l.gevalSleutel.startsWith("wind:haaks") && /tabel 7\.4b/.test(l.omschrijving ?? "")));
+  const haaksVlak = genereerWindbelasting(
+    { nodes: vlakNodes, beams: vlakBeams, loadCases: basisGevallen },
+    { ...basis, cpeDakLoef: 0.3, cpeDakLij: -0.6, richtingHaaks: true });
+  checkExact("haaks op een dak van 1,9° zonder c_pe haaks → geweigerd", haaksVlak.ok, false);
   checkTrue("melding verwijst naar tabel 7.4b",
-    haaks.meldingen.some((m) => m.niveau === "fout" && /7\.4b/.test(m.tekst)));
+    haaksVlak.meldingen.some((m) => m.niveau === "fout" && /7\.4b/.test(m.tekst)));
 
   // Geen windvlak → weigeren met uitleg.
   const alleenBinnen = genereerWindbelasting({
@@ -542,10 +559,14 @@ log("\n[12] Kap zonder gevel — een kapspant op wanden die niet in het model st
   check("met gevels in het model blijft h de modelhoogte", portaal.geometrie.h_m, 6.0);
   checkTrue("en kapZonderGevel is dan onwaar", portaal.geometrie.kapZonderGevel === false);
 
-  // Strandt de generatie op ontbrekende c_pe, dan is de geometrie er tóch —
-  // het venster tekent het spant terwijl het om de invoer vraagt.
-  const zonderCpe = genereerWindbelasting(model, { ...basis, gevelhoogte_m: 3 });
-  checkTrue("zonder c_pe: geen generatie, wél geometrie", !zonderCpe.ok && zonderCpe.geometrie !== null && zonderCpe.geometrie.heeftHellendDak);
+  // Strandt de generatie op een ontbrekende invoer, dan is de geometrie er
+  // tóch — het venster tekent het spant terwijl het om de invoer vraagt. Tot
+  // issue #49 was dat een ontbrekende c_pe; die vult de generator nu zelf in,
+  // dus hier een ontbrekende gebouwlengte.
+  const zonderCpe = genereerWindbelasting(model, { ...basis, gevelhoogte_m: 3, gebouwlengte_m: 0 });
+  checkTrue("zonder gebouwlengte: geen generatie, wél geometrie met het hellende dak",
+    !zonderCpe.ok && zonderCpe.geometrie !== null && zonderCpe.geometrie.heeftHellendDak
+    && zonderCpe.geometrie.hellendDak?.vorm === "zadel" && zonderCpe.geometrie.hellendDak.opzoeking.links?.ok === true);
 }
 
 log(`\n${failed === 0 ? "✅" : "❌"} ${passed} geslaagd, ${failed} gefaald`);

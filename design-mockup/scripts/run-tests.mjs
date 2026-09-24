@@ -366,6 +366,11 @@ const BUNDEL_TESTS = new Set([
   // horizontale gevallen en ψ_mc moet leveren, en de bestaande gevallen daar
   // net zo bit-identiek moeten blijven.
   "wind-vrijstaand-uitbreiding",
+  // Hellend dak van een gebouw (issue #49, tabel 7.3/7.4): praat alleen met
+  // de windmodules en `engine` — alles in de barrel. Tegen de bundel omdat de
+  // sidecar dezelfde tabelcellen, zones, deellasten en gevallen (+/−) moet
+  // leveren als de app.
+  "wind-hellend-dak",
 ]);
 
 /**

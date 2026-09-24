@@ -498,14 +498,29 @@ log("\n[10] Gebouwgevallen bit-identiek aan de generator van vóór het vrijstaa
     ["portaal override cpi handmatig", portaal, { ...S, belastingbreedteOverride_m: 3.3, cpiKeuze: "handmatig", cpiHandmatig: -0.1, afstandTotKopgevel_m: 2, windgebied: "I" }, "e80716c56113063fd4a42e870a2b6542210fccbc3ec189b3e91465d1479b2c3f"],
     ["portaal zonder combinaties", portaal, { ...S, combinatiesGenereren: false, cpiKeuze: "min" }, "d169f1a327a62453a3c30c913dc308b4803cf7763890d2bec0cce4fe628c4bd9"],
     ["zadel met overstek", zadel, { ...S, cpeDakLoef: -0.6, cpeDakLij: -0.4, cpeDakHaaks: -1.1, richtingHaaks: true }, "c469025a0db7b45ce9a802b27fe561e4d2e7f9a37f27c1bac207a4e67c891568"],
-    ["zadel zonder cpe (fout)", zadel, { ...S }, "c0e11cd68320102a2cacb24f37139760fbdf659b959d8768876fb8301709a3ce"],
     ["kap zonder gevel", kap, { ...S, cpeDakLoef: 0.2, cpeDakLij: -0.4, gevelhoogte_m: 3 }, "be999b1846b7267e15f517c0a1c94016501704301dbfc9ebc62700bf7371925f"],
     ["kap zonder gevelhoogte", kap, { ...S, cpeDakLoef: 0.2, cpeDakLij: -0.4 }, "48330fadbb0c0505bf65c6b304665ade63e59e01e5560b5d60ffbef051797d68"],
     ["geen richting (fout)", portaal, { ...S, richtingLinks: false, richtingRechts: false }, "ebae140d7856e4d9e1498bd1c4ac36dbca2c81fd102c808c7200d394baff1618"],
   ];
   for (const [naam, m, inst, hash] of scenarios) {
     const r = genereerWindbelasting({ ...m, loadCases: gevallen }, inst);
+    // Issue #49: bij een hellend dak draagt de geometrie een extra veld
+    // `hellendDak` (vorm, α en de tabelopzoeking voor het venster). Met alle
+    // c_pe ingevuld is dat het ENIGE verschil: zonder dat veld is het hele
+    // resultaat nog steeds bit-identiek aan de hash van master d257219.
+    if (r.geometrie?.hellendDak) {
+      checkTrue(`${naam}: geometrie.hellendDak aanwezig (issue #49)`, r.geometrie.hellendDak.vorm !== undefined);
+      delete r.geometrie.hellendDak;
+    }
     checkExact(`${naam}: sha256 ongewijzigd`, createHash("sha256").update(JSON.stringify(r)).digest("hex"), hash);
+  }
+  // "zadel zonder cpe" weigerde tot issue #49 (hash c0e11cd6…); nu vult de
+  // generator tabel 7.4a/7.4b zelf in. Dezelfde invoer slaagt daarom, met de
+  // automatische zones — de rekenregels bewaakt test-wind-hellend-dak.mjs.
+  {
+    const r = genereerWindbelasting({ ...zadel, loadCases: gevallen }, { ...S });
+    checkTrue("zadel zonder cpe: sinds issue #49 automatisch uit tabel 7.4a", r.ok
+      && r.lasten.some((l) => /^§7\.2\.5 tabel 7\.4a /.test(l.omschrijving ?? "")));
   }
   // Instellingen van vóór de keuze (zonder `vorm`) rekenen als gebouw.
   const { vorm: _v, ...oud } = S;
