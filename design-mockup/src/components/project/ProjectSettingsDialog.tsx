@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { getSetting, setSetting } from "../../store";
@@ -15,6 +15,7 @@ import { usedNorms } from "../report/checkReportUtils";
 import {
   GEVOLGKLASSEN, kFi, partieleFactoren, type Gevolgklasse as NbGevolgklasse,
 } from "../fem/solver/normcombinaties";
+import InfoTip from "../InfoTip";
 import "./ProjectSettingsDialog.css";
 import { aanduidingen, BIJLAGEN_GEVULD, STANDAARD_BIJLAGE, type NationaleBijlageCode } from "../../lib/normAanduidingen";
 
@@ -220,6 +221,11 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
   // toetsing gereconstrueerd model zou verouderen zodra er een staaf bij komt
   // — dan stond er weer iets op het scherm dat niet waar is.
   const toetsResultaten = useCheckStore((s) => s.results);
+  // Ids voor de uitleg-tips (issue #50) en de velden waar hun labels naar
+  // wijzen. `useId` staat vóór de vroege `return` hieronder: hooks altijd.
+  const basisId = useId();
+  const tipId = (naam: string) => `${basisId}-tip-${naam}`;
+  const veldId = (naam: string) => `${basisId}-veld-${naam}`;
 
   useEffect(() => {
     if (!open) return;
@@ -249,6 +255,33 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
   // uitgevoerde toetsing de keuze overrulet in plaats van erover te zwijgen.
   const standen = normStanden(uitgangspunten);
   const oordelen = normOordelen(uitgangspunten, normenUitToetsen(usedNorms(toetsResultaten)));
+
+  // Gevolgklasse: de klasse kiest de partiële factoren van de
+  // standaardcombinaties. Tot september 2026 stond hier dat K_FI de ongunstige
+  // belastingen vermenigvuldigt, terwijl geen enkele combinatie of toets er
+  // iets mee deed. De factoren komen uit de GEKOZEN bijlage (normnaad), niet
+  // uit een vaste tabel: de keuzelijst Nationale bijlage bepaalt de rij.
+  const cc = uitgangspunten.gevolgklasse;
+  const bijlage = uitgangspunten.nationaleBijlage;
+  const factoren = partieleFactoren(cc, bijlage);
+  const n = (x: number) => String(x).replace(".", ",");
+  const kFiTekst = kFi(cc, bijlage).toFixed(2).replace(".", ",");
+  // De volledige uitleg, in de tip bij "Gevolgklasse" (issue #50).
+  const gevolgklasseUitleg = (
+    <>
+      {t("projectSettingsDialog.consequenceExplainIntro", { bron: factoren.bron })}{" "}
+      6.10a γ<sub>G</sub> = {n(factoren.gGsup610a)}, 6.10b γ<sub>G</sub> ={" "}
+      {n(factoren.gGsup610b)}, γ<sub>Q</sub> = {n(factoren.gQ)}{" "}
+      {t("projectSettingsDialog.consequenceExplainFavourable")} K<sub>FI</sub> = {kFiTekst}
+      {t("projectSettingsDialog.consequenceExplainTail")}
+    </>
+  );
+  // Wind: windgebied en terreincategorie (projecten van vóór de
+  // windgenerator: "II").
+  const windgebied: Windgebied = uitgangspunten.windgebied ?? "II";
+  const terreincategorie: TerreinCategorie = uitgangspunten.terreincategorie ?? "II";
+  const vb0Tekst = WINDGEBIEDEN[windgebied].vb0.toFixed(1).replace(".", ",");
+  const z0Tekst = TERREIN_CATEGORIEEN[terreincategorie].z0.toFixed(3).replace(".", ",");
   const updateUitgangspunt = <K extends keyof Uitgangspunten>(
     sleutel: K,
     waarde: Uitgangspunten[K],
@@ -425,14 +458,24 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
             <div className="proj-section-title">{t("projectSettingsDialog.basisOfDesign")}</div>
             <div className="proj-fields">
               <div className="proj-field">
-                <label id="proj-normen-kop">{t("projectSettingsDialog.appliedStandards")}</label>
+                {/* Geen <label>: zonder eigen veld zou een klik op de kop de
+                    InfoTip-knop erin bedienen (het eerste labelbare element). */}
+                <span className="proj-label" id="proj-normen-kop">
+                  {t("projectSettingsDialog.appliedStandards")}
+                  <InfoTip id={tipId("normen")}>{t("projectSettingsDialog.standardsExplanation")}</InfoTip>
+                </span>
                 {/* Drie standen per norm, geen vinkje. Een vinkje toonde
                     "volgt het model" en "niet vermelden" als hetzelfde lege
                     hokje — twee standen met verschillende uitkomst in het
                     rapport — en kende geen weg terug naar de eerste. De regel
                     onder elke keuzelijst zegt wat de stand voor het rapport
                     betekent, zodat de gebruiker het niet hoeft af te leiden. */}
-                <div className="proj-normen" role="group" aria-labelledby="proj-normen-kop">
+                <div
+                  className="proj-normen"
+                  role="group"
+                  aria-labelledby="proj-normen-kop"
+                  aria-describedby={tipId("normen")}
+                >
                   {NORMEN.map(({ sleutel, label, materiaal }) => {
                     const stand = standen[sleutel];
                     const oordeel = oordelen[sleutel];
@@ -462,15 +505,18 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                     );
                   })}
                 </div>
-                <p className="proj-uitleg">
-                  {t("projectSettingsDialog.standardsExplanation")}
-                </p>
               </div>
               <div className="proj-row">
                 <div className="proj-field">
-                  <label>{t("projectSettingsDialog.consequenceClass")}</label>
+                  <label htmlFor={veldId("gevolgklasse")}>
+                    {t("projectSettingsDialog.consequenceClass")}
+                    <InfoTip id={tipId("gevolgklasse")}>{gevolgklasseUitleg}</InfoTip>
+                  </label>
                   <select
-                    value={uitgangspunten.gevolgklasse}
+                    id={veldId("gevolgklasse")}
+                    aria-describedby={tipId("gevolgklasse")}
+                    title={`${cc} — ${t(`projectSettingsDialog.consequenceClassDesc.${cc}`)}`}
+                    value={cc}
                     onChange={(e) => updateUitgangspunt("gevolgklasse", e.target.value as Gevolgklasse)}
                   >
                     {GEVOLGKLASSEN.map((cc) => (
@@ -507,9 +553,17 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   </select>
                 </div>
               </div>
+              {/* Korte status van de gekozen gevolgklasse; de uitleg staat in
+                  de tip bij het label. */}
+              <p className="proj-status">
+                γ<sub>G</sub> = {n(factoren.gGsup610a)} / {n(factoren.gGsup610b)} · γ<sub>Q</sub> ={" "}
+                {n(factoren.gQ)} · K<sub>FI</sub> = {kFiTekst}
+              </p>
               <div className="proj-field">
-                <label>{t("projectSettingsDialog.designWorkingLife")}</label>
+                <label htmlFor={veldId("levensduur")}>{t("projectSettingsDialog.designWorkingLife")}</label>
                 <select
+                  id={veldId("levensduur")}
+                  title={t(`projectSettingsDialog.designLifeClass${uitgangspunten.levensduurklasse}`)}
                   value={uitgangspunten.levensduurklasse}
                   onChange={(e) => updateUitgangspunt("levensduurklasse", e.target.value as Levensduurklasse)}
                 >
@@ -518,40 +572,23 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   ))}
                 </select>
               </div>
-              <p className="proj-uitleg">
-                {(() => {
-                  // Wat er werkelijk gebeurt: de klasse kiest de partiële
-                  // factoren van de standaardcombinaties. Tot september 2026
-                  // stond hier dat K_FI de ongunstige belastingen
-                  // vermenigvuldigt, terwijl geen enkele combinatie of toets
-                  // er iets mee deed.
-                  const cc = uitgangspunten.gevolgklasse;
-                  // De factoren van de GEKOZEN bijlage (normnaad), niet een
-                  // vaste tabel: de keuzelijst hierboven bepaalt de rij.
-                  const bijlage = uitgangspunten.nationaleBijlage;
-                  const f = partieleFactoren(cc, bijlage);
-                  const n = (x: number) => String(x).replace(".", ",");
-                  return (
-                    <>
-                      {t("projectSettingsDialog.consequenceExplainIntro", { bron: f.bron })}{" "}
-                      6.10a γ<sub>G</sub> = {n(f.gGsup610a)}, 6.10b γ<sub>G</sub> ={" "}
-                      {n(f.gGsup610b)}, γ<sub>Q</sub> = {n(f.gQ)}{" "}
-                      {t("projectSettingsDialog.consequenceExplainFavourable")} K<sub>FI</sub> ={" "}
-                      {kFi(cc, bijlage).toFixed(2).replace(".", ",")}
-                      {t("projectSettingsDialog.consequenceExplainTail")}
-                    </>
-                  );
-                })()}
-              </p>
-
               {/* Wind — windgebied en terreincategorie horen bij de
                   uitgangspunten van het project; de windbelastinggenerator
                   leest ze hier uit. */}
-              <div className="proj-row">
+              <div className="proj-row proj-row-breed">
                 <div className="proj-field">
-                  <label>{t("projectSettingsDialog.windRegion")}</label>
+                  <label htmlFor={veldId("windgebied")}>
+                    {t("projectSettingsDialog.windRegion")}
+                    <InfoTip id={tipId("windgebied")}>
+                      {t("projectSettingsDialog.windExplainRegion", { gebied: windgebied })}{" "}
+                      v<sub>b,0</sub> = {vb0Tekst} m/s ({t("wind.regionSource")}).
+                    </InfoTip>
+                  </label>
                   <select
-                    value={uitgangspunten.windgebied ?? "II"}
+                    id={veldId("windgebied")}
+                    aria-describedby={tipId("windgebied")}
+                    title={t(`wind.regionOption.${windgebied}`)}
+                    value={windgebied}
                     onChange={(e) => updateUitgangspunt("windgebied", e.target.value as Windgebied)}
                   >
                     {(Object.keys(WINDGEBIEDEN) as Windgebied[]).map((g) => (
@@ -560,9 +597,20 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   </select>
                 </div>
                 <div className="proj-field">
-                  <label>{t("projectSettingsDialog.terrainCategory")}</label>
+                  <label htmlFor={veldId("terreincategorie")}>
+                    {t("projectSettingsDialog.terrainCategory")}
+                    <InfoTip id={tipId("terreincategorie")}>
+                      {t("projectSettingsDialog.windExplainTerrain")} z<sub>0</sub> = {z0Tekst} m{" "}
+                      {t("projectSettingsDialog.windExplainFromTable")}{" "}
+                      <strong>{t("projectSettingsDialog.windExplainNot")}</strong>{" "}
+                      {t("projectSettingsDialog.windExplainNationalAnnex")}
+                    </InfoTip>
+                  </label>
                   <select
-                    value={uitgangspunten.terreincategorie ?? "II"}
+                    id={veldId("terreincategorie")}
+                    aria-describedby={tipId("terreincategorie")}
+                    title={t(`wind.terrainOption.${terreincategorie}`)}
+                    value={terreincategorie}
                     onChange={(e) => updateUitgangspunt("terreincategorie", e.target.value as TerreinCategorie)}
                   >
                     {(Object.keys(TERREIN_CATEGORIEEN) as TerreinCategorie[]).map((c) => (
@@ -571,15 +619,9 @@ export default function ProjectSettingsDialog({ open, onClose }: ProjectSettings
                   </select>
                 </div>
               </div>
-              <p className="proj-uitleg">
-                {t("projectSettingsDialog.windExplainRegion", { gebied: uitgangspunten.windgebied ?? "II" })}{" "}
-                v<sub>b,0</sub> = {WINDGEBIEDEN[uitgangspunten.windgebied ?? "II"].vb0
-                  .toFixed(1).replace(".", ",")} m/s ({t("wind.regionSource")}).{" "}
-                {t("projectSettingsDialog.windExplainTerrain")} z<sub>0</sub> ={" "}
-                {TERREIN_CATEGORIEEN[uitgangspunten.terreincategorie ?? "II"].z0
-                  .toFixed(3).replace(".", ",")} m {t("projectSettingsDialog.windExplainFromTable")}{" "}
-                <strong>{t("projectSettingsDialog.windExplainNot")}</strong>{" "}
-                {t("projectSettingsDialog.windExplainNationalAnnex")}
+              {/* Korte status van de windkeuze; de uitleg staat in de tips. */}
+              <p className="proj-status">
+                v<sub>b,0</sub> = {vb0Tekst} m/s · z<sub>0</sub> = {z0Tekst} m
               </p>
             </div>
           </div>

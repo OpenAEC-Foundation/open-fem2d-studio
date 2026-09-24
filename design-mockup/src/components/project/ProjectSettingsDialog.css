@@ -109,9 +109,14 @@
   flex-direction: column;
   gap: 3px;
   flex: 1;
+  /* Zonder deze regel is de minimumbreedte van een veld die van zijn langste
+     keuze, en schoof de rij Windgebied + Terreincategorie rechts het venster
+     uit (issue #50). */
+  min-width: 0;
 }
 
-.proj-field label {
+.proj-field label,
+.proj-field .proj-label {
   font-size: 11px;
   font-weight: 500;
   color: var(--theme-dialog-content-secondary);
@@ -120,6 +125,9 @@
 .proj-field input,
 .proj-field textarea,
 .proj-field select {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 6px 8px;
   background: var(--theme-dialog-input-bg);
   border: 1px solid var(--theme-dialog-input-border);
@@ -138,6 +146,12 @@
 }
 .proj-field select:disabled {
   opacity: 0.6;
+}
+/* Een lange keuze wordt afgekort; de volledige tekst staat in `title`. */
+.proj-field select {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Uitgangspunten: normkeuze + toelichting.
@@ -158,19 +172,21 @@
 }
 .proj-norm-regel {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 4px 10px;
 }
 .proj-norm-naam {
-  flex: 1;
+  flex: 1 1 140px;
+  min-width: 0;
   font-size: 12px;
   color: var(--theme-dialog-content-text, var(--theme-text));
 }
 /* Erft de veldstijl van `.proj-field select`; alleen de maat wijkt af, zodat
    de drie keuzelijsten naast de normnamen onder elkaar uitlijnen. */
 .proj-norm-stand {
-  flex: 0 0 auto;
-  min-width: 148px;
+  flex: 0 1 auto;
+  min-width: min(148px, 100%);
   padding: 4px 6px;
   font-size: 11px;
 }
@@ -187,8 +203,10 @@
   color: var(--theme-accent);
   font-weight: 500;
 }
-.proj-uitleg {
-  margin: 2px 0 0;
+/* Korte status over de huidige keuze (γ, K_FI, v_b,0, z₀): één grijze regel.
+   De uitleg zelf staat in de InfoTip bij het label (issue #50). */
+.proj-status {
+  margin: -2px 0 0;
   font-size: 11px;
   line-height: 1.45;
   color: var(--theme-dialog-content-secondary);
@@ -199,9 +217,18 @@
   min-height: 40px;
 }
 
+/* Velden naast elkaar; te smal voor twee, dan onder elkaar. */
 .proj-row {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.proj-row > .proj-field {
+  flex: 1 1 180px;
+}
+/* Rijen met lange keuzes (wind): pas naast elkaar als elk veld ruim is. */
+.proj-row-breed > .proj-field {
+  flex-basis: 260px;
 }
 
 .proj-erp-search-row {
@@ -211,6 +238,7 @@
 
 .proj-erp-search-row input {
   flex: 1;
+  min-width: 0;
   padding: 6px 8px;
   background: var(--theme-dialog-input-bg);
   border: 1px solid var(--theme-dialog-input-border);

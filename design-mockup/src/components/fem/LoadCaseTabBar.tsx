@@ -5,8 +5,18 @@
  *
  * The bar renders inline between the canvas/content area and the StatusBar.
  * Hidden on full-width views (IFC, report) since those don't use LCs.
+ *
+ * VEEL GEVALLEN (issue #51). Alleen de gevallen staan in een eigen strook die
+ * horizontaal scrolt (muiswiel, touchpad, slepen met de muis, pijltoetsen op
+ * een tab); de vaste onderdelen (Model, Resultaten, +, eigen gewicht, analyse,
+ * φ, scheefstand) blijven staan. Bij overloop verschijnen pijlknoppen links en
+ * rechts van de strook, het actieve geval schuift vanzelf in beeld (ook als
+ * het in de verkenner wordt gekozen), en de lijstknop ▾ toont alle gevallen.
+ * De rekenregels staan in `lib/tabbalkScroll.ts`.
  */
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import LengthInput from "../LengthInput";
 import { formatLength } from "../../lib/lengthInput";
@@ -23,6 +33,10 @@ import {
 } from "../../lib/kruipcoefficient";
 import type { EigenGewichtOverzicht } from "../../lib/eigenGewichtOverzicht";
 import { isEigenGewichtGeval } from "../../lib/eigenGewicht";
+import {
+  isSleep, MARGE_ACTIEF, naburigGeval, scrollStap, scrollVoorZichtbaar, tabbalkOverloop, wielNaarScroll,
+  type ScrollStand,
+} from "../../lib/tabbalkScroll";
 import "./LoadCaseTabBar.css";
 
 interface Props {
@@ -121,6 +135,16 @@ interface Props {
   onShowResults?: () => void;
 }
 
+/** De scrollstand van een element, voor de rekenregels van `lib/tabbalkScroll`. */
+function standVan(el: HTMLElement): ScrollStand {
+  return { scrollLeft: el.scrollLeft, scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
+}
+
+/** Pijltoets op een tab → welk geval `naburigGeval` moet kiezen. */
+const TOETS_STAP: Record<string, "vorige" | "volgende" | "eerste" | "laatste"> = {
+  ArrowLeft: "vorige", ArrowRight: "volgende", Home: "eerste", End: "laatste",
+};
+
 /** Two-character tag for the load-case type chip. */
 function typeTag(type: LoadCase["type"]): string {
   switch (type) {
@@ -156,6 +180,157 @@ export default function LoadCaseTabBar({
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
 
+  // ── De strook met gevallen (issue #51) ──────────────────────────────────
+  const strookRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef(new Map<number, HTMLButtonElement>());
+  const lijstKnopRef = useRef<HTMLButtonElement>(null);
+  const lijstRef = useRef<HTMLDivElement>(null);
+  const [scroll, setScroll] = useState({ overloop: false, kanLinks: false, kanRechts: false });
+  const [lijst, setLijst] = useState<
+    { right: number; bottom: number; maxHeight: number; maxWidth: number } | null
+  >(null);
+  // Een sleep met de muis: waar hij begon, en of hij de drempel al over is.
+  const sleep = useRef<{ x: number; links: number; id: number; bezig: boolean } | null>(null);
+  // Na een sleep volgt nog een klik op de tab eronder; die kiest niets.
+  const klikNaSleep = useRef(false);
+
+  /** Overloop en pijlen opnieuw bepalen; alleen een echte wijziging rendert. */
+  const meet = useCallback(() => {
+    const s = strookRef.current;
+    if (!s) return;
+    const n = tabbalkOverloop(standVan(s));
+    setScroll((v) => (v.overloop === n.overloop && v.kanLinks === n.kanLinks && v.kanRechts === n.kanRechts ? v : n));
+  }, []);
+
+  // De inhoud verandert (gevallen erbij of eraf, tellers, namen): meten.
+  useLayoutEffect(meet, [meet, loadCases, loads, eigenGewicht, hasResults, adding]);
+
+  // Maatveranderingen (venster, lettertype geladen) en het muiswiel. Het wiel
+  // hangt er zelf aan: React registreert wheel passief, en dan kan
+  // preventDefault de pagina niet tegenhouden.
+  useEffect(() => {
+    const s = strookRef.current;
+    if (!s) return;
+    const waarnemer = new ResizeObserver(meet);
+    waarnemer.observe(s);
+    for (const kind of s.children) waarnemer.observe(kind);
+    const opWiel = (e: WheelEvent) => {
+      const d = wielNaarScroll(e.deltaX, e.deltaY, e.deltaMode, s.clientWidth);
+      if (d === 0 || !tabbalkOverloop(standVan(s)).overloop) return;
+      e.preventDefault();
+      s.scrollLeft += d;
+      meet();
+    };
+    s.addEventListener("wheel", opWiel, { passive: false });
+    return () => {
+      waarnemer.disconnect();
+      s.removeEventListener("wheel", opWiel);
+    };
+  }, [meet, loadCases]);
+
+  // Het actieve geval in beeld, bij elke wissel — via de tab, de lijst, het
+  // toetsenbord of de verkenner. Alleen de strook schuift ("nearest"), niet de
+  // pagina eromheen, dus geen scrollIntoView.
+  useLayoutEffect(() => {
+    if (!showLoads) return;
+    const s = strookRef.current;
+    const tab = tabRefs.current.get(activeLoadCaseId);
+    if (!s || !tab) return;
+    const doel = scrollVoorZichtbaar({ links: tab.offsetLeft, breedte: tab.offsetWidth }, standVan(s), MARGE_ACTIEF);
+    if (Math.abs(doel - s.scrollLeft) > 0.5) s.scrollLeft = doel;
+    meet();
+  }, [activeLoadCaseId, showLoads, loadCases.length, meet]);
+
+  const kies = (id: number) => {
+    setActiveLoadCaseId(id);
+    setShowLoads?.(true);    // any LC click leaves model-only view
+  };
+
+  /** Pijlknop: het eerstvolgende (deels) verborgen geval helemaal in beeld. */
+  const schuif = (richting: 1 | -1) => {
+    const s = strookRef.current;
+    if (!s) return;
+    const plekken = [...tabRefs.current.values()]
+      .map((el) => ({ links: el.offsetLeft, breedte: el.offsetWidth }))
+      .sort((a, b) => a.links - b.links);
+    s.scrollLeft = scrollStap(richting, plekken, standVan(s));
+    // Het scroll-event komt pas bij de volgende frame; de pijlen nu al bijwerken.
+    meet();
+  };
+
+  /** Pijltoetsen, Home en End op een tab kiezen het naburige geval. */
+  const opTabToets = (e: ReactKeyboardEvent, id: number) => {
+    const stap = TOETS_STAP[e.key];
+    if (!stap) return;
+    e.preventDefault();
+    const doel = naburigGeval(loadCases.map((c) => c.id), id, stap);
+    if (doel === undefined) return;
+    kies(doel);
+    tabRefs.current.get(doel)?.focus({ preventScroll: true });
+  };
+
+  // ── De lijst met alle gevallen (▾) ──────────────────────────────────────
+  const sluitLijst = useCallback((focusTerug: boolean) => {
+    setLijst(null);
+    if (focusTerug) lijstKnopRef.current?.focus();
+  }, []);
+
+  /** Openen, of bij een andere venstermaat opnieuw plaatsen. */
+  const plaatsLijst = useCallback(() => {
+    const k = lijstKnopRef.current;
+    if (!k) return;
+    // Boven de knop (de balk staat onderaan), rechts uitgelijnd, binnen het venster.
+    const r = k.getBoundingClientRect();
+    const right = Math.max(8, window.innerWidth - r.right);
+    setLijst({
+      right,
+      bottom: window.innerHeight - r.top + 4,
+      maxHeight: Math.max(120, r.top - 8),
+      maxWidth: Math.min(360, window.innerWidth - right - 8),
+    });
+  }, []);
+
+  const lijstOpen = lijst !== null;
+  useEffect(() => {
+    if (!lijstOpen) return;
+    // Focus op het actieve geval (of het eerste) in de lijst.
+    const items = [...(lijstRef.current?.querySelectorAll<HTMLElement>("[role=menuitemradio]") ?? [])];
+    (items.find((el) => el.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+    // Esc sluit de lijst, en alleen de lijst: in de vangfase op window, zodat
+    // de Esc van het tekenvlak (selectie opheffen) niet ook afgaat.
+    const opToets = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      e.preventDefault();
+      sluitLijst(true);
+    };
+    const opWijzer = (e: PointerEvent) => {
+      const doel = e.target as globalThis.Node | null;
+      if (doel && (lijstRef.current?.contains(doel) || lijstKnopRef.current?.contains(doel))) return;
+      sluitLijst(false);
+    };
+    window.addEventListener("keydown", opToets, true);
+    document.addEventListener("pointerdown", opWijzer, true);
+    window.addEventListener("resize", plaatsLijst);
+    return () => {
+      window.removeEventListener("keydown", opToets, true);
+      document.removeEventListener("pointerdown", opWijzer, true);
+      window.removeEventListener("resize", plaatsLijst);
+    };
+  }, [lijstOpen, sluitLijst, plaatsLijst]);
+
+  /** Pijltoetsen, Home, End en Tab in de lijst. */
+  const opLijstToets = (e: ReactKeyboardEvent) => {
+    const items = [...(lijstRef.current?.querySelectorAll<HTMLElement>("[role=menuitemradio]") ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    const naar = (j: number) => { e.preventDefault(); items[Math.max(0, Math.min(items.length - 1, j))]?.focus(); };
+    if (e.key === "ArrowDown") naar(i + 1);
+    else if (e.key === "ArrowUp") naar(i - 1);
+    else if (e.key === "Home") naar(0);
+    else if (e.key === "End") naar(items.length - 1);
+    else if (e.key === "Tab") sluitLijst(false);
+  };
+
   const handleAdd = () => {
     const name = newName.trim() || t("loadCases.defaultCaseName", { n: loadCases.length + 1 });
     addLoadCase(name);
@@ -177,6 +352,62 @@ export default function LoadCaseTabBar({
         <span className="lc-tab-name">{t("loadCases.modelTab")}</span>
       </button>
 
+      {scroll.overloop && (
+        <button
+          type="button"
+          className="lc-tab-scroll lc-tab-scroll-links"
+          disabled={!scroll.kanLinks}
+          onClick={() => schuif(-1)}
+          title={t("loadCases.scrollLeft")}
+          aria-label={t("loadCases.scrollLeft")}
+        >
+          <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+            <path d="M6 1 2 5l4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+
+      {/* Alleen deze strook scrolt. Slepen met de muis scrolt ook; een
+          aanraakscherm scrolt hem zelf (touch-action: pan-x). */}
+      <div
+        ref={strookRef}
+        className="lc-tab-cases"
+        role="presentation"
+        onScroll={meet}
+        onPointerDown={(e) => {
+          if (e.pointerType !== "mouse" || e.button !== 0) return;
+          sleep.current = { x: e.clientX, links: e.currentTarget.scrollLeft, id: e.pointerId, bezig: false };
+        }}
+        onPointerMove={(e) => {
+          const d = sleep.current;
+          if (!d || d.id !== e.pointerId) return;
+          const dx = e.clientX - d.x;
+          if (!d.bezig) {
+            if (!isSleep(dx)) return;
+            d.bezig = true;
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* wijzer al weg */ }
+          }
+          e.currentTarget.scrollLeft = d.links - dx;
+          meet();
+        }}
+        onPointerUp={(e) => {
+          if (sleep.current?.bezig) {
+            klikNaSleep.current = true;
+            // De klik volgt direct op pointerup; komt hij niet (losgelaten
+            // buiten de balk), dan mag de volgende gewone klik niet sneuvelen.
+            window.setTimeout(() => { klikNaSleep.current = false; }, 0);
+            try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* al los */ }
+          }
+          sleep.current = null;
+        }}
+        onPointerCancel={() => { sleep.current = null; }}
+        onClickCapture={(e) => {
+          if (!klikNaSleep.current) return;
+          klikNaSleep.current = false;
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
       {loadCases.map(lc => {
         const isActive = showLoads && lc.id === activeLoadCaseId;
         // De teller telt ook de automatisch gegenereerde lasten van het eigen
@@ -189,13 +420,15 @@ export default function LoadCaseTabBar({
         return (
           <button
             key={lc.id}
+            ref={(el) => {
+              if (el) tabRefs.current.set(lc.id, el);
+              else tabRefs.current.delete(lc.id);
+            }}
             role="tab"
             aria-selected={isActive}
             className={`lc-tab${isActive ? " active" : ""}${isEg ? " lc-tab-auto" : ""}`}
-            onClick={() => {
-              setActiveLoadCaseId(lc.id);
-              setShowLoads?.(true);    // any LC click leaves model-only view
-            }}
+            onClick={() => kies(lc.id)}
+            onKeyDown={(e) => opTabToets(e, lc.id)}
             title={isEg
               ? t("loadCases.selfWeightTabTitle", { naam: lc.name, count: automatisch })
               : automatisch > 0
@@ -209,6 +442,72 @@ export default function LoadCaseTabBar({
           </button>
         );
       })}
+      </div>
+
+      {scroll.overloop && (
+        <button
+          type="button"
+          className="lc-tab-scroll lc-tab-scroll-rechts"
+          disabled={!scroll.kanRechts}
+          onClick={() => schuif(1)}
+          title={t("loadCases.scrollRight")}
+          aria-label={t("loadCases.scrollRight")}
+        >
+          <svg width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+            <path d="M2 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+
+      {/* ▾ — alle gevallen in een lijst, om direct te kiezen. */}
+      {loadCases.length > 0 && (
+        <button
+          ref={lijstKnopRef}
+          type="button"
+          className={`lc-tab-lijst${lijstOpen ? " open" : ""}`}
+          aria-haspopup="menu"
+          aria-expanded={lijstOpen}
+          aria-label={t("loadCases.listLabel")}
+          title={t("loadCases.listTitle")}
+          onClick={() => (lijstOpen ? sluitLijst(false) : plaatsLijst())}
+        >
+          <svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true">
+            <path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      )}
+      {lijst && createPortal(
+        <div
+          ref={lijstRef}
+          className="lc-tab-lijst-menu"
+          role="menu"
+          aria-label={t("loadCases.listLabel")}
+          style={lijst}
+          onKeyDown={opLijstToets}
+        >
+          {loadCases.map((lc) => {
+            const isActive = showLoads && lc.id === activeLoadCaseId;
+            return (
+              <button
+                key={lc.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
+                className="lc-tab-lijst-item"
+                title={lc.name}
+                onClick={() => {
+                  kies(lc.id);
+                  sluitLijst(true);
+                }}
+              >
+                <span className={`lc-tab-type lc-tab-type-${lc.type}`}>{typeTag(lc.type)}</span>
+                <span className="lc-tab-lijst-naam">{lc.name}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
 
       {/* Resultaten-tab — verschijnt aan het einde nadat Bereken is gedraaid. */}
       {hasResults && (
