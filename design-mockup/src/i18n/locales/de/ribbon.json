@@ -556,6 +556,7 @@
     "scopeLabel": "Kombination",
     "scopeEnvelope": "Umhüllende (alle Kombinationen)",
     "schemaLegend": "Knotennummern schwarz, Stabnummern grau in Klammern; Maße in m, Lasten charakteristisch je Lastfall (G/Q/S/W).",
+    "schemaLegendAanzicht": "Die Stäbe sind in Ansicht in wahrer Größe dargestellt, um ihre Systemlinie: der Umriss über die Profilhöhe, die Gurtlinien, verdeckte Linien gestrichelt (Innenwand von Hohlprofilen, der Steg eines Profils um die schwache Achse), bei Brettschichtholz schematisch die Lamellen und bei Beton die Bewehrungslagen auf ihrer Betondeckung mit den Bügeln in ihrem Abstand.",
     "schemaLegendKipsteunen": "Kipphalterungen wie im Nachweis angesetzt: ein kleines Dreieck am gehaltenen Gurt (bei einem stehenden Stab ist der Obergurt die linke Seite), eine offene Raute für eine Halterung aus dem Halterungsabstand bei Holz, eine Gabel, wo das Stabende als Gabellager angenommen ist.",
     "envelopeBandNote": "Umhüllende: je Stab das Band zwischen Minimum und Maximum über alle Kombinationen.",
     "envelopeReactionsTitle": "Umhüllende (min/max über alle Kombinationen)",

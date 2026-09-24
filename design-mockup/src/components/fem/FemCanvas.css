@@ -893,3 +893,61 @@
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
+
+/* ── Aanzicht op ware grootte (issue #45) ────────────────────────────────
+   Het vlak is DEKKEND (de achtergrond van het tekenvlak met een zweem van de
+   materiaalkleur), zodat een ligger die over een kolom ligt de kolomlijnen
+   daar afdekt. Lijnen in de tekstkleur van het thema: de materiaalkleuren
+   zijn licht in elk thema en gaan op een donker tekenvlak alleen als tint. De
+   systeemlijn wordt een dunne streep-stippellijn (hartlijn), in de
+   accentkleur, en blijft de lijn waarmee je selecteert en sleept. */
+.fem-aanzicht-vlak {
+  fill: color-mix(in srgb, var(--theme-text) 6%, var(--theme-bg));
+  stroke: none;
+}
+.fem-aanzicht-hout .fem-aanzicht-vlak {
+  fill: color-mix(in srgb, var(--theme-hout-vlak) 32%, var(--theme-bg));
+}
+.fem-aanzicht-beton .fem-aanzicht-vlak {
+  fill: color-mix(in srgb, var(--theme-beton-vlak) 30%, var(--theme-bg));
+}
+.fem-aanzicht-contour {
+  stroke: var(--theme-text);
+  stroke-width: 1.2;
+  stroke-linecap: square;
+}
+.fem-aanzicht-staaf.geselecteerd .fem-aanzicht-contour {
+  stroke: var(--theme-accent);
+  stroke-width: 1.8;
+}
+.fem-aanzicht-zichtbaar {
+  stroke: var(--theme-text);
+  stroke-width: 0.8;
+  stroke-opacity: 0.8;
+}
+.fem-aanzicht-verborgen {
+  stroke: var(--theme-text-secondary);
+  stroke-width: 0.8;
+  stroke-dasharray: 5 3;
+}
+.fem-aanzicht-lamel {
+  stroke: var(--theme-text-secondary);
+  stroke-width: 0.5;
+  stroke-opacity: 0.7;
+}
+.fem-aanzicht-wapening {
+  stroke: var(--theme-text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.fem-aanzicht-beugel {
+  stroke: var(--theme-text-secondary);
+  stroke-width: 0.6;
+}
+.fem-member.systeemlijn {
+  stroke-width: 1.2;
+  stroke-dasharray: 14 3 2 3;
+}
+.fem-member.systeemlijn:hover { stroke-width: 2; }
+.fem-member.systeemlijn.selected,
+.fem-member.systeemlijn.snap { stroke-width: 2.2; }

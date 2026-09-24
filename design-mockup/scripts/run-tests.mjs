@@ -709,6 +709,14 @@ const ALLEEN_BRON = new Map([
     "issue #44: het vinkje \"Onder en boven gelijk\" (`lib/kipsteunenGelijk.ts`): detectie binnen afronding, gelijktrekken en de wijziging die beide velden samen zet. Een paneelmodule buiten de barrel; dat de toetsinvoer volgt, rekent de test na met `lib/kipsteunen.ts`, die via de bouwers wél in de bundel zit en daar door hun bundeltests bewaakt wordt",
   ],
   [
+    "aanzicht-geometrie",
+    "issue #45: de staven in aanzicht op ware grootte (`lib/aanzichtGeometrie.ts`), een weergavemodule buiten de barrel — contour, flenslijnen, verborgen lijnen, lamellen, wapening en beugels in mm tegen de staalcatalogus, eigen doorsneden en de korf/zones. De sidecar tekent niets; de maten die hij rekent komen uit `sectionResolver` en de bouwers, die hun eigen bundeltests hebben",
+  ],
+  [
+    "aanzicht-ui",
+    "issue #45: de laag Aanzicht op het echte tekenvlak (FemCanvas), in de weergavelijst en in de constructieschets van het rapport in een lokale headless browser — ware hoogte rond de systeemlijn, tekenvolgorde, lijndikte bij zoom, detail naar zoom, selecteren door de laag heen, resultaatweergave, thema en rapport. React, SVG-meetkunde en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
+  [
     "eigenschappen-ui",
     "issues #43 en #44: het echte eigenschappenpaneel en de echte staafdialoog in een lokale headless browser — uitleg in InfoTips (hover, focus, klik/tik, Esc, aria-describedby, binnen het venster, licht/donker), korte status en waarschuwingen zichtbaar, en het vinkje voor gelijke kipsteunen aan boven- en onderflens (één invoer, één undo-stap, detectie bij openen, uitzetten wist niets). React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],

@@ -24,6 +24,8 @@ import type { Load, LoadCase } from "../../fem/femTypes";
 import { useReportData } from "../ReportDataContext";
 import { kipsteunBeelden } from "../../../lib/kipsteunBeeld";
 import KipsteunLaag from "../../fem/KipsteunLaag";
+import { modelAanzicht } from "../../../lib/aanzichtGeometrie";
+import AanzichtLaag from "../../fem/AanzichtLaag";
 import { fmtLenM, fmtNum } from "../reportFormat";
 import {
   DIM,
@@ -47,7 +49,7 @@ const CASE_TAGS: Record<LoadCase["type"], string> = {
 
 export default function SchemaSection() {
   const { t } = useTranslation("ribbon");
-  const { nodes, beams, supports, plates, loads, loadCases, structuralGrid, kipsteunenTonen } =
+  const { nodes, beams, supports, plates, loads, loadCases, structuralGrid, kipsteunenTonen, aanzichtTonen } =
     useReportData();
 
   if (nodes.length === 0) {
@@ -306,6 +308,9 @@ export default function SchemaSection() {
   // veld, dan de standaard: aan), en de legenda alleen als er iets te zien is.
   const kipBeelden = kipsteunenTonen !== false ? kipsteunBeelden({ nodes, beams, supports, plates }) : [];
   const heeftKipsteunen = kipBeelden.some((b) => b.steunen.length > 0);
+  // Aanzicht op ware grootte: alleen als de laag op het tekenvlak aan staat.
+  const aanzichten = aanzichtTonen === true ? modelAanzicht({ nodes, beams }) : [];
+  const heeftAanzicht = aanzichten.length > 0;
 
   return (
     <div className="rpt-block">
@@ -315,6 +320,7 @@ export default function SchemaSection() {
           "report.schemaLegend",
           "Knoopnummers zwart, staafnummers grijs tussen haakjes; maten in m, lasten karakteristiek per belastinggeval (G/Q/S/W).",
         )}
+        {heeftAanzicht && <> {t("report.schemaLegendAanzicht")}</>}
         {heeftKipsteunen && <> {t("report.schemaLegendKipsteunen")}</>}
       </p>
 
@@ -335,8 +341,14 @@ export default function SchemaSection() {
           {/* Opleggingen onder de staven zodat de staaflijn zichtbaar blijft */}
           {renderSupportSymbols(supports, nodeById, tr)}
 
-          {/* Staven + staafnummers */}
-          {renderBeamLines(beams, nodeById, tr)}
+          {/* Aanzicht op ware grootte, onder de systeemlijnen (issue #45). */}
+          {heeftAanzicht && (
+            <AanzichtLaag aanzichten={aanzichten} naarScherm={(x, z) => ({ x: X(x), y: Y(z) })} variant="rapport" />
+          )}
+
+          {/* Staven + staafnummers — met het aanzicht erbij als dunne
+              systeemlijn, anders zou de lijn het aanzicht bedekken. */}
+          {renderBeamLines(beams, nodeById, tr, heeftAanzicht ? { strokeWidth: 1.2 } : {})}
 
           {/* Kipsteunen — alleen van staven die er hebben: een vorkje aan elk
               staafeind van elk model zou de schets vullen zonder iets te

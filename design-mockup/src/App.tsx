@@ -512,12 +512,14 @@ function App() {
     analyseToelichting: analyseTekst,
     // De laag "Kipsteunen" van het tekenvlak: aan = ook in de constructieschets.
     kipsteunenTonen: displayFlags.kipsteunen !== false,
+    // De laag "Aanzicht" (issue #45): aan = de schets tekent de staven op ware grootte.
+    aanzichtTonen: displayFlags.aanzicht === true,
   }), [
     fem.nodes, fem.beams, fem.plates, fem.supports, fem.loads, fem.loadCases,
     fem.combinatiesVoorRapport, fem.overgeslagenCombinaties, fem.combinatieVervangingTekst,
     fem.structuralGrid, fem.selfWeightEnabled,
     fem.combinationResults, fem.multiLcResult, fem.envelope,
-    scheefstandTekst, analyseTekst, displayFlags.kipsteunen,
+    scheefstandTekst, analyseTekst, displayFlags.kipsteunen, displayFlags.aanzicht,
   ]);
 
   // ── File-menu handlers (after `fem` is declared) ────────────────────────

@@ -839,6 +839,8 @@
     "rowProfileName": "Section name",
     "rowProfileNameHint": "Section name in small print along each member on the canvas",
     "rowKipsteunen": "Lateral restraints",
+    "rowAanzicht": "Elevation (true depth)",
+    "rowAanzichtHint": "Members at true size: section depth, flanges, laminations and reinforcement around the system line. Only in the model view and the load cases, never over the result diagrams",
     "rowKipsteunenHint": "Lateral restraints as symbols along the member, per flange; select or hover a member for the segment lengths in mm",
     "rowPlateStress": "Plate stress",
     "rowPlateStressHint": "Stress contours on the plate elements — component selectable, legend on the canvas",

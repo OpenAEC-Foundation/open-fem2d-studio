@@ -839,6 +839,8 @@
     "rowProfileName": "Profilname",
     "rowProfileNameHint": "Profilname klein entlang jedes Stabs auf der Zeichenfläche",
     "rowKipsteunen": "Kipphalterungen",
+    "rowAanzicht": "Ansicht (wahre Höhe)",
+    "rowAanzichtHint": "Stäbe in wahrer Größe: Profilhöhe, Gurte, Lamellen und Bewehrung um die Systemlinie. Nur in der Modellansicht und bei den Lastfällen, nie über den Ergebnisdiagrammen",
     "rowKipsteunenHint": "Kipphalterungen als Symbol entlang des Stabs, je Gurt; Stab auswählen oder überfahren für die Kippfeldlängen in mm",
     "rowPlateStress": "Plattenspannung",
     "rowPlateStressHint": "Spannungskonturen auf den Plattenelementen — Komponente wählbar, Legende auf der Zeichenfläche",

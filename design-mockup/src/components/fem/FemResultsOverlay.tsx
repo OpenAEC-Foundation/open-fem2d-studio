@@ -82,6 +82,16 @@ export interface DisplayFlags {
    * niemand. De constructieschets in het rapport volgt dit vinkje.
    */
   kipsteunen: boolean;
+  /**
+   * De staven in AANZICHT, op ware grootte (issue #45): profielhoogte, flenzen,
+   * lamellen en wapening rond de systeemlijn. Een modelweergave, dus in deze
+   * lijst. Standaard UIT: het is een controleweergave, en bij een groot model
+   * op afstand is het tekenvlak met alleen systeemlijnen rustiger. Nooit in de
+   * resultaatweergave: daar liggen de diagrammen op de systeemlijn, en een vlak
+   * op ware hoogte eronder maakt ze onleesbaar (zie FemCanvas, `toonAanzicht`).
+   * De constructieschets in het rapport volgt dit vinkje.
+   */
+  aanzicht: boolean;
 }
 
 export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
@@ -104,6 +114,7 @@ export const DEFAULT_DISPLAY_FLAGS: DisplayFlags = {
   // heeft zonder hem eerst aan te klikken.
   profielLabels: true,
   kipsteunen: true,
+  aanzicht: false,
 };
 
 interface Props {
