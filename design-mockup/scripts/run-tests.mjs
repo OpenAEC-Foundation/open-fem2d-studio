@@ -739,6 +739,10 @@ const ALLEEN_BRON = new Map([
     "zichtbaarheid-ui",
     "issue #47: het echte venster Zichtbaarheid, de echte weergavelijst en het echte tekenvlak op dezelfde displayFlags in een lokale headless browser — elke schakelaar zet dezelfde vlag als de verkenner, het tekenvlak volgt (knoop- en staafnummers, lagen, profielbreedte), Standaard, tandwiel, lintknop en thema. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
+  [
+    "projectgegevens-ui",
+    "issue #50: het echte venster Projectgegevens in een lokale headless browser, op de standaardgrootte en in een smal venster (iframe van 360 px) — geen horizontale overloop, uitleg bij normen, gevolgklasse, windgebied en terreincategorie in een InfoTip (nl/en/de/fr, niets verloren), korte status als één grijze regel. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────
