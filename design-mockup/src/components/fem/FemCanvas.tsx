@@ -26,6 +26,7 @@
  * Solverresultaten komen uitsluitend uit de centrale rekengang. Wisselen
  * van belastinggeval selecteert bestaande resultaten en rekent nooit opnieuw.
  */
+import { lastIdVanKlik } from "../../lib/klikOpLast";
 import { laatVeldLos } from "../../lib/undoRoute";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -1394,6 +1395,20 @@ export default function FemCanvas(props: FemCanvasProps) {
     }
     // Drag-to-move OR box-select (Select tool only, left button, no Space)
     if (e.button === 0 && tool === "select" && !popover) {
+      // Indrukken op een last hoort bij die last (zijn eigen onClick selecteert
+      // hem). Zonder deze regel won de geometrische zoektocht naar een knoop of
+      // staaf: een puntlast in het verlengde van een staaf (bv. op een kolomkop)
+      // selecteerde eerst de staaf eronder, en met een paar pixels handbeweging
+      // tijdens de klik werd die staaf zelfs versleept.
+      const lastId = lastIdVanKlik(e.target as Element | null);
+      if (lastId !== null) {
+        // Al bij het indrukken selecteren: een hand beweegt tijdens een klik
+        // vaak een paar pixels, en dan viel het loslaten buiten de smalle
+        // klikzone van de pijl en kwam er geen selectie.
+        e.preventDefault();
+        setSelection({ type: "load", id: lastId });
+        return;
+      }
       const overNodeId = findSnapNode(sx, sy);
       const overBeam = findSnapBeam(sx, sy);
       const world = screenToWorld(sx, sy);
@@ -2653,6 +2668,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         <g
           key={`load${l.id}`}
           className={`fem-pointload-group${isSel ? " selected" : ""}`}
+          data-last-id={l.id}
           onClick={(e) => {
             if (tool === "select" && !dragState) {
               e.stopPropagation();
@@ -2800,6 +2816,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         <g
           key={`load${l.id}`}
           className={`fem-lineload-group${isSel ? " selected" : ""}`}
+          data-last-id={l.id}
           onClick={(e) => {
             if (tool === "select" && !dragState) {
               e.stopPropagation();
@@ -2883,6 +2900,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         <g
           key={`load${l.id}`}
           className={`fem-pointload-group${isSel ? " selected" : ""}`}
+          data-last-id={l.id}
           onClick={(e) => {
             if (tool === "select" && !dragState) {
               e.stopPropagation();
@@ -2975,6 +2993,7 @@ export default function FemCanvas(props: FemCanvasProps) {
         <g
           key={`load${l.id}`}
           className={`fem-lineload-group${isSel ? " selected" : ""}`}
+          data-last-id={l.id}
           onClick={(e) => {
             if (tool === "select" && !dragState) {
               e.stopPropagation();
