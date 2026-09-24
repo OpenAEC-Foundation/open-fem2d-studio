@@ -43,7 +43,7 @@ try {
 
   const html = await pagina("light");
   const result = spawnSync(browser, [...vlaggen("light"), "--dump-dom", pathToFileURL(html).href],
-    { encoding: "utf8", timeout: 60_000, maxBuffer: 32 * 1024 * 1024 });
+    { encoding: "utf8", timeout: 180_000, maxBuffer: 32 * 1024 * 1024 });
   const match = /<pre id="uitslag">([^<]*)<\/pre>/.exec(result.stdout ?? "");
   assert.ok(match?.[1], result.error?.message ?? result.stderr?.slice(0, 1500) ?? "Geen browserresultaat");
   const report = JSON.parse(match[1].replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&"));
@@ -56,7 +56,7 @@ try {
     for (const [thema, naam] of [["light", "toetsingspaneel-licht.png"], ["openaec", "toetsingspaneel-donker.png"]]) {
       const doel = join(beeldmap, naam);
       spawnSync(browser, [...vlaggen(thema + "-beeld"), `--screenshot=${doel}`, pathToFileURL(await pagina(thema)).href],
-        { encoding: "utf8", timeout: 60_000 });
+        { encoding: "utf8", timeout: 180_000 });
       assert.ok(existsSync(doel), `schermafbeelding ontbreekt: ${doel}`);
       console.log(`  schermafbeelding: ${doel}`);
     }

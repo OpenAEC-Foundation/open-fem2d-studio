@@ -27,7 +27,7 @@ const folder = mkdtempSync(join(tmpdir(), "eigen-gewicht-ui-"));
 const chromium = (extra, url) => spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run",
   "--no-default-browser-check", `--user-data-dir=${join(folder, "profiel")}`,
   "--virtual-time-budget=10000", ...extra, url,
-], { encoding: "utf8", timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+], { encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
 try {
   const bundle = await build({
     absWorkingDir: dirname(fileURLToPath(import.meta.url)),

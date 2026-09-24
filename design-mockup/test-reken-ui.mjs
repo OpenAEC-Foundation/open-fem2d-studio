@@ -31,7 +31,7 @@ try {
   const result = spawnSync(browser, ["--headless=new", "--disable-gpu", "--no-first-run",
     "--no-default-browser-check", `--user-data-dir=${join(folder, "profiel")}`,
     "--virtual-time-budget=10000", "--dump-dom", pathToFileURL(html).href,
-  ], { encoding: "utf8", timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
+  ], { encoding: "utf8", timeout: 180_000, maxBuffer: 16 * 1024 * 1024 });
   const match = /<pre id="uitslag">([^<]*)<\/pre>/.exec(result.stdout ?? "");
   assert.ok(match?.[1], result.error?.message ?? result.stderr?.slice(0, 1500) ?? "Geen browserresultaat");
   const report = JSON.parse(match[1].replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&"));

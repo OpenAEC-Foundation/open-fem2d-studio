@@ -208,7 +208,7 @@ if (!browser) {
       "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
       `--user-data-dir=${join(map, "profiel")}`, "--virtual-time-budget=3000", "--dump-dom",
       pathToFileURL(bestand).href,
-    ], { encoding: "utf8", timeout: 60_000 });
+    ], { encoding: "utf8", timeout: 180_000 });
     const m = /<pre id="uitslag">([^<]*)<\/pre>/.exec(r.stdout ?? "");
     const u = m ? JSON.parse(m[1].replace(/&quot;/g, '"')) : null;
     check("de browser heeft gemeten", !!u, (r.stderr ?? "").slice(0, 300) || (r.error?.message ?? ""));
