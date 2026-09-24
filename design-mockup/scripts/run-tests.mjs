@@ -699,6 +699,14 @@ const ALLEEN_BRON = new Map([
     "kipsteunen-ui",
     "issue #40: het echte tekenvlak (FemCanvas), de weergavelijst en de constructieschets van het rapport in een lokale headless browser — symbolen aan de goede zijde en op de goede plaats, de maatketting in mm bij selectie en hover, de schakelaar, de zoomgrenzen en het rapport. React, SVG-meetkunde en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
   ],
+  [
+    "infotip-plaats",
+    "issue #43: de plaats van een InfoTip binnen het venster (`lib/infoTipPlaats.ts`), een weergavemodule buiten de barrel; de sidecar tekent geen tips",
+  ],
+  [
+    "eigenschappen-ui",
+    "issue #43: het echte eigenschappenpaneel en de echte staafdialoog in een lokale headless browser — uitleg in InfoTips (hover, focus, klik/tik, Esc, aria-describedby, binnen het venster, licht/donker), korte status en waarschuwingen zichtbaar. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
 ]);
 
 // ── Argumenten ────────────────────────────────────────────────────────────

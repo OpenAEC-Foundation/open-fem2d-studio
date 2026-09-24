@@ -13,6 +13,9 @@
   "cancel": "Abbrechen",
   "save": "Speichern",
   "close": "Schließen",
+  "infoTip": {
+    "label": "Erläuterung"
+  },
   "windowControls": {
     "closeBrowser": "Schließen Sie diesen Tab über den Browser. Speichern Sie zuerst Ihr Projekt, um Änderungen zu behalten.",
     "desktopOnly": "Diese Fensterfunktionen sind nur in der Desktop-App verfügbar.",

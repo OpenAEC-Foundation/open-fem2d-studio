@@ -13,6 +13,9 @@
   "cancel": "Cancel",
   "save": "Save",
   "close": "Close",
+  "infoTip": {
+    "label": "Explanation"
+  },
   "windowControls": {
     "closeBrowser": "Close this tab using your browser. Save your project first if you want to keep your changes.",
     "desktopOnly": "These window controls are only available in the desktop app.",

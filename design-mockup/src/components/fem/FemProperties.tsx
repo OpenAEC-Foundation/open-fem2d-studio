@@ -9,11 +9,12 @@
  *
  * Mutations dispatch through the store callbacks passed in by App.tsx.
  */
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useId, isValidElement, cloneElement } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
 import { parseLength, formatLength, mmToMeters } from "../../lib/lengthInput";
 import LengthInput from "../LengthInput";
+import InfoTip from "../InfoTip";
 import { CONCRETE_E_CM, resolveSection } from "../../lib/sectionResolver";
 import {
   HERKOMST_KIPSTEUNEN,
@@ -85,11 +86,27 @@ function Section({ title, defaultOpen = true, children }: SectionProps) {
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Eén regel label | waarde. Met `info` staat er een (i)-icoon naast het label
+ * met die uitleg als tip (issue #43), en krijgt het veld de tekst als
+ * beschrijving (`aria-describedby`) — ook als de tip dicht is.
+ */
+function Row({ label, info, children }: {
+  label: string;
+  info?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const id = useId();
+  const veld = info && isValidElement<{ "aria-describedby"?: string }>(children)
+    ? cloneElement(children, { "aria-describedby": id })
+    : children;
   return (
     <div className="fem-prop-row">
-      <span className="fem-prop-row-label">{label}</span>
-      <span className="fem-prop-row-value">{children}</span>
+      <span className="fem-prop-row-label">
+        {label}
+        {info ? <InfoTip id={id}>{info}</InfoTip> : null}
+      </span>
+      <span className="fem-prop-row-value">{veld}</span>
     </div>
   );
 }
@@ -658,7 +675,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 herkomst: herkomstTekst(voorspeldY),
               })}
             </div>
-            <Row label={t("cfg.bucklingOutOfPlane")}>
+            <Row
+              label={t("cfg.bucklingOutOfPlane")}
+              info={<>
+                {t("cfg.bucklingOutOfPlaneHint")}
+                {isHout && " " + t("props.beam.timberLcrzHint")}
+              </>}
+            >
               <LengthInput className="fem-prop-input" positive storedUnit="m"
                 placeholder={formatLength(voorspeldZ.lCrMm)}
                 value={cfg.bucklingLengthZ_m}
@@ -669,9 +692,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               {t("cfg.bucklingEmptyIs", {
                 waarde: formatLength(voorspeldZ.lCrMm),
                 herkomst: herkomstTekst(voorspeldZ),
-              })}{" "}
-              {t("cfg.bucklingOutOfPlaneHint")}
-              {isHout && " " + t("props.beam.timberLcrzHint")}
+              })}
             </div>
           </Section>}
 
@@ -707,7 +728,13 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         }}
                       />
                     </Row>
-                    <Row label={t("cfg.bracingLabel")}>
+                    <Row
+                      label={t("cfg.bracingLabel")}
+                      info={<>
+                        {t("props.beam.bracingFillHint")}
+                        {isHout && " " + t("cfg.bracingTimberHint")}
+                      </>}
+                    >
                       <input
                         type="text" className="fem-prop-input"
                         placeholder="0.25, 0.5, 0.75"
@@ -721,9 +748,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         spellCheck={false}
                       />
                     </Row>
-                    {isHout && (
-                      <div className="fem-prop-hint">{t("cfg.bracingTimberHint")}</div>
-                    )}
                     {huidig.length > 0 && L > 0 && (
                       <div className="fem-prop-hint">
                         {t("props.beam.bracingPositions", {
@@ -746,11 +770,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                         {sprongTekst("flens")}
                       </div>
                     )}
-                    {huidig.length === 0 && (
-                      <div className="fem-prop-hint">
-                        {t("props.beam.bracingFillHint")}
-                      </div>
-                    )}
                   </Section>
                 );
               })}
@@ -759,7 +778,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
 
           {isHout && (
             <Section title={t("props.beam.ltbTitle")}>
-              <Row label={t("props.beam.ltbSpacing")}>
+              <Row
+                label={t("props.beam.ltbSpacing")}
+                info={t("props.beam.ltbSpacingHint", { lengte: systeemlengteMm })}
+              >
                 <LengthInput className="fem-prop-input" positive storedUnit="m"
                   placeholder={systeemlengteMm}
                   value={cfg.ltbSupportSpacing_m}
@@ -767,7 +789,10 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                 />
               </Row>
               <div className="fem-prop-hint">
-                {t("props.beam.ltbSpacingHint", { lengte: systeemlengteMm })}
+                {t("cfg.bucklingEmptyIs", {
+                  waarde: systeemlengteMm,
+                  herkomst: t("cfg.herkomstStaaflengte"),
+                })}
               </div>
               {/* Aangrijpingspunt van de belasting (tabel 6.1, voetnoot a).
                   Leeg/zwaartepunt = geen correctie; de drukzijde (dak of vloer
@@ -813,7 +838,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   waarde van de NB bij 6.1.7 voor een prismatische doorsnede; de
                   Europese aanbeveling is 0,67. Buiten (0, 1] wordt niet
                   weggeschreven: dat is geen factor maar een fout. */}
-              <Row label={t("props.beam.kCr")}>
+              <Row label={t("props.beam.kCr")} info={t("props.beam.kCrHint")}>
                 <input
                   type="number" className="fem-prop-input" step="0.01" min="0.01" max="1"
                   placeholder="1,00"
@@ -828,15 +853,12 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   }}
                 />
               </Row>
-              <div className="fem-prop-hint">
-                {t("props.beam.kCrHint")}
-              </div>
             </Section>
           )}
 
           {isHout && (
             <Section title={t("props.beam.climateTitle")}>
-              <Row label={t("cfg.serviceClass")}>
+              <Row label={t("cfg.serviceClass")} info={t("props.beam.climateHint")}>
                 <select
                   className="fem-prop-select"
                   value={cfg.serviceClass ?? 1}
@@ -867,9 +889,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   <option value="instantaneous">{t("props.beam.durInstantaneous")}</option>
                 </select>
               </Row>
-              <div className="fem-prop-hint">
-                {t("props.beam.climateHint")}
-              </div>
             </Section>
           )}
 
@@ -973,7 +992,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               </Row>
             )}
             {!isHout && !isBeton && (
-              <Row label={t("props.beam.preCamber")}>
+              <Row label={t("props.beam.preCamber")} info={t("cfg.preCamberHint")}>
                 <input
                   type="number" className="fem-prop-input" step="1"
                   placeholder="0"
@@ -983,9 +1002,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   })}
                 />
               </Row>
-            )}
-            {!isHout && !isBeton && (
-              <div className="fem-prop-hint">{t("cfg.preCamberHint")}</div>
             )}
           </Section>
         </div>
@@ -1045,7 +1061,7 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
               staaf zou een lege regel "Verloop" alleen ruis zijn. */}
           {verloopBeamMaten && (
             <>
-              <Row label={t("props.beam.taperStart")}>
+              <Row label={t("props.beam.taperStart")} info={t("props.beam.taperHint")}>
                 <code>
                   {beam.profile} · h = {verloopBeamMaten.begin.h} mm, b = {verloopBeamMaten.begin.b} mm
                 </code>
@@ -1055,9 +1071,6 @@ function BeamProperties({ beam, nFrom, nTo, nodes, beams, loads, updateBeam }: {
                   {beam.profileEnd} · h = {verloopBeamMaten.eind.h} mm, b = {verloopBeamMaten.eind.b} mm
                 </code>
               </Row>
-              <div className="fem-prop-hint">
-                {t("props.beam.taperHint")}
-              </div>
             </>
           )}
           {isHout ? (

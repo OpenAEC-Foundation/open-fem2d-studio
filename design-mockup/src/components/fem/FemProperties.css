@@ -95,6 +95,17 @@
   background: var(--theme-bg);
 }
 
+/* Korte status bij een veld ("Leeg = 8770 mm, staaflengte (terugval).", de
+   posities in mm). Stond tot issue #43 zonder eigen opmaak op de lettergrootte
+   van de pagina; de lange uitleg staat sindsdien in een InfoTip naast het
+   label. Moet vóór .fem-prop-let-op staan: die draagt beide klassen en wint
+   dan op volgorde. */
+.fem-prop-hint {
+  padding: 0 10px 4px;
+  font: 400 10.5px/1.4 "Inter", system-ui, sans-serif;
+  color: var(--theme-text-muted);
+}
+
 /* Een waarschuwing die niet tussen de gewone hints mag verdwijnen: bij een naar
    links hellende staaf dicht bij 75° keert "boven" om (zie DE SPRONG BIJ 75° in
    lib/referentierichting.ts). Zelfde vorm als .dek-let-op in het betonvenster. */

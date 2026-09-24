@@ -13,6 +13,9 @@
   "cancel": "Annuleren",
   "save": "Opslaan",
   "close": "Sluiten",
+  "infoTip": {
+    "label": "Uitleg"
+  },
   "windowControls": {
     "closeBrowser": "Sluit dit tabblad via de browser. Sla je project eerst op als je wijzigingen wilt bewaren.",
     "desktopOnly": "Deze vensterbediening is alleen beschikbaar in de desktop-app.",

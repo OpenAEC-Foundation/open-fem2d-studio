@@ -13,6 +13,9 @@
   "cancel": "Annuler",
   "save": "Enregistrer",
   "close": "Fermer",
+  "infoTip": {
+    "label": "Explication"
+  },
   "windowControls": {
     "closeBrowser": "Fermez cet onglet depuis le navigateur. Enregistrez d’abord votre projet pour conserver vos modifications.",
     "desktopOnly": "Ces commandes de fenêtre sont uniquement disponibles dans l’application de bureau.",
