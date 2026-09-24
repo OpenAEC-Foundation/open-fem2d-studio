@@ -138,6 +138,8 @@ interface WireReportData {
   analyseToelichting?: string;
   /** De laag "Kipsteunen" van het tekenvlak; optioneel om dezelfde reden. */
   kipsteunenTonen?: boolean;
+  /** De laag "Aanzicht" van het tekenvlak; optioneel om dezelfde reden. */
+  aanzichtTonen?: boolean;
 }
 
 /** Toetsresultaten (checkStore) — al JSON-veilig, 1-op-1 mee in het snapshot. */
@@ -276,6 +278,7 @@ function serializeReportData(d: ReportData): WireReportData {
     scheefstandToelichting: d.scheefstandToelichting,
     analyseToelichting: d.analyseToelichting,
     kipsteunenTonen: d.kipsteunenTonen,
+    aanzichtTonen: d.aanzichtTonen,
   };
 }
 
@@ -317,6 +320,8 @@ function deserializeReportData(w: WireReportData): ReportData {
     analyseToelichting: w.analyseToelichting ?? "",
     // Ontbreekt bij een ouder hoofdvenster: dan geldt de standaard (aan).
     kipsteunenTonen: w.kipsteunenTonen,
+    // Ontbreekt bij een ouder hoofdvenster: dan de standaard (uit).
+    aanzichtTonen: w.aanzichtTonen,
   };
 }
 
@@ -538,6 +543,7 @@ export function ReportWindowSync({ data }: { data: ReportData }): null {
     data.scheefstandToelichting,
     data.analyseToelichting,
     data.kipsteunenTonen,
+    data.aanzichtTonen,
     pageSize,
     orientation,
     hiddenSections,

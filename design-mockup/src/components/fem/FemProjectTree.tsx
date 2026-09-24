@@ -158,6 +158,7 @@ function ResultsTab({
     // is de ene plek waar canvas-weergave aan en uit gaat.
     { key: "profielLabels", label: t("tree.rowProfileName"), hint: t("tree.rowProfileNameHint"), swatch: "var(--theme-text)" },
     { key: "kipsteunen", label: t("tree.rowKipsteunen"), hint: t("tree.rowKipsteunenHint"), swatch: "var(--theme-accent)" },
+    { key: "aanzicht", label: t("tree.rowAanzicht"), hint: t("tree.rowAanzichtHint"), swatch: "var(--theme-text-secondary)" },
   ];
   // Contour-rij alleen wanneer het model platen bevat (P3.2).
   if (hasPlates) {

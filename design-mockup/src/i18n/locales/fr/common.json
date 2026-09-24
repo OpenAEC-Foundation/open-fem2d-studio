@@ -839,6 +839,8 @@
     "rowProfileName": "Nom du profilé",
     "rowProfileNameHint": "Nom du profilé en petit le long de chaque barre sur le canevas",
     "rowKipsteunen": "Maintiens latéraux",
+    "rowAanzicht": "Élévation (hauteur réelle)",
+    "rowAanzichtHint": "Barres en grandeur réelle : hauteur du profil, semelles, lamelles et armatures autour de la ligne système. Uniquement dans la vue modèle et les cas de charge, jamais sur les diagrammes de résultats",
     "rowKipsteunenHint": "Maintiens latéraux en symboles le long de la barre, par semelle ; sélectionnez ou survolez une barre pour les longueurs de tronçon en mm",
     "rowPlateStress": "Contrainte de plaque",
     "rowPlateStressHint": "Isovaleurs de contrainte sur les éléments de plaque — composante au choix, légende sur le canevas",

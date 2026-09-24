@@ -116,6 +116,13 @@ export interface ReportData {
    * ouder hoofdvenster), dan geldt de standaard van de laag: aan.
    */
   kipsteunenTonen?: boolean;
+  /**
+   * Staat de laag "Aanzicht" van het tekenvlak aan? Dan tekent de
+   * constructieschets de staven op ware grootte (issue #45), met dezelfde
+   * geometrie als het tekenvlak. Ontbreekt het veld (een snapshot uit een
+   * ouder hoofdvenster), dan geldt de standaard van de laag: uit.
+   */
+  aanzichtTonen?: boolean;
 }
 
 export const EMPTY_REPORT_DATA: ReportData = {

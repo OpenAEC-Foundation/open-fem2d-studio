@@ -46,6 +46,9 @@ import { useResultaatInfoStore } from "../../stores/resultaatInfoStore";
 import { doorsnedeNaamVertaald, verloopMaten } from "../../lib/verloopKeuze";
 import { kipsteunBeelden } from "../../lib/kipsteunBeeld";
 import KipsteunLaag from "./KipsteunLaag";
+import { modelAanzicht } from "../../lib/aanzichtGeometrie";
+import { aanzichtInBeeld } from "../../lib/weergaveModel";
+import AanzichtLaag from "./AanzichtLaag";
 import { vertaal } from "../../lib/vertaalbareTekst";
 import type {
   Tool, Node, Beam, Plate, PlaatMeshCache, PlaatPunt, Support, Load, Selection,
@@ -3115,8 +3118,13 @@ export default function FemCanvas(props: FemCanvasProps) {
     // op het scherm omhoog wijst, zodat het label niet op de diagrammen valt.
     const nx = -dy / len, ny = dx / len;
     const teken = ny > 0 ? -1 : 1;
-    const tx = p1.x + dx / 2 + nx * PROFIEL_LABEL_OFFSET_PX * teken;
-    const ty = p1.y + dy / 2 + ny * PROFIEL_LABEL_OFFSET_PX * teken;
+    // Met het aanzicht aan: naast het aanzicht, niet erin.
+    const half = aanzichtHalf.get(b.id);
+    const afstand = half !== undefined
+      ? Math.max(PROFIEL_LABEL_OFFSET_PX, half * view.scale + 7)
+      : PROFIEL_LABEL_OFFSET_PX;
+    const tx = p1.x + dx / 2 + nx * afstand * teken;
+    const ty = p1.y + dy / 2 + ny * afstand * teken;
     return (
       <text
         x={tx} y={ty}
@@ -3149,6 +3157,8 @@ export default function FemCanvas(props: FemCanvasProps) {
     p1: { x: number; y: number },
     p2: { x: number; y: number },
   ) => {
+    // Met het aanzicht aan staat het verloop al op ware grootte in beeld.
+    if (aanzichtHalf.has(b.id)) return null;
     const maten = verloopMaten(b);
     if (!maten) return null;
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
@@ -3273,6 +3283,32 @@ export default function FemCanvas(props: FemCanvasProps) {
     if (envelopeView) return null; // envelope rendered separately
     return results;
   }, [activeCombinationId, combinationResults, envelopeView, results]);
+
+  // ── Aanzicht op ware grootte (issue #45) ────────────────────────────────
+  // Aan in de tab Model en bij de belastinggevallen, als de gebruiker het
+  // vinkje zet; nooit over resultaatdiagrammen heen.
+  // De regel staat in lib/weergaveModel.ts (`aanzichtInBeeld`).
+  const toonAanzicht = aanzichtInBeeld({
+    flags: displayFlags,
+    resultsMode,
+    showLoads,
+    heeftResultaat: overlayResult !== null,
+    omhullende: !!envelopeView && !!envelope,
+  });
+  // Alleen van het model afhankelijk: niet opnieuw bij pannen, zoomen of hover.
+  const aanzichten = useMemo(
+    () => (toonAanzicht ? modelAanzicht({ nodes, beams }) : []),
+    [toonAanzicht, nodes, beams],
+  );
+  /** Grootste halve hoogte (mm) per staaf, voor de plaats van de profielnaam. */
+  const aanzichtHalf = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const a of aanzichten) {
+      const r = a.randen;
+      m.set(a.staafId, Math.max(-r.begin.onder, r.begin.boven, -r.eind.onder, r.eind.boven));
+    }
+    return m;
+  }, [aanzichten]);
 
   // ── Beschikbaarheid van de EI-weergave doorgeven ────────────────────────
   // De weergavelijst (FemProjectTree) moet de EI-stand kunnen uitgrijzen als
@@ -3894,6 +3930,17 @@ export default function FemCanvas(props: FemCanvasProps) {
             assenstelsel-widget linksboven (fem-coord-widget) — één weergave
             i.p.v. twee. */}
 
+        {/* Aanzicht op ware grootte (issue #45): ONDER de systeemlijnen, zodat
+            die zichtbaar en aanklikbaar blijven; de laag zelf vangt geen muis. */}
+        {toonAanzicht && aanzichten.length > 0 && (
+          <AanzichtLaag
+            aanzichten={aanzichten}
+            naarScherm={worldToScreen}
+            variant="canvas"
+            geselecteerd={new Set(beams.filter((b) => isBeamInSelection(b.id, selection)).map((b) => b.id))}
+          />
+        )}
+
         {/* Beams */}
         {beamsWithCoords.map(({ b, p1, p2 }) => {
           const isSel = isBeamInSelection(b.id, selection);
@@ -3914,7 +3961,7 @@ export default function FemCanvas(props: FemCanvasProps) {
             <g key={`beam${b.id}`}>
               <line
                 x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                className={`fem-member${isSel ? " selected" : ""}${isSnap ? " snap" : ""}`}
+                className={`fem-member${isSel ? " selected" : ""}${isSnap ? " snap" : ""}${aanzichtHalf.has(b.id) ? " systeemlijn" : ""}`}
                 onClick={selectBeam}
                 onDoubleClick={openBeamProps}
               />

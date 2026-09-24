@@ -264,5 +264,32 @@ test("zijaanzicht rechtstreeks: een hoeklijn heeft zijn zwaartepunt niet in het 
   lijst(za.zichtbaar, [10], "bovenkant van het korte been");
 });
 
+console.log("Wanneer de laag in beeld is");
+const { aanzichtInBeeld, zonderResultaten } = await import("./src/lib/weergaveModel.ts");
+const { DEFAULT_DISPLAY_FLAGS } = await import("./src/components/fem/FemResultsOverlay.tsx");
+test("standaard uit; aan in de tab Model en bij een belastinggeval zonder diagram", () => {
+  assert.equal(DEFAULT_DISPLAY_FLAGS.aanzicht, false, "standaardvlag");
+  const basis = { resultsMode: false, showLoads: false, heeftResultaat: false, omhullende: false };
+  assert.equal(aanzichtInBeeld({ ...basis, flags: DEFAULT_DISPLAY_FLAGS }), false, "vinkje uit");
+  const aan = { ...DEFAULT_DISPLAY_FLAGS, aanzicht: true };
+  assert.equal(aanzichtInBeeld({ ...basis, flags: aan }), true, "tab Model");
+  assert.equal(aanzichtInBeeld({ ...basis, flags: aan, showLoads: true }), true, "belastinggeval, niet gerekend");
+  // De tab Model zet de resultaatlagen uit; het vinkje blijft staan.
+  const naModel = zonderResultaten(aan);
+  assert.equal(naModel.aanzicht, true, "de tab Model laat het vinkje staan");
+  assert.equal(aanzichtInBeeld({ ...basis, flags: naModel, showLoads: true, heeftResultaat: true }), true,
+    "belastinggeval met resultaat maar zonder diagram");
+});
+test("nooit in de resultaatweergave, en niet onder een resultaatdiagram", () => {
+  const aan = { ...DEFAULT_DISPLAY_FLAGS, aanzicht: true };
+  const basis = { showLoads: true, heeftResultaat: true, omhullende: false };
+  assert.equal(aanzichtInBeeld({ ...basis, flags: aan, resultsMode: true }), false, "tab Resultaten");
+  assert.equal(aanzichtInBeeld({ ...basis, flags: aan, resultsMode: false }), false, "M en u staan standaard aan");
+  assert.equal(aanzichtInBeeld({ ...basis, flags: { ...zonderResultaten(aan), N: true }, resultsMode: false }), false, "N-lijn");
+  assert.equal(aanzichtInBeeld({ ...basis, heeftResultaat: false, omhullende: true, flags: zonderResultaten(aan), resultsMode: false }), false, "omhullende");
+  // Reacties en UC-badges zijn geen diagram op de systeemlijn.
+  assert.equal(aanzichtInBeeld({ ...basis, flags: { ...zonderResultaten(aan), reactions: true, uc: true }, resultsMode: false }), true, "reacties/UC");
+});
+
 console.log(`\n${passed} geslaagd, ${failed} gefaald`);
 if (failed > 0) process.exit(1);

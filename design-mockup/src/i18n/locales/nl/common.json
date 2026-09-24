@@ -839,6 +839,8 @@
     "rowProfileName": "Profielnaam",
     "rowProfileNameHint": "Profielnaam klein langs elke staaf op het canvas",
     "rowKipsteunen": "Kipsteunen",
+    "rowAanzicht": "Aanzicht (ware hoogte)",
+    "rowAanzichtHint": "De staven op ware grootte: profielhoogte, flenzen, lamellen en wapening rond de systeemlijn. Alleen in de modelweergave en bij de belastinggevallen, niet over de resultaatdiagrammen",
     "rowKipsteunenHint": "Kipsteunen als symbool langs de staaf, per flens; selecteer of wijs een staaf aan voor de kipveldlengtes in mm",
     "rowPlateStress": "Plaatspanning",
     "rowPlateStressHint": "Spanningscontouren op de plaatelementen — component kiesbaar, legenda op het canvas",
