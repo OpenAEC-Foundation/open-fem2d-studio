@@ -31,3 +31,28 @@ export function undoRoute(doel: { tagName?: string; type?: string; isContentEdit
 export function moetEerstVastleggen(doel: { tagName?: string } | null | undefined): boolean {
   return (doel?.tagName ?? "").toUpperCase() === "INPUT";
 }
+
+/**
+ * Een klik op het tekenvlak laat een invoerveld buiten het tekenvlak los.
+ *
+ * Het tekenvlak roept `preventDefault()` aan op mousedown (slepen, kaderselectie),
+ * waardoor de browser de focus níet verplaatst: de cursor bleef in het laatst
+ * gebruikte veld staan. Gevolgen: Ctrl+Z na het verslepen van een staaf ging naar
+ * dat veld in plaats van naar het model, en getypte cijfers kwamen in het veld.
+ *
+ * `blur()` laat het veld eerst zijn waarde vastleggen (onBlur-commit), daarna
+ * horen sneltoetsen weer bij het model. Velden binnen `binnen` (popovers op het
+ * tekenvlak zelf, zoals het maatlijnformulier) blijven staan.
+ */
+export function laatVeldLos(
+  actief: (Element & { blur?: () => void; isContentEditable?: boolean }) | null | undefined,
+  binnen?: { contains: (e: Element) => boolean } | null,
+): boolean {
+  if (!actief || typeof actief.blur !== "function") return false;
+  const tag = (actief.tagName ?? "").toUpperCase();
+  const isVeld = tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || actief.isContentEditable === true;
+  if (!isVeld) return false;
+  if (binnen?.contains(actief)) return false;
+  actief.blur();
+  return true;
+}

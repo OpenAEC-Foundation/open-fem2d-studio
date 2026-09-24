@@ -26,6 +26,7 @@
  * Solverresultaten komen uitsluitend uit de centrale rekengang. Wisselen
  * van belastinggeval selecteert bestaande resultaten en rekent nooit opnieuw.
  */
+import { laatVeldLos } from "../../lib/undoRoute";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import i18next from "i18next";
@@ -1343,6 +1344,10 @@ export default function FemCanvas(props: FemCanvasProps) {
   };
 
   const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    // Het tekenvlak voorkomt de standaard focusverplaatsing (preventDefault
+    // hieronder); zonder dit bleef de cursor in het laatst gebruikte veld en
+    // ging Ctrl+Z na het verslepen naar dat veld in plaats van naar het model.
+    laatVeldLos(document.activeElement as HTMLElement | null, svgRef.current?.closest(".fem-canvas-wrap"));
     const rect = svgRef.current!.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
