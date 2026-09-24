@@ -142,13 +142,13 @@ export function DoorsnedeSchema({
   });
 
   const windY = sy((minZ + maxZ) / 2 + gevel / 2);
-  return (
-    <svg
-      className="wgd-schema"
-      viewBox={`0 0 ${breedtePx} ${hoogtePx.toFixed(0)}`}
-      role="img"
-      aria-label={t("wind.schema.sectionAria", { unit: lengthUnit, h: maat(g.h_m, 2), d: maat(g.d_m, 2) })}
-    >
+  // Pijlen en labels bij de nok (zone J van een hellend dak, issue #49) kunnen
+  // boven de marge uitsteken; dan schuift de hele tekening zoveel omlaag. Past
+  // alles al, dan blijft de tekening precies zoals hij was.
+  const boven = Math.min(...pijlen.flatMap((p) => [p.van.y, p.naar.y, p.ly - 9]));
+  const extra = Number.isFinite(boven) && boven < 2 ? Math.ceil(2 - boven) : 0;
+  const inhoud = (
+    <>
       <defs>
         <marker id="wgd-pijl" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
           <path d="M 0 0 L 8 4 L 0 8 z" fill="context-stroke" />
@@ -267,6 +267,16 @@ export function DoorsnedeSchema({
         <line x1={sx(maxX) + 14} y1={y0} x2={sx(maxX) + 22} y2={y0} />
         <text x={sx(maxX) + 24} y={(sy(maxZ) + y0) / 2 + 3} stroke="none">{`h = ${maat(g.h_m, 2)} ${lengthUnit}`}</text>
       </g>
+    </>
+  );
+  return (
+    <svg
+      className="wgd-schema"
+      viewBox={`0 0 ${breedtePx} ${(hoogtePx + extra).toFixed(0)}`}
+      role="img"
+      aria-label={t("wind.schema.sectionAria", { unit: lengthUnit, h: maat(g.h_m, 2), d: maat(g.d_m, 2) })}
+    >
+      {extra > 0 ? <g transform={`translate(0 ${extra})`}>{inhoud}</g> : inhoud}
     </svg>
   );
 }

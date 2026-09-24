@@ -26,7 +26,7 @@ import { useReportData } from "../ReportDataContext";
 import { useProjectInfo, useRapportProjectInfo } from "../useProjectInfo";
 import { DEFAULT_UITGANGSPUNTEN } from "../../project/ProjectSettingsDialog";
 import { kFi, partieleFactoren } from "../../fem/solver/normcombinaties";
-import { vrijstaandDakUitgangspunten } from "../../../lib/wind/windGenerator";
+import { hellendDakUitgangspunten, vrijstaandDakUitgangspunten } from "../../../lib/wind/windGenerator";
 import { aanduidingen, bijlageUitBestand, STANDAARD_BIJLAGE } from "../../../lib/normAanduidingen";
 import { datumVoluit } from "../../../lib/rapportDatum";
 
@@ -249,6 +249,16 @@ export default function ProjectSection() {
           rijen.push([
             t("report.fieldWindVrijstaand", "Windbelasting vrijstaand dak"),
             <ScheefstandBlok tekst={windVrijstaand} />,
+          ]);
+        }
+        // Hellend dak met automatische c_pe (§7.2.4/§7.2.5, issue #49): tabel,
+        // α, e, zonegrenzen en c_pe,10 per geval. Alles ingevuld of geen hellend
+        // dak: de rij blijft weg.
+        const windHellend = hellendDakUitgangspunten(loadCases, loads);
+        if (windHellend !== "") {
+          rijen.push([
+            t("report.fieldWindHellend", "Windbelasting hellend dak"),
+            <ScheefstandBlok tekst={windHellend} />,
           ]);
         }
         if (scheefstandToelichting.trim() !== "") {

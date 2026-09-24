@@ -135,6 +135,12 @@ for (const [model, inst] of [
   [portaal, { ...STANDAARD_WIND_INSTELLINGEN, vorm: "vrijstaandDak", vrijstaandDakvorm: "lessenaar", wrijving: "glad" }],
   [portaal, { ...STANDAARD_WIND_INSTELLINGEN, vorm: "vrijstaandDak", vrijstaandDakvorm: "lessenaar", kolomDoorsnede: "rechthoekig" }],
   [zadel, { ...STANDAARD_WIND_INSTELLINGEN, vorm: "vrijstaandDak", vrijstaandDakvorm: "zadel", wrijving: "ruw", kolomDoorsnede: "scherphoekig" }],
+  // Hellend dak van een gebouw (issue #49): zadeldak α = 15° met vier
+  // gevallen per richting (loef/lij − en +), lessenaarsdak α = 10° met dak −/+,
+  // en een zadeldak met alleen het lijvlak automatisch (lij −/+).
+  [zadel, { ...STANDAARD_WIND_INSTELLINGEN, richtingHaaks: true, cpiKeuze: "min" }],
+  [portaal, { ...STANDAARD_WIND_INSTELLINGEN, cpiKeuze: "plus" }],
+  [zadel, { ...STANDAARD_WIND_INSTELLINGEN, cpiKeuze: "min", richtingRechts: false, cpeDakLoef: -0.5 }],
 ]) {
   const res = genereerWindbelasting(model, inst);
   const dakvorm = res.samenvatting?.vrijstaand?.dakvorm ?? null;
@@ -473,6 +479,9 @@ const tEn = i18next.getFixedT("en", "common");
 const cfLinks = windGevallen.find((g) => g.gv.sleutel === "luifel:cf:max:links" && g.dakvorm === "lessenaar");
 check("en: vrijstaand dak c_f van links", cfLinks && vertaal(tEn, windGevalNaam(cfLinks.gv, cfLinks.dakvorm)) === "Wind canopy roof c_f downward, from the left",
   cfLinks && vertaal(tEn, windGevalNaam(cfLinks.gv, cfLinks.dakvorm)));
+const dakVariant = windGevallen.find((g) => g.gv.sleutel === "wind:links:cpi-0.30:loef-lij+");
+check("en: hellend dak, loef − en lij + (issue #49)", dakVariant && vertaal(tEn, windGevalNaam(dakVariant.gv, null)) === "Wind from the left (c_pi = -0,30), roof windward −, leeward +",
+  dakVariant && vertaal(tEn, windGevalNaam(dakVariant.gv, null)));
 check("en: windgebied II", tEn("wind.regionOption.II") === "Zone II — north-western inland (v_b,0 = 27.0 m/s)");
 check("en: combinatie niet gebruikt", vertaal(tEn, LABEL_ZUIVER_STAAL_TEKST) === "not used");
 await zetTaal("fr");

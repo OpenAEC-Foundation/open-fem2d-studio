@@ -366,6 +366,11 @@ const BUNDEL_TESTS = new Set([
   // horizontale gevallen en ψ_mc moet leveren, en de bestaande gevallen daar
   // net zo bit-identiek moeten blijven.
   "wind-vrijstaand-uitbreiding",
+  // Hellend dak van een gebouw (issue #49, tabel 7.3/7.4): praat alleen met
+  // de windmodules en `engine` — alles in de barrel. Tegen de bundel omdat de
+  // sidecar dezelfde tabelcellen, zones, deellasten en gevallen (+/−) moet
+  // leveren als de app.
+  "wind-hellend-dak",
 ]);
 
 /**
@@ -750,6 +755,10 @@ const ALLEEN_BRON = new Map([
   [
     "tabbalk-ui",
     "issue #51: de echte tabbalk met twaalf gevallen in een te smal venster in een lokale headless browser — alleen de gevallen scrollen (pijlen, wiel, slepen, toetsenbord), het actieve geval schuift in beeld, de lijstknop kiest een geval, lange namen afgekort, vaste onderdelen zichtbaar, nl/en/de/fr. React, DOM en CSS bestaan in de sidecarbundel niet; geen server en geen rekenkern",
+  ],
+  [
+    "wind-hellend-dak-ui",
+    "issue #49: het echte windvenster met de echte generator in een lokale headless browser — c_pe-velden leeg met “(automatisch, tabel 7.4a)”, de automatische waarden per zone, de gevallen per teken, overschrijven en leeg maken, lessenaarsdak 7.3a/7.3b en thema. React, DOM en CSS bestaan in de sidecarbundel niet; de rekenregels staan tegen de bundel in `wind-hellend-dak`",
   ],
 ]);
 

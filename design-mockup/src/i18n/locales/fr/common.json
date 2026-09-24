@@ -279,9 +279,23 @@
       "frictionColumns": "frottement + poteaux",
       "horizontal": "{{delen}}, {{richting}}",
       "buildingName": "Vent {{deel}}",
-      "canopyName": "Vent toiture isolée {{deel}}"
+      "canopyName": "Vent toiture isolée {{deel}}",
+      "buildingTabRoof": "{{richting}} (c_pi = {{cpi}}), {{dak}}",
+      "roofSign": "toiture {{teken}}",
+      "roofWindward": "au vent {{teken}}",
+      "roofLeeward": "sous le vent {{teken}}",
+      "roofSides": "toiture {{delen}}"
     },
-    "regionSource": "NEN-EN 1991-1-4/AN tableau NB.1"
+    "regionSource": "NEN-EN 1991-1-4/AN tableau NB.1",
+    "cpeAuto": "(automatique, tableau {{tabel}})",
+    "cpeRow": "ligne α = {{alpha}}°",
+    "cpeInterp": "linéaire entre {{van}}° et {{tot}}°",
+    "slopedRoofAuto": "c_pe,10 par zone automatiquement selon le tableau 7.3/7.4 (AN) pour cette pente. Une valeur saisie est prioritaire et s’applique alors à tout le versant ; videz le champ pour le tableau.",
+    "roofShape": {
+      "zadel": "toiture à deux versants",
+      "lessenaar": "toiture à un versant",
+      "kiel": "toiture à deux versants avec noue (α < 0)"
+    }
   },
   "app": {
     "view": {

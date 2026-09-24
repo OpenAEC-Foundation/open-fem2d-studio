@@ -279,9 +279,23 @@
       "frictionColumns": "friction + columns",
       "horizontal": "{{delen}}, {{richting}}",
       "buildingName": "Wind {{deel}}",
-      "canopyName": "Wind canopy roof {{deel}}"
+      "canopyName": "Wind canopy roof {{deel}}",
+      "buildingTabRoof": "{{richting}} (c_pi = {{cpi}}), {{dak}}",
+      "roofSign": "roof {{teken}}",
+      "roofWindward": "windward {{teken}}",
+      "roofLeeward": "leeward {{teken}}",
+      "roofSides": "roof {{delen}}"
     },
-    "regionSource": "NEN-EN 1991-1-4/NA table NB.1"
+    "regionSource": "NEN-EN 1991-1-4/NA table NB.1",
+    "cpeAuto": "(automatic, table {{tabel}})",
+    "cpeRow": "row α = {{alpha}}°",
+    "cpeInterp": "linear between {{van}}° and {{tot}}°",
+    "slopedRoofAuto": "c_pe,10 per zone taken automatically from table 7.3/7.4 (NA) at this roof pitch. A value you enter takes precedence and then applies to the whole roof slope; clear the field to use the table.",
+    "roofShape": {
+      "zadel": "duopitch roof",
+      "lessenaar": "monopitch roof",
+      "kiel": "duopitch roof with valley (α < 0)"
+    }
   },
   "app": {
     "view": {

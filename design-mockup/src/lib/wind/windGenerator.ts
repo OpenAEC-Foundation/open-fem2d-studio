@@ -41,6 +41,8 @@ import {
   type GeschakeldeReductie, type KolomDoorsnede, type Oppervlakteruwheid,
   type OverkappingDakvorm, type OverkappingOpzoeking, type OverkappingZone,
   type StuwdrukResultaat, type TerreinCategorie, type Windgebied,
+  HELLEND_DAK_UITGANGSPUNT, hellendDakCpe, hellendDakParagraaf,
+  type CpeCel, type HellendDakOpzoeking, type HellendDakTheta, type HellendDakVorm, type HellendDakZone,
 } from "./windEurocode";
 
 // ── Instellingen ─────────────────────────────────────────────────────────
@@ -82,11 +84,16 @@ export interface WindInstellingen {
   /** Afstand van dit spant tot de dichtstbijzijnde kopgevel, in m. */
   afstandTotKopgevel_m: number;
 
-  /** c_pe,10 loefdakvlak bij hellend dak — tabel 7.4a, door de gebruiker. */
+  /**
+   * c_pe,10 van het loefdakvlak bij een hellend dak, door de gebruiker; `null`
+   * = automatisch uit tabel 7.4a (zadeldak) of 7.3a θ = 0° (lessenaarsdak,
+   * wind op de lage dakrand), per zone (issue #49). Een ingevulde waarde gaat
+   * voor en geldt dan voor het hele dakvlak, zoals vóór issue #49.
+   */
   cpeDakLoef: number | null;
-  /** c_pe,10 lijdakvlak bij hellend dak — tabel 7.4a, door de gebruiker. */
+  /** Idem lijdakvlak (7.4a), of bij een lessenaarsdak wind op de hoge dakrand (7.3a θ = 180°). */
   cpeDakLij: number | null;
-  /** c_pe,10 hellend dak bij wind haaks — tabel 7.4b, door de gebruiker. */
+  /** Idem bij wind haaks op het spant (7.4b / 7.3b); `null` = automatisch. */
   cpeDakHaaks: number | null;
 
   /** Ook belastingcombinaties aanmaken (EN 1990 6.10a/6.10b/EQU/6.14b). */
@@ -328,6 +335,29 @@ export interface WindGeometrie {
   staven: WindSchemaStaaf[];
   /** Alleen bij een vrijstaand dak (het veld ontbreekt bij een gebouw). */
   vrijstaand?: VrijstaandDakGeometrie;
+  /** Alleen bij een gebouw met staven "hellend dak" (issue #49). */
+  hellendDak?: HellendDakGeometrie;
+}
+
+/**
+ * Het hellende dak zoals de generator het uit de staven "hellend dak" leest,
+ * met de tabelopzoeking per windrichting van het spant — voor het venster,
+ * dat de automatische waarden ook toont als de generatie nog op iets anders
+ * strandt.
+ */
+export interface HellendDakGeometrie {
+  /** null = geen lessenaars- of zadeldak te herkennen; zie `reden`. */
+  vorm: HellendDakVorm | null;
+  /** Dakhelling α in graden; negatief bij een zadeldak met een goot in het midden. */
+  alpha_graden: number;
+  /** Nok of goot van een zadeldak, in m; null bij een lessenaarsdak. */
+  xNok_m: number | null;
+  /** Lessenaarsdak: de kant van de hoge dakrand; null bij een zadeldak. */
+  hoogKant: "links" | "rechts" | null;
+  /** Tabelopzoeking per windrichting van het spant (leeg als de vorm onbekend is). */
+  opzoeking: Partial<Record<"links" | "rechts" | "haaks", HellendDakOpzoeking>>;
+  /** Waarom de vorm niet te herkennen is. */
+  reden?: string;
 }
 
 export interface VrijstaandDakGeometrie {
@@ -439,6 +469,98 @@ function platDakBanden(e_m: number, d_m: number, randzoneF: boolean): DakZoneBan
   return banden;
 }
 
+// ── Hellend dak (issue #49) ──────────────────────────────────────────────
+
+/**
+ * Dakvorm, helling en nok van de staven "hellend dak". Een lessenaarsdak
+ * loopt over de hele breedte één kant op; een zadeldak loopt links op naar
+ * een nok en rechts af (α > 0), of links af naar een goot en rechts op
+ * (α < 0, figuur 7.8a rechts). Verschillen de hellingen meer dan 2°, dan is
+ * het een geknikt of ongelijk dak: daar geeft tabel 7.3/7.4 geen waarden voor
+ * (één α per dak), en de generator vult dan niets in.
+ */
+function analyseerHellendDak(dak: StaafGeo[]): {
+  vorm: HellendDakVorm | null; alpha: number; xNok: number | null; hoogKant: "links" | "rechts" | null; reden?: string;
+} {
+  const graden = (a: number) => `${nl(a, 1).replace("-", "−")}°`;
+  const stijging = (g: StaafGeo) => {
+    const [xa, za, xb, zb] = g.x1 <= g.x2 ? [g.x1, g.z1, g.x2, g.z2] : [g.x2, g.z2, g.x1, g.z1];
+    return Math.atan2(zb - za, xb - xa) * 180 / Math.PI;
+  };
+  const TOL = 0.5, SPREIDING = 2.0;
+  const hellingen = dak.map((g) => Math.abs(stijging(g)));
+  const onbekend = (reden: string) => ({ vorm: null, alpha: Math.max(0, ...hellingen), xNok: null, hoogKant: null, reden });
+  if (dak.length === 0) return onbekend("Er is geen staaf met belastingtype hellend dak.");
+  if (Math.max(...hellingen) - Math.min(...hellingen) > SPREIDING) {
+    return onbekend(`De staven "hellend dak" hebben hellingen van ${graden(Math.min(...hellingen))} tot ` +
+      `${graden(Math.max(...hellingen))}. Tabel 7.3/7.4 gaat uit van één dakhelling α; een geknikt of ongelijk ` +
+      "dak staat er niet in.");
+  }
+  const alpha = Math.max(...hellingen);
+  const op = dak.filter((g) => stijging(g) > TOL);
+  const af = dak.filter((g) => stijging(g) < -TOL);
+  if (af.length === 0 && op.length > 0) return { vorm: "lessenaar", alpha, xNok: null, hoogKant: "rechts" };
+  if (op.length === 0 && af.length > 0) return { vorm: "lessenaar", alpha, xNok: null, hoogKant: "links" };
+  if (op.length === 0 && af.length === 0) return onbekend("De staven \"hellend dak\" liggen vlak.");
+  const hoogste = (gs: StaafGeo[]) => Math.max(...gs.flatMap((g) => [g.x1, g.x2]));
+  const laagste = (gs: StaafGeo[]) => Math.min(...gs.flatMap((g) => [g.x1, g.x2]));
+  // Nok: alles wat oploopt ligt links van alles wat afloopt (1 mm speling).
+  if (hoogste(op) <= laagste(af) + 1) {
+    return { vorm: "zadel", alpha, xNok: (hoogste(op) + laagste(af)) / 2, hoogKant: null };
+  }
+  if (hoogste(af) <= laagste(op) + 1) {
+    return { vorm: "zadel", alpha: -alpha, xNok: (hoogste(af) + laagste(op)) / 2, hoogKant: null };
+  }
+  return onbekend("De staven \"hellend dak\" vormen geen lessenaarsdak (één kant op) en geen zadeldak " +
+    "(twee dakvlakken naar één nok of goot).");
+}
+
+type Teken = "neg" | "pos";
+
+/**
+ * De c_pe van een cel voor een gekozen teken. Heeft de cel maar één waarde,
+ * dan geldt die in beide gevallen (opmerking 1 bij tabel 7.3a/7.4a: de twee
+ * gevallen verschillen alleen in de zones met twee waarden).
+ */
+function kiesCpe(cel: CpeCel, teken: Teken | null): { cpe: number; teken: Teken | null } {
+  const twee = cel.neg !== undefined && cel.pos !== undefined;
+  if (!twee) return { cpe: (cel.neg ?? cel.pos)!, teken: null };
+  const t = teken ?? "neg";
+  return { cpe: cel[t]!, teken: t };
+}
+
+/** Heeft één van deze zones in de opzoeking twee waarden (+ en −)? */
+function heeftTweeWaarden(opz: HellendDakOpzoeking, zones: HellendDakZone[]): boolean {
+  return zones.some((z) => opz.zones[z]?.neg !== undefined && opz.zones[z]?.pos !== undefined);
+}
+
+/** Eén band van een dakplan: een zone (of een ingevulde waarde) over [van, tot) in x′ (m). */
+interface DakBand {
+  van_m: number; tot_m: number;
+  zone: string; cpe: number; bron: string; omschrijving: string;
+}
+
+/**
+ * Het deel van staaf g dat binnen [van, tot) valt, met x′ = xAccent(x) in m,
+ * als fracties vanaf de startknoop; null als de staaf de band niet raakt. Een
+ * verticale staaf hoort bij de band waarin hij staat.
+ */
+function deelInBand(
+  g: StaafGeo, xAccent: (xMm: number) => number, van: number, tot: number,
+): { a: number; b: number; vol: boolean } | null {
+  const p1 = xAccent(g.x1), p2 = xAccent(g.x2);
+  const lo = Math.min(p1, p2), hi = Math.max(p1, p2);
+  if (hi - lo < 1e-9) return lo >= van && lo < tot ? { a: 0, b: 1, vol: true } : null;
+  const v = Math.max(lo, van), t = Math.min(hi, tot);
+  if (t - v <= 1e-9) return null;
+  const fracVan = (p1 <= p2) ? (v - p1) / (p2 - p1) : (p1 - t) / (p1 - p2);
+  const fracTot = (p1 <= p2) ? (t - p1) / (p2 - p1) : (p1 - v) / (p1 - p2);
+  const a = Math.max(0, Math.min(1, fracVan));
+  const b = Math.max(0, Math.min(1, fracTot));
+  if (b - a <= 1e-9) return null;
+  return { a, b, vol: a <= 1e-9 && b >= 1 - 1e-9 };
+}
+
 // ── De generator ─────────────────────────────────────────────────────────
 
 export interface WindModelInvoer {
@@ -525,6 +647,27 @@ export function genereerWindbelasting(
   const kapZonderGevel = !heeftGevels && inst.gevelhoogte_m !== null && inst.gevelhoogte_m > 0;
   const h_m = modelhoogte_m + (kapZonderGevel ? inst.gevelhoogte_m! : 0);
   const heeftHellendDak = geos.some((g) => g.rol === "dakHellend");
+  // Hellend dak: vorm, helling en de tabelopzoeking per windrichting (issue #49).
+  const hellend = heeftHellendDak ? analyseerHellendDak(geos.filter((g) => g.rol === "dakHellend")) : null;
+  let hellendGeo: HellendDakGeometrie | undefined;
+  if (hellend) {
+    const opzoeking: HellendDakGeometrie["opzoeking"] = {};
+    if (hellend.vorm !== null) {
+      const vorm = hellend.vorm;
+      // Lessenaarsdak: wind op de lage dakrand is θ = 0°, op de hoge θ = 180°.
+      const thetaVan = (r: "links" | "rechts"): HellendDakTheta =>
+        vorm === "zadel" ? 0 : (hellend.hoogKant === r ? 180 : 0);
+      opzoeking.links = hellendDakCpe(vorm, thetaVan("links"), hellend.alpha);
+      opzoeking.rechts = hellendDakCpe(vorm, thetaVan("rechts"), hellend.alpha);
+      opzoeking.haaks = hellendDakCpe(vorm, 90, hellend.alpha);
+    }
+    hellendGeo = {
+      vorm: hellend.vorm, alpha_graden: hellend.alpha,
+      xNok_m: hellend.xNok !== null ? hellend.xNok / 1000 : null,
+      hoogKant: hellend.hoogKant, opzoeking,
+      ...(hellend.reden ? { reden: hellend.reden } : {}),
+    };
+  }
   geometrie = {
     h_m, modelhoogte_m, d_m,
     xLinks_m: xLinks / 1000, xRechts_m: xRechts / 1000,
@@ -534,6 +677,7 @@ export function genereerWindbelasting(
       beamId: g.beam.id, rol: g.rol,
       x1: g.x1 / 1000, z1: g.z1 / 1000, x2: g.x2 / 1000, z2: g.z2 / 1000,
     })),
+    ...(hellendGeo ? { hellendDak: hellendGeo } : {}),
   };
 
   if (kapZonderGevel) {
@@ -564,22 +708,28 @@ export function genereerWindbelasting(
     ? inst.belastingbreedteOverride_m
     : (inst.positieSpant === "kopgevelspant" ? inst.hohSpant_m / 2 : inst.hohSpant_m);
 
+  // Hellend dak (issue #49): c_pe,10 per zone uit tabel 7.3/7.4, tenzij de
+  // gebruiker een waarde invulde — die gaat voor. Een richting rekent
+  // "automatisch" zodra één van zijn dakvelden leeg is; zijn alle velden
+  // ingevuld, dan rekent hij precies zoals vóór issue #49.
+  const automatisch = (r: Windrichting): boolean => heeftHellendDak && (r === "haaks"
+    ? inst.cpeDakHaaks === null
+    : inst.cpeDakLoef === null || inst.cpeDakLij === null);
   if (heeftHellendDak) {
-    // Vormfactoren van hellende daken (tabel 7.4a/7.4b) worden BEWUST niet
-    // automatisch ingevuld — zie de kop van windEurocode.ts.
-    if (inst.cpeDakLoef === null || inst.cpeDakLij === null) {
+    const nodig = [
+      ...(inst.richtingLinks ? ["links" as const] : []),
+      ...(inst.richtingRechts ? ["rechts" as const] : []),
+      ...(inst.richtingHaaks ? ["haaks" as const] : []),
+    ].filter(automatisch);
+    for (const r of nodig) {
+      const opz = hellendGeo?.opzoeking[r];
+      if (opz?.ok) continue;
+      const tabel = r === "haaks" ? "7.4b (of 7.3b)" : "7.4a (of 7.3a)";
       return fout(
-        "Er zijn staven met belastingtype “hellend dak”, maar de vormfactoren voor " +
-        "het loef- en lijdakvlak zijn niet ingevuld. Deze generator vult tabel 7.4a " +
-        "van NEN-EN 1991-1-4 niet zelf in: de waarden hangen af van de dakhelling " +
-        "en de windrichting. Lees c_pe,10 op in tabel 7.4a en vul beide velden in.",
-      );
-    }
-    if (inst.richtingHaaks && inst.cpeDakHaaks === null) {
-      return fout(
-        "Wind haaks op het spant met een hellend dak vraagt de vormfactor uit " +
-        "NEN-EN 1991-1-4 tabel 7.4b (θ = 90°). Vul die in, of zet de windrichting " +
-        "“haaks” uit.",
+        "Er zijn staven met belastingtype “hellend dak”, maar de vormfactoren zijn niet automatisch " +
+        `te bepalen: ${opz?.reden ?? hellendGeo?.reden ?? "de dakvorm is niet te herkennen."} ` +
+        `Lees c_pe,10 zelf af in NEN-EN 1991-1-4 tabel ${tabel} en vul de velden in` +
+        (r === "haaks" ? ", of zet de windrichting “haaks” uit." : "."),
       );
     }
   }
@@ -640,6 +790,151 @@ export function genereerWindbelasting(
     if (toppen.length > 0) xNok = toppen.reduce((s, p) => s + p.x, 0) / toppen.length;
   }
 
+  // ── Hellend dak: gevallen per teken en zones langs het spant (issue #49) ─
+  //
+  // WELKE GEVALLEN (opmerking 1 bij tabel 7.3a en 7.4a). Waar de tabel bij
+  // θ = 0° een negatieve én een positieve waarde geeft, rekent de generator
+  // beide, nooit gemengd op één vlak:
+  //  • zadeldak — de negatieve of de positieve waarden op het loefvlak (F, G,
+  //    H), gecombineerd met de negatieve of de positieve op het lijvlak (I,
+  //    J): vier gevallen, minder als een vlak maar één waarde heeft;
+  //  • lessenaarsdak, wind op de lage dakrand — één geval met de negatieve en
+  //    één met de positieve waarden. Op de hoge dakrand (θ = 180°) en bij
+  //    θ = 90° geeft de tabel één waarde per zone.
+  // Eén variant ⇒ de sleutel en de naam van het geval blijven zoals vóór
+  // issue #49 (`wind:links:cpi+0.20`). Meer varianten ⇒ de sleutel krijgt een
+  // vierde deel (`wind:links:cpi+0.20:loef-lij+`) en de naam een staartje
+  // ("…, dak loef −, lij +"). Voor de combinatiebouw (`windVarianten`) is elk
+  // zo'n geval een windgeval dat alleen leidt, net als de andere gebouwgevallen.
+  const hVorm = hellend?.vorm ?? null;
+  const hXNok = hellend?.xNok ?? null;
+  const yKop = inst.positieSpant === "kopgevelspant" ? 0 : inst.afstandTotKopgevel_m;
+  const randzoneFDak = inst.positieSpant === "kopgevelspant" || inst.afstandTotKopgevel_m <= e_inVlak / 4;
+  const mm = (m: number) => `${Math.round(m * 1000)}`;
+  const tekenTxt = (v: number) => (v < 0 || Object.is(v, -0) ? "−" : "+") + nl(Math.abs(v), 2);
+  const rijTekst = (o: HellendDakOpzoeking) => o.rijOnder === o.rijBoven
+    ? `rij α = ${nl(o.rijOnder, 0).replace("-", "−")}°`
+    : `lineair tussen α = ${nl(o.rijOnder, 0).replace("-", "−")}° en ${nl(o.rijBoven, 0).replace("-", "−")}°`;
+  const graadTxt = (a: number) => `${nl(a, 1).replace("-", "−")}°`;
+  interface DakVariant { code: string; naam: string; loef: Teken | null; lij: Teken | null }
+  const EEN_VARIANT: DakVariant[] = [{ code: "", naam: "", loef: null, lij: null }];
+  /** De varianten van één windrichting — zie hierboven. */
+  const dakVarianten = (r: Windrichting): DakVariant[] => {
+    if (!automatisch(r) || r === "haaks" || r === "alle" || hVorm === null) return EEN_VARIANT;
+    const opz = hellendGeo!.opzoeking[r]!;
+    const sgn = (t: Teken) => (t === "neg" ? "−" : "+");
+    const code = (t: Teken) => (t === "neg" ? "-" : "+");
+    if (hVorm === "lessenaar") {
+      // θ = 0° hoort bij het veld "loef", θ = 180° bij "lij" (zoals vóór #49).
+      if (opz.theta !== 0 || inst.cpeDakLoef !== null || !heeftTweeWaarden(opz, ["F", "G", "H"])) return EEN_VARIANT;
+      return (["neg", "pos"] as const).map((t) => ({ code: `dak${code(t)}`, naam: `dak ${sgn(t)}`, loef: t, lij: null }));
+    }
+    const loefOpties: (Teken | null)[] = inst.cpeDakLoef === null && heeftTweeWaarden(opz, ["F", "G", "H"]) ? ["neg", "pos"] : [null];
+    const lijOpties: (Teken | null)[] = inst.cpeDakLij === null && heeftTweeWaarden(opz, ["I", "J"]) ? ["neg", "pos"] : [null];
+    if (loefOpties.length === 1 && lijOpties.length === 1) return EEN_VARIANT;
+    const uit: DakVariant[] = [];
+    for (const loef of loefOpties) {
+      for (const lij of lijOpties) {
+        const delen = [...(loef ? [`loef ${sgn(loef)}`] : []), ...(lij ? [`lij ${sgn(lij)}`] : [])];
+        uit.push({
+          code: `${loef ? `loef${code(loef)}` : ""}${lij ? `lij${code(lij)}` : ""}`,
+          naam: `dak ${delen.join(", ")}`, loef, lij,
+        });
+      }
+    }
+    return uit;
+  };
+
+  /**
+   * Het dakplan van één richting en variant: de zones langs het spant als
+   * banden in x′ (m), met de c_pe van elke zone. `null` als de richting niet
+   * automatisch rekent (dan geldt de route van vóór issue #49).
+   *  • θ = 0° / 180° (wind van links of rechts): x′ = afstand tot de
+   *    loefgevel. Zadeldak (figuur 7.8b): F of G over e/10 vanaf de loefrand,
+   *    H tot de nok of goot, J over e/10 daarachter, I tot de lijrand.
+   *    Lessenaarsdak (figuur 7.7b): F of G over e/10, H de rest. F wanneer
+   *    het spant binnen e/4 van de kopgevel ligt (of een kopgevelspant is),
+   *    anders G — dezelfde regel als bij het platte dak.
+   *  • θ = 90° (wind haaks): x′ = afstand tot de linkergevel. Ligt het spant
+   *    binnen e/10 van de kopgevel: F over e/4 vanaf elke langsrand, G
+   *    daartussen (figuur 7.8c; bij een lessenaarsdak F_hoog langs de hoge en
+   *    F_laag langs de lage rand, figuur 7.7c). Tussen e/10 en e/2: H over de
+   *    volle breedte; daarna I.
+   * De buitenste banden lopen door tot buiten het dak (overstek, afronding).
+   */
+  const dakPlan = (r: Windrichting, v: DakVariant): { xAccent: (xMm: number) => number; banden: DakBand[] } | null => {
+    if (!automatisch(r) || r === "alle" || hVorm === null) return null;
+    const opz = hellendGeo!.opzoeking[r as "links" | "rechts" | "haaks"]!;
+    const par = hellendDakParagraaf(hVorm);
+    const e = r === "haaks" ? e_haaks : e_inVlak;
+    const kop = `${par} tabel ${opz.tabel} (θ = ${opz.theta}°, α = ${graadTxt(hellend!.alpha)}, ${rijTekst(opz)}), ` +
+      `e = ${mm(e)} mm`;
+    const band = (van: number, tot: number, zone: HellendDakZone, teken: Teken | null, ref: string): DakBand => {
+      const k = kiesCpe(opz.zones[zone]!, teken);
+      const naam = zone === "Fhoog" ? "F_hoog" : zone === "Flaag" ? "F_laag" : zone;
+      const vanT = Math.max(0, van), totT = Math.min(d_m, tot);
+      return {
+        van_m: van, tot_m: tot, zone: naam, cpe: k.cpe,
+        bron: `${opz.bron}, zone ${naam}, ${rijTekst(opz)}` +
+          (k.teken ? `, ${k.teken === "neg" ? "negatieve" : "positieve"} waarde (opmerking 1)` : ""),
+        omschrijving: `${kop}: zone ${naam} ${mm(vanT)}–${mm(totT)} mm vanaf de ${ref}, c_pe,10 = ${tekenTxt(k.cpe)}` +
+          (k.teken ? ` (${k.teken === "neg" ? "negatieve" : "positieve"} waarde)` : ""),
+      };
+    };
+    const hand = (van: number, tot: number, label: string, cpe: number): DakBand => ({
+      van_m: van, tot_m: tot, zone: label, cpe,
+      bron: `NEN-EN 1991-1-4 tabel ${opz.tabel} (door de gebruiker ingevuld)`,
+      omschrijving: `${par} tabel ${opz.tabel} (θ = ${opz.theta}°): ${label}, c_pe,10 = ${tekenTxt(cpe)} door de gebruiker ingevuld`,
+    });
+    const INF = Number.POSITIVE_INFINITY;
+    if (r === "haaks") {
+      const xAccent = (xMm: number) => (xMm - xLinks) / 1000;
+      const ref = "linkergevel";
+      if (yKop < e / 10) {
+        const links: HellendDakZone = hVorm === "lessenaar" ? (hellend!.hoogKant === "links" ? "Fhoog" : "Flaag") : "F";
+        const rechts: HellendDakZone = hVorm === "lessenaar" ? (hellend!.hoogKant === "rechts" ? "Fhoog" : "Flaag") : "F";
+        return {
+          xAccent, banden: [
+            band(-INF, e / 4, links, null, ref),
+            band(e / 4, d_m - e / 4, "G", null, ref),
+            band(d_m - e / 4, INF, rechts, null, ref),
+          ],
+        };
+      }
+      return { xAccent, banden: [band(-INF, INF, yKop < e / 2 ? "H" : "I", null, ref)] };
+    }
+    const xAccent = (xMm: number) => (r === "links" ? (xMm - xLinks) / 1000 : (xRechts - xMm) / 1000);
+    const ref = "loefgevel";
+    const rand: HellendDakZone = randzoneFDak ? "F" : "G";
+    if (hVorm === "lessenaar") {
+      // θ = 0° hoort bij het veld "loef", θ = 180° bij "lij" (zoals vóór #49).
+      const handwaarde = opz.theta === 0 ? inst.cpeDakLoef : inst.cpeDakLij;
+      if (handwaarde !== null) return { xAccent, banden: [hand(-INF, INF, opz.theta === 0 ? "loefdakvlak" : "lijdakvlak", handwaarde)] };
+      const g1 = Math.min(e / 10, d_m);
+      return {
+        xAccent, banden: [
+          band(-INF, g1, rand, v.loef, ref),
+          ...(d_m > g1 ? [band(g1, INF, "H", v.loef, ref)] : []),
+        ].map((b, k, alle) => (k === alle.length - 1 ? { ...b, tot_m: INF } : b)),
+      };
+    }
+    const xn = xAccent(hXNok!);
+    const banden: DakBand[] = [];
+    if (inst.cpeDakLoef !== null) banden.push(hand(-INF, xn, "loefdakvlak", inst.cpeDakLoef));
+    else {
+      const g1 = Math.min(e / 10, xn);
+      banden.push(band(-INF, g1, rand, v.loef, ref));
+      if (xn > g1) banden.push(band(g1, xn, "H", v.loef, ref));
+    }
+    if (inst.cpeDakLij !== null) banden.push(hand(xn, INF, "lijdakvlak", inst.cpeDakLij));
+    else {
+      const j1 = Math.min(xn + e / 10, d_m);
+      banden.push(band(xn, j1 < d_m ? j1 : INF, "J", v.lij, ref));
+      if (j1 < d_m) banden.push(band(j1, INF, "I", v.lij, ref));
+    }
+    return { xAccent, banden };
+  };
+
   // ── Belastinggevallen ──────────────────────────────────────────────────
   const cpiWaarden: number[] =
     inst.cpiKeuze === "beide" ? [...CPI_ONBEKEND]
@@ -673,6 +968,61 @@ export function genereerWindbelasting(
     });
   }
 
+  // Hellend dak: per richting de tabel, de interpolatie, e, de zones en de
+  // gevallen — dezelfde gegevens als de omschrijving per last (issue #49).
+  if (hellend && hVorm !== null) {
+    const vormNaam = hVorm === "lessenaar" ? "lessenaarsdak"
+      : hellend.alpha < 0 ? "zadeldak met een goot in het midden (α < 0)" : "zadeldak";
+    let eenmaal = false;
+    for (const r of richtingen) {
+      if (!automatisch(r)) continue;
+      const opz = hellendGeo!.opzoeking[r as "links" | "rechts" | "haaks"]!;
+      const varianten = dakVarianten(r);
+      const plan = dakPlan(r, varianten[0])!;
+      const e = r === "haaks" ? e_haaks : e_inVlak;
+      const bLoodrecht = r === "haaks" ? d_m : inst.gebouwlengte_m;
+      const cel = (z: string) => {
+        const c = opz.zones[z as HellendDakZone]!;
+        return [c.neg, c.pos].filter((v): v is number => v !== undefined).map(tekenTxt).join(" / ");
+      };
+      const naamZone = (z: string) => (z === "Fhoog" ? "F_hoog" : z === "Flaag" ? "F_laag" : z);
+      const zones = plan.banden.map((b) => `${b.zone} ${mm(Math.max(0, b.van_m))}–${mm(Math.min(d_m, b.tot_m))} mm`);
+      const hand = r === "haaks" ? [] : [
+        ...(inst.cpeDakLoef !== null ? [`c_pe loef = ${tekenTxt(inst.cpeDakLoef)}`] : []),
+        ...(inst.cpeDakLij !== null ? [`c_pe lij = ${tekenTxt(inst.cpeDakLij)}`] : []),
+      ];
+      meldingen.push({
+        niveau: "info",
+        tekst: `Hellend dak, ${RICHTING_LABEL[r]}: ${vormNaam}, α = ${graadTxt(hellend.alpha)}; ${opz.bron}, ` +
+          `${rijTekst(opz)}${opz.rijOnder !== opz.rijBoven ? " (tussen waarden met hetzelfde teken, opmerking 2)" : ""}. ` +
+          `c_pe,10: ${Object.keys(opz.zones).map((z) => `${naamZone(z)} ${cel(z)}`).join("; ")}. ` +
+          `e = min(b; 2h) = min(${nl(bLoodrecht, 2)}; ${nl(2 * h_m, 2)}) = ${nl(e, 2)} m. ` +
+          (r === "haaks"
+            ? `Spant op y = ${mm(yKop)} mm van de kopgevel (${yKop < e / 10 ? `binnen e/10 = ${mm(e / 10)} mm` : yKop < e / 2 ? `tussen e/10 en e/2 = ${mm(e / 2)} mm` : `voorbij e/2 = ${mm(e / 2)} mm`}); ` +
+              `zones vanaf de linkergevel: ${zones.join(", ")}.`
+            : `Zones vanaf de loefgevel: ${zones.join(", ")}` +
+              `${randzoneFDak ? " (F: het spant ligt binnen e/4 van de kopgevel)" : " (G: het spant ligt verder dan e/4 van de kopgevel)"}.`) +
+          (hand.length > 0 ? ` Door de gebruiker ingevuld en voor de tabel gaand, over het hele dakvlak: ${hand.join(", ")}.` : "") +
+          (varianten.length > 1
+            ? ` De tabel geeft hier positieve en negatieve waarden (opmerking 1): ${varianten.length} gevallen per c_pi ` +
+              `(${varianten.map((v) => v.naam).join("; ")}), nooit beide tekens op één vlak.`
+            : "") +
+          (eenmaal ? "" : " Gebruikt is c_pe,10: een spant belast per dakvlak meer dan 10 m² (§7.2.1(1)); " +
+            "kleinere vlakken staan in een aparte waarschuwing."),
+      });
+      eenmaal = true;
+      for (const v of opz.vervallen) {
+        meldingen.push({
+          niveau: "waarschuwing",
+          tekst: `Hellend dak, ${RICHTING_LABEL[r]}: zone ${naamZone(v.zone)} heeft in tabel ${opz.tabel} alleen in één van ` +
+            `de rijen α = ${nl(opz.rijOnder, 0)}° en ${nl(opz.rijBoven, 0)}° een ${v.teken === "neg" ? "negatieve" : "positieve"} ` +
+            "waarde. Interpoleren mag alleen tussen waarden met hetzelfde teken (opmerking 2); die waarde is " +
+            "tussen de rijen niet gebruikt.",
+        });
+      }
+    }
+  }
+
   const gevallen: GegenereerdGeval[] = [];
   const lasten: GegenereerdeLast[] = [];
   const perGeval: WindSamenvatting["perGeval"] = [];
@@ -680,11 +1030,17 @@ export function genereerWindbelasting(
   let kleinOppervlak = false;
 
   for (const richting of richtingen) {
-    for (const cpi of cpiWaarden) {
-      const sleutel = `wind:${richting}:cpi${cpi >= 0 ? "+" : ""}${cpi.toFixed(2)}`;
-      const naam = `Wind ${RICHTING_LABEL[richting].replace("wind ", "")} (c_pi = ${nl(cpi, 2)})`;
+    // Per c_pi de varianten van het hellende dak; zonder hellend dak (of met
+    // alle velden ingevuld) precies één, met de sleutel van vóór issue #49.
+    const varianten = dakVarianten(richting);
+    for (const [cpi, variant] of cpiWaarden.flatMap((c) => varianten.map((v) => [c, v] as const))) {
+      const basisSleutel = `wind:${richting}:cpi${cpi >= 0 ? "+" : ""}${cpi.toFixed(2)}`;
+      const basisNaam = `Wind ${RICHTING_LABEL[richting].replace("wind ", "")} (c_pi = ${nl(cpi, 2)})`;
+      const sleutel = variant.code ? `${basisSleutel}:${variant.code}` : basisSleutel;
+      const naam = variant.naam ? `${basisNaam}, ${variant.naam}` : basisNaam;
       gevallen.push({ sleutel, naam, richting, cpi });
       const regels: VlakRegel[] = [];
+      const plan = dakPlan(richting, variant);
 
       for (const g of geos) {
         const opp_m2 = breedte_m * (g.L_mm / 1000);
@@ -694,7 +1050,7 @@ export function genereerWindbelasting(
         const push = (
           zone: string, cpe: number, bron: string,
           nx: number, nz: number, cpiHier: number,
-          startFrac?: number, endFrac?: number,
+          startFrac?: number, endFrac?: number, omschrijving?: string,
         ) => {
           const w = stuwdruk.qp_kNm2 * (cpe - cpiHier);
           const q = drukNaarLokaleLijnlast(w, breedte_m, g, nx, nz);
@@ -718,6 +1074,10 @@ export function genereerWindbelasting(
               `c_pi = ${nl(cpiHier, 2)}, w = ${nl(stuwdruk.qp_kNm2, 3)}·(${nl(cpe, 2)} − ` +
               `${nl(cpiHier, 2)}) = ${nl(w, 3)} kN/m², q = w·${nl(breedte_m, 2)} m = ` +
               `${nl(Math.abs(q), 3)} kN/m`,
+            // Alleen bij een hellend dak met automatische c_pe (issue #49):
+            // tabel, α, e, zone en grenzen voor de uitgangspunten. Alle andere
+            // gebouwlasten dragen hem niet, zodat hun uitvoer ongewijzigd blijft.
+            ...(omschrijving !== undefined ? { omschrijving } : {}),
           });
         };
 
@@ -745,10 +1105,22 @@ export function genereerWindbelasting(
         // ── Daken ─────────────────────────────────────────────────────────
         if (g.rol === "dakPlat" || g.rol === "dakHellend") {
           const n = dakNormaal(g);
+          if (g.rol === "dakHellend" && plan) {
+            // Automatisch (issue #49): elke zone van het dakplan die de staaf
+            // raakt wordt een (deel)last.
+            for (const b of plan.banden) {
+              const d = deelInBand(g, plan.xAccent, b.van_m, b.tot_m);
+              if (!d) continue;
+              push(b.zone, b.cpe, b.bron, n.nx, n.nz, cpi,
+                d.vol ? undefined : d.a, d.vol ? undefined : d.b, b.omschrijving);
+            }
+            continue;
+          }
           if (richting === "haaks") {
             // Eén (ongunstigste) zone over de volle spanwijdte — zie melding.
             if (g.rol === "dakHellend") {
-              push("dak θ=90°", inst.cpeDakHaaks!, "NEN-EN 1991-1-4 tabel 7.4b (door de gebruiker ingevuld)", n.nx, n.nz, cpi);
+              push("dak θ=90°", inst.cpeDakHaaks!,
+                `NEN-EN 1991-1-4 tabel ${hVorm === "lessenaar" ? "7.3b" : "7.4b"} (door de gebruiker ingevuld)`, n.nx, n.nz, cpi);
             } else {
               const y = inst.afstandTotKopgevel_m;
               const zone = y < e_haaks / 10 ? "F" : y < e_haaks / 2 ? "H" : "I";
@@ -763,7 +1135,7 @@ export function genereerWindbelasting(
             const loef = (richting === "links" && linkervlak) || (richting === "rechts" && !linkervlak);
             const cpe = loef ? inst.cpeDakLoef! : inst.cpeDakLij!;
             push(loef ? "loefdakvlak" : "lijdakvlak", cpe,
-              "NEN-EN 1991-1-4 tabel 7.4a (door de gebruiker ingevuld)", n.nx, n.nz, cpi);
+              `NEN-EN 1991-1-4 tabel ${hVorm === "lessenaar" ? "7.3a" : "7.4a"} (door de gebruiker ingevuld)`, n.nx, n.nz, cpi);
             continue;
           }
           // Plat dak: zonebanden langs de windrichting, als deellasten.
@@ -807,7 +1179,21 @@ export function genereerWindbelasting(
           // Bovenzijde: de dakzone op deze positie. Onderzijde: de druk op de
           // gevel eronder. Beide zijn UITWENDIG, dus c_pi speelt niet mee.
           let cpeBoven: number, zoneBoven: string, bronBoven: string;
-          if (g.helling > 5 && heeftHellendDak) {
+          let omschrijvingBoven: string | undefined;
+          if (g.helling > 5 && heeftHellendDak && plan) {
+            // Automatisch (issue #49): de zone van het dakplan op de plaats
+            // van het overstek; de buitenste banden lopen door tot buiten het dak.
+            const xAcc = plan.xAccent(midX);
+            const b = plan.banden.find((z) => xAcc >= z.van_m && xAcc < z.tot_m) ?? plan.banden[plan.banden.length - 1];
+            cpeBoven = b.cpe; zoneBoven = b.zone; bronBoven = b.bron; omschrijvingBoven = b.omschrijving;
+          } else if (g.helling > 5 && heeftHellendDak && richting === "haaks" && inst.cpeDakLij === null) {
+            // Wind haaks met een ingevulde c_pe haaks maar een automatisch
+            // lijvlak: de ingevulde waarde voor θ = 90°.
+            cpeBoven = inst.cpeDakHaaks!; zoneBoven = "dak θ=90°";
+            bronBoven = `NEN-EN 1991-1-4 tabel ${hVorm === "lessenaar" ? "7.3b" : "7.4b"} (door de gebruiker ingevuld)`;
+          } else if (g.helling > 5 && heeftHellendDak) {
+            // Vóór issue #49, alle velden ingevuld: het loef- of lijvlak
+            // (ook bij wind haaks — zo rekende de generator altijd).
             const linkervlak = midX < xNok;
             const loef = (richting === "links" && linkervlak) || (richting === "rechts" && !linkervlak);
             cpeBoven = loef ? inst.cpeDakLoef! : inst.cpeDakLij!;
@@ -839,7 +1225,11 @@ export function genereerWindbelasting(
           // Netto vormfactor = boven − onder; c_pi valt weg (§7.2.6).
           push(`overstek ${zoneBoven} boven / ${zoneOnder} onder`, cpeBoven - cpeOnder,
             `NEN-EN 1991-1-4 §7.2.6 (onderzijde = wanddruk) met ${bronBoven}`,
-            n.nx, n.nz, 0);
+            n.nx, n.nz, 0, undefined, undefined,
+            omschrijvingBoven !== undefined
+              ? `${omschrijvingBoven} (bovenzijde overstek); onderzijde zone ${zoneOnder} (tabel 7.1), ` +
+                `c_pe,10 = ${tekenTxt(cpeOnder)}`
+              : undefined);
           continue;
         }
         // vloer / binnen: geen windvlak.
@@ -945,6 +1335,47 @@ export function vrijstaandDakUitgangspunten(
     regels.push(HORIZONTAAL_COMBINATIE_UITLEG);
   }
   return regels.join("\n");
+}
+
+/**
+ * Zo begint de omschrijving die de generator bij een hellend dak met
+ * automatische c_pe op de last zet (issue #49): paragraaf en tabel.
+ */
+const HELLEND_DAK_OMSCHRIJVING = /^§7\.2\.[45] tabel 7\.[34][ab] /;
+
+/**
+ * De uitgangspunten van een hellend dak met automatische c_pe (issue #49),
+ * afgeleid uit wat er IN HET MODEL staat: de gegenereerde windgevallen en de
+ * omschrijving van hun lasten (tabel, θ, α, interpolatie, e, zone met grenzen
+ * in mm en c_pe,10). Leeg als geen enkele last zo'n omschrijving draagt —
+ * zonder hellend dak, of met alle velden door de gebruiker ingevuld.
+ */
+export function hellendDakUitgangspunten(
+  loadCases: readonly { id: number; name: string; gegenereerd?: { bron: string; sleutel: string } }[],
+  loads: readonly { caseId: number; gegenereerdDoor?: string; omschrijving?: string }[],
+): string {
+  const regels: string[] = [];
+  for (const c of loadCases) {
+    if (c.gegenereerd?.bron !== "wind" || c.gegenereerd.sleutel.startsWith(VRIJSTAAND_SLEUTEL_PREFIX)) continue;
+    const teksten = [...new Set(loads
+      .filter((l) => l.caseId === c.id && l.gegenereerdDoor === "wind" && HELLEND_DAK_OMSCHRIJVING.test(l.omschrijving ?? ""))
+      .map((l) => l.omschrijving!.trim()))];
+    if (teksten.length > 0) regels.push(`${c.name}: ${teksten.join("; ")}`);
+  }
+  return regels.length > 0 ? [HELLEND_DAK_UITGANGSPUNT, ...regels].join("\n") : "";
+}
+
+/**
+ * Alle uitgangspunten van de gegenereerde wind voor het rapport en de PDF
+ * (`wind_toelichting`): het vrijstaande dak (§7.3) en het hellende dak
+ * (§7.2.4/§7.2.5), elk alleen als het in het model staat.
+ */
+export function windUitgangspunten(
+  loadCases: readonly { id: number; name: string; gegenereerd?: { bron: string; sleutel: string } }[],
+  loads: readonly { caseId: number; gegenereerdDoor?: string; omschrijving?: string }[],
+): string {
+  return [vrijstaandDakUitgangspunten(loadCases, loads), hellendDakUitgangspunten(loadCases, loads)]
+    .filter((t) => t !== "").join("\n");
 }
 
 /**
@@ -1924,10 +2355,12 @@ export function handtekeningVanModel(
       startFrac: l.startFrac,
       endFrac: l.endFrac,
       toelichting: "",
-      // Alleen bij de gevallen van een vrijstaand dak — daar schrijft de
-      // generator zelf een omschrijving; een omschrijving die de gebruiker bij
-      // een gegenereerde gebouwlast zette, verandert de handtekening niet.
-      ...(l.omschrijving !== undefined && (sleutelVanId.get(l.caseId) ?? "").startsWith(VRIJSTAAND_SLEUTEL_PREFIX)
+      // Alleen bij de gevallen van een vrijstaand dak en bij de automatische
+      // c_pe van een hellend dak (issue #49) — daar schrijft de generator zelf
+      // een omschrijving; een andere omschrijving die de gebruiker bij een
+      // gegenereerde gebouwlast zette, verandert de handtekening niet.
+      ...(l.omschrijving !== undefined && ((sleutelVanId.get(l.caseId) ?? "").startsWith(VRIJSTAAND_SLEUTEL_PREFIX)
+        || HELLEND_DAK_OMSCHRIJVING.test(l.omschrijving))
         ? { omschrijving: l.omschrijving } : {}),
       // Een axiale windlast (wrijving langs het dak) is een andere last dan
       // een loodrechte met hetzelfde getal.

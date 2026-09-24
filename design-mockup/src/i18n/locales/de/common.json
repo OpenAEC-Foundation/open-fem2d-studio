@@ -279,9 +279,23 @@
       "frictionColumns": "Reibung + Stützen",
       "horizontal": "{{delen}}, {{richting}}",
       "buildingName": "Wind {{deel}}",
-      "canopyName": "Wind freistehendes Dach {{deel}}"
+      "canopyName": "Wind freistehendes Dach {{deel}}",
+      "buildingTabRoof": "{{richting}} (c_pi = {{cpi}}), {{dak}}",
+      "roofSign": "Dach {{teken}}",
+      "roofWindward": "Luv {{teken}}",
+      "roofLeeward": "Lee {{teken}}",
+      "roofSides": "Dach {{delen}}"
     },
-    "regionSource": "NEN-EN 1991-1-4/NA Tabelle NB.1"
+    "regionSource": "NEN-EN 1991-1-4/NA Tabelle NB.1",
+    "cpeAuto": "(automatisch, Tabelle {{tabel}})",
+    "cpeRow": "Zeile α = {{alpha}}°",
+    "cpeInterp": "linear zwischen {{van}}° und {{tot}}°",
+    "slopedRoofAuto": "c_pe,10 je Bereich automatisch aus Tabelle 7.3/7.4 (NA) für diese Dachneigung. Ein eingegebener Wert hat Vorrang und gilt dann für die ganze Dachfläche; Feld leeren für die Tabelle.",
+    "roofShape": {
+      "zadel": "Satteldach",
+      "lessenaar": "Pultdach",
+      "kiel": "Satteldach mit Kehle (α < 0)"
+    }
   },
   "app": {
     "view": {

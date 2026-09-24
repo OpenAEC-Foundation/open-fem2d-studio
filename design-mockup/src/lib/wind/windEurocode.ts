@@ -9,13 +9,15 @@
  * samenvatting, zodat een constructeur elke stap kan narekenen. Er staat
  * bewust GEEN getal in dit bestand zonder vindplaats.
  *
+ * HELLENDE DAKEN (issue #49): de vormfactoren van lessenaarsdaken (tabel
+ * NB.8/NB.9 – 7.3a/7.3b) en zadeldaken (tabel NB.10/NB.11 – 7.4a/7.4b) staan
+ * in §11 van dit bestand en vult de generator zelf in, per zone en per
+ * windrichting. Tot september 2026 vroeg de generator die waarden aan de
+ * gebruiker; een ingevulde waarde gaat nog steeds voor. Schilddaken (§7.2.6),
+ * daken met meerdere beuken (§7.2.7) en gebogen daken (§7.2.8) zijn NIET
+ * geïmplementeerd.
+ *
  * BEWUST NIET GEÏMPLEMENTEERD (de generator weigert of waarschuwt):
- *  • Vormfactoren van HELLENDE daken (EN 1991-1-4 tabel 7.4a/7.4b). Die
- *    tabellen hangen af van de dakhelling én de windrichting en zijn niet
- *    betrouwbaar uit de 2D-geometrie af te leiden; de generator vraagt de
- *    c_pe-waarden daarom aan de gebruiker en vult ze niet zelf in.
- *    (Open overkappingen, §7.3, zijn een ander geval: tabel 7.6/7.7 gelden
- *    voor alle windrichtingen en vult de generator wel zelf in — zie §9.)
  *  • Orografie (EN 1991-1-4 §4.3.3 / bijlage A.3): c_o(z) = 1,0 — vlak
  *    terrein. Bij heuvels/steilranden moet de gebruiker de stuwdruk zelf
  *    verhogen (of handmatig invoeren).
@@ -356,8 +358,7 @@ export function berekenE(b_m: number, h_m: number): number {
 /**
  * Een open overkapping is "een dak van een constructie die geen blijvende
  * gevels heeft" (NEN-EN 1991-1-4 §7.3(1)): luifel, carport, kapschuur.
- * Anders dan bij de hellende daken van §7.2.5 (zie de kop van dit bestand)
- * vult de generator deze tabellen WEL zelf in: hun enige ingangen zijn de
+ * De generator vult deze tabellen zelf in: hun enige ingangen zijn de
  * dakhelling α — die uit de 2D-geometrie volgt — en de blokkering φ, en ze
  * gelden "voor alle windrichtingen" (§7.3(3)). Er is dus geen keuze per
  * windrichting of per zone die de gebruiker zelf zou moeten maken.
@@ -654,3 +655,228 @@ export const KOLOM_BRON: Record<KolomDoorsnede, string> = {
   scherphoekig: "NEN-EN 1991-1-4 §7.7(1), (7.11), figuur 7.25; c_f,0 = 2,0 (NB)",
   rechthoekig: "NEN-EN 1991-1-4 §7.6(1), (7.9), figuur 7.23",
 };
+
+// ── 11. Hellende daken van gebouwen — §7.2.4 en §7.2.5 ───────────────────
+
+/**
+ * Eén cel c_pe,10 van tabel 7.3/7.4: de negatieve en/of de positieve waarde.
+ * Waar de tabel twee getallen onder elkaar geeft (de druk wisselt snel van
+ * teken), staan ze allebei; anders één van de twee. "−0,0" en "+0,0" staan er
+ * als 0 in `neg` resp. `pos`: de norm geeft ze "voor interpolatiedoeleinden"
+ * (opmerking 2 bij tabel NB.9 en NB.10).
+ */
+export interface CpeCel { neg?: number; pos?: number }
+
+/** Zones van figuur 7.7 (lessenaarsdak) en figuur 7.8 (zadeldak). */
+export type HellendDakZone = "F" | "G" | "H" | "I" | "J" | "Fhoog" | "Flaag";
+
+export type HellendDakVorm = "lessenaar" | "zadel";
+
+/**
+ * Windrichting t.o.v. het dak (figuur 7.7a/7.8a):
+ *  0   — wind in het vlak van het spant; bij een lessenaarsdak op de LAGE dakrand;
+ *  180 — alleen lessenaarsdak: wind op de HOGE dakrand;
+ *  90  — wind evenwijdig aan de nok (op de kopgevel).
+ */
+export type HellendDakTheta = 0 | 90 | 180;
+
+interface HellendDakRij { alpha: number; zones: Partial<Record<HellendDakZone, CpeCel>> }
+
+const n = (neg: number): CpeCel => ({ neg });
+const p = (pos: number): CpeCel => ({ pos });
+const np = (neg: number, pos: number): CpeCel => ({ neg, pos });
+
+/**
+ * Tabel NB.8 – 7.3a (lessenaarsdak, θ = 0° en θ = 180°), kolommen c_pe,10.
+ * Bron: NEN-EN 1991-1-4:2005+C2:2011+NB:2019, §7.2.4(3); afgelezen van de
+ * tabelpagina, rijen +5° … +75°. De NB-tabel is de "te hanteren" tabel; hij
+ * vult alleen c_pe,1-cellen aan die de aanbevolen tabel 7.3a open laat — de
+ * kolommen c_pe,10 zijn gelijk.
+ */
+export const TABEL_NB8_73A: Record<0 | 180, readonly HellendDakRij[]> = {
+  0: [
+    { alpha: 5,  zones: { F: np(-1.7, 0.0), G: np(-1.2, 0.0), H: np(-0.6, 0.0) } },
+    { alpha: 15, zones: { F: np(-0.9, 0.2), G: np(-0.8, 0.2), H: np(-0.3, 0.2) } },
+    { alpha: 30, zones: { F: np(-0.5, 0.7), G: np(-0.5, 0.7), H: np(-0.2, 0.4) } },
+    { alpha: 45, zones: { F: np(0.0, 0.7), G: np(0.0, 0.7), H: np(0.0, 0.6) } },
+    { alpha: 60, zones: { F: p(0.7), G: p(0.7), H: p(0.7) } },
+    { alpha: 75, zones: { F: p(0.8), G: p(0.8), H: p(0.8) } },
+  ],
+  180: [
+    { alpha: 5,  zones: { F: n(-2.3), G: n(-1.3), H: n(-0.8) } },
+    { alpha: 15, zones: { F: n(-2.5), G: n(-1.3), H: n(-0.9) } },
+    { alpha: 30, zones: { F: n(-1.1), G: n(-0.8), H: n(-0.8) } },
+    { alpha: 45, zones: { F: n(-0.6), G: n(-0.5), H: n(-0.7) } },
+    { alpha: 60, zones: { F: n(-0.5), G: n(-0.5), H: n(-0.5) } },
+    { alpha: 75, zones: { F: n(-0.5), G: n(-0.5), H: n(-0.5) } },
+  ],
+};
+
+/**
+ * Tabel NB.9 – 7.3b (lessenaarsdak, θ = 90°), kolommen c_pe,10. Bron als
+ * tabel NB.8; F_hoog ligt langs de hoge dakrand, F_laag langs de lage
+ * (figuur 7.7c).
+ */
+export const TABEL_NB9_73B: readonly HellendDakRij[] = [
+  { alpha: 5,  zones: { Fhoog: n(-2.1), Flaag: n(-2.1), G: n(-1.8), H: n(-0.6), I: n(-0.5) } },
+  { alpha: 15, zones: { Fhoog: n(-2.4), Flaag: n(-1.6), G: n(-1.9), H: n(-0.8), I: n(-0.7) } },
+  { alpha: 30, zones: { Fhoog: n(-2.1), Flaag: n(-1.3), G: n(-1.5), H: n(-1.0), I: n(-0.8) } },
+  { alpha: 45, zones: { Fhoog: n(-1.5), Flaag: n(-1.3), G: n(-1.4), H: n(-1.0), I: n(-0.9) } },
+  { alpha: 60, zones: { Fhoog: n(-1.2), Flaag: n(-1.2), G: n(-1.2), H: n(-1.0), I: n(-0.7) } },
+  { alpha: 75, zones: { Fhoog: n(-1.2), Flaag: n(-1.2), G: n(-1.2), H: n(-1.0), I: n(-0.5) } },
+];
+
+/**
+ * Tabel NB.10 – 7.4a (zadeldak, θ = 0°), kolommen c_pe,10. Bron:
+ * NEN-EN 1991-1-4:2005+C2:2011+NB:2019, §7.2.5(3); afgelezen van de
+ * tabelpagina, rijen −45° … +75°. α < 0 is een dak met een goot in het midden
+ * (figuur 7.8a, rechts). De kolommen c_pe,10 zijn gelijk aan die van de
+ * aanbevolen tabel 7.4a; de NB vult alleen c_pe,1 aan.
+ */
+export const TABEL_NB10_74A: readonly HellendDakRij[] = [
+  { alpha: -45, zones: { F: n(-0.6), G: n(-0.6), H: n(-0.8), I: n(-0.7), J: n(-1.0) } },
+  { alpha: -30, zones: { F: n(-1.1), G: n(-0.8), H: n(-0.8), I: n(-0.6), J: n(-0.8) } },
+  { alpha: -15, zones: { F: n(-2.5), G: n(-1.3), H: n(-0.9), I: n(-0.5), J: n(-0.7) } },
+  { alpha: -5,  zones: { F: n(-2.3), G: n(-1.2), H: n(-0.8), I: np(-0.6, 0.2), J: np(-0.6, 0.2) } },
+  { alpha: 5,   zones: { F: np(-1.7, 0.0), G: np(-1.2, 0.0), H: np(-0.6, 0.0), I: n(-0.6), J: np(-0.6, 0.2) } },
+  { alpha: 15,  zones: { F: np(-0.9, 0.2), G: np(-0.8, 0.2), H: np(-0.3, 0.2), I: np(-0.4, 0.0), J: np(-1.0, 0.0) } },
+  { alpha: 30,  zones: { F: np(-0.5, 0.7), G: np(-0.5, 0.7), H: np(-0.2, 0.4), I: np(-0.4, 0.0), J: np(-0.5, 0.0) } },
+  { alpha: 45,  zones: { F: np(0.0, 0.7), G: np(0.0, 0.7), H: np(0.0, 0.6), I: np(-0.2, 0.0), J: np(-0.3, 0.0) } },
+  { alpha: 60,  zones: { F: p(0.7), G: p(0.7), H: p(0.7), I: n(-0.2), J: n(-0.3) } },
+  { alpha: 75,  zones: { F: p(0.8), G: p(0.8), H: p(0.8), I: n(-0.2), J: n(-0.3) } },
+];
+
+/** Tabel NB.11 – 7.4b (zadeldak, θ = 90°), kolommen c_pe,10. Bron als tabel NB.10. */
+export const TABEL_NB11_74B: readonly HellendDakRij[] = [
+  { alpha: -45, zones: { F: n(-1.4), G: n(-1.2), H: n(-1.0), I: n(-0.9) } },
+  { alpha: -30, zones: { F: n(-1.5), G: n(-1.2), H: n(-1.0), I: n(-0.9) } },
+  { alpha: -15, zones: { F: n(-1.9), G: n(-1.2), H: n(-0.8), I: n(-0.8) } },
+  { alpha: -5,  zones: { F: n(-1.8), G: n(-1.2), H: n(-0.7), I: n(-0.6) } },
+  { alpha: 5,   zones: { F: n(-1.6), G: n(-1.3), H: n(-0.7), I: n(-0.6) } },
+  { alpha: 15,  zones: { F: n(-1.3), G: n(-1.3), H: n(-0.6), I: n(-0.5) } },
+  { alpha: 30,  zones: { F: n(-1.1), G: n(-1.4), H: n(-0.8), I: n(-0.5) } },
+  { alpha: 45,  zones: { F: n(-1.1), G: n(-1.4), H: n(-0.9), I: n(-0.5) } },
+  { alpha: 60,  zones: { F: n(-1.1), G: n(-1.2), H: n(-0.8), I: n(-0.5) } },
+  { alpha: 75,  zones: { F: n(-1.1), G: n(-1.2), H: n(-0.8), I: n(-0.5) } },
+];
+
+/** Korte tabelnaam zoals de interface hem noemt ("7.4a"), per dakvorm en θ. */
+export function hellendDakTabel(vorm: HellendDakVorm, theta: HellendDakTheta): "7.3a" | "7.3b" | "7.4a" | "7.4b" {
+  if (vorm === "lessenaar") return theta === 90 ? "7.3b" : "7.3a";
+  return theta === 90 ? "7.4b" : "7.4a";
+}
+
+const NB_TABEL: Record<"7.3a" | "7.3b" | "7.4a" | "7.4b", string> = {
+  "7.3a": "NB.8 – 7.3a", "7.3b": "NB.9 – 7.3b", "7.4a": "NB.10 – 7.4a", "7.4b": "NB.11 – 7.4b",
+};
+
+/** Paragraaf van de dakvorm: §7.2.4 lessenaarsdak, §7.2.5 zadeldak. */
+export function hellendDakParagraaf(vorm: HellendDakVorm): string {
+  return vorm === "lessenaar" ? "§7.2.4" : "§7.2.5";
+}
+
+/** Volledige vindplaats van de gebruikte tabel. */
+export function hellendDakBron(vorm: HellendDakVorm, theta: HellendDakTheta): string {
+  return `NEN-EN 1991-1-4+NB ${hellendDakParagraaf(vorm)}, tabel ${NB_TABEL[hellendDakTabel(vorm, theta)]} ` +
+    `(θ = ${theta}°, c_pe,10)`;
+}
+
+export interface HellendDakOpzoeking {
+  ok: boolean;
+  /** Reden van weigering (helling buiten de tabel). */
+  reden?: string;
+  vorm: HellendDakVorm;
+  theta: HellendDakTheta;
+  /** "7.3a", "7.3b", "7.4a" of "7.4b". */
+  tabel: string;
+  bron: string;
+  /** De tabelrijen (α) waartussen is geïnterpoleerd; gelijk op een tabelrij. */
+  rijOnder: number;
+  rijBoven: number;
+  /** c_pe,10 per zone bij deze helling. */
+  zones: Partial<Record<HellendDakZone, CpeCel>>;
+  /**
+   * Waarden die maar in één van de twee omsluitende rijen staan en daarom
+   * tussen die rijen niet bestaan (interpolatie alleen tussen waarden met
+   * hetzelfde teken, opmerking 2): per zone het teken dat wegvalt.
+   */
+  vervallen: { zone: HellendDakZone; teken: "neg" | "pos" }[];
+}
+
+/**
+ * c_pe,10 van een hellend dak bij dakhelling α (graden; bij een zadeldak
+ * negatief voor een dak met een goot in het midden) en windrichting θ.
+ *
+ * INTERPOLATIE (opmerking 2 bij tabel NB.8, NB.9 en NB.10): lineair tussen de
+ * omsluitende rijen, "tussen waarden met hetzelfde teken" — de negatieve
+ * waarden onderling en de positieve onderling. Staat een teken maar in één
+ * van de twee rijen, dan bestaat het tussen die rijen niet en valt het weg
+ * (`vervallen`); op de rij zelf geldt het wel. Tussen −5° en +5° wordt NIET
+ * geïnterpoleerd: daar gelden de platte daken van §7.2.3 (opmerking 2 bij
+ * tabel NB.10). Buiten de tabel (|α| < 5°, α > 75°, α < −45°, en bij een
+ * lessenaarsdak α < 5°) wordt geweigerd in plaats van geklemd.
+ */
+export function hellendDakCpe(
+  vorm: HellendDakVorm, theta: HellendDakTheta, alpha_graden: number,
+): HellendDakOpzoeking {
+  const tabel = hellendDakTabel(vorm, theta);
+  const bron = hellendDakBron(vorm, theta);
+  const graden = (x: number) => `${x.toFixed(1).replace(".", ",").replace("-", "−")}°`;
+  const weiger = (reden: string): HellendDakOpzoeking =>
+    ({ ok: false, reden, vorm, theta, tabel, bron, rijOnder: NaN, rijBoven: NaN, zones: {}, vervallen: [] });
+  if (vorm === "zadel" && theta === 180) return weiger("θ = 180° bestaat alleen bij een lessenaarsdak.");
+  const rijen = vorm === "lessenaar"
+    ? (theta === 90 ? TABEL_NB9_73B : TABEL_NB8_73A[theta as 0 | 180])
+    : (theta === 90 ? TABEL_NB11_74B : TABEL_NB10_74A);
+  // Een uit de geometrie berekende hoek als 29,9999999° hoort bij de rij 30°.
+  const a = Math.abs(alpha_graden - Math.round(alpha_graden)) < 1e-6 ? Math.round(alpha_graden) : alpha_graden;
+  const min = rijen[0].alpha, max = rijen[rijen.length - 1].alpha;
+  if (!(a >= min && a <= max) || (a > -5 && a < 5)) {
+    return weiger(vorm === "lessenaar"
+      ? `Tabel ${tabel} geeft dakhellingen van 5° tot 75°; deze helling is ${graden(a)}.` +
+        (a < 5 ? " Onder 5° gelden de platte daken van §7.2.3: geef de dakstaven het belastingtype plat dak." : "")
+      : `Tabel ${tabel} geeft dakhellingen van −45° tot −5° en van +5° tot +75°; deze helling is ${graden(a)}.` +
+        (a > -5 && a < 5 ? " Tussen −5° en +5° wordt niet geïnterpoleerd; daar gelden de platte daken van §7.2.3 " +
+          "(opmerking 2 bij tabel 7.4a): geef de dakstaven het belastingtype plat dak." : ""));
+  }
+  let i = 0;
+  while (i < rijen.length - 2 && !(a >= rijen[i].alpha && a <= rijen[i + 1].alpha)) i++;
+  const onder = rijen[i], boven = rijen[i + 1];
+  const f = (a - onder.alpha) / (boven.alpha - onder.alpha);
+  const zones: Partial<Record<HellendDakZone, CpeCel>> = {};
+  const vervallen: HellendDakOpzoeking["vervallen"] = [];
+  for (const zone of Object.keys(onder.zones) as HellendDakZone[]) {
+    const o = onder.zones[zone]!, b = boven.zones[zone]!;
+    const cel: CpeCel = {};
+    for (const teken of ["neg", "pos"] as const) {
+      const vo = o[teken], vb = b[teken];
+      // Precies op een tabelrij: de celwaarde zelf, zonder drijvende-kommaruis.
+      if (f === 0) { if (vo !== undefined) cel[teken] = vo; continue; }
+      if (f === 1) { if (vb !== undefined) cel[teken] = vb; continue; }
+      if (vo !== undefined && vb !== undefined) cel[teken] = vo + (vb - vo) * f;
+      else if (vo !== undefined || vb !== undefined) vervallen.push({ zone, teken });
+    }
+    if (cel.neg === undefined && cel.pos === undefined) {
+      return weiger(`Tabel ${tabel} geeft voor zone ${zone} bij ${graden(a)} geen waarde met hetzelfde teken in de rijen ` +
+        `${graden(onder.alpha)} en ${graden(boven.alpha)}; interpoleren mag dan niet.`);
+    }
+    zones[zone] = cel;
+  }
+  const rijOnder = f === 1 ? boven.alpha : onder.alpha;
+  const rijBoven = f === 0 ? onder.alpha : boven.alpha;
+  return { ok: true, vorm, theta, tabel, bron, rijOnder, rijBoven, zones, vervallen };
+}
+
+/**
+ * De kop van de uitgangspunten bij een hellend dak (rapport en PDF). §7.2.4(2)
+ * en §7.2.5(2): z_e = h. §7.2.1(1): een spant belast een dakvlak van
+ * belastingbreedte × dakvlaklengte, in de regel boven 10 m², dus c_pe = c_pe,10;
+ * kleinere vlakken meldt de generator apart.
+ */
+export const HELLEND_DAK_UITGANGSPUNT =
+  "Wind op een hellend dak volgens NEN-EN 1991-1-4+NB §7.2.4 (lessenaarsdak, tabel NB.8 – 7.3a en " +
+  "NB.9 – 7.3b) en §7.2.5 (zadeldak, tabel NB.10 – 7.4a en NB.11 – 7.4b): zones volgens figuur " +
+  "7.7/7.8 met e = min(b; 2h), b loodrecht op de wind, en z_e = h. Gebruikt is c_pe,10: de belaste " +
+  "oppervlakte van een spant is groter dan 10 m² (§7.2.1(1)). Tussen de tabelhellingen is lineair " +
+  "geïnterpoleerd tussen waarden met hetzelfde teken; waar de tabel een positieve en een negatieve " +
+  "waarde geeft, zijn beide als eigen geval genomen en nooit op hetzelfde vlak gecombineerd.";

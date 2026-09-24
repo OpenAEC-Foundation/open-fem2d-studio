@@ -31,6 +31,23 @@ const ZIN = {
   min: vt("common:wind.case.up", "opwaarts"),
 };
 
+/** Het dakdeel van de naam bij een hellend dak met twee tekens ("dak loef −, lij +"). */
+function dakVariant(code: string): VertaalbareTekst | null {
+  const teken = (c: string) => (c === "-" ? "−" : "+");
+  const les = /^dak([-+])$/.exec(code);
+  if (les) {
+    const t = teken(les[1]);
+    return vt("common:wind.case.roofSign", `dak ${t}`, { teken: t });
+  }
+  const zadel = /^(?:loef([-+]))?(?:lij([-+]))?$/.exec(code);
+  if (!zadel || (!zadel[1] && !zadel[2])) return null;
+  const delen: VertaalbareTekst[] = [];
+  if (zadel[1]) delen.push(vt("common:wind.case.roofWindward", `loef ${teken(zadel[1])}`, { teken: teken(zadel[1]) }));
+  if (zadel[2]) delen.push(vt("common:wind.case.roofLeeward", `lij ${teken(zadel[2])}`, { teken: teken(zadel[2]) }));
+  return vt("common:wind.case.roofSides", `dak ${delen.map((x) => x.tekst).join(", ")}`,
+    { delen: { lijst: delen, scheiding: ", " } });
+}
+
 /**
  * Het korte label van een geval, zoals in de tabs van het venster: de naam
  * zonder "Wind " (gebouw) of "Wind vrijstaand dak " (vrijstaand dak).
@@ -42,12 +59,17 @@ export function windGevalTab(
   dakvorm: OverkappingDakvorm | null,
 ): VertaalbareTekst | null {
   const d = gv.sleutel.split(":");
-  if (d[0] === "wind" && d.length === 3 && RICHTING[d[1]] && d[2].startsWith("cpi")) {
+  if (d[0] === "wind" && (d.length === 3 || d.length === 4) && RICHTING[d[1]] && d[2].startsWith("cpi")) {
     const cpiGetal = Number(d[2].slice(3));
     if (!Number.isFinite(cpiGetal)) return null;
     const cpi = nl(cpiGetal, 2);
     const richting = RICHTING[d[1]];
-    return vt("common:wind.case.buildingTab", `${richting.tekst} (c_pi = ${cpi})`, { richting, cpi });
+    if (d.length === 3) return vt("common:wind.case.buildingTab", `${richting.tekst} (c_pi = ${cpi})`, { richting, cpi });
+    // Hellend dak met positieve en negatieve c_pe (issue #49): `dak-`/`dak+`
+    // bij een lessenaarsdak, `loef-lij+` (of alleen loef/lij) bij een zadeldak.
+    const dak = dakVariant(d[3]);
+    if (!dak) return null;
+    return vt("common:wind.case.buildingTabRoof", `${richting.tekst} (c_pi = ${cpi}), ${dak.tekst}`, { richting, cpi, dak });
   }
   if (d[0] !== "luifel") return null;
   if (d[1] === "cpnet" && (d[2] === "max" || d[2] === "min") && d.length === 3) {
