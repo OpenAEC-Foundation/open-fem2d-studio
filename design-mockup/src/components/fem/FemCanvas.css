@@ -182,7 +182,8 @@
 /* Onzichtbare, brede klikzone langs de pijlschacht. */
 .fem-pointload-hit {
   stroke: transparent;
-  stroke-width: 12;
+  /* 18 px: de pijl ligt vaak op een staaf en was met 12 px een smal doel. */
+  stroke-width: 18;
   fill: none;
   pointer-events: stroke;
 }

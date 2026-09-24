@@ -28,5 +28,10 @@ const iLast = romp.indexOf("lastIdVanKlik(e.target"), iKnoop = romp.indexOf("fin
 check("de last wordt vóór de knoop-/staafzoektocht herkend", iLast > 0 && iKnoop > iLast);
 check("en al bij het indrukken geselecteerd, zonder te slepen", /setSelection\(\{ type: "load", id: lastId \}\);\s*return;/.test(romp));
 
+check("het getal bij een puntlast is klikbaar en focust Fz of Fx",
+  /className="fem-load-text fem-load-text-clickable"[\s\S]{0,400}field: Math\.abs\(fz\) >= Math\.abs\(fx\) \? "fz" : "fx"[\s\S]{0,120}\{mag\.toFixed\(1\)\} kN<\/text>/.test(c));
+const css = readFileSync(join(HIER, "src", "components", "fem", "FemCanvas.css"), "utf8").replace(/\r\n/g, "\n");
+check("de klikstrook langs de pijl is 18 px breed", /\.fem-pointload-hit \{[\s\S]{0,200}stroke-width: 18;/.test(css));
+
 log(`\n${geslaagd} geslaagd, ${gefaald} gefaald`);
 process.exit(gefaald > 0 ? 1 : 0);

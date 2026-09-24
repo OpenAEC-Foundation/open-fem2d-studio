@@ -26,6 +26,7 @@
  * Solverresultaten komen uitsluitend uit de centrale rekengang. Wisselen
  * van belastinggeval selecteert bestaande resultaten en rekent nooit opnieuw.
  */
+import { verwerkToets } from "../../lib/commandoReeks";
 import { lastIdVanKlik } from "../../lib/klikOpLast";
 import { laatVeldLos } from "../../lib/undoRoute";
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
@@ -2057,21 +2058,13 @@ export default function FemCanvas(props: FemCanvasProps) {
       }
 
       // ── Multi-key commando-sequences (CAD-stijl) ─────────────────────
-      // "MV" (M gevolgd door V binnen 1,2 s) activeert het Verplaats-tool.
-      if (!grabMode && !rotateMode && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        const k = e.key.toLowerCase();
-        const pending = keySeqRef.current;
-        const fresh = pending !== null && Date.now() - pending.t < 1200;
-        if (fresh && pending!.key === "m") {
-          keySeqRef.current = null;
-          if (k === "v") { e.preventDefault(); onToolChange?.("move"); return; }
-          // andere tweede toets: prefix vervalt, val door naar normale afhandeling
-        }
-        if (k === "m") {
-          keySeqRef.current = { key: "m", t: Date.now() };
-          e.preventDefault();
-          return;
-        }
+      // "MV" = verplaatsen, "CO" = kopiëren (tweede letter binnen 1,2 s);
+      // zie lib/commandoReeks.ts.
+      if (!grabMode && !rotateMode && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+        const r = verwerkToets(keySeqRef.current, e.key, Date.now());
+        keySeqRef.current = r.prefix;
+        if (r.tool) { e.preventDefault(); onToolChange?.(r.tool); return; }
+        if (r.verbruikt) { e.preventDefault(); return; }
       }
 
       // G / R / D — only if there's a selection and no modal is active.
@@ -2688,7 +2681,20 @@ export default function FemCanvas(props: FemCanvasProps) {
               af, dus botst niet met het aanklikken van de staaf zelf). */}
           <line x1={tail.x} y1={tail.y} x2={kop.x} y2={kop.y} className="fem-pointload-hit" />
           <line x1={tail.x} y1={tail.y} x2={kop.x} y2={kop.y} className="fem-load-vec" markerEnd="url(#fem-load-head)" />
-          <text x={tail.x} y={tail.y - 4} className="fem-load-text">{mag.toFixed(1)} kN</text>
+          {/* Het getal is klikbaar, net als bij een lijnlast: de pijl ligt vaak
+              óp een staaf (last in het verlengde van een kolom) en is dan een
+              smal doel. Klikken zet de focus op de grootste component. */}
+          <text
+            x={tail.x} y={tail.y - 4}
+            className="fem-load-text fem-load-text-clickable"
+            onClick={(e) => {
+              if (tool === "select" && !dragState) {
+                e.stopPropagation();
+                setSelection({ type: "load", id: l.id });
+                setPendingLoadFocus?.({ loadId: l.id, field: Math.abs(fz) >= Math.abs(fx) ? "fz" : "fx" });
+              }
+            }}
+          >{mag.toFixed(1)} kN</text>
         </g>
       );
     }
