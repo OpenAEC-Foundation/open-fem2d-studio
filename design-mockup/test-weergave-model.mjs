@@ -36,5 +36,10 @@ check("…en hangt van showLoads af", /showLoads\]\);$/.test(banner));
 check("diagrammen en omhullende blijven onderdrukt in de modelweergave",
   /\{showLoads && overlayResult && \(/.test(canvas) && /\{showLoads && \(\s*<g className="fem-envelope-overlay"/.test(canvas));
 
+log("\n[4] sluitknop van het toetsingspaneel");
+const cpCss = readFileSync(join(HIER, "src", "components", "panels", "CheckPanel.css"), "utf8").replace(/\r\n/g, "\n");
+check("het kruisje staat vast rechtsboven in de kop",
+  /\.cp-close-btn \{[\s\S]{0,80}position: absolute; top: 6px; right: 8px;/.test(cpCss) && /\.cp-toolbar \{ position: relative;/.test(cpCss));
+
 log(`\n${geslaagd} geslaagd, ${gefaald} gefaald`);
 process.exit(gefaald > 0 ? 1 : 0);
