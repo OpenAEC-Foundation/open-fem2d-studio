@@ -19,7 +19,7 @@ check("het origineel is niet gewijzigd", aan.M === true && aan.uc === true);
 
 log("\n[2] App.tsx");
 const app = readFileSync(join(HIER, "src", "App.tsx"), "utf8").replace(/\r\n/g, "\n");
-const model = /setShowLoads=\{\(v\) => \{[\s\S]{0,600}?\n {10}\}\}/.exec(app)?.[0] ?? "";
+const model = /setShowLoads=\{\(v\) => \{[\s\S]{0,2000}?\n {10}\}\}/.exec(app)?.[0] ?? "";
 check("de tab Model zet de resultaten uit", /if \(!v\) \{[\s\S]*setDisplayFlags\(zonderResultaten\)/.test(model), model.slice(0, 80));
 check("de tab Model zet de verkenner terug op Project", /if \(!v\) \{[\s\S]*setTreeTab\("project"\)/.test(model));
 check("de tab Model sluit het toetsingspaneel naast het tekenvlak", /if \(!v\) \{[\s\S]*if \(activeView === "check"\) setActiveView\("default"\)/.test(model));
