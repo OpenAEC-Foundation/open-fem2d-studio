@@ -433,7 +433,19 @@
   cursor: pointer;
   font: inherit;
 }
-.cp-close-btn { margin-left: auto; font-size: 18px; line-height: 1; }
+/* Het kruisje staat vast rechtsboven in de kop, zoals bij een venster. Het
+   stond in de knoppenrij, en omdat de lange titel die rij naar een tweede
+   regel duwt, belandde het als klein vakje links naast "Staven:". */
+.cp-toolbar { position: relative; padding-right: 48px; }
+.cp-close-btn {
+  position: absolute; top: 6px; right: 8px;
+  width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-color: transparent; background: transparent;
+  font-size: 22px; line-height: 1; color: var(--theme-text-muted);
+}
+.cp-close-btn:hover { background: var(--theme-bg-lighter, var(--theme-surface)); color: var(--theme-text); border-color: var(--theme-border); }
+.cp-close-btn:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 1px; }
 .cp-export-btn { font-size: 12px; }
 .cp-export-btn:disabled { opacity: .55; cursor: default; }
 .cp-provenance { padding: 6px 12px; font-size: 11px; color: var(--theme-text-muted); }
