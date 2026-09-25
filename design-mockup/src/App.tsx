@@ -2620,10 +2620,14 @@ function App() {
                   </button>
                 </div>
                 <div className="right-panel-body">
-                  <CheckPanelToggle open={activeView === "check"} onToggle={() => {
-                    if (activeView === "check") setActiveView("default");
-                    else handleOpenCheckForBeam();
-                  }} />
+                  {/* In de tab Model (geen lasten, geen resultaten) hoort de toetsing
+                      niet in beeld; bij de belastinggevallen en Resultaten wel. */}
+                  {fem.showLoads && (
+                    <CheckPanelToggle open={activeView === "check"} onToggle={() => {
+                      if (activeView === "check") setActiveView("default");
+                      else handleOpenCheckForBeam();
+                    }} />
+                  )}
                   <FemProperties
                     selection={fem.selection}
                     nodes={fem.nodes}
@@ -2762,6 +2766,9 @@ function App() {
               // De verkenner terug naar het project; de tab Resultaten zet hem
               // weer op de resultaten.
               setTreeTab("project");
+              // Ook de toetsing weg: het paneel naast het tekenvlak sluit, en
+              // het blok "Toetsing" rechts verdwijnt zolang de tab Model actief is.
+              if (activeView === "check") setActiveView("default");
             }
           }}
           hasResults={solverResult !== null || fem.envelope !== null}
